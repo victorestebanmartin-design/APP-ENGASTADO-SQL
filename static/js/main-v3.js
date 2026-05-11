@@ -2468,12 +2468,12 @@ async function mostrarModalPaquetes(carro) {
     modal.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;justify-content:center;align-items:center;z-index:10000;`;
 
     modal.innerHTML = `
-        <div style="background:white;border-radius:15px;padding:30px;max-width:700px;width:95%;max-height:90vh;overflow-y:auto;">
-            <div style="display:flex;gap:16px;margin-bottom:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:18px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
-                <div style="flex:1;text-align:center;"><div style="font-size:1.6em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.85em;opacity:0.9;">Terminal</div></div>
-                <div style="flex:1;text-align:center;"><div style="font-size:1.6em;font-weight:bold;">${total}</div><div style="font-size:0.85em;opacity:0.9;">Paquetes total</div></div>
-                <div style="flex:1;text-align:center;"><div style="font-size:1.6em;font-weight:bold;">${totalCables}</div><div style="font-size:0.85em;opacity:0.9;">Cables</div></div>
-                <div style="flex:1;text-align:center;"><div style="font-size:1.6em;font-weight:bold;">Carro ${carro.carro}</div><div style="font-size:0.85em;opacity:0.9;">${carro.proyecto_nombre || ''}</div></div>
+        <div style="background:white;border-radius:15px;padding:18px 20px;max-width:700px;width:95%;max-height:95vh;overflow-y:auto;">
+            <div style="display:flex;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.78em;opacity:0.9;">Terminal</div></div>
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${total}</div><div style="font-size:0.78em;opacity:0.9;">Paquetes total</div></div>
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalCables}</div><div style="font-size:0.78em;opacity:0.9;">Cables</div></div>
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">Carro ${carro.carro}</div><div style="font-size:0.78em;opacity:0.9;">${carro.proyecto_nombre || ''}</div></div>
             </div>
 
             ${total > PAQUETES_POR_PAGINA ? `
@@ -2484,8 +2484,8 @@ async function mostrarModalPaquetes(carro) {
             </div>` : ''}
 
             <div style="margin-bottom:20px;">
-                <h3 style="margin-bottom:6px;">📦 ${total > PAQUETES_POR_PAGINA ? `Paquetes ${inicio+1}–${fin} (grupo ${paginaNum}/${totalPaginas}):` : 'Paquetes a coger:'}</h3>
-                ${libresEnPagina > 0 ? '<p style="font-size:0.82em;color:#6c757d;margin-bottom:12px;">👆 Pulsa en un paquete que <strong>no tengas</strong> para saltarlo al inicio</p>' : ''}
+                <h3 style="margin-bottom:4px;font-size:1em;">📦 ${total > PAQUETES_POR_PAGINA ? `Paquetes ${inicio+1}–${fin} (grupo ${paginaNum}/${totalPaginas}):` : 'Paquetes a coger:'}</h3>
+                ${libresEnPagina > 0 ? '<p style="font-size:0.78em;color:#6c757d;margin-bottom:6px;">👆 Pulsa en un paquete que <strong>no tengas</strong> para saltarlo al inicio</p>' : ''}
                 ${bloqueadosEnPagina > 0 ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;font-size:0.88em;"><span>⚠️</span><span><strong>${bloqueadosEnPagina} paquete${bloqueadosEnPagina>1?'s están siendo trabajados':'  está siendo trabajado'} por otro puesto.</strong> Se saltarán automáticamente y quedarán pendientes.</span></div>` : ''}
                 ${paginaActual.map((paquete, i) => paquete.bloqueado ? `
                 <div style="background:#f1f3f5;border-left:4px solid #adb5bd;border-radius:8px;padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;opacity:0.6;cursor:not-allowed;">
@@ -2501,27 +2501,27 @@ async function mostrarModalPaquetes(carro) {
                         <div style="font-size:0.82em;color:#adb5bd;">cables</div>
                     </div>
                 </div>` : `
-                <div id="pkg-row-${inicio+i}" onclick="toggleSkipModal(${inicio+i})" title="Pulsa para marcar como no disponible" style="background:#f8f9fa;border-left:4px solid ${paquete.numeroEtiqueta?getCodCableColor(paquete.cod_cable).bg:'#0d6efd'};border-radius:8px;padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:opacity 0.2s;">
-                    <div style="display:flex;align-items:center;gap:14px;flex:1;">
+                <div id="pkg-row-${inicio+i}" onclick="toggleSkipModal(${inicio+i})" title="Pulsa para marcar como no disponible" style="background:#f8f9fa;border-left:4px solid ${paquete.numeroEtiqueta?getCodCableColor(paquete.cod_cable).bg:'#0d6efd'};border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:opacity 0.2s;">
+                    <div style="display:flex;align-items:center;gap:10px;flex:1;">
                         ${paquete.numeroEtiqueta
-                            ? `<span style="min-width:68px;text-align:center;background:${getCodCableColor(paquete.cod_cable).bg};color:white;padding:10px 12px;border-radius:10px;font-weight:bold;font-size:1.3em;box-shadow:0 2px 6px rgba(0,0,0,0.2);">🏷️ ${paquete.numeroEtiqueta}</span>`
-                            : `<span style="min-width:68px;text-align:center;background:#e9ecef;color:#6c757d;padding:10px 12px;border-radius:10px;font-size:0.9em;">Sin nº</span>`
+                            ? `<span style="min-width:54px;text-align:center;background:${getCodCableColor(paquete.cod_cable).bg};color:white;padding:5px 8px;border-radius:8px;font-weight:bold;font-size:1.05em;box-shadow:0 2px 4px rgba(0,0,0,0.15);">🏷️ ${paquete.numeroEtiqueta}</span>`
+                            : `<span style="min-width:54px;text-align:center;background:#e9ecef;color:#6c757d;padding:5px 8px;border-radius:8px;font-size:0.85em;">Sin nº</span>`
                         }
                         <div>
-                            <div style="font-size:1.2em;font-weight:bold;color:#212529;">${paquete.elemento}</div>
-                            <div style="color:#6c757d;font-size:0.82em;">Paquete ${inicio+i+1} de ${total}</div>
-                            <div id="pkg-no-${inicio+i}" style="display:none;color:#dc3545;font-size:0.8em;font-weight:600;margin-top:2px;">✕ No lo tengo — se saltará</div>
+                            <div style="font-size:1.05em;font-weight:bold;color:#212529;">${paquete.elemento}</div>
+                            <div style="color:#6c757d;font-size:0.78em;">Paquete ${inicio+i+1} de ${total}</div>
+                            <div id="pkg-no-${inicio+i}" style="display:none;color:#dc3545;font-size:0.75em;font-weight:600;margin-top:1px;">✕ No lo tengo — se saltará</div>
                         </div>
                     </div>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-                        <div style="font-size:1.4em;font-weight:bold;color:#0d6efd;">${paquete.num_cables}</div>
-                        <div style="font-size:0.82em;color:#6c757d;">cables</div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                        <div style="font-size:1.2em;font-weight:bold;color:#0d6efd;">${paquete.num_cables}</div>
+                        <div style="font-size:0.78em;color:#6c757d;">cables</div>
                     </div>
                 </div>`).join('')}
             </div>
 
-            <div style="text-align:center;border-top:2px solid #dee2e6;padding-top:18px;">
-                <p style="font-size:1.15em;color:#0d6efd;margin-bottom:16px;font-weight:bold;">
+            <div style="text-align:center;border-top:2px solid #dee2e6;padding-top:10px;">
+                <p style="font-size:1em;color:#0d6efd;margin-bottom:10px;font-weight:bold;">
                     ${total > PAQUETES_POR_PAGINA
                         ? `Grupo ${paginaNum}/${totalPaginas}: pon ${libresEnPagina} paquete${libresEnPagina!==1?'s':''} en tu zona.${fin >= total ? ' (¡último grupo!)' : ` Quedan ${total - fin} más en el siguiente grupo.`}`
                         : libresEnPagina > 0 ? `Pon estos ${libresEnPagina} paquete${libresEnPagina!==1?'s':''} en tu zona de trabajo.` : 'Todos los paquetes de esta página están en uso por otro puesto.'
