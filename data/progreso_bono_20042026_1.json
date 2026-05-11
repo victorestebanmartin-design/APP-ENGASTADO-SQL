@@ -1,0 +1,154 @@
+{
+  "641H10056": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-04-20T17:22:16.636374",
+    "fecha_ultima_actualizacion": "2026-04-20T17:43:46.801291",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 2,
+        "saltados": [
+          {
+            "elemento": "EEVCM/P1",
+            "cod_cable": "640C10024A",
+            "num_cables": 3
+          },
+          {
+            "elemento": "S216",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 10
+          },
+          {
+            "elemento": "S206",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 5
+          }
+        ],
+        "fecha": "2026-04-20T17:43:46.801289"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "EEVCM/P1",
+            "cod_cable": "640C10024A",
+            "num_cables": 3
+          },
+          {
+            "elemento": "S216",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 10
+          },
+          {
+            "elemento": "S206",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 5
+          },
+          {
+            "elemento": "K18",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "K5.1",
+            "cod_cable": "640C10024A",
+            "num_cables": 3
+          },
+          {
+            "elemento": "K5.2",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "K8",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "LEMIO1/P1",
+            "cod_cable": "640C10024A",
+            "num_cables": 15
+          },
+          {
+            "elemento": "MCMIFB/P1",
+            "cod_cable": "640C10024A",
+            "num_cables": 19
+          },
+          {
+            "elemento": "MCMIFB/P2",
+            "cod_cable": "640C10024A",
+            "num_cables": 5
+          },
+          {
+            "elemento": "Q10",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "Q9",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "TB1",
+            "cod_cable": "640C10024A",
+            "num_cables": 18
+          },
+          {
+            "elemento": "TB3",
+            "cod_cable": "640C10024A",
+            "num_cables": 2
+          },
+          {
+            "elemento": "TB4",
+            "cod_cable": "640C10024A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "Q10",
+            "cod_cable": "640C10025A",
+            "num_cables": 2
+          },
+          {
+            "elemento": "Q3",
+            "cod_cable": "640C10025A",
+            "num_cables": 9
+          },
+          {
+            "elemento": "TB1",
+            "cod_cable": "640D10002",
+            "num_cables": 3
+          },
+          {
+            "elemento": "TB1-K5.2",
+            "cod_cable": "640D10002",
+            "num_cables": 1
+          },
+          {
+            "elemento": "TB1",
+            "cod_cable": "640D10029A",
+            "num_cables": 2
+          },
+          {
+            "elemento": "TB1-K10",
+            "cod_cable": "640D10029A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "TB1-K18",
+            "cod_cable": "640D10029A",
+            "num_cables": 2
+          }
+        ],
+        "fecha": "2026-04-20T17:43:46.801279"
+      }
+    }
+  },
+  "640204": {
+    "estado": "completado",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-05T13:43:02.507089",
+    "fecha_ultima_actualizacion": "2026-05-05T13:43:04.048548"
+  }
+}

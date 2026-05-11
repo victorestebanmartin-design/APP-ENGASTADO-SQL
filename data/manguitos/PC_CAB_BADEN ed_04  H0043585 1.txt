@@ -1,0 +1,4 @@
+
+PC_CAB_BADEN,ed_04,, ,PC_CAB_BADEN,ed_04, ,,
+CM,Q2.1 ,,CM* ,Q2.1 ,CM,CM* ,,
+CFMT,Q3-Q9 ,,CFMT* ,Q3-Q9 ,CFMT,CFMT* ,,

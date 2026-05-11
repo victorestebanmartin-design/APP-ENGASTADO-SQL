@@ -1,0 +1,100 @@
+{
+  "641H10001": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-04-28T12:29:40.309530",
+    "fecha_ultima_actualizacion": "2026-04-28T12:36:55.030346",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 12,
+        "saltados": [],
+        "fecha": "2026-04-28T12:36:55.030344"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "CT1",
+            "cod_cable": "",
+            "num_cables": 1
+          }
+        ],
+        "fecha": "2026-04-28T12:36:55.030334"
+      }
+    }
+  },
+  "641H10003": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-04-28T12:37:01.303116",
+    "fecha_ultima_actualizacion": "2026-04-28T12:37:16.952954",
+    "carros_con_pendientes": {}
+  },
+  "641H10006": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-04-28T12:37:18.214608",
+    "fecha_ultima_actualizacion": "2026-04-28T12:37:27.360032",
+    "carros_con_pendientes": {}
+  },
+  "641H10009": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-04-28T12:37:28.330809",
+    "fecha_ultima_actualizacion": "2026-04-28T12:37:36.166567",
+    "carros_con_pendientes": {}
+  },
+  "641H10014": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-04-28T12:37:56.215321",
+    "fecha_ultima_actualizacion": "2026-04-28T12:41:28.700356",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-04-28T12:41:28.700353"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "MCMIFB/P1",
+            "cod_cable": "640D10009A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "MCMIFB/P2",
+            "cod_cable": "640D10009A",
+            "num_cables": 4
+          },
+          {
+            "elemento": "MCMIFB/P3",
+            "cod_cable": "640D10009A",
+            "num_cables": 1
+          },
+          {
+            "elemento": "EEVCM/P1",
+            "cod_cable": "H0211195",
+            "num_cables": 1
+          }
+        ],
+        "fecha": "2026-04-28T12:41:28.700342"
+      }
+    }
+  },
+  "641M10100": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-04-28T12:41:53.145400",
+    "fecha_ultima_actualizacion": "2026-04-28T12:41:53.145409"
+  }
+}

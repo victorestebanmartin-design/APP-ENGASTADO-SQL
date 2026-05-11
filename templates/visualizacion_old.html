@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualización - Seleccionar Bono</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .viz-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .viz-header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .viz-header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .viz-header p {
+            color: #6c757d;
+            font-size: 1.1em;
+        }
+        
+        .bonos-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        @media (max-width: 1400px) {
+            .bonos-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .bono-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .bono-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f1f3f5;
+        }
+        
+        .bono-nombre {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .bono-estado {
+            background: #28a745;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 1em;
+            font-weight: bold;
+        }
+        
+        .bono-stats {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 30px;
+            justify-content: center;
+        }
+        
+        .bono-stat {
+            text-align: center;
+        }
+        
+        .bono-stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        
+        .bono-stat-label {
+            color: #6c757d;
+            font-size: 1em;
+            margin-top: 5px;
+        }
+        
+        .carros-section {
+            margin-top: 30px;
+        }
+        
+        .carros-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #212529;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .carros-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        
+        .carro-item {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border: 3px solid #dee2e6;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .carro-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .carro-item.ocupado {
+            border-color: #0d6efd;
+            background: linear-gradient(135deg, #e7f1ff 0%, #f8f9fa 100%);
+        }
+        
+        .carro-item.vacio {
+            opacity: 0.5;
+            cursor: default;
+        }
+        
+        .carro-item.vacio:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .carro-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .carro-numero {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .carro-estado-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .carro-estado-badge.ocupado {
+            background: #0d6efd;
+            color: white;
+        }
+        
+        .carro-estado-badge.vacio {
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .carro-proyecto {
+            font-size: 1em;
+            color: #212529;
+            font-weight: bold;
+            margin-bottom: 10px;
+            min-height: 24px;
+        }
+        
+        .carro-progreso {
+            margin-top: 15px;
+        }
+        
+        .carro-progreso-bar {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 25px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        
+        .carro-progreso-fill {
+            background: linear-gradient(90deg, #28a745, #20c997);
+            height: 100%;
+            transition: width 1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .carro-progreso-text {
+            font-size: 0.85em;
+            color: #6c757d;
+            text-align: center;
+        }
+        
+        .no-bonos {
+            background: white;
+            border-radius: 15px;
+            padding: 60px 30px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .no-bonos-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .no-bonos h2 {
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        
+        .no-bonos p {
+            color: #6c757d;
+        }
+        
+        .back-btn {
+            background: white;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .back-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="viz-container">
+        <div class="viz-header">
+            <h1>📊 Visualización de Bonos</h1>
+            <p>Monitoreo en tiempo real del progreso de engastado</p>
+            
+            <div style="display: flex; gap: 20px; justify-content: center; align-items: center; margin-top: 20px;">
+                <div style="flex: 1; max-width: 400px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #495057;">Bono 1:</label>
+                    <select id="bono1-select" style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #667eea; border-radius: 8px; background: white;">
+                        <option value="">Seleccionar bono...</option>
+                    </select>
+                </div>
+                
+                <div style="flex: 1; max-width: 400px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #495057;">Bono 2:</label>
+                    <select id="bono2-select" style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #764ba2; border-radius: 8px; background: white;">
+                        <option value="">Seleccionar bono...</option>
+                    </select>
+                </div>
+            </div>
+            
+            <a href="{{ url_for('main.home') }}" class="back-btn">🔙 Volver al Inicio</a>
+        </div>
+        
+        <div id="bonos-container">
+            <div class="no-bonos">
+                <div class="no-bonos-icon">⏳</div>
+                <h2>Cargando bonos...</h2>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let todosLosBonos = [];
+        let bono1Seleccionado = null;
+        let bono2Seleccionado = null;
+        
+        async function cargarBonos() {
+            try {
+                const response = await fetch('/api/bonos');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const bonos = Object.values(data.bonos);
+                    const bonosActivos = bonos.filter(b => b.estado === 'activo');
+                    todosLosBonos = bonosActivos;
+                    
+                    // Actualizar selectores
+                    actualizarSelectores(bonosActivos);
+                    
+                    // Si es la primera carga, seleccionar los dos últimos bonos
+                    if (!bono1Seleccionado && !bono2Seleccionado && bonosActivos.length > 0) {
+                        const ultimosBonos = bonosActivos.slice(-2);
+                        if (ultimosBonos.length >= 1) {
+                            bono1Seleccionado = ultimosBonos[ultimosBonos.length === 1 ? 0 : 0].nombre;
+                            document.getElementById('bono1-select').value = bono1Seleccionado;
+                        }
+                        if (ultimosBonos.length >= 2) {
+                            bono2Seleccionado = ultimosBonos[1].nombre;
+                            document.getElementById('bono2-select').value = bono2Seleccionado;
+                        }
+                    }
+                    
+                    // Mostrar los bonos seleccionados
+                    await mostrarBonosSeleccionados();
+                } else {
+                    mostrarError('Error al cargar bonos', data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarError('Error de conexión', 'No se pudo conectar con el servidor');
+            }
+        }
+        
+        function actualizarSelectores(bonos) {
+            const select1 = document.getElementById('bono1-select');
+            const select2 = document.getElementById('bono2-select');
+            
+            // Limpiar opciones actuales
+            select1.innerHTML = '<option value="">Ninguno</option>';
+            select2.innerHTML = '<option value="">Ninguno</option>';
+            
+            // Añadir bonos
+            bonos.forEach(bono => {
+                const option1 = document.createElement('option');
+                option1.value = bono.nombre;
+                option1.textContent = `${bono.nombre} (${bono.num_cortes} cortes)`;
+                select1.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = bono.nombre;
+                option2.textContent = `${bono.nombre} (${bono.num_cortes} cortes)`;
+                select2.appendChild(option2);
+            });
+        }
+        
+        async function mostrarBonosSeleccionados() {
+            const container = document.getElementById('bonos-container');
+            
+            const bonosAMostrar = [];
+            
+            if (bono1Seleccionado) {
+                const bono = todosLosBonos.find(b => b.nombre === bono1Seleccionado);
+                if (bono) bonosAMostrar.push(bono);
+            }
+            
+            if (bono2Seleccionado) {
+                const bono = todosLosBonos.find(b => b.nombre === bono2Seleccionado);
+                if (bono) bonosAMostrar.push(bono);
+            }
+            
+            if (bonosAMostrar.length === 0) {
+                container.innerHTML = `
+                    <div class="no-bonos">
+                        <div class="no-bonos-icon">📋</div>
+                        <h2>Selecciona uno o dos bonos</h2>
+                        <p>Usa los selectores de arriba para elegir los bonos a visualizar</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Cargar progreso y terminales de cada bono
+            const bonosConProgreso = await Promise.all(
+                bonosAMostrar.map(async (bono) => {
+                    try {
+                        // Cargar progreso general
+                        const progresoResponse = await fetch(`/api/bonos/${bono.nombre}/progreso`);
+                        const progresoData = await progresoResponse.json();
+                        
+                        // Cargar progreso por carro
+                        const progresoCarroResponse = await fetch(`/api/bonos/${bono.nombre}/progreso-por-carro`);
+                        const progresoCarroData = await progresoCarroResponse.json();
+                        
+                        // Cargar terminales totales de cada proyecto/carro
+                        const carrosConTerminales = await Promise.all(
+                            bono.carros.map(async (carro) => {
+                                try {
+                                    const terminalesResponse = await fetch(`/api/excel/${carro.archivo_excel}/terminales`);
+                                    const terminalesData = await terminalesResponse.json();
+                                    
+                                    let terminalesCompletados = 0;
+                                    
+                                    // Obtener terminales completados de este carro
+                                    if (progresoCarroData.success && progresoCarroData.progreso_por_carro[carro.carro]) {
+                                        // Usar datos nuevos si existen
+                                        const progresoCarro = progresoCarroData.progreso_por_carro[carro.carro];
+                                        terminalesCompletados = progresoCarro.terminales_completados?.length || 0;
+                                    } else {
+                                        // Fallback: contar operarios que completaron este carro (dato antiguo)
+                                        // Esto no es preciso pero al menos muestra algo
+                                        for (const [terminal, info] of Object.entries(progresoData.progreso || {})) {
+                                            if (info.carros_completados && info.carros_completados.includes(carro.carro)) {
+                                                terminalesCompletados++;
+                                            }
+                                        }
+                                    }
+                                    
+                                    return {
+                                        ...carro,
+                                        totalTerminales: terminalesData.success ? terminalesData.total : 0,
+                                        terminalesCompletados: terminalesCompletados
+                                    };
+                                } catch (error) {
+                                    console.error(`Error cargando datos de ${carro.archivo_excel}:`, error);
+                                    return { ...carro, totalTerminales: 0, terminalesCompletados: 0 };
+                                }
+                            })
+                        );
+                        
+                        return {
+                            ...bono,
+                            carros: carrosConTerminales,
+                            progreso: progresoData.success ? progresoData.progreso : {}
+                        };
+                    } catch (error) {
+                        console.error('Error cargando bono:', error);
+                        return { ...bono, progreso: {} };
+                    }
+                })
+            );
+            
+            container.innerHTML = `
+                <div class="bonos-grid">
+                    ${bonosConProgreso.map(bono => generarVistaBono(bono)).join('')}
+                </div>
+            `;
+        }
+        
+        function mostrarError(titulo, mensaje) {
+            const container = document.getElementById('bonos-container');
+            container.innerHTML = `
+                <div class="no-bonos">
+                    <div class="no-bonos-icon">❌</div>
+                    <h2>${titulo}</h2>
+                    <p>${mensaje}</p>
+                </div>
+            `;
+        }
+        
+        function generarVistaBono(bono) {
+            // Crear array de 6 carros
+            const carros = [1, 2, 3, 4, 5, 6].map(numCarro => {
+                const carroData = bono.carros.find(c => c.carro === numCarro);
+                return carroData || { carro: numCarro, vacio: true };
+            });
+            
+            // Calcular progreso por carro (ya viene calculado del backend)
+            const carrosConProgreso = carros.map(carro => {
+                if (carro.vacio) {
+                    return { ...carro, porcentaje: 0, terminalesCompletados: 0, totalTerminales: 0 };
+                }
+                
+                // Usar datos ya cargados
+                const totalTerminales = carro.totalTerminales || 0;
+                const terminalesCompletados = carro.terminalesCompletados || 0;
+                const porcentaje = totalTerminales > 0 ? Math.round((terminalesCompletados / totalTerminales) * 100) : 0;
+                
+                return {
+                    ...carro,
+                    porcentaje,
+                    terminalesCompletados,
+                    totalTerminales
+                };
+            });
+            
+            return `
+                <div class="bono-card">
+                    <div class="bono-card-header">
+                        <div class="bono-nombre">${bono.nombre}</div>
+                        <div class="bono-estado">✓ Activo</div>
+                    </div>
+                    
+                    <div class="bono-stats">
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${bono.num_cortes}</div>
+                            <div class="bono-stat-label">Cortes</div>
+                        </div>
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${bono.carros.length}</div>
+                            <div class="bono-stat-label">Carros Ocupados</div>
+                        </div>
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${Object.keys(bono.progreso || {}).length}</div>
+                            <div class="bono-stat-label">Terminales en Trabajo</div>
+                        </div>
+                    </div>
+                    
+                    <div class="carros-section">
+                        <div class="carros-title">🚛 Estado de los 6 Carros</div>
+                        <div class="carros-grid">
+                            ${carrosConProgreso.map(carro => `
+                                <div class="carro-item ${carro.vacio ? 'vacio' : 'ocupado'}" 
+                                     ${!carro.vacio ? `onclick="verBono('${bono.nombre}')"` : ''}>
+                                    <div class="carro-header">
+                                        <div class="carro-numero">Carro ${carro.carro}</div>
+                                        <div class="carro-estado-badge ${carro.vacio ? 'vacio' : 'ocupado'}">
+                                            ${carro.vacio ? 'Vacío' : 'Ocupado'}
+                                        </div>
+                                    </div>
+                                    <div class="carro-proyecto">
+                                        ${carro.vacio ? '-' : carro.proyecto_nombre || 'Sin nombre'}
+                                    </div>
+                                    ${!carro.vacio ? `
+                                        <div class="carro-progreso">
+                                            <div class="carro-progreso-bar">
+                                                <div class="carro-progreso-fill" style="width: ${carro.porcentaje}%">
+                                                    ${carro.porcentaje > 0 ? carro.porcentaje + '%' : ''}
+                                                </div>
+                                            </div>
+                                            <div class="carro-progreso-text">
+                                                ${carro.terminalesCompletados} / ${carro.totalTerminales} terminales
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function verBono(nombreBono) {
+            window.location.href = `/visualizacion/${nombreBono}`;
+        }
+        
+        // Event listeners para selectores
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('bono1-select').addEventListener('change', function(e) {
+                bono1Seleccionado = e.target.value || null;
+                mostrarBonosSeleccionados();
+            });
+            
+            document.getElementById('bono2-select').addEventListener('change', function(e) {
+                bono2Seleccionado = e.target.value || null;
+                mostrarBonosSeleccionados();
+            });
+        });
+        
+        // Cargar bonos al inicio
+        cargarBonos();
+        
+        // Actualizar cada 5 segundos
+        setInterval(cargarBonos, 5000);
+    </script>
+</body>
+</html>

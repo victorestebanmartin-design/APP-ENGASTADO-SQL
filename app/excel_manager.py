@@ -1,0 +1,491 @@
+"""
+Gestor de archivos Excel para análisis de terminales y cables
+"""
+import pandas as pd
+import os
+import re
+from typing import List, Dict, Optional
+
+
+class ExcelManager:
+    """Maneja la lectura y procesamiento de archivos Excel de cortes"""
+    
+    def __init__(self, upload_folder: str):
+        """
+        Inicializar gestor de Excel
+        
+        Args:
+            upload_folder: Ruta a la carpeta de uploads
+        """
+        self.upload_folder = upload_folder
+        self.current_df = None
+        self.current_filename = None
+    
+    def cargar_excel_directo(self, filename: str, sheet_name: str = 'Format') -> bool:
+        """
+        Cargar archivo Excel directamente desde la carpeta de uploads
+        
+        Args:
+            filename: Nombre del archivo Excel
+            sheet_name: Nombre de la hoja a cargar
+        
+        Returns:
+            True si se cargó correctamente, False en caso contrario
+        """
+        filepath = os.path.join(self.upload_folder, filename)
+        
+        if not os.path.exists(filepath):
+            print(f"❌ Archivo no encontrado: {filepath}")
+            return False
+        
+        try:
+            # Detectar hoja: usar 'Format' si existe, sino la primera disponible
+            hoja = 'Format' if sheet_name == 'Format' else sheet_name
+            xl = pd.ExcelFile(filepath)
+            if hoja not in xl.sheet_names:
+                hoja = xl.sheet_names[0]
+            df = pd.read_excel(filepath, sheet_name=hoja)
+            
+            # Verificar que tenga columnas básicas
+            required_cols = ['Cod. cable', 'De Terminal', 'Para Terminal']
+            missing = [col for col in required_cols if col not in df.columns]
+            
+            if missing:
+                print(f"⚠️ Columnas faltantes en {filename}: {missing}")
+                print(f"📋 Columnas disponibles: {df.columns.tolist()[:10]}")
+                return False
+            
+            self.current_df = df
+            self.current_filename = filename
+            print(f"✅ Excel cargado: {filename} ({len(df)} filas)")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error al cargar Excel: {e}")
+            return False
+    
+    def buscar_terminal(self, terminal: str) -> List[Dict]:
+        """
+        Buscar terminal en las columnas 'De Terminal' y 'Para Terminal'
+        Retorna lista de diccionarios con los datos encontrados
+        BÚSQUEDA INSENSIBLE A MAYÚSCULAS/MINÚSCULAS
+        
+        Args:
+            terminal: Número de terminal a buscar
+        
+        Returns:
+            Lista de diccionarios con las filas donde aparece el terminal
+        """
+        if self.current_df is None:
+            return []
+        
+        # Convertir terminal a mayúsculas para búsqueda case-insensitive
+        terminal_upper = str(terminal).upper().strip()
+        
+        # Preparar máscaras seguras
+        cols = self.current_df.columns
+        
+        if 'De Terminal' in cols:
+            mask_origen = self.current_df['De Terminal'].astype(str).str.upper() == terminal_upper
+        else:
+            mask_origen = pd.Series(False, index=self.current_df.index)
+        
+        if 'Para Terminal' in cols:
+            mask_destino = self.current_df['Para Terminal'].astype(str).str.upper() == terminal_upper
+        else:
+            mask_destino = pd.Series(False, index=self.current_df.index)
+        
+        # Seleccionar filas que coincidan
+        mask_any = mask_origen | mask_destino
+        if not mask_any.any():
+            return []
+        
+        df = self.current_df[mask_any].copy()
+        
+        # Etiquetar el tipo de coincidencia
+        tipo = pd.Series(index=self.current_df.index, dtype=object)
+        tipo[(mask_origen) & (~mask_destino)] = 'origen'
+        tipo[(~mask_origen) & (mask_destino)] = 'destino'
+        tipo[(mask_origen) & (mask_destino)] = 'ambas'
+        df['tipo_conexion'] = tipo.loc[df.index].fillna('origen')
+        
+        return df.to_dict('records')
+    
+    def agrupar_por_cable_elemento(self, resultados: List[Dict], terminal_buscado: str) -> Dict:
+        """
+        Agrupar resultados por código de cable y elemento (De Elemento)
+        
+        REGLAS:
+        1. Agrupar por Código de Cable + De Elemento
+        2. AZUL (cables_de_terminal): terminal solo en "De Terminal" (1 terminal)
+        3. VERDE (cables_para_terminal): terminal solo en "Para Terminal" (1 terminal)
+        4. ROJO (cables_doble_terminal): terminal en AMBOS lados de la MISMA fila (2 terminales)
+        
+        Args:
+            resultados: Lista de filas del Excel donde aparece el terminal
+            terminal_buscado: Terminal que estamos buscando
+        
+        Returns:
+            Diccionario con los grupos organizados por cable + elemento
+        """
+        if not resultados:
+            return {}
+        
+        grupos = {}
+        
+        # Helper para evitar NaN/None
+        def _safe_str(v):
+            try:
+                if pd.isna(v):
+                    return ''
+            except:
+                pass
+            return '' if v is None else str(v)
+        
+        def _safe_num(v):
+            try:
+                if pd.isna(v):
+                    return ''
+            except:
+                pass
+            return v
+        
+        for row in resultados:
+            # Ignorar filas sin código de cable o sin sección (son líneas auxiliares del cableador)
+            _cod_raw = row.get('Cod. cable', '')
+            _sec_raw = row.get('Sección', row.get('Seccion', ''))
+            try:
+                _cod_vacio = (pd.isna(_cod_raw) or str(_cod_raw).strip() == '')
+            except Exception:
+                _cod_vacio = (str(_cod_raw).strip() == '')
+            try:
+                _sec_vacio = (pd.isna(_sec_raw) or str(_sec_raw).strip() == '')
+            except Exception:
+                _sec_vacio = (str(_sec_raw).strip() == '')
+            if _cod_vacio or _sec_vacio:
+                continue
+
+            # Datos de la fila
+            cod_cable = row.get('Cod. cable', 'Sin código')
+            _cable_marca_raw = str(row.get('Cable / Marca', '')).strip()
+            _de_marca_raw    = str(row.get('De Marca', '')).strip()
+            # Si Cable / Marca está vacío o es 'nan', usar De Marca como fallback
+            cable_marca = (_cable_marca_raw if _cable_marca_raw and _cable_marca_raw.lower() != 'nan'
+                           else _de_marca_raw if _de_marca_raw and _de_marca_raw.lower() != 'nan'
+                           else 'nan')
+            de_elemento   = row.get('De Elemento Etiquetas', 'Sin elemento')
+            de_terminal   = row.get('De Terminal', '')
+            para_terminal = row.get('Para Terminal', '')
+
+            # Si De Elemento o Para Elemento terminan en *, ese terminal no se engasta
+            de_no_poner   = str(row.get('De Elemento', '')).strip().endswith('*')
+            para_no_poner = str(row.get('Para Elemento', '')).strip().endswith('*')
+            
+            # Clave del grupo: Cable + Elemento
+            clave = f"{cod_cable}|{de_elemento}"
+            
+            if clave not in grupos:
+                # Buscar descripción y sección con normalización
+                descripcion_val = row.get('Descripción Cable', row.get('Descripcion Cable', ''))
+                seccion_val = row.get('Sección', row.get('Seccion', ''))
+                
+                grupos[clave] = {
+                    'cod_cable': _safe_str(cod_cable),
+                    'elemento': _safe_str(de_elemento),
+                    'descripcion': _safe_str(descripcion_val),
+                    'seccion': _safe_str(seccion_val),
+                    'longitud': _safe_num(row.get('Longitud', '')),
+                    'de_terminal': _safe_str(de_terminal),
+                    'cables_lista': [],
+                    'cables_doble_terminal': [],  # ROJO: terminal en ambos lados
+                    'cables_de_terminal': [],     # AZUL: terminal solo en "De Terminal"
+                    'cables_para_terminal': [],   # VERDE: terminal solo en "Para Terminal"
+                    'num_terminales': 0
+                }
+            
+            if cable_marca:
+                # Verificar si ESTA FILA tiene el terminal en ambos lados (case-insensitive)
+                terminal_buscado_upper = str(terminal_buscado).upper().strip()
+                de_terminal_upper = str(de_terminal).upper().strip()
+                para_terminal_upper = str(para_terminal).upper().strip()
+                
+                tiene_origen = de_terminal_upper == terminal_buscado_upper
+                tiene_destino = para_terminal_upper == terminal_buscado_upper
+                es_doble_en_esta_fila = tiene_origen and tiene_destino
+                
+                # Agregar cable a la lista
+                grupos[clave]['cables_lista'].append(cable_marca)
+                
+                if es_doble_en_esta_fila:
+                    if de_no_poner and para_no_poner:
+                        pass  # ningún terminal que engastar en esta fila
+                    elif de_no_poner:
+                        # De Terminal no se engasta, Para Terminal sí -> VERDE
+                        grupos[clave]['cables_para_terminal'].append(cable_marca)
+                        grupos[clave]['num_terminales'] += 1
+                    elif para_no_poner:
+                        # Para Terminal no se engasta, De Terminal sí -> AZUL
+                        grupos[clave]['cables_de_terminal'].append(cable_marca)
+                        grupos[clave]['num_terminales'] += 1
+                    else:
+                        # ROJO: terminal en AMBOS lados (2 terminales)
+                        grupos[clave]['cables_doble_terminal'].append(cable_marca)
+                        grupos[clave]['num_terminales'] += 2
+                elif tiene_origen:
+                    if not de_no_poner:
+                        # AZUL: terminal solo en "De Terminal" (1 terminal)
+                        grupos[clave]['cables_de_terminal'].append(cable_marca)
+                        grupos[clave]['num_terminales'] += 1
+                elif tiene_destino:
+                    if not para_no_poner:
+                        # VERDE: terminal solo en "Para Terminal" (1 terminal)
+                        grupos[clave]['cables_para_terminal'].append(cable_marca)
+                        grupos[clave]['num_terminales'] += 1
+        
+        # Ordenar cables y preparar datos finales
+        for grupo in grupos.values():
+            def sort_cable(cable):
+                cable_str = str(cable).strip()
+                try:
+                    return (0, int(cable_str))  # Números primero
+                except ValueError:
+                    return (1, cable_str)  # Strings después
+            
+            grupo['todos_cables'] = sorted(grupo['cables_lista'], key=sort_cable)
+            grupo['num_cables'] = len(grupo['cables_lista'])
+            
+            # Limpiar
+            del grupo['cables_lista']
+        
+        return grupos
+    
+    def get_columnas(self) -> List[str]:
+        """Obtener nombres de columnas del DataFrame actual"""
+        if self.current_df is not None:
+            return list(self.current_df.columns)
+        return []
+
+    def get_manguitos(self, filename: str) -> list:
+        """
+        Lee todas las filas del Excel donde 'De Manguito' tiene valor válido
+        (no vacío y no 'S/M'), agrupa por 'De Elemento' preservando orden de aparición.
+
+        Returns:
+            Lista de dicts: [{ 'elemento': str, 'manguitos': [{de_marca, de_manguito,
+                               de_punto, para_elemento, para_punto}] }]
+        """
+        filepath = os.path.join(self.upload_folder, filename)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f'Archivo no encontrado: {filepath}')
+
+        # Detectar hoja correcta
+        xl = pd.ExcelFile(filepath)
+        hoja = 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
+        df = pd.read_excel(filepath, sheet_name=hoja)
+
+        def _safe(v):
+            try:
+                if pd.isna(v):
+                    return ''
+            except Exception:
+                pass
+            return '' if v is None else str(v).strip()
+
+        def _col(names):
+            for n in names:
+                if n in df.columns:
+                    return n
+            return None
+
+        col_de_manguito      = _col(['De Manguito'])
+        col_de_marca         = _col(['De Marca'])
+        col_de_elemento      = _col(['De Elemento Etiquetas'])
+        col_de_elemento_orig = _col(['De Elemento Original'])
+        col_de_punto         = _col(['De Punto Conexión', 'De Punto Conexion', 'De Punto'])
+        col_para_elem        = _col(['Para Elemento'])
+        col_para_punto       = _col(['Para Punto Conexión', 'Para Punto Conexion', 'Para Punto'])
+        col_cod_cable        = _col(['Cod. cable'])
+        col_longitud         = _col(['Longitud'])
+        col_seccion          = _col(['Sección', 'Seccion'])
+
+        if not col_de_manguito:
+            raise ValueError("Columna 'De Manguito' no encontrada en el Excel")
+
+        elementos = {}
+        orden_elementos = []
+
+        for _, row in df.iterrows():
+            de_manguito = _safe(row[col_de_manguito])
+            if not de_manguito or de_manguito.upper() == 'S/M':
+                continue
+
+            # Clave de agrupación y lookup de etiquetas: columna renombrada
+            de_elemento = (_safe(row[col_de_elemento]) if col_de_elemento else '') or 'Sin elemento'
+
+            # Valor para pantalla y TXT: columna original si existe, si no la renombrada (sin fallback)
+            if col_de_elemento_orig:
+                de_elemento_display = _safe(row[col_de_elemento_orig])
+            else:
+                de_elemento_display = _safe(row[col_de_elemento]) if col_de_elemento else ''
+
+            # Longitud numérica
+            _lon_raw = row[col_longitud] if col_longitud else None
+            try:
+                _lon = float(_lon_raw) if _lon_raw is not None and not pd.isna(_lon_raw) else None
+            except Exception:
+                _lon = None
+
+            manguito = {
+                'de_marca':      _safe(row[col_de_marca])      if col_de_marca   else '',
+                'de_manguito':   de_manguito,
+                'de_elemento':   de_elemento_display,
+                'de_punto':      _safe(row[col_de_punto])      if col_de_punto   else '',
+                'para_elemento': _safe(row[col_para_elem])     if col_para_elem  else '',
+                'para_punto':    _safe(row[col_para_punto])    if col_para_punto else '',
+                'cod_cable':     _safe(row[col_cod_cable])     if col_cod_cable  else '',
+                'longitud':      _lon,
+                'seccion':       _safe(row[col_seccion])        if col_seccion    else '',
+            }
+
+            if de_elemento not in elementos:
+                elementos[de_elemento] = []
+                orden_elementos.append(de_elemento)
+            elementos[de_elemento].append(manguito)
+
+        return [{'elemento': el, 'manguitos': elementos[el]} for el in orden_elementos]
+
+
+# ── Helpers de parseo de Observaciones (Preparación de Mangueras) ─────────────
+
+def _parse_instrucciones(inst_str):
+    """Parsea una cadena de instrucciones como 'PM120/M110/A150' en un dict."""
+    inst = {'pm': None, 'm': None, 'm_cortar': False, 'm_mrs': False, 'm_mrc': False, 'm_mrc_medida': None, 'a_todos': None, 'a_especificos': {}}
+    for token in inst_str.split('/'):
+        t = token.strip().upper()
+        if not t:
+            continue
+        m = re.match(r'^PM(\d+)$', t)
+        if m:
+            inst['pm'] = int(m.group(1))
+            continue
+        if t == 'M_CORTAR':
+            inst['m_cortar'] = True
+            continue
+        if t == 'MRS':
+            inst['m_mrs'] = True
+            continue
+        m = re.match(r'^MRC(\d+)$', t)
+        if m:
+            inst['m_mrc'] = True
+            inst['m_mrc_medida'] = int(m.group(1))
+            continue
+        if t == 'MRC':
+            inst['m_mrc'] = True
+            continue
+        m = re.match(r'^M(\d+)$', t)
+        if m:
+            inst['m'] = int(m.group(1))
+            continue
+        m = re.match(r'^A(\d+)_(\d+)$', t)
+        if m:
+            inst['a_especificos'][m.group(1)] = int(m.group(2))
+            continue
+        m = re.match(r'^A(\d+)$', t)
+        if m:
+            inst['a_todos'] = int(m.group(1))
+            continue
+    return inst
+
+
+def _parse_pelado(obs_str):
+    """Parsea '<-PM120/M110 // PM300->' en {'de': {...}, 'para': {...}}."""
+    result = {'de': None, 'para': None}
+    parts = re.split(r'//|\$', obs_str)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part.startswith('<-'):
+            side = 'de'
+            inst_str = part[2:].strip()
+        elif part.endswith('->'):
+            side = 'para'
+            inst_str = part[:-2].strip()
+        else:
+            continue
+        result[side] = _parse_instrucciones(inst_str)
+    return result
+
+
+class ManguerasManager:
+    """Método auxiliar que reutiliza la misma carpeta que ExcelManager"""
+    pass
+
+
+# Extender ExcelManager con get_mangueras
+def _get_mangueras(self, filename: str) -> list:
+    """
+    Lee las filas del Excel donde Observaciones empieza por '<-' o '->'
+    y devuelve lista con instrucciones de pelado parseadas.
+    """
+    filepath = os.path.join(self.upload_folder, filename)
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f'Archivo no encontrado: {filepath}')
+
+    xl = pd.ExcelFile(filepath)
+    hoja = 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
+    df = pd.read_excel(filepath, sheet_name=hoja)
+
+    def _safe(v):
+        try:
+            if pd.isna(v):
+                return ''
+        except Exception:
+            pass
+        return '' if v is None else str(v).strip()
+
+    def _col(names):
+        for n in names:
+            if n in df.columns:
+                return n
+        return None
+
+    col_obs           = _col(['Observaciones'])
+    col_cable_marca   = _col(['Cable / Marca'])
+    col_de_marca      = _col(['De Marca'])
+    col_de_elemento   = _col(['De Elemento Etiquetas', 'De Elemento'])
+    col_cod_cable     = _col(['Cod. cable', 'Cod.cable', 'Cod cable'])
+    col_de_terminal   = _col(['De Terminal'])
+    col_para_terminal = _col(['Para Terminal'])
+
+    if not col_obs:
+        raise ValueError("Columna 'Observaciones' no encontrada en el Excel")
+
+    resultado = []
+    for _, row in df.iterrows():
+        obs = _safe(row[col_obs])
+        if not obs.startswith('<-') and not obs.startswith('->'):
+            continue
+
+        cm_raw = _safe(row[col_cable_marca]) if col_cable_marca else ''
+        dm_raw = _safe(row[col_de_marca])    if col_de_marca    else ''
+        cable_marca = (cm_raw if cm_raw and cm_raw.lower() != 'nan'
+                       else dm_raw if dm_raw and dm_raw.lower() != 'nan'
+                       else 'nan')
+
+        parsed = _parse_pelado(obs)
+        resultado.append({
+            'cable_marca':       cable_marca,
+            'cod_cable':         _safe(row[col_cod_cable]) if col_cod_cable else '',
+            'de_elemento':       _safe(row[col_de_elemento])   if col_de_elemento   else '',
+            'de_terminal':       _safe(row[col_de_terminal])   if col_de_terminal   else '',
+            'para_terminal':     _safe(row[col_para_terminal]) if col_para_terminal else '',
+            'observaciones_raw': obs,
+            'de':                parsed.get('de'),
+            'para':              parsed.get('para'),
+        })
+
+    return resultado
+
+
+ExcelManager.get_mangueras = _get_mangueras

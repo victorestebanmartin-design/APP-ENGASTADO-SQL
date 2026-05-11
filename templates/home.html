@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏠 Dashboard - Sistema de Engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=landing3">
+  <style>
+    .landing-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-item {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      color: white !important;
+      padding: 1.5rem;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      border: none !important;
+    }
+    .stat-item:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
+    }
+    .stat-icon {
+      font-size: 2.5rem;
+      opacity: 0.9;
+      color: white !important;
+    }
+    .stat-info {
+      flex: 1;
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      opacity: 0.9;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: white !important;
+    }
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+      color: white !important;
+    }
+    .loading-stat {
+      opacity: 0.7;
+      font-size: 1.2rem;
+      color: white !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container landing-container">
+    <header class="header landing-header">
+      <div class="landing-logo">
+        <div class="logo-icon">🔧</div>
+        <div>
+          <h1>Sistema de Engastado Automático</h1>
+          <div class="landing-version">Versión 3.0 Pro</div>
+        </div>
+      </div>
+      <p class="landing-subtitle">Panel de control unificado - Gestión integral de producción</p>
+    </header>
+
+    <div class="landing-stats" id="dashboard-stats">
+      <div class="stat-item">
+        <div class="stat-icon">📊</div>
+        <div class="stat-info">
+          <div class="stat-label">Terminales</div>
+          <div class="stat-value loading-stat">⏳ Cargando...</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">📁</div>
+        <div class="stat-info">
+          <div class="stat-label">Proyectos</div>
+          <div class="stat-value loading-stat">⏳ Cargando...</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">⚙️</div>
+        <div class="stat-info">
+          <div class="stat-label">Máquinas</div>
+          <div class="stat-value loading-stat">⏳ Cargando...</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-info">
+          <div class="stat-label">Estado</div>
+          <div class="stat-value">✅ Operativo</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card landing-selector">
+      <h2 class="landing-title">🚀 Módulos del Sistema</h2>
+      <div class="version-grid">
+        <div class="version-card version-v3 recommended">
+          <div class="version-badge">Operación</div>
+          <div class="version-icon">🚀</div>
+          <h3>Engastado V3</h3>
+          <p>Sistema principal de engastado con lectura de códigos de barras, asignación de terminales y flujo guiado paso a paso.</p>
+          <div class="version-features">
+            <span class="feature-tag">Scanner integrado</span>
+            <span class="feature-tag">Flujo guiado</span>
+            <span class="feature-tag">Agrupado inteligente</span>
+          </div>
+          <a href="{{ url_for('main.index_v3') }}" class="btn-primary btn-version btn-version-v3">🔧 Iniciar Engastado</a>
+        </div>
+        <div class="version-card version-admin">
+          <div class="version-icon">⚙️</div>
+          <h3>Administración</h3>
+          <p>Gestión de archivos Excel, códigos de barras, configuración de terminales, impresora y actualizaciones del sistema.</p>
+          <div class="version-features">
+            <span class="feature-tag">Archivos Excel</span>
+            <span class="feature-tag">Config. terminales</span>
+            <span class="feature-tag">Sistema</span>
+          </div>
+          <a href="{{ url_for('main.admin') }}" class="btn-primary btn-version btn-version-admin">⚙️ Administrar</a>
+        </div>
+
+        <div class="version-card version-proyectos">
+          <div class="version-icon">🚛</div>
+          <h3>Gestión de Bonos</h3>
+          <p>Crea bonos de producción, asigna carros, gestiona proyectos activos y genera reportes detallados de progreso.</p>
+          <div class="version-features">
+            <span class="feature-tag">Bonos</span>
+            <span class="feature-tag">Carros</span>
+            <span class="feature-tag">Reportes</span>
+          </div>
+          <a href="{{ url_for('main.gestion_proyectos') }}" class="btn-primary btn-version btn-version-proyectos">🚛 Gestionar Bonos</a>
+        </div>
+        <div class="version-card version-visualizacion">
+          <div class="version-icon">📊</div>
+          <h3>Visualización</h3>
+          <p>Dashboard en tiempo real con progreso de bonos, estados de carros y métricas de producción. Ideal para pantallas externas.</p>
+          <div class="version-features">
+            <span class="feature-tag">Tiempo real</span>
+            <span class="feature-tag">Multi-pantalla</span>
+            <span class="feature-tag">Métricas</span>
+          </div>
+          <a href="{{ url_for('main.visualizacion') }}" class="btn-primary btn-version btn-version-visualizacion">📊 Monitorear</a>
+        </div>
+        <div class="version-card version-ordenes">
+          <div class="version-icon">📋</div>
+          <h3>Órdenes de Producción</h3>
+          <p>Registra, consulta y organiza órdenes de producción. Control de stock de cortes de cable y planificación de bonos.</p>
+          <div class="version-features">
+            <span class="feature-tag">Órdenes</span>
+            <span class="feature-tag">Stock</span>
+            <span class="feature-tag">Planificación</span>
+          </div>
+          <a href="{{ url_for('main.registro_ordenes') }}" class="btn-primary btn-version btn-version-ordenes">📋 Órdenes</a>
+        </div>
+        <div class="version-card version-etiquetas">
+          <div class="version-icon">🏷️</div>
+          <h3>Etiquetas</h3>
+          <p>Genera e imprime etiquetas para elementos de cortes. Formato A4 con 65 etiquetas troqueladas de 5x13mm.</p>
+          <div class="version-features">
+            <span class="feature-tag">Formato A4</span>
+            <span class="feature-tag">65 uds</span>
+            <span class="feature-tag">Impresión</span>
+          </div>
+          <a href="{{ url_for('main.etiquetas') }}" class="btn-primary btn-version btn-version-etiquetas">🏷️ Etiquetar</a>
+        </div>
+        <div class="version-card version-manguitos">
+          <div class="version-icon">🔧</div>
+          <h3>Manguitos</h3>
+          <p>Guiado de colocación de manguitos y generación de pedidos por tipo y sección.</p>
+          <div class="version-features">
+            <span class="feature-tag">Guiado</span>
+            <span class="feature-tag">Pedidos</span>
+            <span class="feature-tag">Preparación</span>
+          </div>
+          <a href="{{ url_for('main.manguitos') }}" class="btn-primary btn-version btn-version-manguitos">🔧 Manguitos</a>
+        </div>
+        <div class="version-card version-mangueras">
+          <div class="version-icon">🛠️</div>
+          <h3>Preparación de Mangueras</h3>
+          <p>Lectura del fichero de mangueras y preparación guiada según observaciones.</p>
+          <div class="version-features">
+            <span class="feature-tag">Preparación</span>
+            <span class="feature-tag">Observaciones</span>
+          </div>
+          <a href="{{ url_for('main.mangueras') }}" class="btn-primary btn-version btn-version-mangueras">🛠️ Mangueras</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card landing-summary">
+      <h2 class="landing-summary-title">📌 Guía Rápida</h2>
+      <ul class="landing-list">
+        <li><strong>Engastado V3:</strong> Módulo principal para operación de engastado con scanner y flujo guiado.</li>
+        <li><strong>Administración:</strong> Gestión de archivos Excel, terminales y configuración del sistema.</li>
+        <li><strong>Bonos:</strong> Creación de bonos de producción, asignación de carros y reportes.</li>
+        <li><strong>Visualización:</strong> Dashboard en tiempo real para monitoreo de progreso.</li>
+        <li><strong>Órdenes:</strong> Control de stock y planificación de órdenes de producción.</li>
+        <li><strong>Etiquetas:</strong> Generación e impresión de etiquetas identificativas.</li>
+        <li><strong>Manguitos:</strong> Guiado de colocación y generación de pedidos de manguitos.</li>
+        <li><strong>Preparación de Mangueras:</strong> Lectura del fichero y preparación guiada por observaciones.</li>
+      </ul>
+      <p class="landing-footnote">💡 Accede al dashboard desde cualquier módulo usando el enlace <strong>🏠 Inicio</strong> o visitando <code>/</code></p>
+    </div>
+  </div>
+  
+  <script>
+    // Cargar estadísticas dinámicas del dashboard
+    async function cargarEstadisticas() {
+      const stats = document.querySelectorAll('#dashboard-stats .stat-value');
+
+      // Terminales
+      try {
+        const res = await fetch('/api/terminales-disponibles');
+        const data = await res.json();
+        stats[0].textContent = data.success ? `${data.total} activos` : '0 activos';
+      } catch (e) {
+        stats[0].textContent = '0 activos';
+      }
+      stats[0].classList.remove('loading-stat');
+
+      // Proyectos (archivos Excel cargados)
+      try {
+        const res = await fetch('/api/list_cortes');
+        const data = await res.json();
+        const num = data.cortes ? data.cortes.length : 0;
+        stats[1].textContent = `${num} cargados`;
+      } catch (e) {
+        stats[1].textContent = '0 cargados';
+      }
+      stats[1].classList.remove('loading-stat');
+
+      // Máquinas
+      try {
+        const res = await fetch('/api/maquinas');
+        const data = await res.json();
+        const num = data.maquinas ? data.maquinas.length : 0;
+        stats[2].textContent = `${num} configuradas`;
+      } catch (e) {
+        stats[2].textContent = '0 configuradas';
+      }
+      stats[2].classList.remove('loading-stat');
+    }
+    
+    // Cargar al iniciar página
+    cargarEstadisticas();
+  </script>
+</body>
+</html>

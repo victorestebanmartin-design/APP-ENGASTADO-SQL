@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Bonos</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>📋 Gestión de Bonos de Trabajo</h1>
+            <a href="{{ url_for('main.home') }}" class="btn-admin">🔙 Volver al Inicio</a>
+        </header>
+
+        <!-- Tabs de navegación -->
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="mostrarTab('crear')">➕ Crear Bono</button>
+            <button class="tab-btn" onclick="mostrarTab('editar')">✏️ Editar/Eliminar</button>
+            <button class="tab-btn" onclick="mostrarTab('reportes')">📊 Reportes</button>
+        </div>
+
+        <!-- Tab: Crear Bono -->
+        <div id="tab-crear" class="tab-content active">
+            <div class="card">
+                <h2>➕ Crear Nuevo Bono</h2>
+                <p class="instruccion">Define el nombre del bono y asigna proyectos a cada carro</p>
+                
+                <form id="form-crear-bono">
+                    <div class="input-group">
+                        <label for="nombre-bono">Nombre del Bono:</label>
+                        <input type="text" id="nombre-bono" placeholder="Ej: 20251201_1" required>
+                        <small>Formato sugerido: YYYYMMDD_N</small>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="num-cortes">Número de Cortes:</label>
+                        <input type="number" id="num-cortes" min="1" value="3" required>
+                    </div>
+
+                    <h3 style="margin-top: 30px;">🚛 Asignación de Proyectos a Carros</h3>
+                    
+                    <div id="carros-container">
+                        <!-- Se generarán dinámicamente 6 carros -->
+                    </div>
+
+                    <button type="submit" class="btn-primary" style="margin-top: 20px;">✅ Crear Bono</button>
+                </form>
+                
+                <div id="mensaje-crear" class="mensaje hidden"></div>
+            </div>
+        </div>
+
+        <!-- Tab: Editar/Eliminar -->
+        <div id="tab-editar" class="tab-content">
+            <div class="card">
+                <h2>✏️ Editar y Eliminar Bonos</h2>
+                <p class="instruccion">Gestiona los bonos existentes</p>
+                
+                <button onclick="cargarBonosGestion()" class="btn-secondary">🔄 Actualizar Lista</button>
+                
+                <div id="lista-bonos-gestion" class="tabla-container" style="margin-top: 20px;">
+                    <p class="text-muted">Cargando...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Reportes -->
+        <div id="tab-reportes" class="tab-content">
+            <div class="card">
+                <h2>📊 Reportes de Producción</h2>
+                <p class="instruccion">Genera reportes detallados del trabajo realizado</p>
+                
+                <div class="input-group">
+                    <label for="select-bono-reporte">Seleccionar Bono:</label>
+                    <select id="select-bono-reporte">
+                        <option value="">-- Seleccionar bono --</option>
+                    </select>
+                    <button onclick="generarReporte()" class="btn-primary" style="margin-top: 10px;">📥 Generar Reporte</button>
+                </div>
+
+                <div id="reporte-contenido" style="margin-top: 30px;">
+                    <!-- Aquí se mostrará el reporte -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/gestion-bonos.js') }}"></script>
+</body>
+</html>

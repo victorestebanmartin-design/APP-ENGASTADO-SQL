@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preparación de Mangueras - Sistema de Engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=mangueras2">
+  <style>
+    .mangueras-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .mangueras-header { margin-bottom: 28px; }
+    .mangueras-header h1 { font-size: 26px; font-weight: 700; color: #0891b2; margin: 0; }
+
+    .section-card { background: #fff; border-radius: 10px; padding: 28px; margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .section-card h2 { font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 6px 0; }
+    .section-desc { font-size: 14px; color: #6b7280; margin: 0 0 20px 0; }
+
+    /* Selector archivo */
+    .archivo-form { display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+    .archivo-form select { flex: 1; padding: 9px 12px; border: 1px solid #d1d5db;
+      border-radius: 6px; font-size: 14px; }
+    .archivo-form button { padding: 9px 22px; background: #0891b2; color: #fff; border: none;
+      border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .archivo-form button:hover { background: #0e7490; }
+    .archivo-form button:disabled { opacity: 0.6; cursor: default; }
+
+    /* Estado vacío */
+    #mg-vacio { text-align: center; padding: 60px 20px; color: #9ca3af; }
+    #mg-vacio .cs-icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* Nav manguera */
+    .nav-manguera { display: flex; align-items: center; justify-content: space-between;
+      background: #0c4a6e; color: #fff; border-radius: 10px; padding: 14px 20px; margin-bottom: 20px; }
+    .mg-cable { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
+    .mg-contador { font-size: 12px; opacity: 0.7; text-align: center; margin-top: 2px; }
+    .nav-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 18px;
+      border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+    .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); }
+    .nav-btn:disabled { opacity: 0.25; cursor: default; }
+
+    /* Info cable */
+    .cable-info { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
+      padding: 14px 20px; margin-bottom: 16px; display: flex; gap: 24px; flex-wrap: wrap;
+      font-size: 14px; }
+    .cable-info .info-item { display: flex; flex-direction: column; gap: 2px; }
+    .cable-info .info-label { font-size: 11px; font-weight: 700; color: #0369a1;
+      text-transform: uppercase; letter-spacing: 0.5px; }
+    .cable-info .info-val { font-size: 15px; font-weight: 700; color: #0c4a6e; }
+    .cable-info .info-arrow { font-size: 18px; color: #0891b2; align-self: center; }
+
+    /* Instrucciones (dos columnas) */
+    .instrucciones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+      margin-bottom: 16px; }
+    @media (max-width: 600px) { .instrucciones-grid { grid-template-columns: 1fr; } }
+
+    .lado-card { border-radius: 8px; padding: 18px; }
+    .lado-card.lado-de   { background: #eff6ff; border: 2px solid #93c5fd; }
+    .lado-card.lado-para { background: #f0fdf4; border: 2px solid #86efac; }
+    .lado-card.lado-vacio { background: #f9fafb; border: 2px dashed #e5e7eb; }
+
+    .lado-title { font-size: 13px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.8px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+    .lado-de   .lado-title { color: #1d4ed8; }
+    .lado-para .lado-title { color: #15803d; }
+    .lado-vacio .lado-title { color: #9ca3af; }
+
+    .inst-row { display: flex; align-items: baseline; justify-content: space-between;
+      padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.06); }
+    .inst-row:last-child { border-bottom: none; }
+    .inst-label { font-size: 13px; color: #4b5563; font-weight: 600; }
+    .inst-val { font-size: 22px; font-weight: 900; line-height: 1; }
+    .inst-unit { font-size: 12px; font-weight: 600; color: #6b7280; margin-left: 2px; }
+
+    .val-pm     { color: #0891b2; }
+    .val-malla  { color: #7c3aed; }
+    .val-cortar { color: #dc2626; font-size: 16px; }
+    .val-activo { color: #059669; }
+    .val-dash   { color: #d1d5db; font-size: 18px; }
+
+    /* Obs raw */
+    .obs-raw { font-size: 12px; color: #9ca3af; text-align: center; margin-bottom: 8px;
+      font-family: monospace; }
+
+    /* Hint teclado */
+    .hint-teclado { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <a href="/" class="nav-logo">🏠 Inicio</a>
+      <span class="nav-separator">/</span>
+      <span class="nav-current">🛠️ Preparación de Mangueras</span>
+    </div>
+  </nav>
+
+  <div class="mangueras-container">
+    <div class="mangueras-header">
+      <h1>🛠️ Preparación de Mangueras</h1>
+    </div>
+
+    <div class="section-card">
+      <h2>📋 Guiado de preparación</h2>
+      <p class="section-desc">Navega por las mangueras del Excel con instrucciones de pelado. Usa ← → o Enter / Espacio.</p>
+
+      <div class="archivo-form">
+        <select id="mg-archivo"><option value="">Selecciona un archivo Excel...</option></select>
+        <button id="mg-cargar-btn">Cargar</button>
+      </div>
+
+      <div id="mg-vacio">
+        <div class="cs-icon">🛠️</div>
+        <p>Carga un Excel para comenzar. Solo se muestran filas con instrucciones de pelado en la columna Observaciones.</p>
+      </div>
+
+      <div id="mg-activo" style="display:none">
+        <!-- Nav -->
+        <div class="nav-manguera">
+          <button class="nav-btn" id="btn-mg-prev">← Anterior</button>
+          <div>
+            <div class="mg-cable" id="mg-cable-nombre">—</div>
+            <div class="mg-contador" id="mg-contador"></div>
+          </div>
+          <button class="nav-btn" id="btn-mg-next">Siguiente →</button>
+        </div>
+
+        <!-- Info cable -->
+        <div class="cable-info" id="mg-cable-info"></div>
+
+        <!-- Obs raw -->
+        <div class="obs-raw" id="mg-obs-raw"></div>
+
+        <!-- Instrucciones -->
+        <div class="instrucciones-grid" id="mg-instrucciones"></div>
+
+        <div class="hint-teclado">Enter / Espacio → siguiente &nbsp;·&nbsp; ← → navegar</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=1"></script>
+</body>
+</html>

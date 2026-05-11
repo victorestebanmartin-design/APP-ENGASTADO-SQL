@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración - Sistema de Engastado</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <style>
+        .campo-autorellenado { background: #f0fdf4 !important; border-color: #86efac !important; color: #166534 !important; font-weight: 600; }
+        .campo-autorellenado-label { font-size: 0.78em; color: #16a34a; margin-left: 6px; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>⚙️ Administración del Sistema</h1>
+            <a href="{{ url_for('main.home') }}" class="btn-admin">🔙 Volver al Inicio</a>
+        </header>
+
+        <!-- Sección: Subir Archivo Excel -->
+        <div class="card">
+            <h2>📤 Subir Archivo Excel</h2>
+            <p class="instruccion">Sube un nuevo archivo Excel con datos de cableado</p>
+            
+            <form id="upload-form" enctype="multipart/form-data">
+                <div class="input-group">
+                    <label for="file-upload">Seleccionar Archivo (.xlsx, .xls):</label>
+                    <input type="file" id="file-upload" name="file" accept=".xlsx,.xls" required>
+                </div>
+                
+                <button type="submit" class="btn-primary">📤 Subir Archivo</button>
+            </form>
+            
+            <div id="upload-mensaje" class="mensaje hidden"></div>
+        </div>
+
+        <!-- Sección: Asociar Código de Barras con Archivo -->
+        <div class="card">
+            <h2>🔗 Asociar Código de Barras</h2>
+            <p class="instruccion">Vincula un código de barras con un archivo Excel subido</p>
+            
+            <form id="asociar-form">
+                <div class="input-group">
+                    <label for="codigo-barras">Código de Barras: <span class="campo-autorellenado-label" id="lbl-codigo"></span></label>
+                    <input type="text" id="codigo-barras" placeholder="Ej: H0457486 (se rellena solo al subir el Excel)" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="select-archivo">Archivo Excel: <span class="campo-autorellenado-label" id="lbl-archivo"></span></label>
+                    <select id="select-archivo" required>
+                        <option value="">-- Seleccionar archivo --</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="descripcion">Descripción: <span class="campo-autorellenado-label" id="lbl-desc"></span></label>
+                    <input type="text" id="descripcion" placeholder="Ej: H0457486_ED04 (se rellena solo al subir el Excel)" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="proyecto">Nombre del Proyecto:</label>
+                    <input type="text" id="proyecto" placeholder="Ej: Coradia Italia">
+                </div>
+
+                <button type="submit" class="btn-primary">✅ Asociar</button>
+            </form>
+            
+            <div id="asociar-mensaje" class="mensaje hidden"></div>
+        </div>
+
+        <!-- Sección: Cortes Registrados -->
+        <div class="card">
+            <h2>📋 Cortes Registrados</h2>
+            <p class="instruccion">Lista de códigos de barras y archivos asociados</p>
+            
+            <button onclick="cargarCortes()" class="btn-secondary">🔄 Actualizar Lista</button>
+            
+            <div id="lista-cortes" class="tabla-container">
+                <p class="text-muted">Cargando...</p>
+            </div>
+        </div>
+
+        <!-- Sección: Archivos Disponibles -->
+        <div class="card">
+            <h2>📁 Archivos Excel Disponibles</h2>
+            <p class="instruccion">Archivos Excel subidos al sistema</p>
+            
+            <button onclick="cargarArchivos()" class="btn-secondary">🔄 Actualizar Lista</button>
+            
+            <div id="lista-archivos" class="tabla-container">
+                <p class="text-muted">Cargando...</p>
+            </div>
+        </div>
+
+        <!-- Sección: Gestión Organizacional -->
+        <div class="card">
+            <h2>🏢 Gestión Organizacional</h2>
+            <p class="instruccion">Administra la estructura de tu planta de producción</p>
+            
+            <div class="gestion-organizacional">
+                <a href="{{ url_for('main.gestion_puestos') }}" class="gestion-link-card">
+                    <div class="gestion-icon">🏭</div>
+                    <div class="gestion-content">
+                        <h3>Puestos y Máquinas</h3>
+                        <p>Gestiona puestos de trabajo, máquinas de producción y asignación de terminales</p>
+                        <div class="gestion-features">
+                            <span>• Crear y editar puestos</span>
+                            <span>• Gestionar máquinas</span>
+                            <span>• Asignar terminales</span>
+                        </div>
+                    </div>
+                    <div class="gestion-arrow">→</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Sección: Control de Impresora Zebra -->
+        <div class="card">
+            <h2>🖨️ Control de Impresora Zebra GK420T</h2>
+            <p class="instruccion">Monitoreo y control de la impresora de etiquetas</p>
+            
+            <div class="printer-controls">
+                <button onclick="verificarEstadoImpresora()" class="btn-secondary">
+                    🔍 Verificar Estado
+                </button>
+                
+                <button onclick="imprimirPrueba()" class="btn-primary" style="margin-left: 10px;">
+                    🧪 Imprimir Prueba
+                </button>
+                
+                <button onclick="listarEtiquetasSimuladas()" class="btn-secondary" style="margin-left: 10px;">
+                    📋 Ver Etiquetas Simuladas
+                </button>
+            </div>
+            
+            <div id="printer-status" class="printer-status-container" style="margin-top: 20px;">
+                <p class="text-muted">Haz clic en "Verificar Estado" para ver información de la impresora</p>
+            </div>
+            
+            <div id="printer-simulated" class="printer-simulated-container" style="margin-top: 20px; display: none;">
+                <h3>Etiquetas Simuladas</h3>
+                <div id="simulated-list"></div>
+                <button onclick="limpiarEtiquetasSimuladas()" class="btn-danger" style="margin-top: 10px;">
+                    🗑️ Limpiar Todas
+                </button>
+            </div>
+            
+            <div id="printer-pending" class="printer-pending-container" style="margin-top: 20px; display: none;">
+                <h3>Etiquetas Pendientes</h3>
+                <div id="pending-list"></div>
+                <button onclick="reintentarPendientes()" class="btn-primary" style="margin-top: 10px;">
+                    🔄 Reintentar Todas
+                </button>
+            </div>
+        </div>
+
+        <!-- Sección: Actualización del Sistema -->
+        <div class="card">
+            <h2>🔄 Actualización del Sistema</h2>
+            <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
+            
+            <div id="update-status" class="mensaje hidden"></div>
+            
+            <button onclick="comprobarActualizaciones()" class="btn-secondary">
+                🔍 Comprobar Actualizaciones
+            </button>
+            
+            <button onclick="actualizarSistema()" class="btn-primary" style="margin-left: 10px;">
+                ⬇️ Actualizar Ahora
+            </button>
+        </div>
+
+        <!-- Sección: Paleta de Colores de Cables -->
+        <div class="card" id="card-colores-cables">
+            <h2>🎨 Paleta de Colores de Cables</h2>
+            <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.</p>
+
+            <!-- Botón detectar nuevos -->
+            <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="btn-secondary" onclick="ccDetectarSinColor()">🔍 Detectar cables sin color</button>
+                <span id="cc-sin-color-msg" style="font-size:0.85em; color:#64748b;"></span>
+            </div>
+
+            <!-- Alerta cables sin asignar -->
+            <div id="cc-sin-asignar-box" style="display:none; margin-bottom:14px; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
+                <strong>⚠️ Cables sin color asignado:</strong>
+                <div id="cc-sin-asignar-lista" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
+
+            <!-- Tabla de colores -->
+            <div style="overflow-x:auto; margin-bottom:18px;">
+                <table id="cc-tabla" style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                    <thead>
+                        <tr style="background:#f1f5f9; text-align:left;">
+                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Color</th>
+                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Cod. Cable</th>
+                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Hex</th>
+                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cc-tabla-body">
+                        <tr><td colspan="4" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Formulario añadir/editar -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
+                <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">➕ Añadir / Editar color</h3>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                    <div>
+                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Cod. Cable</label>
+                        <input type="text" id="cc-input-cod" placeholder="Ej: 640C10050A" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9em; width:160px; text-transform:uppercase;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Color</label>
+                        <input type="color" id="cc-input-color" value="#2563eb" style="width:50px; height:34px; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; padding:2px;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Hex manual</label>
+                        <input type="text" id="cc-input-hex" placeholder="#2563eb" maxlength="7" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9em; width:90px;">
+                    </div>
+                    <button class="btn-primary" onclick="ccGuardarColor()">💾 Guardar</button>
+                    <button class="btn-secondary" onclick="ccLimpiarForm()">✕ Limpiar</button>
+                </div>
+                <div id="cc-form-msg" style="margin-top:8px; font-size:0.85em;"></div>
+            </div>
+        </div>
+
+        <!-- Sección: PELIGRO - Resetear Sistema -->
+        <div class="card">
+            <h2>⚠️ ZONA DE PELIGRO</h2>
+            <p class="instruccion"><strong>Esta acción eliminará TODOS los archivos Excel y TODOS los códigos de barras registrados. No se puede deshacer.</strong></p>
+            
+            <button onclick="resetearSistema()" class="btn-danger">
+                🗑️ RESETEAR TODO EL SISTEMA
+            </button>
+        </div>
+    </div>
+
+    <!-- Modales -->
+    <div id="modal-puesto" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nuevo Puesto</h3>
+                <span class="modal-close" onclick="cerrarModal('modal-puesto')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="puesto-nombre">Nombre del Puesto:</label>
+                    <input type="text" id="puesto-nombre" placeholder="Ej: Puesto A - Línea 1">
+                </div>
+                <div class="input-group">
+                    <label for="puesto-descripcion">Descripción:</label>
+                    <textarea id="puesto-descripcion" placeholder="Descripción del puesto"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
+                <button class="btn-primary" onclick="guardarPuesto()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-maquina" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nueva Máquina</h3>
+                <span class="modal-close" onclick="cerrarModal('modal-maquina')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label for="maquina-puesto">Puesto:</label>
+                    <select id="maquina-puesto" required>
+                        <option value="">-- Seleccionar puesto --</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="maquina-nombre">Nombre de la Máquina:</label>
+                    <input type="text" id="maquina-nombre" placeholder="Ej: Máquina Engastado 1">
+                </div>
+                <div class="input-group">
+                    <label for="maquina-modelo">Modelo:</label>
+                    <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 355">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
+                <button class="btn-primary" onclick="guardarMaquina()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ──────────────────────────────────────────────────────────────
+    //  GESTIÓN DE PALETA DE COLORES DE CABLES
+    // ──────────────────────────────────────────────────────────────
+    (function () {
+        'use strict';
+
+        // Sincronizar color picker ↔ hex manual
+        var inputColor = document.getElementById('cc-input-color');
+        var inputHex   = document.getElementById('cc-input-hex');
+        if (inputColor && inputHex) {
+            inputColor.addEventListener('input', function () {
+                inputHex.value = inputColor.value;
+            });
+            inputHex.addEventListener('input', function () {
+                var v = inputHex.value.trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(v)) inputColor.value = v;
+            });
+            inputHex.value = inputColor.value;
+        }
+
+        // Cargar tabla de colores desde BD
+        window.ccCargarTabla = function () {
+            fetch('/api/cable-colores')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) { console.error('Error cargando colores'); return; }
+                    var tbody = document.getElementById('cc-tabla-body');
+                    if (!data.colores.length) {
+                        tbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:#94a3b8;">Sin colores definidos</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = data.colores.map(function (c) {
+                        var cod = c.cod_cable.replace(/"/g, '&quot;');
+                        var hex = c.color_hex;
+                        return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                            '<td style="padding:8px 10px;">' +
+                              '<span style="display:inline-block;width:32px;height:22px;border-radius:5px;background:' + hex + ';border:1px solid rgba(0,0,0,.15);vertical-align:middle;"></span>' +
+                            '</td>' +
+                            '<td style="padding:8px 10px; font-family:monospace; font-weight:600;">' + c.cod_cable + '</td>' +
+                            '<td style="padding:8px 10px; font-family:monospace; color:#475569;">' + hex + '</td>' +
+                            '<td style="padding:8px 10px;">' +
+                              '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + hex + '\')">✏️ Editar</button> ' +
+                              '<button class="btn-danger"   style="padding:4px 10px;font-size:0.8em;" onclick="ccEliminarColor(\'' + cod + '\')">🗑️</button>' +
+                            '</td>' +
+                          '</tr>';
+                    }).join('');
+                })
+                .catch(function () { console.error('Error de red cargando colores'); });
+        };
+
+        // Rellenar formulario para editar
+        window.ccEditarColor = function (cod, hex) {
+            var inputCod   = document.getElementById('cc-input-cod');
+            var inputColor = document.getElementById('cc-input-color');
+            var inputHex   = document.getElementById('cc-input-hex');
+            if (inputCod)   inputCod.value   = cod;
+            if (inputHex)   inputHex.value   = hex;
+            if (inputColor) inputColor.value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#2563eb';
+            var formMsg = document.getElementById('cc-form-msg');
+            if (formMsg) { formMsg.textContent = 'Editando: ' + cod; formMsg.style.color = '#2563eb'; }
+            document.getElementById('cc-input-cod').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+
+        // Guardar (upsert)
+        window.ccGuardarColor = function () {
+            var cod   = (document.getElementById('cc-input-cod').value || '').trim().toUpperCase();
+            var hex   = (document.getElementById('cc-input-hex').value  || document.getElementById('cc-input-color').value || '').trim().toLowerCase();
+            var formMsg = document.getElementById('cc-form-msg');
+            if (!cod) { formMsg.textContent = '⚠️ Indica el código de cable.'; formMsg.style.color = '#dc2626'; return; }
+            if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { formMsg.textContent = '⚠️ Color inválido. Usa formato #rrggbb.'; formMsg.style.color = '#dc2626'; return; }
+            fetch('/api/cable-colores', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cod_cable: cod, color_hex: hex })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    formMsg.textContent = '✅ Guardado: ' + cod + ' → ' + hex;
+                    formMsg.style.color = '#059669';
+                    ccLimpiarForm();
+                    ccCargarTabla();
+                } else {
+                    formMsg.textContent = '❌ Error: ' + (data.error || 'desconocido');
+                    formMsg.style.color = '#dc2626';
+                }
+            });
+        };
+
+        // Eliminar
+        window.ccEliminarColor = function (cod) {
+            if (!confirm('¿Eliminar color de ' + cod + '? Volverá al color automático por hash.')) return;
+            fetch('/api/cable-colores/' + encodeURIComponent(cod), { method: 'DELETE' })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.success) ccCargarTabla();
+                    else alert('Error eliminando: ' + (data.error || ''));
+                });
+        };
+
+        // Limpiar formulario
+        window.ccLimpiarForm = function () {
+            var inputCod = document.getElementById('cc-input-cod');
+            if (inputCod) inputCod.value = '';
+            var formMsg = document.getElementById('cc-form-msg');
+            if (formMsg) formMsg.textContent = '';
+        };
+
+        // Detectar cables sin color
+        window.ccDetectarSinColor = function () {
+            var msg = document.getElementById('cc-sin-color-msg');
+            var box = document.getElementById('cc-sin-asignar-box');
+            var lista = document.getElementById('cc-sin-asignar-lista');
+            if (msg) msg.textContent = 'Buscando...';
+            fetch('/api/cable-colores/sin-asignar')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success) { if (msg) msg.textContent = 'Error'; return; }
+                    if (!data.cables.length) {
+                        if (msg) msg.textContent = '✅ Todos los cables tienen color asignado.';
+                        if (box) box.style.display = 'none';
+                        return;
+                    }
+                    if (msg) msg.textContent = data.cables.length + ' cable(s) sin asignar';
+                    if (box) box.style.display = '';
+                    if (lista) {
+                        lista.innerHTML = data.cables.map(function (c) {
+                            var cod = c.replace(/"/g, '&quot;');
+                            return '<button class="btn-secondary" style="font-size:0.82em;padding:4px 10px;" onclick="ccEditarColor(\'' + cod + '\',\'#2563eb\')">' + c + ' ➕</button>';
+                        }).join('');
+                    }
+                });
+        };
+
+        // Cargar al iniciar
+        document.addEventListener('DOMContentLoaded', function () {
+            ccCargarTabla();
+        });
+    })();
+    </script>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>

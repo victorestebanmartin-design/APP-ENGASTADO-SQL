@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generador de Etiquetas - Sistema de Engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=etiquetas1">
+  <style>
+    .etiquetas-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .etiquetas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .form-section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .form-group input,
+    .form-group select {
+      padding: 10px;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .preview-section {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 25px;
+      margin-bottom: 20px;
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(13, 1fr);
+      gap: 5px;
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    .etiqueta-preview {
+      aspect-ratio: 5/13;
+      background: white;
+      border: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 2px;
+      font-size: 6px;
+      text-align: center;
+      word-wrap: break-word;
+    }
+
+    .etiqueta-preview.filled {
+      background: #e8f5e9;
+      border-color: #4CAF50;
+    }
+
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    .info-box h4 {
+      margin: 0 0 10px 0;
+      color: #1976D2;
+    }
+
+    .stats-row {
+      display: flex;
+      gap: 20px;
+      margin-top: 15px;
+    }
+
+    .stat-badge {
+      background: white;
+      padding: 10px 15px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4CAF50;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="etiquetas-container">
+    <div class="etiquetas-header">
+      <div>
+        <h1>🏷️ Generador de Etiquetas</h1>
+        <p>Genera etiquetas para elementos de cortes de cable en formato A4 (65 etiquetas 5x13mm)</p>
+      </div>
+      <a href="{{ url_for('main.home') }}" class="btn-secondary">⬅ Volver al Inicio</a>
+    </div>
+
+    <!-- Formulario de selección -->
+    <div class="form-section">
+      <h3>Seleccionar Archivo Excel</h3>
+      <p style="color: #666; margin-bottom: 15px;">Selecciona un archivo cargado en el sistema para generar etiquetas agrupadas por código de cable y elemento.</p>
+      
+      <div class="form-grid" style="grid-template-columns: 2fr 1fr;">
+        <div class="form-group">
+          <label for="archivo_excel">Archivo Excel:</label>
+          <select id="archivo_excel">
+            <option value="">Seleccione un archivo...</option>
+          </select>
+          <small id="archivo_info" style="margin-top: 5px; color: #666;"></small>
+        </div>
+
+        <div class="form-group">
+          <label>&nbsp;</label>
+          <button class="btn-primary btn-icon" onclick="cargarGrupos()" style="width: 100%; margin-top: 0;">
+            <span>📦</span> Cargar Grupos
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Información de grupos cargados -->
+    <div class="info-box" id="info_grupos" style="display: none;">
+      <h4>Grupos Cargados (Cod.Cable + Elemento)</h4>
+      <p style="margin: 10px 0;">Se generará <strong>una etiqueta por cada grupo</strong> encontrado en el archivo.</p>
+      <div class="stats-row">
+        <div class="stat-badge">
+          <span>📦 Grupos: <span id="stat_grupos">-</span></span>
+        </div>
+        <div class="stat-badge">
+          <span>🏷️ Etiquetas: <span id="stat_etiquetas">-</span></span>
+        </div>
+        <div class="stat-badge">
+          <span>📄 Hoja A4: <span id="stat_hojas">1</span></span>
+        </div>
+      </div>
+      <div class="btn-group" style="margin-top: 15px;">
+        <button class="btn-primary btn-icon" onclick="generarVistaPrevia()" id="btn_preview">
+          <span>👁️</span> Vista Previa
+        </button>
+        <button class="btn-success btn-icon" onclick="imprimirEtiquetas()" id="btn_print">
+          <span>🖨️</span> Imprimir Etiquetas
+        </button>
+      </div>
+    </div>
+
+    <!-- Vista previa de etiquetas -->
+    <div class="preview-section" id="preview_section" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h3>Vista Previa de Etiquetas</h3>
+        <button class="btn-secondary" onclick="cerrarPreview()">✕ Cerrar</button>
+      </div>
+      <div id="preview_content" style="background: white; padding: 20px; max-height: 600px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+        <!-- Las etiquetas se generarán dinámicamente aquí -->
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Generando etiquetas...</p>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='js/etiquetas.js') }}?v=3"></script>
+</body>
+</html>

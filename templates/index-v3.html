@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Engastado V3.0 - Modo Avanzado</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=v3-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v3.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🚀 Sistema de Engastado V3.0</h1>
+            <div class="header-actions">
+                <button onclick="abrirDashboardProgreso()" class="btn-secondary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer;">📊 Dashboard Progreso</button>
+                <a href="{{ url_for('main.home') }}" class="btn-secondary">🔙 Inicio</a>
+                <a href="{{ url_for('main.admin') }}" class="btn-admin">⚙️ Admin</a>
+            </div>
+        </header>
+
+        <!-- Sección: Cargar Bono -->
+        <div class="card">
+            <h2>🎫 Cargar Bono de Trabajo</h2>
+            <p class="instruccion">Escanea o ingresa el código del bono para comenzar</p>
+            
+            <div class="input-group">
+                <label for="codigo-bono">Código de Bono:</label>
+                <input type="text" id="codigo-bono" placeholder="Ej: 20251201_1 o 20251201_01" autofocus>
+                <small style="color: #6c757d; display: block; margin-top: 5px;">
+                    💡 Tip: Puedes usar formato corto (20251201_1) o largo (20251201_01)
+                </small>
+            </div>
+            
+            <button onclick="cargarBono()" class="btn-primary">🔍 Cargar Bono</button>
+            <button onclick="mostrarBonosDisponibles()" class="btn-secondary" style="margin-left: 10px;">📋 Ver Bonos Disponibles</button>
+            
+            <div id="mensaje" class="mensaje hidden"></div>
+            
+            <!-- Lista de bonos disponibles -->
+            <div id="bonos-disponibles" class="hidden" style="margin-top: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                <h4 style="margin-bottom: 10px;">📋 Bonos Activos:</h4>
+                <div id="bonos-lista"></div>
+            </div>
+        </div>
+
+        <!-- Información del bono cargado -->
+        <div id="bono-info" class="card hidden">
+            <h2>🎫 Bono Cargado</h2>
+            <p><strong>Nombre:</strong> <span id="bono-nombre"></span></p>
+            <p><strong>Cortes incluidos:</strong> <span id="bono-num-cortes"></span></p>
+            <div id="bono-carros-lista" style="margin-top: 10px;">
+                <!-- Lista de carros se mostrará aquí -->
+            </div>
+        </div>
+
+        <!-- Área principal de trabajo V3 -->
+        <div id="workspace-v3" class="workspace-container hidden">
+            <!-- Paso 1: Selección de Puesto -->
+            <div id="paso-puesto" class="card">
+                <h2>🏭 Seleccionar Puesto de Trabajo</h2>
+                <p class="instruccion">Selecciona el puesto donde realizarás el trabajo</p>
+                
+                <div class="puestos-grid" id="puestos-grid">
+                    <!-- Los puestos se cargarán dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Paso 2: Selección de Máquina -->
+            <div id="paso-maquina" class="card hidden">
+                <h2>🔧 Seleccionar Máquina</h2>
+                <p class="instruccion">Selecciona la máquina en <span id="puesto-seleccionado-nombre"></span></p>
+                
+                <div class="maquinas-grid" id="maquinas-grid">
+                    <!-- Las máquinas se cargarán dinámicamente -->
+                </div>
+                
+                <button onclick="volverAPuestos()" class="btn-secondary">🔙 Cambiar Puesto</button>
+            </div>
+
+            <!-- Paso 3: Terminales y Trabajo -->
+            <div id="paso-trabajo" class="card hidden">
+                <div class="trabajo-header">
+                    <h2>⚡ Terminales de <span id="maquina-seleccionada-nombre"></span></h2>
+                    <div class="ruta-trabajo">
+                        <span id="ruta-puesto"></span> → <span id="ruta-maquina"></span>
+                    </div>
+                    <button onclick="cambiarMaquina()" class="btn-secondary">🔄 Cambiar Máquina</button>
+                </div>
+
+                <!-- Lista de terminales asignados -->
+                <div id="terminales-asignados" class="terminales-container">
+                    <!-- Los terminales se mostrarán aquí -->
+                </div>
+
+                <!-- Área de trabajo (igual que V2) -->
+                <div id="area-trabajo" class="workspace-v2">
+                    <!-- El área de trabajo V2 se cargará aquí -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/main-v3.js') }}"></script>
+</body>
+</html>

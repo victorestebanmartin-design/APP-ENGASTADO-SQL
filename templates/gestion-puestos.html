@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Puestos y Máquinas - Sistema de Engastado</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .gestion-container {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .gestion-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .gestion-header h1 {
+            margin: 0 0 0.5rem 0;
+            font-size: 2.5rem;
+        }
+        
+        .gestion-header p {
+            margin: 0;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        
+        .breadcrumb {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        
+        .breadcrumb a {
+            color: #6c757d;
+            text-decoration: none;
+        }
+        
+        .breadcrumb a:hover {
+            color: var(--primary-color);
+        }
+        
+        .btn-volver {
+            background: var(--primary-color);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-volver:hover {
+            background: #0056b3;
+            transform: translateY(-1px);
+        }
+        
+        /* Diseño Vertical */
+        .seccion-vertical {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+        
+        .seccion-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 1.5rem 2rem;
+            border-bottom: 2px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .seccion-header h2 {
+            margin: 0 0 0.25rem 0;
+            color: #212529;
+            font-size: 1.75rem;
+        }
+        
+        .seccion-descripcion {
+            margin: 0;
+            color: #6c757d;
+            font-size: 0.95rem;
+        }
+        
+        .seccion-contenido {
+            padding: 1.5rem 2rem;
+        }
+        
+        .asignaciones-stats {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .stat-badge {
+            background: #e7f3ff;
+            color: #0056b3;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .stat-badge.alert {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .filtros-asignacion {
+            background: #f8f9fa;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .filtro-grupo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .filtro-grupo label {
+            font-weight: 600;
+            color: #495057;
+            margin: 0;
+        }
+        
+        .filtro-grupo select,
+        .filtro-grupo input {
+            padding: 0.5rem 1rem;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="gestion-container">
+        <!-- Header -->
+        <div class="gestion-header">
+            <h1>🏢 Gestión de Puestos y Máquinas</h1>
+            <p>Administra la estructura organizacional de tu planta de producción</p>
+        </div>
+        
+        <!-- Navigation -->
+        <div class="header-actions">
+            <div class="breadcrumb">
+                <a href="{{ url_for('main.home') }}">🏠 Inicio</a> 
+                → <a href="{{ url_for('main.admin') }}">⚙️ Admin</a> 
+                → 🏢 Gestión de Puestos
+            </div>
+            <a href="{{ url_for('main.admin') }}" class="btn-volver">
+                🔙 Volver al Admin
+            </a>
+        </div>
+        
+        <!-- Sección: Puestos de Trabajo -->
+        <div class="seccion-vertical">
+            <div class="seccion-header">
+                <div>
+                    <h2>🏢 Puestos de Trabajo</h2>
+                    <p class="seccion-descripcion">Crea y administra los puestos de trabajo de tu planta de producción</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarModalPuesto()">
+                    ➕ Nuevo Puesto
+                </button>
+            </div>
+            <div id="lista-puestos" class="seccion-contenido">
+                <div class="loading">🔄 Cargando puestos...</div>
+            </div>
+        </div>
+        
+        <!-- Sección: Máquinas -->
+        <div class="seccion-vertical">
+            <div class="seccion-header">
+                <div>
+                    <h2>⚙️ Máquinas</h2>
+                    <p class="seccion-descripcion">Administra las máquinas de producción y asígnalas a puestos de trabajo</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarModalMaquina()">
+                    ➕ Nueva Máquina
+                </button>
+            </div>
+            <div id="lista-maquinas" class="seccion-contenido">
+                <div class="loading">🔄 Cargando máquinas...</div>
+            </div>
+        </div>
+        
+        <!-- Sección: Terminales -->
+        <div class="seccion-vertical">
+            <div class="seccion-header">
+                <div>
+                    <h2>🔗 Terminales</h2>
+                    <p class="seccion-descripcion">Asigna terminales específicos a cada máquina de producción</p>
+                </div>
+                <div class="asignaciones-stats" id="asignaciones-stats">
+                    <span class="stat-badge" id="total-terminales">0 terminales</span>
+                    <span class="stat-badge alert" id="sin-asignar">0 sin asignar</span>
+                </div>
+            </div>
+            
+            <!-- Filtros -->
+            <div class="filtros-asignacion">
+                <div class="filtro-grupo">
+                    <label>Mostrar:</label>
+                    <select id="filtro-estado" onchange="aplicarFiltros()">
+                        <option value="todos">Todos los terminales</option>
+                        <option value="sin-asignar">Solo sin asignar</option>
+                        <option value="asignados">Solo asignados</option>
+                    </select>
+                    </div>
+                    <div class="filtro-grupo">
+                        <label>Buscar terminal:</label>
+                        <input type="text" id="buscar-terminal" placeholder="Ej: T001" onkeyup="aplicarFiltros()">
+                    </div>
+                </div>
+                
+                <div id="lista-asignaciones" class="seccion-contenido">
+                    <div class="loading">🔄 Cargando terminales...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Nuevo/Editar Puesto -->
+    <div id="modal-puesto" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nuevo Puesto</h3>
+                <button onclick="cerrarModal('modal-puesto')" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="puesto-nombre">Nombre del Puesto *</label>
+                    <input type="text" id="puesto-nombre" placeholder="Ej: Línea de Montaje A">
+                </div>
+                <div class="form-group">
+                    <label for="puesto-descripcion">Descripción</label>
+                    <textarea id="puesto-descripcion" placeholder="Descripción detallada del puesto de trabajo" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="cerrarModal('modal-puesto')" class="btn btn-secondary">Cancelar</button>
+                <button onclick="guardarPuesto()" class="btn btn-primary">Guardar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Nueva/Editar Máquina -->
+    <div id="modal-maquina" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nueva Máquina</h3>
+                <button onclick="cerrarModal('modal-maquina')" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="maquina-puesto">Puesto de Trabajo *</label>
+                    <select id="maquina-puesto">
+                        <option value="">Selecciona un puesto...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="maquina-nombre">Nombre de la Máquina *</label>
+                    <input type="text" id="maquina-nombre" placeholder="Ej: Engastadora Automática #1">
+                </div>
+                <div class="form-group">
+                    <label for="maquina-modelo">Modelo</label>
+                    <input type="text" id="maquina-modelo" placeholder="Ej: EA-2000X">
+                </div>
+                <div class="form-group">
+                    <label for="maquina-descripcion">Descripción</label>
+                    <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="cerrarModal('modal-maquina')" class="btn btn-secondary">Cancelar</button>
+                <button onclick="guardarMaquina()" class="btn btn-primary">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/gestion-puestos.js') }}"></script>
+</body>
+</html>

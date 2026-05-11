@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manguitos - Sistema de Engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=manguitos2">
+  <style>
+    .manguitos-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+    .manguitos-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+    .manguitos-header h1 { font-size: 26px; font-weight: 700; color: #d97706; margin: 0; }
+
+    /* Tabs */
+    .manguitos-tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 2px solid #e5e7eb; }
+    .tab-btn { padding: 10px 22px; border: none; background: none; font-size: 15px; font-weight: 600;
+      color: #6b7280; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s; }
+    .tab-btn.active { color: #d97706; border-bottom-color: #d97706; }
+    .tab-btn:hover:not(.active) { color: #374151; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Section card */
+    .section-card { background: #fff; border-radius: 10px; padding: 28px; margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .section-card h2 { font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 6px 0; }
+    .section-desc { font-size: 14px; color: #6b7280; margin: 0 0 20px 0; }
+
+    /* Selector archivo */
+    .archivo-form { display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+    .archivo-form select { flex: 1; padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .archivo-form button { padding: 9px 22px; background: #d97706; color: #fff; border: none;
+      border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .archivo-form button:hover { background: #b45309; }
+    .archivo-form button:disabled { opacity: 0.6; cursor: default; }
+
+    /* Nav elemento */
+    .nav-elemento { display: flex; align-items: center; justify-content: space-between;
+      background: #1e3a1e; color: #fff; border-radius: 10px; padding: 14px 20px; margin-bottom: 20px; }
+    .elem-nombre { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
+    .elem-contador { font-size: 12px; opacity: 0.7; text-align: center; margin-top: 2px; }
+    .nav-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 18px;
+      border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+    .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); }
+    .nav-btn:disabled { opacity: 0.25; cursor: default; }
+
+    /* Tira portadora */
+    .tira-portadora { background: #2a5a2a; border-radius: 12px; padding: 14px 20px;
+      display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
+
+    /* Fila completa: info + manguito */
+    .manguito-row { display: flex; align-items: stretch; gap: 6px; }
+    .manguito-info { flex: 0 0 180px; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
+      padding: 2px 5px; text-align: center; gap: 3px; }
+    .manguito-info .info-cable { font-size: 11px; font-weight: 800; color: #111827; line-height: 1.2;
+      word-break: break-all; }
+    .manguito-info .info-sec   { font-size: 10px; font-weight: 600; color: #6b7280; line-height: 1; }
+    .manguito-info .info-lon   { font-size: 14px; font-weight: 900; color: #1e40af; line-height: 1; }
+
+    /* Par de manguito */
+    .par-manguito { flex: 1; display: flex; border-radius: 3px; overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4); min-height: 28px; }
+    .manguito-izq { flex: 1; display: flex; align-items: center;
+      justify-content: center; font-weight: 900; color: #000;
+      border-right: 2px dashed rgba(0,0,0,0.4); padding: 0 6px; text-align: center; }
+    .manguito-der { flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 0 6px; gap: 1px; text-align: center; }
+    .manguito-der .linea { font-weight: 700; color: #000; line-height: 1.3; }
+    .manguito-der .linea-2 { opacity: 0.7; }
+
+    /* Colores por código */
+    .mg-amarillo { background: #FFE44D; }
+    .mg-blanco   { background: #FFFFFF; border: 1px solid #bbb; }
+    .mg-azul     { background: #29B6E8; }
+    .mg-naranja  { background: #FF8C00; }
+    .mg-unknown  { background: #e5e7eb; border: 1px solid #ccc; }
+
+    /* Selector de ristra */
+    .ristra-selector { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+    .ristra-btn { padding: 6px 14px; border: 2px solid #e5e7eb; border-radius: 20px; background: #f9fafb;
+      font-size: 13px; font-weight: 700; cursor: pointer; color: #374151; transition: all 0.15s; }
+    .ristra-btn:hover:not(.active) { border-color: #d97706; color: #d97706; }
+    .ristra-btn.active { background: #1e3a1e; color: #fff; border-color: #1e3a1e; }
+    .ristra-btn .ristra-count { font-weight: 400; font-size: 11px; opacity: 0.8; }
+
+    /* Paginación */
+    .paginacion { display: flex; justify-content: center; align-items: center;
+      gap: 16px; margin-top: 12px; font-size: 13px; color: #6b7280; }
+    .paginacion strong { color: #374151; }
+
+    /* Hint teclado */
+    .hint-teclado { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; }
+
+    /* Estado vacío */
+    #guiado-vacio { text-align: center; padding: 60px 20px; color: #9ca3af; }
+    #guiado-vacio .cs-icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* Coming soon (tab pedido) */
+    .coming-soon { text-align: center; padding: 60px 20px; color: #9ca3af; }
+    .coming-soon .cs-icon { font-size: 48px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">
+      <a href="/" class="nav-logo">🏠 Inicio</a>
+      <span class="nav-separator">/</span>
+      <span class="nav-current">🔧 Manguitos</span>
+    </div>
+  </nav>
+
+  <div class="manguitos-container">
+    <div class="manguitos-header">
+      <h1>🔧 Manguitos</h1>
+    </div>
+
+    <div class="manguitos-tabs">
+      <button class="tab-btn active" data-tab="guiado">📍 Guiado de colocación</button>
+      <button class="tab-btn" data-tab="pedido">📄 Generar TXT de pedido</button>
+    </div>
+
+    <!-- TAB: Guiado de colocación -->
+    <div id="tab-guiado" class="tab-panel active">
+      <div class="section-card">
+        <h2>📍 Guiado de colocación</h2>
+        <p class="section-desc">Selecciona el Excel y navega por elemento con ← → o Enter / Espacio.</p>
+
+        <div class="archivo-form">
+          <select id="guiado-archivo"><option value="">Selecciona un archivo Excel...</option></select>
+          <button id="guiado-cargar-btn">Cargar</button>
+        </div>
+
+        <div id="guiado-vacio">
+          <div class="cs-icon">🔧</div>
+          <p>Carga un Excel para comenzar el guiado de manguitos.</p>
+        </div>
+
+        <div id="guiado-activo" style="display:none">
+          <div id="ristra-selector" class="ristra-selector" style="display:none"></div>
+          <div class="nav-elemento">
+            <button class="nav-btn" id="btn-elem-prev">← Anterior</button>
+            <div>
+              <div class="elem-nombre" id="elem-nombre">—</div>
+              <div class="elem-contador" id="elem-contador"></div>
+            </div>
+            <button class="nav-btn" id="btn-elem-next">Siguiente →</button>
+          </div>
+
+          <div class="tira-portadora" id="tira-manguitos"></div>
+
+          <div class="paginacion" id="paginacion" style="display:none">
+            Página <strong id="pag-actual">1</strong> de <strong id="pag-total">1</strong>
+          </div>
+          <div class="hint-teclado">Enter / Espacio → siguiente &nbsp;·&nbsp; ← → navegar elementos</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Generar TXT de pedido -->
+    <div id="tab-pedido" class="tab-panel">
+      <div class="section-card">
+        <h2>📄 Generar TXT de pedido</h2>
+        <p class="section-desc">Genera un TXT por código de manguito, ordenado por número de etiqueta/paquete. Los ficheros se guardan en <code>data/manguitos/</code>.</p>
+
+        <div class="archivo-form">
+          <select id="pedido-archivo"><option value="">Selecciona un archivo Excel...</option></select>
+        </div>
+        <div class="archivo-form" style="gap:12px; flex-wrap:wrap;">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:180px;">
+            <label style="font-size:12px; font-weight:600; color:#6b7280;">Referencia</label>
+            <input id="pedido-ref" type="text" value="PC_CAB_BADEN"
+              style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:140px;">
+            <label style="font-size:12px; font-weight:600; color:#6b7280;">Edición</label>
+            <input id="pedido-edicion" type="text" value="ed_04"
+              style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px;">
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button id="pedido-generar-btn" style="padding:9px 26px; background:#d97706; color:#fff; border:none;
+              border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap;">
+              ⚙ Generar TXT
+            </button>
+          </div>
+        </div>
+
+        <div id="pedido-resultado" style="display:none; margin-top:24px;">
+          <h3 style="font-size:15px; font-weight:700; color:#1f2937; margin:0 0 12px 0;">✅ Ficheros generados</h3>
+          <table style="width:100%; border-collapse:collapse; font-size:14px;">
+            <thead>
+              <tr style="background:#f3f4f6;">
+                <th style="text-align:left; padding:8px 12px; border-bottom:2px solid #e5e7eb;">Fichero</th>
+                <th style="text-align:left; padding:8px 12px; border-bottom:2px solid #e5e7eb;">Código</th>
+                <th style="text-align:right; padding:8px 12px; border-bottom:2px solid #e5e7eb;">Manguitos</th>
+              </tr>
+            </thead>
+            <tbody id="pedido-tabla-body"></tbody>
+          </table>
+        </div>
+
+        <div id="pedido-error" style="display:none; margin-top:16px; padding:12px 16px;
+          background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; color:#dc2626; font-size:14px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=2"></script>
+</body>
+</html>

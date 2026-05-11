@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualización de Bonos</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .viz-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+        }
+        
+        .viz-header {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 12px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
+            flex-shrink: 0;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+        
+        .viz-header h1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 1.6em;
+            margin-bottom: 8px;
+            text-align: center;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        
+        .controles {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: flex-end;
+        }
+        
+        .selector-grupo {
+            flex: 1;
+            max-width: 300px;
+        }
+        
+        .selector-grupo label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.75em;
+        }
+        
+        .selector-grupo select {
+            width: 100%;
+            padding: 6px 10px;
+            font-size: 13px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        .selector-grupo select:hover {
+            border-color: #764ba2;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+        
+        .selector-grupo select:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.1);
+        }
+        
+        #bonos-container {
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .bonos-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            height: 100%;
+        }
+        
+        .bono-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            position: relative;
+        }
+        
+        .bono-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .bono-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e9ecef;
+            flex-shrink: 0;
+        }
+        
+        .bono-nombre {
+            font-size: 1.8em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+            text-align: center;
+            flex: 1;
+        }
+        
+        .bono-estado {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .bono-stats {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            justify-content: space-around;
+            padding: 8px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 8px;
+            flex-shrink: 0;
+            border: 1px solid #dee2e6;
+        }
+        
+        .bono-stat {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .bono-stat-value {
+            font-size: 1.8em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+        }
+        
+        .bono-stat-label {
+            color: #6c757d;
+            font-size: 0.7em;
+            margin-top: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        
+        .carros-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        
+        .carros-title {
+            font-size: 1em;
+            font-weight: 700;
+            color: #495057;
+            margin-bottom: 8px;
+            text-align: center;
+            flex-shrink: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .carros-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            flex: 1;
+        }
+        
+        .carro-item {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-radius: 8px;
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            min-height: 140px;
+        }
+        
+        .carro-visual {
+            width: 100%;
+            height: 90px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .carro-icon-grande {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .carro-icon-grande img {
+            max-width: 85px;
+            height: auto;
+            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.15));
+            transition: all 0.4s ease;
+            mix-blend-mode: multiply;
+            background: transparent;
+        }
+        
+        .carro-item.vacio .carro-icon-grande {
+            filter: grayscale(1) opacity(0.4);
+        }
+        
+        .carro-emoji {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .carro-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, transparent);
+            transition: all 0.4s ease;
+        }
+        
+        .carro-item:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 6px 16px rgba(13, 110, 253, 0.2);
+        }
+        
+        .carro-item.ocupado {
+            border-color: #0d6efd;
+            background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%);
+        }
+        
+        .carro-item.ocupado::before {
+            background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%);
+        }
+        
+        .carro-item.vacio {
+            opacity: 0.4;
+            cursor: default;
+            background: #f1f3f5;
+        }
+        
+        .carro-item.vacio:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .carro-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .carro-numero {
+            font-size: 1.1em;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .carro-estado-badge {
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 0.65em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .carro-estado-badge.ocupado {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(13, 110, 253, 0.3);
+        }
+        
+        .carro-estado-badge.vacio {
+            background: #e9ecef;
+            color: #adb5bd;
+        }
+        
+        .carro-proyecto {
+            font-size: 0.9em;
+            color: #212529;
+            font-weight: 700;
+            margin-top: 6px;
+            margin-bottom: 8px;
+            min-height: 22px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: center;
+        }
+        
+        .carro-progreso {
+            margin-top: auto;
+        }
+        
+        .carro-progreso-bar {
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+            border-radius: 15px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 6px;
+            box-shadow: inset 0 3px 6px rgba(0,0,0,0.15);
+            position: relative;
+            border: 2px solid #dee2e6;
+        }
+        
+        .carro-progreso-bar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, transparent 100%);
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .carro-progreso-fill {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 50%, #17a2b8 100%);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 900;
+            font-size: 0.95em;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .carro-progreso-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        
+        .carro-progreso-text {
+            font-size: 0.85em;
+            color: #212529;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .no-bonos {
+            background: white;
+            border-radius: 10px;
+            padding: 30px 20px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin: auto;
+        }
+        
+        .no-bonos-icon {
+            font-size: 2.5em;
+            margin-bottom: 12px;
+        }
+        
+        .no-bonos h2 {
+            color: #6c757d;
+            margin-bottom: 6px;
+            font-size: 1.1em;
+        }
+        
+        .no-bonos p {
+            color: #6c757d;
+            font-size: 0.85em;
+        }
+        
+        @media (max-width: 1400px) {
+            .bonos-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="viz-container">
+        <div class="viz-header">
+            <h1>📊 Visualización de Bonos</h1>
+            
+            <div class="controles">
+                <div class="selector-grupo">
+                    <label>Bono 1:</label>
+                    <select id="bono1-select">
+                        <option value="">Ninguno</option>
+                    </select>
+                </div>
+                
+                <div class="selector-grupo">
+                    <label>Bono 2:</label>
+                    <select id="bono2-select">
+                        <option value="">Ninguno</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div id="bonos-container">
+            <div class="no-bonos">
+                <div class="no-bonos-icon">⏳</div>
+                <h2>Cargando bonos...</h2>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BONO_INICIAL = '{{ bono_inicial|default("") }}';
+        let todosLosBonos = [];
+        let bono1Seleccionado = null;
+        let bono2Seleccionado = null;
+        
+        async function cargarBonos() {
+            try {
+                const response = await fetch('/api/bonos');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const bonos = Object.values(data.bonos);
+                    const bonosActivos = bonos.filter(b => b.estado === 'activo');
+                    todosLosBonos = bonosActivos;
+                    
+                    actualizarSelectores(bonosActivos);
+                    
+                    if (!bono1Seleccionado && !bono2Seleccionado && bonosActivos.length > 0) {
+                        if (BONO_INICIAL) {
+                            // Pre-seleccionar el bono que vino de la URL
+                            bono1Seleccionado = BONO_INICIAL;
+                            document.getElementById('bono1-select').value = BONO_INICIAL;
+                        } else {
+                            const ultimosBonos = bonosActivos.slice(-2);
+                            if (ultimosBonos.length >= 1) {
+                                bono1Seleccionado = ultimosBonos[0].nombre;
+                                document.getElementById('bono1-select').value = bono1Seleccionado;
+                            }
+                            if (ultimosBonos.length >= 2) {
+                                bono2Seleccionado = ultimosBonos[1].nombre;
+                                document.getElementById('bono2-select').value = bono2Seleccionado;
+                            }
+                        }
+                    }
+                    
+                    await mostrarBonosSeleccionados();
+                } else {
+                    mostrarError('Error al cargar bonos', data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarError('Error de conexión', 'No se pudo conectar con el servidor');
+            }
+        }
+        
+        function actualizarSelectores(bonos) {
+            const select1 = document.getElementById('bono1-select');
+            const select2 = document.getElementById('bono2-select');
+            
+            select1.innerHTML = '<option value="">Ninguno</option>';
+            select2.innerHTML = '<option value="">Ninguno</option>';
+            
+            bonos.forEach(bono => {
+                const option1 = document.createElement('option');
+                option1.value = bono.nombre;
+                option1.textContent = `${bono.nombre} (${bono.num_cortes})`;
+                select1.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = bono.nombre;
+                option2.textContent = `${bono.nombre} (${bono.num_cortes})`;
+                select2.appendChild(option2);
+            });
+        }
+        
+        async function mostrarBonosSeleccionados() {
+            const container = document.getElementById('bonos-container');
+            
+            const bonosAMostrar = [];
+            
+            if (bono1Seleccionado) {
+                const bono = todosLosBonos.find(b => b.nombre === bono1Seleccionado);
+                if (bono) bonosAMostrar.push(bono);
+            }
+            
+            if (bono2Seleccionado) {
+                const bono = todosLosBonos.find(b => b.nombre === bono2Seleccionado);
+                if (bono) bonosAMostrar.push(bono);
+            }
+            
+            if (bonosAMostrar.length === 0) {
+                container.innerHTML = `
+                    <div class="no-bonos">
+                        <div class="no-bonos-icon">📋</div>
+                        <h2>Selecciona uno o dos bonos</h2>
+                        <p>Usa los selectores para elegir los bonos a visualizar</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const bonosConProgreso = await Promise.all(
+                bonosAMostrar.map(async (bono) => {
+                    try {
+                        const progresoResponse = await fetch(`/api/bonos/${bono.nombre}/progreso`);
+                        const progresoData = await progresoResponse.json();
+                        
+                        const progresoCarroResponse = await fetch(`/api/bonos/${bono.nombre}/progreso-por-carro`);
+                        const progresoCarroData = await progresoCarroResponse.json();
+                        
+                        const carrosConTerminales = await Promise.all(
+                            bono.carros.map(async (carro) => {
+                                try {
+                                    const terminalesResponse = await fetch(`/api/excel/${carro.archivo_excel}/terminales`);
+                                    const terminalesData = await terminalesResponse.json();
+                                    
+                                    let terminalesCompletados = 0;
+                                    
+                                    // Contar terminales realmente completados del progreso general
+                                    if (progresoData.success && progresoData.progreso) {
+                                        // Iterar sobre el progreso general del bono
+                                        for (const [terminal, info] of Object.entries(progresoData.progreso)) {
+                                            // Verificar si este terminal está completado en este carro
+                                            if (info.carros_completados && info.carros_completados.includes(carro.carro)) {
+                                                terminalesCompletados++;
+                                            }
+                                        }
+                                    }
+                                    
+                                    return {
+                                        ...carro,
+                                        totalTerminales: terminalesData.success ? terminalesData.total : 0,
+                                        terminalesCompletados: terminalesCompletados
+                                    };
+                                } catch (error) {
+                                    return { ...carro, totalTerminales: 0, terminalesCompletados: 0 };
+                                }
+                            })
+                        );
+                        
+                        return {
+                            ...bono,
+                            carros: carrosConTerminales,
+                            progreso: progresoData.success ? progresoData.progreso : {}
+                        };
+                    } catch (error) {
+                        return { ...bono, progreso: {} };
+                    }
+                })
+            );
+            
+            container.innerHTML = `
+                <div class="bonos-grid">
+                    ${bonosConProgreso.map(bono => generarVistaBono(bono)).join('')}
+                </div>
+            `;
+        }
+        
+        function mostrarError(titulo, mensaje) {
+            const container = document.getElementById('bonos-container');
+            container.innerHTML = `
+                <div class="no-bonos">
+                    <div class="no-bonos-icon">❌</div>
+                    <h2>${titulo}</h2>
+                    <p>${mensaje}</p>
+                </div>
+            `;
+        }
+        
+        function generarVistaBono(bono) {
+            const carros = [1, 2, 3, 4, 5, 6].map(numCarro => {
+                const carroData = bono.carros.find(c => c.carro === numCarro);
+                return carroData || { carro: numCarro, vacio: true };
+            });
+            
+            const carrosConProgreso = carros.map(carro => {
+                if (carro.vacio) {
+                    return { ...carro, porcentaje: 0, terminalesCompletados: 0, totalTerminales: 0 };
+                }
+                
+                const totalTerminales = carro.totalTerminales || 0;
+                const terminalesCompletados = carro.terminalesCompletados || 0;
+                const porcentaje = totalTerminales > 0 ? Math.round((terminalesCompletados / totalTerminales) * 100) : 0;
+                
+                return {
+                    ...carro,
+                    porcentaje,
+                    terminalesCompletados,
+                    totalTerminales
+                };
+            });
+            
+            function obtenerIconoRejilla(porcentaje, vacio) {
+                if (vacio) return '<img src="/static/img/reloj_0.png" alt="Vacío">';
+                if (porcentaje === 0) return '<img src="/static/img/reloj_0.png" alt="0%">';
+                if (porcentaje < 20) return '<img src="/static/img/reloj_0.png" alt="0-19%">';
+                if (porcentaje < 40) return '<img src="/static/img/reloj_20.png" alt="20-39%">';
+                if (porcentaje < 60) return '<img src="/static/img/reloj_40.png" alt="40-59%">';
+                if (porcentaje < 80) return '<img src="/static/img/reloj_60.png" alt="60-79%">';
+                if (porcentaje < 100) return '<img src="/static/img/reloj_80.png" alt="80-99%">';
+                return '<img src="/static/img/reloj_100.png" alt="100%">';
+            }
+            
+            return `
+                <div class="bono-card">
+                    <div class="bono-card-header">
+                        <div class="bono-nombre">${bono.nombre}</div>
+                        <div class="bono-estado">✓ Activo</div>
+                    </div>
+                    
+                    <div class="bono-stats">
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${bono.num_cortes}</div>
+                            <div class="bono-stat-label">Cortes</div>
+                        </div>
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${bono.carros.length}</div>
+                            <div class="bono-stat-label">Ocupados</div>
+                        </div>
+                        <div class="bono-stat">
+                            <div class="bono-stat-value">${Object.keys(bono.progreso || {}).length}</div>
+                            <div class="bono-stat-label">En Trabajo</div>
+                        </div>
+                    </div>
+                    
+                    <div class="carros-section">
+                        <div class="carros-title">🚛 Estado de los 6 Carros</div>
+                        <div class="carros-grid">
+                            ${carrosConProgreso.map(carro => `
+                                <div class="carro-item ${carro.vacio ? 'vacio' : 'ocupado'}">
+                                    <div class="carro-header">
+                                        <div class="carro-numero">C${carro.carro}</div>
+                                        <div class="carro-estado-badge ${carro.vacio ? 'vacio' : 'ocupado'}">
+                                            ${carro.vacio ? 'Vacío' : 'Ocupado'}
+                                        </div>
+                                    </div>
+                                    <div class="carro-visual">
+                                        <div class="carro-icon-grande">
+                                            ${obtenerIconoRejilla(carro.porcentaje, carro.vacio)}
+                                        </div>
+                                    </div>
+                                    <div class="carro-proyecto" title="${carro.vacio ? '' : carro.proyecto_nombre || ''}">
+                                        ${carro.vacio ? '-' : carro.proyecto_nombre || 'Sin nombre'}
+                                    </div>
+                                    ${!carro.vacio ? `
+                                        <div class="carro-progreso">
+                                            <div class="carro-progreso-bar">
+                                                <div class="carro-progreso-fill" style="width: ${carro.porcentaje}%">
+                                                    ${carro.porcentaje > 15 ? carro.porcentaje + '%' : ''}
+                                                </div>
+                                            </div>
+                                            <div class="carro-progreso-text">
+                                                ${carro.terminalesCompletados} / ${carro.totalTerminales} terminales
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('bono1-select').addEventListener('change', function(e) {
+                bono1Seleccionado = e.target.value || null;
+                mostrarBonosSeleccionados();
+            });
+            
+            document.getElementById('bono2-select').addEventListener('change', function(e) {
+                bono2Seleccionado = e.target.value || null;
+                mostrarBonosSeleccionados();
+            });
+        });
+        
+        cargarBonos();
+        setInterval(cargarBonos, 5000);
+    </script>
+</body>
+</html>

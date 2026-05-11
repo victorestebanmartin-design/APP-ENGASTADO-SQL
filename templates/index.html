@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Engastado Automático</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v1.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🔧 Sistema de Engastado V1.0</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('main.home') }}" class="btn-secondary">🔙 Inicio</a>
+                <a href="{{ url_for('main.admin') }}" class="btn-admin">⚙️ Administración</a>
+            </div>
+        </header>
+
+        <!-- Paso 1: Escanear Corte de Cable -->
+        <div class="card paso-1" id="paso1">
+            <h2>Paso 1: Escanear Corte de Cable</h2>
+            <p class="instruccion">Usa la pistola lectora para escanear el código de barras del corte de cable</p>
+            
+            <div class="input-group">
+                <label for="codigo-corte">Código de Corte:</label>
+                <input 
+                    type="text" 
+                    id="codigo-corte" 
+                    placeholder="Escanea el código de barras..."
+                    autofocus
+                    autocomplete="off">
+            </div>
+            
+            <div id="corte-info" class="info-box hidden">
+                <p><strong>Archivo cargado:</strong> <span id="archivo-nombre"></span></p>
+            </div>
+        </div>
+
+        <!-- Paso 2: Escanear Terminal -->
+        <div class="card paso-2 hidden" id="paso2">
+            <h2>Paso 2: Escanear Terminal</h2>
+            <p class="instruccion">Escanea el código de barras del terminal que vas a engastar</p>
+            
+            <div class="input-group">
+                <label for="codigo-terminal">Terminal:</label>
+                <input 
+                    type="text" 
+                    id="codigo-terminal" 
+                    placeholder="Escanea el terminal..."
+                    autocomplete="off">
+            </div>
+            
+            <button onclick="nuevoEscaneo()" class="btn-secondary">🔄 Cambiar Corte de Cable</button>
+        </div>
+
+        <!-- Resultados -->
+        <div class="resultados-container hidden" id="resultados">
+            <div class="resultados-header">
+                <h2>📋 Instrucciones de Engastado</h2>
+                <div class="terminal-info">
+                    <p><strong>Terminal:</strong> <span id="terminal-actual"></span></p>
+                    <p><strong>Total de grupos:</strong> <span id="total-grupos"></span></p>
+                    <p><strong>Terminales necesarios:</strong> <span id="total-terminales"></span></p>
+                </div>
+            </div>
+
+            <div id="tarjetas-container" class="tarjetas-grid">
+                <!-- Las tarjetas se generarán dinámicamente aquí -->
+            </div>
+
+            <div class="acciones">
+                <button onclick="escanearOtroTerminal()" class="btn-primary">🔄 Escanear Otro Terminal</button>
+                <button onclick="nuevoEscaneo()" class="btn-secondary">📂 Cambiar Corte</button>
+            </div>
+        </div>
+
+        <!-- Mensajes -->
+        <div id="mensaje" class="mensaje hidden"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main-v1.js') }}"></script>
+</body>
+</html>

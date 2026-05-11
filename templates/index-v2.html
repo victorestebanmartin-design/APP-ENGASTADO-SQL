@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Engastado V2.0 - Modo Interactivo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=terminals2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v2.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🔌 Sistema de Engastado V2.0</h1>
+            <div class="header-actions">
+                <a href="{{ url_for('main.home') }}" class="btn-secondary">🔙 Inicio</a>
+                <a href="{{ url_for('main.admin') }}" class="btn-admin">⚙️ Administración</a>
+            </div>
+        </header>
+
+        <!-- Paso 1: Escanear Corte de Cable -->
+        <div class="card paso-1" id="paso1">
+            <h2>Paso 1: Escanear Corte de Cable</h2>
+            <p class="instruccion">Usa la pistola lectora para escanear el código de barras del corte de cable</p>
+            
+            <div class="input-group">
+                <label for="codigo-corte">Código de Corte:</label>
+                <input 
+                    type="text" 
+                    id="codigo-corte" 
+                    placeholder="Escanea el código de barras..."
+                    autofocus
+                    autocomplete="off">
+            </div>
+            
+            <div id="corte-info" class="info-box hidden">
+                <p><strong>Archivo cargado:</strong> <span id="archivo-nombre"></span></p>
+            </div>
+        </div>
+
+        <!-- Paso 2: Selección de Terminal -->
+        <div class="card seleccion-terminales hidden" id="seleccion-terminales">
+            <h2>Paso 2: Selecciona el Terminal a Engastar</h2>
+            <p class="instruccion">Selecciona el terminal que vas a engastar</p>
+            
+            <div id="seleccion-terminales-container" class="terminales-grid">
+                <!-- Los botones se generarán dinámicamente aquí -->
+            </div>
+            
+            <button onclick="nuevoEscaneo()" class="btn-secondary mt-3">🔄 Cambiar Corte de Cable</button>
+        </div>
+
+        <!-- Paso 3: Preparación - Recoger Paquetes -->
+        <div class="card preparacion-paquetes hidden" id="preparacion-paquetes">
+            <div class="terminal-principal-header">
+                <div class="terminal-badge-grande">🔌 TERMINAL: <span id="terminal-paquetes"></span></div>
+            </div>
+            <h2>📦 Paso 3: Recoge los Paquetes</h2>
+            <div class="paquetes-cuenta">
+                <p>Tienes <strong id="num-paquetes"></strong> paquetes que recoger del carro</p>
+            </div>
+            
+            <div class="lista-paquetes-container">
+                <h3>Lista de Paquetes (De Elemento):</h3>
+                <ul id="lista-paquetes" class="lista-paquetes">
+                    <!-- Los elementos se generarán dinámicamente aquí -->
+                </ul>
+            </div>
+            
+            <button onclick="confirmarPaquetes()" class="btn-primary-large">✅ Tengo Todos los Paquetes - Comenzar</button>
+        </div>
+
+        <!-- Paso 4: Modo Engastado Progresivo -->
+        <div class="card modo-engastado hidden" id="modo-engastado">
+            <div class="terminal-principal-header">
+                <div class="terminal-badge-grande">🔌 TERMINAL: <span id="terminal-actual"></span></div>
+            </div>
+            <div class="modo-engastado-header">
+                <h2>🔧 Engastado en Progreso</h2>
+                <div class="progreso-info">
+                    <span><strong>Grupos:</strong> <span id="grupos-completados">0</span> / <span id="total-grupos">0</span></span>
+                    <span><strong>Terminales totales:</strong> <span id="total-terminales">0</span></span>
+                </div>
+            </div>
+            
+            <div class="boton-volver-container">
+                <button onclick="volverASeleccionTerminales()" class="btn-volver-terminales">⬅️ Volver a Selección de Terminales</button>
+            </div>
+            
+            <div id="tarjetas-container" class="tarjetas-lista">
+                <!-- Las tarjetas pequeñas se generarán dinámicamente aquí -->
+            </div>
+        </div>
+
+        <!-- Caja Expandida (Pantalla Completa) -->
+        <div class="caja-expandida-overlay hidden" id="caja-expandida">
+            <div class="caja-expandida">
+                <div id="caja-expandida-contenido">
+                    <!-- El contenido se generará dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Finalización -->
+        <div class="card finalizacion hidden" id="finalizacion">
+            <div class="finalizacion-contenido">
+                <div class="icono-exito">✅</div>
+                <h2>¡Engastado Completado!</h2>
+                <p class="mensaje-exito">Has completado exitosamente el engastado del terminal</p>
+                
+                <div class="finalizacion-info">
+                    <p><strong>Terminal:</strong> <span id="terminal-finalizado"></span></p>
+                    <p><strong>Grupos completados:</strong> <span id="total-completados"></span></p>
+                </div>
+                
+                <div class="finalizacion-acciones">
+                    <button onclick="seleccionarOtroTerminal()" class="btn-primary-large">🔄 Seleccionar Otro Terminal</button>
+                    <button onclick="nuevoEscaneo()" class="btn-secondary-large">📂 Cambiar Corte de Cable</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mensajes -->
+        <div id="mensaje" class="mensaje hidden"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main-v2.js') }}"></script>
+</body>
+</html>

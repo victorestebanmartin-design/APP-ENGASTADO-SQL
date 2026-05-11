@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Datos sensibles
+config_local.py
+*.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Base de datos local (si se usa SQLite para dev)
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups SQL
+backups/*.sql
+backups/*.bak
+
+# Excel temporales
+~$*.xlsx
+~$*.xls
+data/cortes/*.xlsx
+data/cortes/*.xls
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ZPL simuladas (muchas)
+data/etiquetas_simuladas/*.zpl
+
+# Credenciales (NUNCA COMMITEAR)
+connection_string.txt
+passwords.txt

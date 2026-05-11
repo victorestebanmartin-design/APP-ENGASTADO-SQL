@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Proyectos y Carros</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-proyectos.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🚛 Gestión de Proyectos y Carros</h1>
+            <button class="btn-volver" onclick="window.location.href='/'">
+                <i class="fas fa-home"></i> Inicio
+            </button>
+        </header>
+
+        <!-- Sección de Carros -->
+        <section class="seccion-carros">
+            <div class="header-carros">
+                <h2>🚛 Estado de los Carros</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-generar-bono-principal" onclick="abrirModalGenerarBono()">
+                        <i class="fas fa-ticket-alt"></i> Generar Bono de Trabajo
+                    </button>
+                    <button class="btn-secondary" onclick="mostrarGestionBonos()">
+                        <i class="fas fa-list"></i> Gestionar Bonos Existentes
+                    </button>
+                </div>
+            </div>
+            <div class="carros-grid" id="carrosGrid">
+                <!-- Los carros se cargarán dinámicamente -->
+            </div>
+        </section>
+
+        <!-- Sección de Órdenes Pendientes -->
+        <section class="seccion-ordenes" style="margin-top: 30px;">
+            <div class="header-carros">
+                <h2>📋 Órdenes Pendientes de Producción</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-primary" onclick="cargarSiguientesOrdenes()">
+                        <i class="fas fa-arrow-down"></i> Cargar Siguientes
+                    </button>
+                    <button class="btn-warning" onclick="limpiarCarros()">
+                        <i class="fas fa-broom"></i> Limpiar Carros
+                    </button>
+                </div>
+            </div>
+            <div id="listaOrdenesPendientes" class="lista-ordenes">
+                <!-- Lista de órdenes se cargará aquí -->
+            </div>
+        </section>
+
+        <!-- Sección de Gestión de Bonos -->
+        <section class="seccion-gestion-bonos" id="seccionGestionBonos" style="display: none; margin-top: 30px;">
+            <div class="header-carros">
+                <h2>📋 Gestión de Bonos Existentes</h2>
+                <button class="btn-secondary" onclick="ocultarGestionBonos()">
+                    <i class="fas fa-arrow-left"></i> Volver a Carros
+                </button>
+            </div>
+            
+            <div class="tabs-gestion">
+                <button class="tab-btn-gestion active" onclick="cambiarTabGestion('lista')">
+                    <i class="fas fa-list"></i> Lista de Bonos
+                </button>
+                <button class="tab-btn-gestion" onclick="cambiarTabGestion('reportes')">
+                    <i class="fas fa-chart-bar"></i> Reportes
+                </button>
+            </div>
+
+            <!-- Tab: Lista de Bonos -->
+            <div id="tab-lista-bonos" class="tab-gestion-content active">
+                <div class="card" style="background: white; padding: 20px; border-radius: 12px; margin-top: 20px;">
+                    <button onclick="cargarListaBonos()" class="btn-secondary" style="margin-bottom: 15px;">
+                        <i class="fas fa-sync"></i> Actualizar
+                    </button>
+                    <div id="contenedorListaBonos">
+                        <p style="text-align: center; color: #6c757d;">Cargando bonos...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Reportes -->
+            <div id="tab-reportes-bonos" class="tab-gestion-content" style="display: none;">
+                <div class="card" style="background: white; padding: 20px; border-radius: 12px; margin-top: 20px;">
+                    <div class="form-group">
+                        <label>Seleccionar Bono:</label>
+                        <select id="selectBonoReporte" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                            <option value="">-- Seleccionar bono --</option>
+                        </select>
+                        <button onclick="generarReporteBono()" class="btn-primary" style="margin-top: 10px;">
+                            <i class="fas fa-file-alt"></i> Generar Reporte
+                        </button>
+                    </div>
+                    <div id="contenedorReporte" style="margin-top: 30px;">
+                        <!-- El reporte se mostrará aquí -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal para Nuevo Proyecto -->
+    <div class="modal" id="modalNuevoProyecto">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Nuevo Proyecto</h3>
+                <button class="btn-close" onclick="cerrarModal('modalNuevoProyecto')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevoProyecto">
+                    <div class="form-group">
+                        <label>Nombre del Proyecto:</label>
+                        <input type="text" id="nombreProyecto" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Archivo Excel:</label>
+                        <select id="archivoProyecto" required>
+                            <option value="">Seleccionar archivo...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Asignar a Carro (opcional):</label>
+                        <select id="carroProyecto">
+                            <option value="">Sin asignar</option>
+                            <option value="1">Carro 1</option>
+                            <option value="2">Carro 2</option>
+                            <option value="3">Carro 3</option>
+                            <option value="4">Carro 4</option>
+                            <option value="5">Carro 5</option>
+                            <option value="6">Carro 6</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="cerrarModal('modalNuevoProyecto')">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-save"></i> Crear Proyecto
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Asignar Carro -->
+    <div class="modal" id="modalAsignarCarro">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Asignar a Carro</h3>
+                <button class="btn-close" onclick="cerrarModal('modalAsignarCarro')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Proyecto: <strong id="proyectoNombreAsignar"></strong></p>
+                <div class="form-group">
+                    <label>Seleccionar Carro:</label>
+                    <select id="carroAsignar">
+                        <option value="">Seleccionar...</option>
+                        <option value="1">Carro 1</option>
+                        <option value="2">Carro 2</option>
+                        <option value="3">Carro 3</option>
+                        <option value="4">Carro 4</option>
+                        <option value="5">Carro 5</option>
+                        <option value="6">Carro 6</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalAsignarCarro')">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn-primary" onclick="confirmarAsignacion()">
+                        <i class="fas fa-check"></i> Asignar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Asignar Archivo Excel a Carro -->
+    <div id="modalAsignarProyectoCarro" class="modal">
+        <div class="modal-content">
+            <h2>Asignar Proyecto al Carro <span id="numeroCarroAsignar"></span></h2>
+            
+            <div class="form-group">
+                <label>Nombre del Proyecto</label>
+                <input type="text" id="nombreProyectoCarro" placeholder="Ej: PC_CAB">
+            </div>
+            
+            <div class="form-group">
+                <label>Seleccionar Archivo Excel</label>
+                <select id="archivoExcelCarro">
+                    <option value="">-- Seleccionar Archivo --</option>
+                </select>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="cerrarModal('modalAsignarProyectoCarro')">
+                    Cancelar
+                </button>
+                <button type="button" class="btn-primary" onclick="confirmarAsignacionDirecta()">
+                    <i class="fas fa-check"></i> Asignar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Bono -->
+    <div id="modalEditarBono" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ Editar Bono</h3>
+                <button class="btn-close" onclick="cerrarModal('modalEditarBono')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="nombreBonoOriginal">
+                <div class="form-group">
+                    <label>Nombre del Bono:</label>
+                    <input type="text" id="nombreBonoEditar" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Estado:</label>
+                    <select id="estadoBonoEditar">
+                        <option value="activo">Activo</option>
+                        <option value="completado">Completado</option>
+                        <option value="en_proceso">En Proceso</option>
+                        <option value="pendiente">Pendiente</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="cerrarModal('modalEditarBono')">
+                        Cancelar
+                    </button>
+                    <button type="button" class="btn-primary" onclick="guardarEdicionBono()">
+                        <i class="fas fa-save"></i> Guardar Cambios
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Generar Bono -->
+    <div id="modalGenerarBono" class="modal">
+        <div class="modal-content" style="max-width: 550px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border-radius: 8px 8px 0 0; padding: 18px; margin: -20px -20px 0 -20px; flex-shrink: 0;">
+                <h2 style="margin: 0; font-size: 1.3em; font-weight: 600;">
+                    🎫 Generar Bono de Trabajo
+                </h2>
+            </div>
+            
+            <div class="modal-body" style="padding: 20px; flex: 1; overflow-y: auto; min-height: 0;">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label style="font-weight: 600; color: #212529; margin-bottom: 8px; display: block; font-size: 0.95em;">
+                        <i class="fas fa-tag"></i> Nombre del Bono
+                    </label>
+                    <input type="text" id="nombreBono" placeholder="Ej: 17022025_1" 
+                           style="width: 100%; padding: 11px; border: 2px solid #dee2e6; border-radius: 6px; font-size: 1em; transition: border-color 0.2s;"
+                           onfocus="this.style.borderColor='#0d6efd'" onblur="this.style.borderColor='#dee2e6'">
+                    <small style="color: #6c757d; display: block; margin-top: 8px; font-size: 0.85em; line-height: 1.4;">
+                        <i class="fas fa-info-circle"></i> Formato: DDMMYYYY_N (día/mes/año seguido de número secuencial)
+                    </small>
+                </div>
+                
+                <div id="resumenCarros" style="margin: 0; padding: 14px; background: linear-gradient(to bottom, #e8f5e9, #f1f8e9); border-radius: 8px; border: 1px solid #c8e6c9;">
+                    <strong style="color: #2e7d32; font-size: 0.95em;">
+                        <i class="fas fa-shopping-cart"></i> Carros incluidos en el bono:
+                    </strong>
+                    <div id="listaCarrosBono" style="margin-top: 10px;">
+                        <!-- Se llenará dinámicamente -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions" style="display: flex; gap: 10px; justify-content: flex-end; padding: 16px 20px; margin: 0 -20px -20px -20px; background: #f8f9fa; border-radius: 0 0 8px 8px; border-top: 1px solid #dee2e6; flex-shrink: 0;">
+                <button type="button" class="btn-secondary" onclick="cerrarModal('modalGenerarBono')"
+                        style="padding: 10px 20px; border-radius: 5px; transition: all 0.2s; font-weight: 500; font-size: 0.9em;"
+                        onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn-primary" onclick="confirmarGenerarBono()"
+                        style="padding: 10px 24px; border-radius: 5px; transition: all 0.2s; font-weight: 500; font-size: 0.9em;"
+                        onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform='translateY(0)'">
+                    <i class="fas fa-check"></i> Generar Bono
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal Mostrar Bono -->
+    <div id="modalBono" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2>🎫 Bono de Trabajo Generado</h2>
+            
+            <div class="bono-info">
+                <div class="bono-codigo-container">
+                    <label>Nombre del Bono</label>
+                    <div class="bono-codigo-display">
+                        <code id="bonoNombre" style="font-size: 1.5em; font-weight: bold; color: #0d6efd;"></code>
+                        <button class="btn-copiar" onclick="copiarBono()" title="Copiar nombre">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="bono-detalles">
+                    <div class="bono-detalle">
+                        <strong>Número de Cortes:</strong>
+                        <span id="bonoNumCortes"></span>
+                    </div>
+                    <div class="bono-detalle" style="border: none; padding-top: 15px;">
+                        <div style="width: 100%;">
+                            <strong>Carros incluidos:</strong>
+                            <div id="bonoCarrosLista" style="margin-top: 10px;">
+                                <!-- Se llenará dinámicamente -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bono-instrucciones">
+                    <p><strong>📋 Instrucciones:</strong></p>
+                    <ol>
+                        <li>Copia el nombre del bono (click en <i class="fas fa-copy"></i>)</li>
+                        <li>Ve a la interfaz <strong>V3</strong></li>
+                        <li>Escanea o ingresa este nombre para cargar los proyectos</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="cerrarModal('modalBono')">
+                    Cerrar
+                </button>
+                <a href="/v3" class="btn-primary" style="text-decoration: none;">
+                    <i class="fas fa-play"></i> Ir a V3
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/gestion-proyectos.js') }}"></script>
+</body>
+</html>
