@@ -114,9 +114,14 @@ if __name__ == '__main__':
     print()
     
     # Arrancar servidor
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=True,
-        use_reloader=True
-    )
+    # Nota: use_reloader=False para que el watchdog de run.bat controle el reinicio
+    # y el codigo de salida 42 (reinicio OTA) funcione correctamente.
+    try:
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=False,
+            use_reloader=False
+        )
+    except SystemExit as e:
+        sys.exit(e.code)

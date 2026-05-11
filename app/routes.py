@@ -7,6 +7,8 @@ from sqlalchemy import text
 import os
 import json
 import re
+import subprocess
+import sys
 from datetime import datetime
 import pandas as pd
 
@@ -2304,6 +2306,187 @@ def api_verificar_pendientes():
 
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+def _encontrar_git():
+    """
+    Busca el ejecutable de git en el PATH y en las rutas de instalación
+    habituales de Windows (Git for Windows, GitHub Desktop, etc.).
+    Devuelve la ruta completa al ejecutable o None si no se encuentra.
+    """
+    import shutil
+    import glob
+
+    # 1. Intentar desde el PATH del sistema
+    git_path = shutil.which('git')
+    if git_path:
+        return git_path
+
+    # 2. Rutas de instalación estándar de Git for Windows
+    rutas_fijas = [
+        r'C:\Program Files\Git\cmd\git.exe',
+        r'C:\Program Files\Git\bin\git.exe',
+        r'C:\Program Files (x86)\Git\cmd\git.exe',
+        r'C:\Program Files (x86)\Git\bin\git.exe',
+    ]
+    for ruta in rutas_fijas:
+        if os.path.isfile(ruta):
+            return ruta
+
+    # 3. Git empaquetado con GitHub Desktop (versión varía)
+    appdata_local = os.environ.get('LOCALAPPDATA', '')
+    if appdata_local:
+        patrones = [
+            os.path.join(appdata_local, 'GitHubDesktop', 'app-*', 'resources', 'app', 'git', 'cmd', 'git.exe'),
+            os.path.join(appdata_local, 'GitHubDesktop', 'app-*', 'resources', 'app', 'git', 'mingw64', 'bin', 'git.exe'),
+        ]
+        for patron in patrones:
+            coincidencias = sorted(glob.glob(patron), reverse=True)  # versión más nueva primero
+            if coincidencias:
+                return coincidencias[0]
+
+    # 4. Scoop
+    userprofile = os.environ.get('USERPROFILE', '')
+    if userprofile:
+        scoop_git = os.path.join(userprofile, 'scoop', 'apps', 'git', 'current', 'cmd', 'git.exe')
+        if os.path.isfile(scoop_git):
+            return scoop_git
+
+    return None
+
+
+@bp.route('/api/comprobar_actualizaciones', methods=['GET'])
+def api_comprobar_actualizaciones():
+    """
+    Comprueba si hay commits nuevos en GitHub comparando con el HEAD local.
+    """
+    try:
+        base_dir = current_app.root_path.replace('\\app', '').replace('/app', '')
+        git_exe = _encontrar_git()
+        if not git_exe:
+            return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
+
+        def git(args):
+            return subprocess.run(
+                [git_exe] + args,
+                cwd=base_dir,
+                capture_output=True, text=True, timeout=15
+            )
+
+        # Obtener commit local actual
+        r_local = git(['rev-parse', '--short', 'HEAD'])
+        if r_local.returncode != 0:
+            return jsonify({'success': False, 'message': 'No es un repositorio git o git no está instalado'})
+        commit_local = r_local.stdout.strip()
+
+        # Fetch silencioso para actualizar refs remotas
+        git(['fetch', 'origin', 'main', '--quiet'])
+
+        # Commit remoto tras el fetch
+        r_remoto = git(['rev-parse', '--short', 'origin/main'])
+        commit_remoto = r_remoto.stdout.strip() if r_remoto.returncode == 0 else None
+
+        hay_actualizaciones = (commit_remoto and commit_remoto != commit_local)
+
+        # Mensaje del último commit remoto
+        r_msg = git(['log', 'origin/main', '-1', '--format=%s (%cr)'])
+        mensaje_ultimo = r_msg.stdout.strip() if r_msg.returncode == 0 else ''
+
+        # Listar commits pendientes de bajar
+        r_pendientes = git(['log', f'HEAD..origin/main', '--oneline'])
+        commits_pendientes = [l.strip() for l in r_pendientes.stdout.strip().splitlines() if l.strip()]
+
+        return jsonify({
+            'success': True,
+            'hay_actualizaciones': hay_actualizaciones,
+            'commit_local': commit_local,
+            'commit_remoto': commit_remoto or commit_local,
+            'mensaje_ultimo_commit': mensaje_ultimo,
+            'commits_pendientes': commits_pendientes,
+            'num_commits_pendientes': len(commits_pendientes)
+        })
+
+    except FileNotFoundError:
+        return jsonify({'success': False, 'message': 'Git no está instalado. Instálalo desde https://git-scm.com/download/win'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout al conectar con GitHub. Comprueba la conexión.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@bp.route('/api/actualizar_sistema', methods=['POST'])
+def api_actualizar_sistema():
+    """
+    Ejecuta git pull origin main y actualiza dependencias si requirements.txt cambió.
+    El servidor debe reiniciarse manualmente para aplicar cambios de Python.
+    """
+    try:
+        base_dir = current_app.root_path.replace('\\app', '').replace('/app', '')
+        git_exe = _encontrar_git()
+        if not git_exe:
+            return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
+
+        def git(args):
+            return subprocess.run(
+                [git_exe] + args,
+                cwd=base_dir,
+                capture_output=True, text=True, timeout=30
+            )
+
+        # Verificar que hay cambios antes de pull
+        r_fetch = git(['fetch', 'origin', 'main', '--quiet'])
+        r_diff = git(['diff', '--quiet', 'HEAD', 'origin/main'])
+        if r_diff.returncode == 0:
+            return jsonify({'success': True, 'actualizado': False, 'message': 'Ya tienes la versión más reciente.'})
+
+        # Comprobar si requirements.txt va a cambiar
+        r_req = git(['diff', 'HEAD', 'origin/main', '--name-only'])
+        ficheros_cambian = r_req.stdout.strip().splitlines()
+        req_cambia = 'requirements.txt' in ficheros_cambian
+
+        # Aplicar pull
+        r_pull = git(['pull', 'origin', 'main'])
+        if r_pull.returncode != 0:
+            return jsonify({'success': False, 'message': f'Error en git pull: {r_pull.stderr.strip()}'})
+
+        # Actualizar dependencias si es necesario
+        pip_output = ''
+        if req_cambia:
+            pip_exe = os.path.join(base_dir, 'venv', 'Scripts', 'pip.exe')
+            if not os.path.exists(pip_exe):
+                pip_exe = os.path.join(base_dir, 'venv', 'bin', 'pip')
+            r_pip = subprocess.run(
+                [pip_exe, 'install', '-r', os.path.join(base_dir, 'requirements.txt'), '-q'],
+                capture_output=True, text=True, timeout=120
+            )
+            pip_output = ' | Dependencias actualizadas.' if r_pip.returncode == 0 else ' | ⚠️ Error al actualizar dependencias.'
+
+        # Commit nuevo tras el pull
+        r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
+        commit_nuevo = r_new.stdout.strip()
+
+        # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero
+        import threading
+        def _reiniciar():
+            import time, os
+            time.sleep(2)
+            os._exit(42)  # Código 42 → run.bat lo detecta y relanza el servidor
+        threading.Thread(target=_reiniciar, daemon=True).start()
+
+        return jsonify({
+            'success': True,
+            'actualizado': True,
+            'message': f'Sistema actualizado.{pip_output} Versión: {commit_nuevo} — Reiniciando servidor...',
+            'ficheros_actualizados': ficheros_cambian,
+            'reiniciando': True
+        })
+
+    except FileNotFoundError:
+        return jsonify({'success': False, 'message': 'Git no está instalado. Instálalo desde https://git-scm.com/download/win'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout durante la actualización.'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 
 @bp.route('/api/stats', methods=['GET'])

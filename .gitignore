@@ -33,6 +33,15 @@ logs/
 backups/*.sql
 backups/*.bak
 
+# Base de datos y datos de produccion (NO sobreescribir con git pull)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-backup*
+data/progreso_bono_*.json
+data/last_loaded.json
+logs/
+
 # Excel temporales
 ~$*.xlsx
 ~$*.xls

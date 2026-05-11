@@ -820,17 +820,20 @@ async function comprobarActualizaciones() {
         if (data.success) {
             if (data.hay_actualizaciones) {
                 statusDiv.className = 'mensaje warning';
+                const listaCommits = data.commits_pendientes && data.commits_pendientes.length > 0
+                    ? `<ul style="margin:6px 0 0 18px;font-size:0.88em;">${data.commits_pendientes.map(c => `<li>${c}</li>`).join('')}</ul>`
+                    : '';
                 statusDiv.innerHTML = `
-                    <strong>✨ ¡Actualización disponible!</strong><br>
-                    Versión actual: ${data.commit_local}<br>
-                    Nueva versión: ${data.commit_remoto}<br>
-                    Últimos cambios: ${data.mensaje_ultimo_commit || 'Sin descripción'}
+                    <strong>✨ ¡Actualización disponible! (${data.num_commits_pendientes} cambio${data.num_commits_pendientes>1?'s':''})</strong><br>
+                    Versión actual: <code>${data.commit_local}</code> → Nueva: <code>${data.commit_remoto}</code><br>
+                    ${listaCommits}
+                    <br><button onclick="actualizarSistema()" style="margin-top:8px;padding:8px 20px;background:#0d6efd;color:white;border:none;border-radius:6px;cursor:pointer;font-size:1em;">⬇️ Actualizar ahora</button>
                 `;
             } else {
                 statusDiv.className = 'mensaje success';
                 statusDiv.innerHTML = `
                     <strong>✓ Sistema actualizado</strong><br>
-                    Estás usando la última versión (${data.commit_local})
+                    Estás usando la última versión (<code>${data.commit_local}</code>)
                 `;
             }
         } else {
@@ -865,15 +868,26 @@ async function actualizarSistema() {
         if (data.success) {
             if (data.actualizado) {
                 statusDiv.className = 'mensaje success';
-                statusDiv.innerHTML = `
-                    <strong>✓ ${data.message}</strong><br>
-                    La página se recargará en 5 segundos...
-                `;
-                
-                // Recargar la página después de 5 segundos
-                setTimeout(() => {
-                    window.location.reload();
-                }, 5000);
+                const listaFicheros = data.ficheros_actualizados && data.ficheros_actualizados.length > 0
+                    ? `<ul style="margin:6px 0 0 18px;font-size:0.85em;">${data.ficheros_actualizados.map(f=>`<li>${f}</li>`).join('')}</ul>`
+                    : '';
+
+                if (data.reiniciando) {
+                    // El servidor se va a reiniciar: esperar a que vuelva y recargar
+                    statusDiv.innerHTML = `
+                        <strong>✓ ${data.message}</strong>
+                        ${listaFicheros}
+                        <br><span id="reinicio-countdown" style="font-size:0.88em;">⏳ Esperando que el servidor arranque...</span>
+                    `;
+                    _esperarReinicio(15);
+                } else {
+                    statusDiv.innerHTML = `
+                        <strong>✓ ${data.message}</strong>
+                        ${listaFicheros}
+                        <br><span style="font-size:0.88em;">La página se recargará en 5 segundos...</span>
+                    `;
+                    setTimeout(() => window.location.reload(), 5000);
+                }
             } else {
                 statusDiv.className = 'mensaje info';
                 statusDiv.textContent = 'ℹ️ ' + data.message;
