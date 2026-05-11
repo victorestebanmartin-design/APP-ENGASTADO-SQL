@@ -906,6 +906,35 @@ async function actualizarSistema() {
     }
 }
 
+/**
+ * Espera a que el servidor vuelva a estar disponible tras un reinicio OTA.
+ * Reintenta cada segundo hasta maxSegundos, luego recarga la página.
+ */
+async function _esperarReinicio(maxSegundos) {
+    const label = document.getElementById('reinicio-countdown');
+    let intentos = 0;
+    const intervalo = setInterval(async () => {
+        intentos++;
+        const restantes = maxSegundos - intentos;
+        try {
+            const r = await fetch('/api/stats', { cache: 'no-store' });
+            if (r.ok) {
+                clearInterval(intervalo);
+                if (label) label.textContent = '✅ Servidor listo. Recargando...';
+                setTimeout(() => window.location.reload(), 800);
+                return;
+            }
+        } catch (e) { /* servidor aún arrancando */ }
+
+        if (label) label.textContent = `⏳ Esperando que el servidor arranque... (${restantes}s)`;
+
+        if (intentos >= maxSegundos) {
+            clearInterval(intervalo);
+            if (label) label.textContent = '⚠️ El servidor tarda en arrancar. Recarga la página manualmente.';
+        }
+    }, 1000);
+}
+
 
 // ============================================================================
 // FUNCIONES DE CONTROL DE IMPRESORA ZEBRA
