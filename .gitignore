@@ -1,64 +1,17 @@
-# Python
+# Entorno virtual (se regenera con INSTALAR.bat)
+venv/
+
+# Python compilado
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-venv/
-env/
-ENV/
-*.egg-info/
-dist/
-build/
 
-# VS Code
-.vscode/
-*.code-workspace
-
-# Datos sensibles
-config_local.py
-*.env
-.env.local
-
-# Logs
-*.log
-logs/
-
-# Base de datos local (si se usa SQLite para dev)
-*.db
-*.sqlite
-*.sqlite3
-
-# Backups SQL
-backups/*.sql
-backups/*.bak
-
-# Base de datos y datos de produccion (NO sobreescribir con git pull)
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/*.db-backup*
-data/progreso_bono_*.json
-data/last_loaded.json
-
-# Excepcion: config_inicial.sql SÍ se sube (contiene puestos, maquinas, etc.)
-!data/config_inicial.sql
-logs/
-
-# Excel temporales
+# Archivos temporales de Office (bloqueos)
 ~$*.xlsx
 ~$*.xls
-data/cortes/*.xlsx
-data/cortes/*.xls
 
-# Sistema
+# Basura del sistema operativo
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# ZPL simuladas (muchas)
-data/etiquetas_simuladas/*.zpl
-
-# Credenciales (NUNCA COMMITEAR)
-connection_string.txt
 passwords.txt
