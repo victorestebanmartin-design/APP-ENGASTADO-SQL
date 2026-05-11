@@ -1,8 +1,287 @@
 {
   "641H10055": {
+    "estado": "completado",
+    "carros_completados": [
+      2,
+      1
+    ],
+    "fecha_inicio": "2026-05-05T13:46:24.494833",
+    "fecha_ultima_actualizacion": "2026-05-11T13:40:45.902936",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 15,
+        "saltados": [],
+        "fecha": "2026-05-11T13:30:40.660993"
+      },
+      "2": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:33:21.457024"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641M155": {
+    "estado": "completado",
+    "carros_completados": [
+      2,
+      1
+    ],
+    "fecha_inicio": "2026-05-11T13:32:00.042795",
+    "fecha_ultima_actualizacion": "2026-05-11T13:42:37.052362",
+    "paquetes_saltados_por_carro": {
+      "2": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:32:21.294435"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641M10100": {
+    "estado": "completado",
+    "carros_completados": [
+      2,
+      1
+    ],
+    "fecha_inicio": "2026-05-11T13:32:34.831489",
+    "fecha_ultima_actualizacion": "2026-05-11T13:42:06.309759",
+    "paquetes_saltados_por_carro": {
+      "2": {
+        "paquetes_hechos": 10,
+        "saltados": [],
+        "fecha": "2026-05-11T13:33:36.982302"
+      },
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:39:17.328500"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10056": {
+    "estado": "completado",
+    "carros_completados": [
+      1,
+      2
+    ],
+    "fecha_inicio": "2026-05-11T13:43:13.646685",
+    "fecha_ultima_actualizacion": "2026-05-11T13:43:52.330271",
+    "carros_con_pendientes": {}
+  },
+  "641H10057": {
     "estado": "en_proceso",
     "carros_completados": [],
-    "fecha_inicio": "2026-05-05T13:46:24.494833",
-    "fecha_ultima_actualizacion": "2026-05-05T13:46:39.503279"
+    "fecha_inicio": "2026-05-11T13:46:37.425154",
+    "fecha_ultima_actualizacion": "2026-05-11T13:49:46.404604",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:49:46.404600"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "S216",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "XPM-02",
+            "cod_cable": "640C10021A",
+            "num_cables": 2,
+            "bloqueado": false
+          }
+        ],
+        "fecha": "2026-05-11T13:49:46.404587"
+      }
+    }
+  },
+  "641M10078": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-11T13:49:14.097197",
+    "fecha_ultima_actualizacion": "2026-05-11T13:49:17.906658",
+    "paquetes_saltados_por_carro": {
+      "2": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:49:17.906654"
+      }
+    },
+    "carros_con_pendientes": {
+      "2": {
+        "paquetes": [
+          {
+            "elemento": "M12",
+            "cod_cable": "640D20000",
+            "num_cables": 4,
+            "bloqueado": false
+          }
+        ],
+        "fecha": "2026-05-11T13:49:17.906644"
+      }
+    }
+  },
+  "641M466": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-11T13:49:19.065235",
+    "fecha_ultima_actualizacion": "2026-05-11T13:49:23.345418",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:49:23.345415"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "XPM-05",
+            "cod_cable": "640C10024A",
+            "num_cables": 2,
+            "bloqueado": false
+          }
+        ],
+        "fecha": "2026-05-11T13:49:23.345404"
+      }
+    }
+  },
+  "641M531": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-11T13:49:24.997141",
+    "fecha_ultima_actualizacion": "2026-05-11T13:49:28.842710",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:49:28.842706"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "XPM-02",
+            "cod_cable": "640C10024A",
+            "num_cables": 8,
+            "bloqueado": false
+          },
+          {
+            "elemento": "XPM-03",
+            "cod_cable": "640C10024A",
+            "num_cables": 1,
+            "bloqueado": false
+          }
+        ],
+        "fecha": "2026-05-11T13:49:28.842694"
+      }
+    }
+  },
+  "641H10001": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-11T13:49:56.697505",
+    "fecha_ultima_actualizacion": "2026-05-11T13:53:14.679529",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T13:53:14.679526"
+      }
+    },
+    "carros_con_pendientes": {
+      "1": {
+        "paquetes": [
+          {
+            "elemento": "S705",
+            "cod_cable": "GRUPO_SERIE",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "CT1",
+            "cod_cable": "640C10021A",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "F1",
+            "cod_cable": "640C10021A",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "Q1",
+            "cod_cable": "640C10021A",
+            "num_cables": 3,
+            "bloqueado": false
+          },
+          {
+            "elemento": "Q2",
+            "cod_cable": "640C10021A",
+            "num_cables": 3,
+            "bloqueado": false
+          },
+          {
+            "elemento": "Q3",
+            "cod_cable": "640C10021A",
+            "num_cables": 3,
+            "bloqueado": false
+          },
+          {
+            "elemento": "XPM-01",
+            "cod_cable": "640C10021A",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "XPM-04",
+            "cod_cable": "640C10021A",
+            "num_cables": 15,
+            "bloqueado": false
+          },
+          {
+            "elemento": "CT2",
+            "cod_cable": "640C10025A",
+            "num_cables": 2,
+            "bloqueado": false
+          },
+          {
+            "elemento": "Q4",
+            "cod_cable": "640C10025A",
+            "num_cables": 6,
+            "bloqueado": false
+          },
+          {
+            "elemento": "Q6",
+            "cod_cable": "640C10025A",
+            "num_cables": 2,
+            "bloqueado": false
+          },
+          {
+            "elemento": "TB1",
+            "cod_cable": "640C10025A",
+            "num_cables": 1,
+            "bloqueado": false
+          },
+          {
+            "elemento": "XPM-02",
+            "cod_cable": "640C10041",
+            "num_cables": 1,
+            "bloqueado": false
+          }
+        ],
+        "fecha": "2026-05-11T13:53:14.679502"
+      }
+    }
   }
 }
