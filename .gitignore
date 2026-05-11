@@ -40,6 +40,9 @@ data/*.db-shm
 data/*.db-backup*
 data/progreso_bono_*.json
 data/last_loaded.json
+
+# Excepcion: config_inicial.sql SÍ se sube (contiene puestos, maquinas, etc.)
+!data/config_inicial.sql
 logs/
 
 # Excel temporales

@@ -12,6 +12,9 @@ echo  SISTEMA DE ENGASTADO AUTOMATICO - SQLite V2.0
 echo  (Watchdog activo - reinicio automatico habilitado)
 echo ================================================================================
 echo.
+echo  Abriendo navegador en http://localhost:5001 ...
+timeout /t 2 /nobreak >nul
+start "" "http://localhost:5001"
 
 python run_sql.py
 set EXIT_CODE=%errorlevel%

@@ -115,15 +115,35 @@ if %errorlevel% neq 0 (
 echo   Dependencias instaladas.
 
 REM -----------------------------------------------------------------------
+REM 6. Crear base de datos inicial (si no existe)
+REM -----------------------------------------------------------------------
+echo.
+echo [6/5] Inicializando base de datos...
+
+if not exist "data\engastado.db" (
+    venv\Scripts\python.exe inicializar_db.py
+    if %errorlevel% neq 0 (
+        echo  [ERROR] Fallo al crear la base de datos.
+        pause
+        exit /b 1
+    )
+) else (
+    echo   La base de datos ya existe, se conserva sin tocar.
+)
+
+REM -----------------------------------------------------------------------
 REM Fin
 REM -----------------------------------------------------------------------
 echo.
 echo ================================================================================
 echo  Instalacion completada en: %DESTINO%
 echo.
-if not exist "data\engastado.db" (
-    echo  IMPORTANTE: Copia el archivo data\engastado.db desde el PC principal
-    echo  a la carpeta: %DESTINO%\data\
+if not exist "data\config_inicial.sql" (
+    echo  AVISO: No se encontro configuracion inicial ^(data\config_inicial.sql^).
+    echo  La BD esta vacia. Para cargar puestos y maquinas del PC principal:
+    echo    1. En el PC principal, ejecuta: python exportar_config.py
+    echo    2. Haz commit y push de data\config_inicial.sql
+    echo    3. Aqui ejecuta: python inicializar_db.py  ^(sobreescribira la BD^)
     echo.
 )
 echo  Para arrancar la aplicacion: abre %DESTINO%\run.bat
