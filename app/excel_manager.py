@@ -299,8 +299,8 @@ class ExcelManager:
 
         col_de_manguito      = _col(['De Manguito'])
         col_de_marca         = _col(['De Marca'])
-        col_de_elemento      = _col(['De Elemento Etiquetas'])
-        col_de_elemento_orig = _col(['De Elemento Original'])
+        col_de_elemento      = _col(['De Elemento Etiquetas', 'De Elemento'])
+        col_de_elemento_orig = _col(['De Elemento Original', 'De Elemento'])
         col_de_punto         = _col(['De Punto Conexión', 'De Punto Conexion', 'De Punto'])
         col_para_elem        = _col(['Para Elemento'])
         col_para_punto       = _col(['Para Punto Conexión', 'Para Punto Conexion', 'Para Punto'])

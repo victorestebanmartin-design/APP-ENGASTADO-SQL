@@ -1,0 +1,8 @@
+
+PC_ZEFIRO,ED_05,, ,PC_ZEFIRO,ED_05, ,,
+1720, ab1,,TB6 1-3, ab1,1720,TB6 1-3,,
+1721, ab2,,TB6 2-3, ab2,1721,TB6 2-3,,
+1722, cd1,,TB6 3-3, cd1,1722,TB6 3-3,,
+J, ,,CAN1 IN , ,J,CAN1 IN ,,
+M, ,,J10 , ,M,J10 ,,
+N, ,,CAN2 IN , ,N,CAN2 IN ,,

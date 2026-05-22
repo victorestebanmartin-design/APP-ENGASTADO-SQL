@@ -1,7 +1,9 @@
 """
 Rutas principales de la aplicación Flask con SQLite
 """
-from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for, send_file
+import io
+import zipfile as _zipfile
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
 import os
@@ -121,6 +123,31 @@ def etiquetas():
     return render_template('etiquetas.html')
 
 
+def _respuesta_descarga_manguitos(ficheros: dict, ref: str, edicion: str):
+    """
+    Dado un dict {nombre_fichero: contenido_str}, devuelve:
+    - Un .txt directamente si sólo hay un fichero.
+    - Un .zip con todos si hay más de uno.
+    """
+    if len(ficheros) == 0:
+        return jsonify({'success': False, 'error': 'No se generó ningún fichero'})
+    if len(ficheros) == 1:
+        nombre, contenido = next(iter(ficheros.items()))
+        buf = io.BytesIO(contenido.encode('utf-8'))
+        buf.seek(0)
+        return send_file(buf, mimetype='text/plain', as_attachment=True,
+                         download_name=nombre)
+    # Múltiples ficheros → ZIP
+    zip_buf = io.BytesIO()
+    with _zipfile.ZipFile(zip_buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+        for nombre, contenido in ficheros.items():
+            zf.writestr(nombre, contenido.encode('utf-8'))
+    zip_buf.seek(0)
+    zip_nombre = f"{ref} {edicion} manguitos.zip"
+    return send_file(zip_buf, mimetype='application/zip', as_attachment=True,
+                     download_name=zip_nombre)
+
+
 @bp.route('/manguitos')
 def manguitos():
     """Guiado de colocación y pedidos de manguitos"""
@@ -211,6 +238,14 @@ def api_manguitos_datos():
                 # numero_etiqueta del grupo = primer manguito (para el título)
                 mgs = elem.get('manguitos', [])
                 elem['numero_etiqueta'] = mgs[0]['numero_etiqueta'] if mgs else None
+            # Ordenar elementos por numero_etiqueta ascendente
+            def _etq_sort(e):
+                v = e.get('numero_etiqueta')
+                try:
+                    return float(v) if v else float('inf')
+                except (ValueError, TypeError):
+                    return float('inf')
+            resultado.sort(key=_etq_sort)
         except Exception:
             pass  # Si no hay etiquetas cargadas, no es crítico
 
@@ -276,13 +311,9 @@ def api_manguitos_generar_txt():
                 orden_codigos.append(codigo)
             grupos[codigo].append(m)
 
-        # Generar un TXT por código
-        manguitos_dir = os.path.join(current_app.root_path, '..', 'data', 'manguitos')
-        manguitos_dir = os.path.normpath(manguitos_dir)
-        os.makedirs(manguitos_dir, exist_ok=True)
-
+        # Generar TXTs en memoria y devolver como descarga
         cabecera = f"{ref},{edicion},, ,{ref},{edicion}, ,,"
-        archivos_generados = []
+        ficheros = {}  # nombre -> contenido
 
         for codigo in orden_codigos:
             manguitos = grupos[codigo]
@@ -300,15 +331,85 @@ def api_manguitos_generar_txt():
                 lineas.append(linea)
 
             nombre = f"{ref} {edicion}  {codigo} 1.txt"
-            ruta = os.path.join(manguitos_dir, nombre)
-            with open(ruta, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lineas))
+            ficheros[nombre] = '\n'.join(lineas)
 
-            archivos_generados.append({'nombre': nombre, 'codigo': codigo, 'total': len(manguitos)})
-
-        return jsonify({'success': True, 'archivos': archivos_generados})
+        return _respuesta_descarga_manguitos(ficheros, ref, edicion)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+@bp.route('/api/manguitos/generar-txt-desde-excel', methods=['POST'])
+def api_manguitos_generar_txt_desde_excel():
+    """
+    Genera TXT de manguitos a partir de un Excel subido en el momento.
+    Orden: exactamente el del Excel (sin reordenar por número de etiqueta).
+    """
+    import tempfile, shutil
+    excel_file = request.files.get('excel')
+    ref        = (request.form.get('ref', 'PC_CAB_BADEN') or 'PC_CAB_BADEN').strip()
+    edicion    = (request.form.get('edicion', 'ed_04') or 'ed_04').strip()
+
+    if not excel_file or not excel_file.filename:
+        return jsonify({'success': False, 'error': 'No se recibió ningún archivo Excel'})
+
+    nombre_original = excel_file.filename
+    if not nombre_original.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'error': 'El archivo debe ser .xlsx o .xls'})
+
+    tmpdir = tempfile.mkdtemp(prefix='mg_excel_')
+    try:
+        ruta_tmp = os.path.join(tmpdir, nombre_original)
+        excel_file.save(ruta_tmp)
+
+        em       = ExcelManager(tmpdir)
+        elementos = em.get_manguitos(nombre_original)
+
+        # Aplanar en orden de Excel (sin ordenar por etiqueta)
+        lista_plana = []
+        for elem in elementos:
+            for m in elem['manguitos']:
+                lista_plana.append(m)
+
+        # Agrupar por código de manguito preservando orden de aparición
+        grupos       = {}
+        orden_codigos = []
+        for m in lista_plana:
+            codigo = m['de_manguito']
+            if codigo not in grupos:
+                grupos[codigo] = []
+                orden_codigos.append(codigo)
+            grupos[codigo].append(m)
+
+        # Generar TXTs en memoria y devolver como descarga
+        cabecera = f"{ref},{edicion},, ,{ref},{edicion}, ,,"
+        ficheros = {}  # nombre -> contenido
+
+        for codigo in orden_codigos:
+            manguitos = grupos[codigo]
+            lineas = ['', cabecera]
+            for m in manguitos:
+                de_elem   = m.get('de_elemento', '')
+                de_pto    = m.get('de_punto', '')
+                de_marca  = m.get('de_marca', '')
+                para_elem = m.get('para_elemento', '')
+                para_pto  = m.get('para_punto', '')
+
+                col_izq = f"{de_elem} {de_pto}".rstrip() + (' ' if not de_pto else '')
+                col_der = f"{para_elem} {para_pto}".rstrip() + (' ' if not para_pto else '')
+                linea = f"{de_marca},{col_izq},,{col_der},{col_izq},{de_marca},{col_der},,"
+                lineas.append(linea)
+
+            nombre = f"{ref} {edicion}  {codigo} 1.txt"
+            ficheros[nombre] = '\n'.join(lineas)
+
+        return _respuesta_descarga_manguitos(ficheros, ref, edicion)
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ==================== GESTIÓN DE PROYECTOS ====================
@@ -2059,7 +2160,8 @@ def datos_trabajo_v3():
                 'num_terminales': grupo['num_terminales'],
                 'cables_doble_terminal': grupo.get('cables_doble_terminal', []),
                 'cables_de_terminal': grupo.get('cables_de_terminal', []),
-                'cables_para_terminal': grupo.get('cables_para_terminal', [])
+                'cables_para_terminal': grupo.get('cables_para_terminal', []),
+                'archivo_excel': archivo  # para lookup de etiqueta correcto por archivo
             }
             paquetes_raw.append(paquete)
             total_terminales += grupo['num_terminales']
@@ -2304,6 +2406,82 @@ def api_verificar_pendientes():
             'num_libres': len(libres)
         })
 
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/sesion/sesiones-activas', methods=['GET'])
+def api_sesiones_activas():
+    """
+    Devuelve las sesiones activas con info del bono al que pertenecen.
+    Parámetro opcional: ?bono=nombre_bono para filtrar por bono.
+    """
+    try:
+        filtro_bono = request.args.get('bono', '').strip() or None
+
+        sesion_repo = SesionTrabajoRepository(db)
+        # Extender la consulta para incluir bono a través de carro
+        query = """
+            SELECT st.id, st.maquina_id, st.terminal_codigo,
+                   st.archivo_excel, st.carro_numero,
+                   st.timestamp_inicio, st.paquetes_json,
+                   m.nombre AS maquina_nombre,
+                   b.nombre AS bono_nombre
+            FROM sesiones_trabajo st
+            LEFT JOIN maquinas m ON st.maquina_id = m.id
+            LEFT JOIN carros c ON CAST(c.numero AS TEXT) = st.carro_numero
+            LEFT JOIN bonos b ON b.id = c.bono_id
+            WHERE st.activo = 1
+        """
+        params = {}
+        if filtro_bono:
+            query += " AND b.nombre = :bono"
+            params['bono'] = filtro_bono
+        query += " ORDER BY st.timestamp_inicio DESC"
+
+        sesiones = sesion_repo.execute_select(query, params)
+        result = []
+        for s in sesiones:
+            try:
+                paquetes = json.loads(s['paquetes_json'] or '[]')
+            except Exception:
+                paquetes = []
+            result.append({
+                'id': s['id'],
+                'maquina_nombre': s.get('maquina_nombre') or s['maquina_id'],
+                'terminal_codigo': s['terminal_codigo'],
+                'carro_numero': s['carro_numero'],
+                'bono_nombre': s.get('bono_nombre') or '—',
+                'timestamp_inicio': s['timestamp_inicio'],
+                'num_paquetes': len(paquetes),
+                'paquetes': paquetes
+            })
+        return jsonify({'success': True, 'sesiones': result, 'total': len(result)})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+
+@bp.route('/api/sesion/liberar-sesion/<sesion_id>', methods=['POST'])
+def api_liberar_sesion_admin(sesion_id):
+    """Libera una sesión concreta por su ID."""
+    try:
+        sesion_repo = SesionTrabajoRepository(db)
+        sesion_repo.liberar_sesion(sesion_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@bp.route('/api/sesion/limpiar-sesiones-fantasma', methods=['POST'])
+def api_limpiar_sesiones_fantasma():
+    """Libera TODAS las sesiones activas de golpe."""
+    try:
+        sesion_repo = SesionTrabajoRepository(db)
+        sesion_repo.execute_query(
+            "UPDATE sesiones_trabajo SET activo = 0 WHERE activo = 1", {}
+        )
+        return jsonify({'success': True, 'message': 'Todos los bloqueos liberados'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -3060,7 +3238,10 @@ def api_etiquetas_grupos_bono(nombre_bono):
         # Se busca por: coincidencia exacta OR que empiece por el código corto
         import sqlite3 as _sqlite3
         
-        resultados_set = {}  # Usar dict para deduplicar por (cod_cable, elemento)
+        # Lista de resultados (sin deduplicar por archivo, para que el frontend
+        # pueda filtrar por archivo_excel y obtener el número correcto)
+        resultados_list = []
+        archivos_vistos = set()
         
         with db.engine.connect() as conn:
             raw_conn = conn.connection
@@ -3077,13 +3258,14 @@ def api_etiquetas_grupos_bono(nombre_bono):
                     WHERE LOWER(archivo_excel) = LOWER(?) OR LOWER(codigo_corte) = LOWER(?)
                     ORDER BY numero_etiqueta, sub_numero
                 """, (archivo, nombre_sin_ext))
-                for row in cur.fetchall():
-                    key = (row[1], row[2])
-                    if key not in resultados_set:
-                        resultados_set[key] = row
+                rows = cur.fetchall()
+                for row in rows:
+                    resultados_list.append(row)
+                if rows:
+                    archivos_vistos.add(archivo)
             
             # Si no hay resultados, buscar por prefijo (código corto al inicio del código largo)
-            if not resultados_set:
+            if not resultados_list:
                 for codigo in codigos:
                     cur.execute("""
                         SELECT numero_etiqueta, cod_cable, elemento, descripcion, seccion,
@@ -3095,11 +3277,10 @@ def api_etiquetas_grupos_bono(nombre_bono):
                         ORDER BY numero_etiqueta, sub_numero
                     """, (codigo, codigo))
                     for row in cur.fetchall():
-                        key = (row[1], row[2])
-                        if key not in resultados_set:
-                            resultados_set[key] = row
+                        resultados_list.append(row)
         
-        resultados = sorted(resultados_set.values(), key=lambda r: r[0] if r[0] else 0)
+        # Ordenar: primero por archivo (para agrupar), luego por numero_etiqueta
+        resultados = sorted(resultados_list, key=lambda r: (r[9] or '', r[0] if r[0] else 0))
         
         grupos = []
         for row in resultados:

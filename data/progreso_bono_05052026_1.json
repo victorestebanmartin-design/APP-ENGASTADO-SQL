@@ -187,100 +187,145 @@
     }
   },
   "641H10001": {
-    "estado": "en_proceso",
-    "carros_completados": [],
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
     "fecha_inicio": "2026-05-11T13:49:56.697505",
-    "fecha_ultima_actualizacion": "2026-05-11T13:53:14.679529",
+    "fecha_ultima_actualizacion": "2026-05-11T16:39:06.136111",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 13,
+        "saltados": [],
+        "fecha": "2026-05-11T14:54:44.623689"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10003": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T14:20:50.662503",
+    "fecha_ultima_actualizacion": "2026-05-11T16:39:46.953268",
     "paquetes_saltados_por_carro": {
       "1": {
         "paquetes_hechos": 0,
         "saltados": [],
-        "fecha": "2026-05-11T13:53:14.679526"
+        "fecha": "2026-05-11T14:54:53.301088"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10006": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T14:54:54.002181",
+    "fecha_ultima_actualizacion": "2026-05-11T16:43:37.983014",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T14:56:25.795552"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10009": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T14:54:57.117767",
+    "fecha_ultima_actualizacion": "2026-05-11T17:03:31.438865",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 3,
+        "saltados": [],
+        "fecha": "2026-05-11T14:55:14.913251"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10014": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T17:03:33.942987",
+    "fecha_ultima_actualizacion": "2026-05-11T17:42:57.739334",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 5,
+        "saltados": [],
+        "fecha": "2026-05-11T17:40:19.552422"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10039": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T17:17:50.929823",
+    "fecha_ultima_actualizacion": "2026-05-11T18:04:48.468836",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T17:58:40.525116"
+      }
+    },
+    "carros_con_pendientes": {}
+  },
+  "641H10043": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-05-11T18:04:51.814685",
+    "fecha_ultima_actualizacion": "2026-05-11T18:07:00.483281",
+    "carros_con_pendientes": {}
+  },
+  "641H10047": {
+    "estado": "en_proceso",
+    "carros_completados": [],
+    "fecha_inicio": "2026-05-11T18:22:01.544331",
+    "fecha_ultima_actualizacion": "2026-05-11T18:22:39.850155",
+    "paquetes_saltados_por_carro": {
+      "1": {
+        "paquetes_hechos": 0,
+        "saltados": [],
+        "fecha": "2026-05-11T18:22:39.850152"
       }
     },
     "carros_con_pendientes": {
       "1": {
         "paquetes": [
           {
-            "elemento": "S705",
+            "elemento": "S206",
             "cod_cable": "GRUPO_SERIE",
             "num_cables": 1,
             "bloqueado": false
           },
           {
-            "elemento": "CT1",
-            "cod_cable": "640C10021A",
+            "elemento": "S210",
+            "cod_cable": "GRUPO_SERIE",
             "num_cables": 1,
-            "bloqueado": false
-          },
-          {
-            "elemento": "F1",
-            "cod_cable": "640C10021A",
-            "num_cables": 1,
-            "bloqueado": false
-          },
-          {
-            "elemento": "Q1",
-            "cod_cable": "640C10021A",
-            "num_cables": 3,
-            "bloqueado": false
-          },
-          {
-            "elemento": "Q2",
-            "cod_cable": "640C10021A",
-            "num_cables": 3,
-            "bloqueado": false
-          },
-          {
-            "elemento": "Q3",
-            "cod_cable": "640C10021A",
-            "num_cables": 3,
-            "bloqueado": false
-          },
-          {
-            "elemento": "XPM-01",
-            "cod_cable": "640C10021A",
-            "num_cables": 1,
-            "bloqueado": false
-          },
-          {
-            "elemento": "XPM-04",
-            "cod_cable": "640C10021A",
-            "num_cables": 15,
-            "bloqueado": false
-          },
-          {
-            "elemento": "CT2",
-            "cod_cable": "640C10025A",
-            "num_cables": 2,
-            "bloqueado": false
-          },
-          {
-            "elemento": "Q4",
-            "cod_cable": "640C10025A",
-            "num_cables": 6,
-            "bloqueado": false
-          },
-          {
-            "elemento": "Q6",
-            "cod_cable": "640C10025A",
-            "num_cables": 2,
             "bloqueado": false
           },
           {
             "elemento": "TB1",
-            "cod_cable": "640C10025A",
-            "num_cables": 1,
-            "bloqueado": false
-          },
-          {
-            "elemento": "XPM-02",
-            "cod_cable": "640C10041",
+            "cod_cable": "640C10024A",
             "num_cables": 1,
             "bloqueado": false
           }
         ],
-        "fecha": "2026-05-11T13:53:14.679502"
+        "fecha": "2026-05-11T18:22:39.850143"
       }
     }
   }

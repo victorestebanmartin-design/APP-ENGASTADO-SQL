@@ -848,6 +848,104 @@ async function comprobarActualizaciones() {
 }
 
 /**
+ * Cargar y mostrar las sesiones activas (bloqueos)
+ */
+async function cargarSesionesActivas() {
+    const lista = document.getElementById('bloqueos-lista');
+    const statusDiv = document.getElementById('bloqueos-status');
+    statusDiv.classList.add('hidden');
+    lista.innerHTML = '<p style="color:#6c757d;">⏳ Cargando...</p>';
+    await _cargarBloqueosBono();
+}
+
+async function _cargarBloqueosBono() {
+    const resultado = document.getElementById('bloqueos-resultado') || document.getElementById('bloqueos-lista');
+    resultado.innerHTML = '<p style="color:#6c757d;">⏳ Cargando...</p>';
+
+    try {
+        const r = await fetch('/api/sesion/sesiones-activas');
+        const data = await r.json();
+        if (!data.success) throw new Error(data.message);
+
+        if (data.total === 0) {
+            resultado.innerHTML = '<p style="color:#198754;font-weight:bold;">✓ No hay ningún bloqueo activo.</p>';
+            return;
+        }
+
+        const filas = data.sesiones.map(s => {
+            const hora = s.timestamp_inicio ? s.timestamp_inicio.replace('T', ' ').substring(0, 16) : '—';
+            const paquetesStr = s.paquetes.length
+                ? s.paquetes.map(p => `<span style="background:#f1f3f5;border-radius:4px;padding:1px 6px;font-size:0.8em;margin:2px;display:inline-block;">${p.elemento}</span>`).join('')
+                : '<em style="color:#adb5bd;">sin paquetes</em>';
+            return `
+            <div id="sesion-row-${s.id}" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                <div style="flex:1;">
+                    <div style="font-weight:bold;font-size:1em;margin-bottom:4px;">
+                        🖥️ ${s.maquina_nombre} &nbsp;·&nbsp; Terminal <strong>${s.terminal_codigo}</strong>
+                        ${s.carro_numero ? `&nbsp;·&nbsp; Carro ${s.carro_numero}` : ''}
+                    </div>
+                    <div style="color:#6c757d;font-size:0.82em;margin-bottom:6px;">Iniciada: ${hora} &nbsp;·&nbsp; ${s.num_paquetes} paquete(s) bloqueado(s)</div>
+                    <div>${paquetesStr}</div>
+                </div>
+                <button onclick="liberarSesion('${s.id}')"
+                    style="flex-shrink:0;padding:8px 16px;background:#dc3545;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.9em;white-space:nowrap;">
+                    🔓 Liberar
+                </button>
+            </div>`;
+        }).join('');
+
+        resultado.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <span style="font-weight:bold;color:#495057;">${data.total} sesión(es) activa(s)</span>
+                <button onclick="liberarTodas()" style="padding:6px 14px;background:#dc3545;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.88em;">
+                    🗑️ Liberar todas
+                </button>
+            </div>
+            ${filas}`;
+    } catch (e) {
+        resultado.innerHTML = `<p style="color:#dc3545;">❌ Error: ${e.message}</p>`;
+    }
+}
+
+/**
+ * Liberar una sesión concreta
+ */
+async function liberarSesion(sesionId) {
+    try {
+        const r = await fetch(`/api/sesion/liberar-sesion/${sesionId}`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            const row = document.getElementById(`sesion-row-${sesionId}`);
+            if (row) {
+                row.style.opacity = '0.4';
+                row.querySelector('button').textContent = '✓ Liberada';
+                row.querySelector('button').disabled = true;
+            }
+        }
+    } catch (e) {
+        alert('Error al liberar la sesión');
+    }
+}
+
+/**
+ * Liberar todas las sesiones activas
+ */
+async function liberarTodas() {
+    const confirmar = confirm('¿Liberar TODOS los bloqueos?\n\nSolo hazlo si no hay nadie trabajando en este momento.');
+    if (!confirmar) return;
+    try {
+        const r = await fetch('/api/sesion/limpiar-sesiones-fantasma', { method: 'POST' });
+        const data = await r.json();
+        const resultado = document.getElementById('bloqueos-resultado') || document.getElementById('bloqueos-lista');
+        if (data.success && resultado) {
+            resultado.innerHTML = '<p style="color:#198754;font-weight:bold;">✓ Todos los bloqueos liberados.</p>';
+        }
+    } catch (e) {
+        alert('Error al liberar las sesiones');
+    }
+}
+
+/**
  * Actualizar el sistema desde GitHub
  */
 async function actualizarSistema() {

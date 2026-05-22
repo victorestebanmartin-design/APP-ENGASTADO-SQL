@@ -170,6 +170,15 @@
             </button>
         </div>
 
+        <!-- Sección: Bloqueos de paquetes -->
+        <div class="card">
+            <h2>🔒 Bloqueos de Paquetes</h2>
+            <p class="instruccion">Sesiones activas que están bloqueando paquetes. Libéralas individualmente o todas a la vez.</p>
+            <div id="bloqueos-status" class="mensaje hidden"></div>
+            <button onclick="cargarSesionesActivas()" class="btn-secondary">🔍 Ver bloqueos activos</button>
+            <div id="bloqueos-lista" style="margin-top:14px;"></div>
+        </div>
+
         <!-- Sección: Paleta de Colores de Cables -->
         <div class="card" id="card-colores-cables">
             <h2>🎨 Paleta de Colores de Cables</h2>

@@ -388,30 +388,34 @@
       divError.style.display = 'none';
 
       try {
-        var res  = await fetch('/api/manguitos/generar-txt', {
+        var res = await fetch('/api/manguitos/generar-txt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ archivo: archivo, ref: ref, edicion: edicion })
         });
-        var data = await res.json();
 
-        if (!data.success) {
+        // Si el servidor devuelve JSON es un error
+        var contentType = res.headers.get('Content-Type') || '';
+        if (contentType.includes('application/json')) {
+          var data = await res.json();
           divError.textContent = 'Error: ' + (data.error || 'desconocido');
           divError.style.display = 'block';
           return;
         }
 
-        // Mostrar tabla de resultado
-        tablaBody.innerHTML = '';
-        (data.archivos || []).forEach(function (a) {
-          var tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td style="padding:7px 12px; border-bottom:1px solid #e5e7eb; font-family:monospace; font-size:13px;">' + a.nombre + '</td>' +
-            '<td style="padding:7px 12px; border-bottom:1px solid #e5e7eb;">' + a.codigo + '</td>' +
-            '<td style="padding:7px 12px; border-bottom:1px solid #e5e7eb; text-align:right; font-weight:600;">' + a.total + '</td>';
-          tablaBody.appendChild(tr);
-        });
+        // Descargar el fichero (txt o zip)
+        var blob = await res.blob();
+        var disposition = res.headers.get('Content-Disposition') || '';
+        var match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        var filename = match ? match[1].replace(/['"]/g, '') : 'manguitos.zip';
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+
+        divResultado.innerHTML = '<p style="color:#16a34a;font-weight:600;">Descarga iniciada: ' + filename + '</p>';
         divResultado.style.display = 'block';
+
       } catch (e) {
         divError.textContent = 'Error de red: ' + e.message;
         divError.style.display = 'block';
@@ -422,6 +426,73 @@
     });
 
     cargarListaArchivosPedido();
+  })();
+
+  // ── Generar TXT desde Excel propio (Tab excel) ────────────────────────
+  (function () {
+    var inputFile   = document.getElementById('excel-file-input');
+    var inputRef    = document.getElementById('excel-ref');
+    var inputEdicion = document.getElementById('excel-edicion');
+    var btnGenerar  = document.getElementById('excel-generar-btn');
+    var divResultado = document.getElementById('excel-resultado');
+    var tablaBody   = document.getElementById('excel-tabla-body');
+    var divError    = document.getElementById('excel-error');
+
+    if (!btnGenerar) return;
+
+    btnGenerar.addEventListener('click', async function () {
+      var file = inputFile ? inputFile.files[0] : null;
+      if (!file) { alert('Selecciona un archivo Excel'); return; }
+
+      var ref     = (inputRef ? inputRef.value : 'PC_CAB_BADEN').trim() || 'PC_CAB_BADEN';
+      var edicion = (inputEdicion ? inputEdicion.value : 'ed_04').trim() || 'ed_04';
+
+      btnGenerar.textContent = 'Generando...';
+      btnGenerar.disabled = true;
+      divResultado.style.display = 'none';
+      divError.style.display = 'none';
+
+      var formData = new FormData();
+      formData.append('excel', file);
+      formData.append('ref', ref);
+      formData.append('edicion', edicion);
+
+      try {
+        var res  = await fetch('/api/manguitos/generar-txt-desde-excel', {
+          method: 'POST',
+          body: formData   // sin Content-Type para que el browser ponga el boundary
+        });
+
+        // Si el servidor devuelve JSON es un error
+        var contentType = res.headers.get('Content-Type') || '';
+        if (contentType.includes('application/json')) {
+          var data = await res.json();
+          divError.textContent = 'Error: ' + (data.error || 'desconocido');
+          divError.style.display = 'block';
+          return;
+        }
+
+        // Descargar el fichero (txt o zip)
+        var blob = await res.blob();
+        var disposition = res.headers.get('Content-Disposition') || '';
+        var match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        var filename = match ? match[1].replace(/['"]/g, '') : 'manguitos.zip';
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+
+        divResultado.innerHTML = '<p style="color:#16a34a;font-weight:600;">Descarga iniciada: ' + filename + '</p>';
+        divResultado.style.display = 'block';
+
+      } catch (e) {
+        divError.textContent = 'Error de red: ' + e.message;
+        divError.style.display = 'block';
+      } finally {
+        btnGenerar.textContent = 'Generar TXT';
+        btnGenerar.disabled = false;
+      }
+    });
   })();
 
 })();

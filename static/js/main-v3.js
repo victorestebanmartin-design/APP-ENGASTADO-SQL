@@ -101,17 +101,29 @@ async function cargarGruposEtiquetas() {
 }
 
 /**
- * Obtener número de etiqueta para un elemento específico
+ * Obtener número de etiqueta para un elemento específico.
+ * Si se pasa `archivoExcel`, se busca primero dentro de ese archivo
+ * (garantiza el número correcto cuando el bono tiene varios cortes).
  */
-function obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas) {
+function obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas, archivoExcel) {
     if (!gruposEtiquetas || gruposEtiquetas.length === 0) {
         return null;
     }
 
-    // Buscar en los grupos de etiquetas
-    const grupo = gruposEtiquetas.find(g =>
-        g.cod_cable === codCable && g.elemento === elemento
-    );
+    // Intentar match exacto en el archivo del carro actual
+    let grupo = null;
+    if (archivoExcel) {
+        grupo = gruposEtiquetas.find(g =>
+            g.cod_cable === codCable && g.elemento === elemento &&
+            (g.archivo === archivoExcel || g.archivo_excel === archivoExcel)
+        );
+    }
+    // Fallback: cualquier archivo (comportamiento anterior)
+    if (!grupo) {
+        grupo = gruposEtiquetas.find(g =>
+            g.cod_cable === codCable && g.elemento === elemento
+        );
+    }
 
     if (!grupo) return null;
 
@@ -316,6 +328,11 @@ async function cargarBono() {
             // Cargar puestos disponibles
             await cargarPuestos();
             
+            // Scroll automático a la sección de puestos
+            setTimeout(() => {
+                document.getElementById('workspace-v3')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+            
             mostrarMensaje('Bono cargado correctamente. Selecciona un puesto de trabajo.', 'success');
         } else {
             mostrarMensaje(data.message || 'Bono no encontrado', 'error');
@@ -453,6 +470,10 @@ async function cargarMaquinas(puestoId) {
                 : todosTerminalesAsignados;
             
             const totalTerminales = terminalesAsignados.length;
+            
+            // Ocultar máquinas sin terminales en este bono
+            if (totalTerminales === 0) return;
+            
             let terminalesCompletadosCount = 0;
             
             if (window.progresoCompleto && totalTerminales > 0) {
@@ -483,6 +504,10 @@ async function cargarMaquinas(puestoId) {
         });
     } else {
         maquinasGrid.innerHTML = '<p class="no-data">No hay máquinas disponibles en este puesto.</p>';
+    }
+    
+    if (maquinasGrid.children.length === 0) {
+        maquinasGrid.innerHTML = '<p class="no-data">Ninguna máquina de este puesto tiene terminales en el bono actual.</p>';
     }
 }
 
@@ -527,6 +552,11 @@ async function seleccionarMaquina(maquina) {
     // Mostrar terminales asignados
     mostrarTerminalesAsignados();
     
+    // Scroll automático a los terminales
+    setTimeout(() => {
+        document.getElementById('paso-trabajo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+    
     // Cargar área de trabajo V2
     await cargarAreaTrabajoV2();
 }
@@ -556,7 +586,7 @@ function mostrarTerminalesAsignados() {
         <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
             ${mensajeProgreso}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3>📋 Terminales de ${maquinaSeleccionada.nombre}</h3>
+                <h3>Terminales de ${maquinaSeleccionada.nombre}</h3>
                 <div style="text-align: right;">
                     <div style="font-size: 1.5em; font-weight: bold; color: #0d6efd;">
                         ${completados} / ${total}
@@ -584,19 +614,19 @@ function mostrarTerminalesAsignados() {
                 if (completado) {
                     bg = '#d4edda'; border = '#28a745'; color = '#155724';
                     cursor = 'not-allowed'; opacity = '0.75';
-                    icono = '✅'; etiqueta = 'Completado';
+                    icono = ''; etiqueta = 'Completado';
                 } else if (enProceso) {
                     bg = '#cce5ff'; border = '#0d6efd'; color = '#004085';
                     cursor = 'pointer'; opacity = '1';
-                    icono = '🔵'; etiqueta = 'Pendientes libres';
+                    icono = ''; etiqueta = 'Pendientes libres';
                 } else if (enEspera) {
                     bg = '#fff3cd'; border = '#fd7e14'; color = '#7d4000';
                     cursor = 'pointer'; opacity = '1';
-                    icono = '🟠'; etiqueta = 'Esperando otros';
+                    icono = ''; etiqueta = 'Esperando otros';
                 } else {
                     bg = '#fff'; border = '#dee2e6'; color = '#495057';
                     cursor = 'pointer'; opacity = '1';
-                    icono = '⬜'; etiqueta = 'Pendiente';
+                    icono = ''; etiqueta = 'Pendiente';
                 }
                 
                 return `
@@ -616,7 +646,7 @@ function mostrarTerminalesAsignados() {
                             ${terminal}
                         </div>
                         <div id="estado-terminal-${terminal}" style="font-size: 0.9em; color: ${color};">
-                            ${icono} ${etiqueta}
+                            ${icono}${icono ? ' ' : ''}${etiqueta}
                         </div>
                     </div>
                 `;
@@ -671,13 +701,13 @@ async function _verificarBloqueosPendientes() {
                 tarjeta.style.background = '#d1e7dd';
                 tarjeta.style.borderColor = '#198754';
                 estadoDiv.style.color = '#0a3622';
-                estadoDiv.innerHTML = `🟢 <strong>¡Todo libre!</strong><br><span style="font-size:0.85em">${total} paquete${total>1?'s':''} disponible${total>1?'s':''}</span>`;
+                estadoDiv.innerHTML = `<strong>Todo libre</strong><br><span style="font-size:0.85em">${total} paquete${total>1?'s':''} disponible${total>1?'s':''}</span>`;
             } else if (numLibres > 0) {
                 // Liberación parcial
                 tarjeta.style.background = '#fff9e6';
                 tarjeta.style.borderColor = '#ffc107';
                 estadoDiv.style.color = '#664d03';
-                estadoDiv.innerHTML = `🟡 <strong>Parcialmente libre</strong><br><span style="font-size:0.85em">${numLibres} de ${total} disponible${numLibres>1?'s':''}</span>`;
+                estadoDiv.innerHTML = `<strong>Parcialmente libre</strong><br><span style="font-size:0.85em">${numLibres} de ${total} disponible${numLibres>1?'s':''}</span>`;
             }
             // Si sigue todo bloqueado, la tarjeta mantiene el estado naranja 🟠
         } catch (e) {
@@ -695,17 +725,16 @@ async function cargarAreaTrabajoV2() {
         areaTrabajoV2.innerHTML = `
             <div class="v3-seleccion-terminal">
                 <div class="header-seleccion">
-                    <h3>🎯 Configuración de Trabajo</h3>
+                    <h3>Configuración de Trabajo</h3>
                     <div class="ruta-completa">
-                        <span class="paso">📁 ${proyectoActual}</span> → 
-                        <span class="paso">🏭 ${puestoSeleccionado.nombre}</span> → 
-                        <span class="paso">🔧 ${maquinaSeleccionada.nombre}</span>
+                        <span class="paso">${puestoSeleccionado.nombre}</span> → 
+                        <span class="paso">${maquinaSeleccionada.nombre}</span>
                     </div>
                 </div>
                 
                 <div class="instruccion-principal">
-                    <p>📍 <strong>Siguiente paso:</strong> Selecciona un terminal de la lista de arriba para comenzar el trabajo.</p>
-                    <p>📊 Una vez seleccionado, el sistema analizará ese terminal y te mostrará los paquetes necesarios.</p>
+                    <p><strong>Siguiente paso:</strong> Selecciona un terminal de la lista de arriba para comenzar el trabajo.</p>
+                    <p>Una vez seleccionado, el sistema analizará ese terminal y te mostrará los paquetes necesarios.</p>
                 </div>
             </div>
         `;
@@ -725,6 +754,10 @@ async function volverAPuestos() {
     // Recargar progreso y puestos para mostrar datos actualizados
     await cargarProgresoDelBono(bonoActual.nombre);
     await cargarPuestos();
+    
+    setTimeout(() => {
+        document.getElementById('paso-puesto')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
 }
 
 /**
@@ -740,6 +773,10 @@ async function cambiarMaquina() {
     if (puestoSeleccionado) {
         await cargarMaquinas(puestoSeleccionado.id);
     }
+    
+    setTimeout(() => {
+        document.getElementById('paso-maquina')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
 }
 
 /**
@@ -888,10 +925,11 @@ async function mostrarPantallaPaquetesTerminal(terminal, grupos, elementosNecesa
     
     // Extraer elementos únicos y agregarles números de etiqueta
     const elementosUnicos = [...new Set(elementosNecesarios)];
+    const _archivoActual = carrosDelBono[carroActualIndex]?.archivo_excel;
     const elementosConEtiquetas = elementosUnicos.map(elemento => {
         const grupoConElemento = grupos.find(g => g.elemento === elemento);
         const codCable = grupoConElemento ? grupoConElemento.cod_cable : '';
-        const numeroEtiqueta = obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas);
+        const numeroEtiqueta = obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas, _archivoActual);
         return { elemento, numeroEtiqueta, codCable };
     });
     // Ordenar: primero los que tienen etiqueta (menor a mayor), luego los sin etiqueta
@@ -999,12 +1037,12 @@ function iniciarTrabajoConGrupos() {
  * Volver a la selección de terminales
  */
 function volverATerminales() {
-    // Limpiar datos temporales
     window.datosTerminalActual = null;
     window.gruposTerminalActual = null;
     window.terminalTrabajo = null;
-    
-    // Volver a mostrar la selección de terminales
+    document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
+    const _me3 = document.getElementById('modal-engaste');
+    if (_me3) _me3.remove();
     cargarAreaTrabajoV2();
 }
 
@@ -1178,13 +1216,14 @@ async function mostrarPantallaPaquetesV3(todosLosGrupos, elementosNecesarios) {
     const gruposEtiquetas = await cargarGruposEtiquetas();
     
     // Crear un mapa de elementos con sus números de etiqueta
+    const _archivoActualV3 = carrosDelBono[carroActualIndex]?.archivo_excel;
     const elementosConEtiquetas = elementosNecesarios.map(elemento => {
         let codCable = '';
         for (const terminalData of todosLosGrupos) {
             const grupoConElemento = terminalData.grupos.find(g => g.elemento === elemento);
             if (grupoConElemento) { codCable = grupoConElemento.cod_cable; break; }
         }
-        const numeroEtiqueta = obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas);
+        const numeroEtiqueta = obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas, _archivoActualV3);
         return { elemento, numeroEtiqueta, codCable };
     });
     // Ordenar por número de etiqueta (menor a mayor), sin etiqueta al final
@@ -2378,7 +2417,7 @@ async function mostrarModalPaquetes(carro) {
     if (paginaPaquetes === 0) {
         paquetesOrdenados = paquetesActuales.map(p => ({
             ...p,
-            numeroEtiqueta: obtenerNumeroEtiqueta(p.cod_cable, p.elemento, gruposEtiquetas)
+            numeroEtiqueta: obtenerNumeroEtiqueta(p.cod_cable, p.elemento, gruposEtiquetas, p.archivo_excel)
         }));
         paquetesOrdenados.sort((a, b) => {
             if (a.numeroEtiqueta !== null && b.numeroEtiqueta !== null) return a.numeroEtiqueta - b.numeroEtiqueta;
@@ -2529,12 +2568,11 @@ async function mostrarModalPaquetes(carro) {
                 </p>
                 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
                     <button onclick="cancelarModalPaquetes()" style="padding:12px 24px;font-size:1em;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">&#10060; Cancelar</button>
-                    ${bloqueadosEnPagina > 0 ? `<button onclick="actualizarBloqueos()" style="padding:12px 20px;font-size:1em;background:#198754;color:white;border:none;border-radius:8px;cursor:pointer;">🔄 Actualizar bloqueos</button>` : ''}
                     <button id="btn-confirmar-paquetes" onclick="confirmarPaginaPaquetes()" style="padding:12px 32px;font-size:1.1em;background:${libresEnPagina === 0 ? '#6c757d' : '#0d6efd'};color:white;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">
                         ${libresEnPagina === 0 ? '⏭️ Continuar (todo en uso) →' : libresEnPagina > 1 ? `✅ Tengo estos ${libresEnPagina}, empezar →` : '✅ Tengo este paquete, empezar →'}
                     </button>
                 </div>
-                <p style="margin-top:12px;color:#6c757d;font-size:0.88em;">💡 Pulsa <strong>Enter</strong> para confirmar. Si otro puesto liberó paquetes, pulsa 🔄 para actualizar.</p>
+                ${bloqueadosEnPagina > 0 ? `<p id="bloqueos-estado" style="margin-top:12px;color:#6c757d;font-size:0.88em;">⏳ Comprobando si se liberan paquetes bloqueados...</p>` : `<p style="margin-top:12px;color:#6c757d;font-size:0.88em;">💡 Pulsa <strong>Enter</strong> para confirmar.</p>`}
             </div>
         </div>
     `;
@@ -2550,41 +2588,63 @@ async function mostrarModalPaquetes(carro) {
         }
     };
     document.addEventListener('keypress', window._confirmarEnterHandler);
+
+    // Auto-refresh de bloqueos cada 5s si hay paquetes bloqueados en esta página
+    if (bloqueadosEnPagina > 0) {
+        if (window._bloqueoInterval) clearInterval(window._bloqueoInterval);
+        window._bloqueoInterval = setInterval(() => actualizarBloqueos(), 5000);
+    }
 }
 
 /**
- * Refrescar el estado de bloqueos sin salir del modal.
- * Re-consulta el backend con la sesión actual y vuelve a renderizar
- * el modal en la misma página para mostrar qué paquetes ya se liberaron.
+ * Auto-refresh de bloqueos: consulta verificar-pendientes con los paquetes
+ * bloqueados de la página actual y re-renderiza el modal si algo cambió.
  */
 async function actualizarBloqueos() {
-    const btn = document.querySelector('[onclick="actualizarBloqueos()"]');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = '⏳ Actualizando...';
+    // Si el modal ya no existe, detener el intervalo
+    if (!document.getElementById('modal-paquetes')) {
+        clearInterval(window._bloqueoInterval);
+        window._bloqueoInterval = null;
+        return;
     }
     try {
-        const carro = carrosDelBono[carroActualIndex];
-        const url = `/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${encodeURIComponent(maquinaSeleccionada.id)}${sesionActualId ? '&sesion_id=' + encodeURIComponent(sesionActualId) : ''}`;
-        const r = await fetch(url);
-        const data = await r.json();
-        if (!data.success || !data.paquetes) {
-            if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar bloqueos'; }
+        const bloqueadosActuales = paginaActual.filter(p => p.bloqueado);
+        if (!bloqueadosActuales.length) {
+            clearInterval(window._bloqueoInterval);
+            window._bloqueoInterval = null;
             return;
         }
-        // Actualizar el campo 'bloqueado' en paquetesOrdenados con los datos frescos del servidor
-        const mapaFresco = new Map(data.paquetes.map(p => [`${p.cod_cable}||${p.elemento}`, p]));
-        paquetesOrdenados = paquetesOrdenados.map(p => {
-            const fresco = mapaFresco.get(`${p.cod_cable}||${p.elemento}`);
-            if (fresco) {
-                return { ...p, bloqueado: fresco.bloqueado, bloqueado_por: fresco.bloqueado_por, bloqueado_terminal: fresco.bloqueado_terminal };
-            }
-            return p;
+        const r = await fetch('/api/sesion/verificar-pendientes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                paquetes: bloqueadosActuales.map(p => ({ cod_cable: p.cod_cable, elemento: p.elemento })),
+                sesion_id_excluir: sesionActualId || null
+            })
         });
-        // Re-renderizar el modal en la misma página
+        const data = await r.json();
+        if (!data.libres || data.libres.length === 0) {
+            // Nada cambió — actualizar texto del estado
+            const el = document.getElementById('bloqueos-estado');
+            if (el) el.textContent = `⏳ Esperando que se liberen ${data.num_bloqueados} paquete${data.num_bloqueados !== 1 ? 's' : ''}... (se comprueba cada 5s)`;
+            return;
+        }
+        // Hay paquetes liberados — actualizar paginaActual y re-renderizar
+        const libresSet = new Set(data.libres.map(p => `${p.cod_cable}||${p.elemento}`));
+        paginaActual = paginaActual.map(p =>
+            libresSet.has(`${p.cod_cable}||${p.elemento}`) ? { ...p, bloqueado: false, bloqueado_por: null } : p
+        );
+        // Sincronizar también en paquetesOrdenados
+        paquetesOrdenados = paquetesOrdenados.map(p =>
+            libresSet.has(`${p.cod_cable}||${p.elemento}`) ? { ...p, bloqueado: false, bloqueado_por: null } : p
+        );
+        clearInterval(window._bloqueoInterval);
+        window._bloqueoInterval = null;
+        // Re-renderizar el modal
+        const carro = carrosDelBono[carroActualIndex];
         await mostrarModalPaquetes(carro);
     } catch (e) {
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar bloqueos'; }
+        // Error de red — reintentar en el siguiente tick del intervalo
     }
 }
 
@@ -2709,6 +2769,11 @@ function cerrarModalPaquetes() {
 }
 
 async function cancelarModalPaquetes() {
+    // Detener auto-refresh de bloqueos
+    if (window._bloqueoInterval) {
+        clearInterval(window._bloqueoInterval);
+        window._bloqueoInterval = null;
+    }
     const modal = document.getElementById('modal-paquetes');
     if (modal) modal.remove();
     if (window._confirmarEnterHandler) {
@@ -2767,6 +2832,9 @@ async function cancelarModalPaquetes() {
         }).catch(() => {});
         sesionActualId = null;
     }
+    document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
+    const _me1 = document.getElementById('modal-engaste');
+    if (_me1) _me1.remove();
     mostrarSeleccionCarro();
 }
 
@@ -2806,6 +2874,25 @@ function saltarPaquete() {
     mostrarPaqueteExpandido();
 }
 
+function volverPaqueteAnterior() {
+    if (paqueteActualIndex <= 0) return;
+    if (handlerEnterPaquete) {
+        document.removeEventListener('keypress', handlerEnterPaquete);
+        handlerEnterPaquete = null;
+    }
+    window._confirmandoFinal = false;
+    paqueteActualIndex--;
+    // Si este paquete estaba marcado como saltado, quitarlo de la lista
+    const idx = paquetesSaltados.findIndex(p => p.indice === paqueteActualIndex);
+    if (idx !== -1) paquetesSaltados.splice(idx, 1);
+    mostrarPaqueteExpandido();
+}
+
+function cancelarConfirmacionFinal() {
+    window._confirmandoFinal = false;
+    mostrarPaqueteExpandido();
+}
+
 function confirmarPaquetesYComenzar() {
     confirmarPaginaPaquetes();
 }
@@ -2814,12 +2901,13 @@ function confirmarPaquetesYComenzar() {
  * Mostrar paquete expandido con detalles de cables
  */
 async function mostrarPaqueteExpandido() {
+    // Asegurar que no hay fullscreen residual
+    document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
+
     if (paqueteActualIndex >= batchFinIndex) {
         if (batchFinIndex >= paquetesOrdenados.length) {
-            // Terminamos todos los paquetes de este carro
             paqueteCompletado();
         } else {
-            // Hay más grupos — mostrar el siguiente modal
             paginaPaquetes++;
             mostrarModalPaquetes(carrosDelBono[carroActualIndex]);
         }
@@ -2852,7 +2940,7 @@ async function mostrarPaqueteExpandido() {
     
     // Cargar grupos de etiquetas y obtener número
     const gruposEtiquetas = await cargarGruposEtiquetas();
-    const numeroEtiqueta = obtenerNumeroEtiqueta(paquete.cod_cable, paquete.elemento, gruposEtiquetas);
+    const numeroEtiqueta = obtenerNumeroEtiqueta(paquete.cod_cable, paquete.elemento, gruposEtiquetas, paquete.archivo_excel);
     const _etqColor = getCodCableColor(paquete.cod_cable).bg;
     const etiquetaHtml = numeroEtiqueta 
         ? `<span style="display: inline-block; background: ${_etqColor}; color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ #${numeroEtiqueta}</span>`
@@ -2864,71 +2952,136 @@ async function mostrarPaqueteExpandido() {
 
     const areaTrabajoV2 = document.getElementById('area-trabajo');
 
+    // Crear o reutilizar overlay modal
+    let modalEngaste = document.getElementById('modal-engaste');
+    if (!modalEngaste) {
+        modalEngaste = document.createElement('div');
+        modalEngaste.id = 'modal-engaste';
+        modalEngaste.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:flex-start;z-index:10000;overflow-y:auto;padding:20px 0;box-sizing:border-box;';
+        document.body.appendChild(modalEngaste);
+    }
+
     // ── Renderizado especial para paquetes de grupo serie SXX ──
     if (paquete.es_grupo) {
         const grupoSerie = paquete.grupo_serie;
-        // Buscar el número de etiqueta del padre en gruposEtiquetas
-        const gruposEtiquetas = await cargarGruposEtiquetas();
-        const numPadre = (gruposEtiquetas.find(g => g.es_grupo_padre && g.elemento === grupoSerie))?.numero_etiqueta ?? '';
+        const gruposEtiquetas2 = await cargarGruposEtiquetas();
+        const numPadre = (gruposEtiquetas2.find(g => g.es_grupo_padre && g.elemento === grupoSerie))?.numero_etiqueta ?? '';
         const etiquetaPadreHtml = numPadre
-            ? `<span style="display:inline-block;background:#f59e0b;color:white;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:1.2em;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">🏷️ Etiqueta ${grupoSerie} — #${numPadre}</span>`
-            : `<span style="display:inline-block;background:#6c757d;color:white;padding:8px 16px;border-radius:8px;font-weight:bold;font-size:1.1em;margin-bottom:10px;">📦 ${grupoSerie}</span>`;
+            ? `<span style="display:inline-block;background:#f59e0b;color:white;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:1.2em;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">&#127991;&#65039; Etiqueta ${grupoSerie} — #${numPadre}</span>`
+            : `<span style="display:inline-block;background:#6c757d;color:white;padding:8px 16px;border-radius:8px;font-weight:bold;font-size:1.1em;margin-bottom:10px;">&#128230; ${grupoSerie}</span>`;
 
         const subPaquetesHtml = (paquete.sub_paquetes || []).map((sub, i) => {
             const numSub = numPadre ? `${numPadre}.${String(sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
             const _subColor = getCodCableColor(sub.cod_cable).bg;
-            const cablesDe   = (sub.cables_de_terminal   || []).map(c => `<span style="background:#2196f3;color:white;padding:5px 10px;border-radius:6px;font-weight:bold;font-size:0.95em;">${c}</span>`).join('');
-            const cablesPara = (sub.cables_para_terminal || []).map(c => `<span style="background:#4caf50;color:white;padding:5px 10px;border-radius:6px;font-weight:bold;font-size:0.95em;">${c}</span>`).join('');
-            const cablesAmb  = (sub.cables_doble_terminal|| []).map(c => `<span style="background:#f44336;color:white;padding:5px 10px;border-radius:6px;font-weight:bold;font-size:0.95em;">${c}</span>`).join('');
+            const cablesDe   = sub.cables_de_terminal   || [];
+            const cablesPara = sub.cables_para_terminal || [];
+            const cablesAmb  = sub.cables_doble_terminal|| [];
+            const seccionesHtml = `
+                ${cablesDe.length > 0 ? `
+                <div style="background:linear-gradient(135deg,#e3f2fd 0%,#bbdefb 100%);border-left:5px solid #2196f3;padding:12px 15px;border-radius:10px;margin-top:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:1.3em;">📍</span>
+                        <span style="font-weight:bold;color:#1976d2;">De Terminal</span>
+                        <span style="background:#2196f3;color:white;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;">${cablesDe.length}</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        ${cablesDe.map(c => `<span style="background:#bbdefb;color:#0d2a4a;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #64b5f6;">${c}</span>`).join('')}
+                    </div>
+                    <div style="margin-top:8px;padding:6px 10px;background:rgba(33,150,243,0.12);border-radius:6px;display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:1em;">✅</span>
+                        <span style="font-size:0.82em;color:#1565c0;font-style:italic;">Pon el terminal en el lado <strong>liso</strong> del cable (sin guion)</span>
+                    </div>
+                </div>` : ''}
+                ${cablesPara.length > 0 ? `
+                <div style="background:linear-gradient(135deg,#e8f5e9 0%,#c8e6c9 100%);border-left:5px solid #4caf50;padding:12px 15px;border-radius:10px;margin-top:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:1.3em;">🎯</span>
+                        <span style="font-weight:bold;color:#1b5e20;">Para Terminal</span>
+                        <span style="background:#c8e6c9;color:#1b5e20;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;border:1.5px solid #81c784;">${cablesPara.length}</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        ${cablesPara.map(c => `<span style="background:#c8e6c9;color:#1b5e20;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #81c784;">${c}</span>`).join('')}
+                    </div>
+                    <div style="margin-top:8px;padding:6px 10px;background:rgba(76,175,80,0.15);border-radius:6px;display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:1em;">✂️</span>
+                        <span style="font-size:0.82em;color:#2e7d32;font-style:italic;">Pon el terminal en el lado del <strong>guion</strong> — la máquina de corte marca así todos los cables, ej: <strong>208-</strong></span>
+                    </div>
+                </div>` : ''}
+                ${cablesAmb.length > 0 ? `
+                <div style="background:linear-gradient(135deg,#ffebee 0%,#ffcdd2 100%);border-left:5px solid #f44336;padding:12px 15px;border-radius:10px;margin-top:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:1.3em;">🔗</span>
+                        <span style="font-weight:bold;color:#7f0000;">Ambos Lados</span>
+                        <span style="background:#ffcdd2;color:#7f0000;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;border:1.5px solid #e57373;">${cablesAmb.length}</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                        ${cablesAmb.map(c => `<span style="background:#ffcdd2;color:#7f0000;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #e57373;">${c}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+                ${(!cablesDe.length && !cablesPara.length && !cablesAmb.length) ? '<span style="color:#6c757d;font-size:0.9em;">Sin cables clasificados</span>' : ''}
+            `;
             return `
-            <div style="border:1px solid #dee2e6;border-radius:10px;padding:14px;background:#f8f9fa;margin-bottom:10px;">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
-                    <span style="background:${_subColor};color:white;padding:4px 12px;border-radius:8px;font-weight:bold;font-size:0.95em;">🏷️ ${numSub}</span>
-                    <span style="font-weight:600;color:#212529;">${sub.elemento}</span>
-                    <span style="color:#6c757d;font-size:0.88em;">Cable: ${sub.cod_cable}</span>
-                    <span style="margin-left:auto;color:#0d6efd;font-weight:600;">${sub.num_cables} cables · ${sub.num_terminales} term.</span>
+            <div style="padding:14px 0;border-bottom:1px solid #e9ecef;">
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
+                    <div style="background:${_subColor};color:white;padding:8px 16px;border-radius:10px;border:2px dashed rgba(255,255,255,0.6);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.15);min-width:54px;">
+                        <div style="font-size:1.5em;font-weight:900;letter-spacing:1px;line-height:1;">${numSub}</div>
+                    </div>
+                    <span style="font-size:1.05em;font-weight:700;color:#212529;">${sub.elemento}</span>
                 </div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                    ${cablesDe}${cablesPara}${cablesAmb}
-                    ${(!cablesDe && !cablesPara && !cablesAmb) ? '<span style="color:#6c757d;font-size:0.9em;">Sin cables clasificados</span>' : ''}
-                </div>
+                ${seccionesHtml}
             </div>`;
         }).join('');
 
-        areaTrabajoV2.innerHTML = `
-        <div style="background:white;border-radius:15px;padding:30px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
-            <div style="text-align:center;margin-bottom:20px;">
-                <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:15px;border-radius:10px;margin-bottom:15px;">
-                    <div style="font-size:1.5em;font-weight:bold;">Terminal ${terminalActual}</div>
-                    <div style="font-size:1.1em;margin-top:5px;">Paquete ${paqueteActualIndex + 1} de ${paquetesOrdenados.length} · Grupo ${paginaPaquetes + 1}/${Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA)}</div>
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.3);display:flex;gap:16px;justify-content:center;flex-wrap:wrap;font-size:0.88em;opacity:0.92;">
-                        <span>🚗 Carro ${carrosDelBono[carroActualIndex]?.carro ?? ''}</span>
-                        <span>📋 ${carrosDelBono[carroActualIndex]?.proyecto_nombre ?? ''}</span>
+        modalEngaste.innerHTML = `
+        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:95%;max-width:975px;">
+
+            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="display:flex;flex-direction:column;align-items:center;">
+                        <span style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Carro</span>
+                        <div style="background:#f59e0b;color:#1e293b;padding:8px 22px;border-radius:8px;font-size:2.2em;font-weight:900;letter-spacing:1px;line-height:1;margin-top:2px;">🚗 ${carrosDelBono[carroActualIndex]?.carro ?? ''}</div>
                     </div>
+                    <div style="font-size:0.95em;color:rgba(255,255,255,0.65);border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">${carrosDelBono[carroActualIndex]?.proyecto_nombre ?? ''}</div>
                 </div>
-                ${etiquetaPadreHtml}
-                <h2 style="color:#212529;margin-bottom:4px;">Serie ${grupoSerie}</h2>
-                <div style="color:#6c757d;font-size:1em;">${paquete.sub_paquetes?.length || 0} elementos · ${paquete.num_cables} cables · ${paquete.num_terminales} terminales</div>
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <div style="text-align:right;">
+                        <div style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Terminal</div>
+                        <div style="font-size:1.25em;font-weight:700;margin-top:2px;">${terminalActual}</div>
+                        <div style="font-size:0.8em;opacity:0.5;margin-top:1px;">${paqueteActualIndex + 1} / ${paquetesOrdenados.length}</div>
+                    </div>
+                    <button onclick="cancelarModalPaquetes()" title="Salir" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);color:white;border-radius:8px;width:40px;height:40px;font-size:1.2em;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
+                </div>
             </div>
 
-            <div style="margin-bottom:20px;">
-                <h3 style="margin-bottom:10px;color:#495057;">Sub-paquetes de la serie:</h3>
+            <div style="flex:1;padding:20px 24px 12px;">
+
+            <div style="text-align:center;margin-bottom:18px;">
+                ${numPadre ? `
+                <div style="display:inline-flex;flex-direction:column;align-items:center;background:#f59e0b;color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
+                    <span style="font-size:2.8em;font-weight:900;letter-spacing:2px;line-height:1;">${numPadre}</span>
+                    <span style="font-size:0.9em;font-weight:700;margin-top:4px;">Serie ${grupoSerie}</span>
+                </div>` : `<div style="display:inline-block;background:#6c757d;color:white;padding:10px 24px;border-radius:10px;font-weight:bold;font-size:1.3em;">Serie ${grupoSerie}</div>`}
+            </div>
+
+            <div style="display:grid;gap:10px;">
                 ${subPaquetesHtml}
             </div>
 
-            <div style="text-align:center;background:#f8f9fa;padding:20px;border-radius:10px;">
-                <p style="font-size:1.2em;color:#0d6efd;margin-bottom:15px;font-weight:bold;">
-                    ${paqueteActualIndex === paquetesOrdenados.length - 1
-                        ? '✅ Presiona ENTER para finalizar este carro'
-                        : paqueteActualIndex === batchFinIndex - 1
-                            ? `⏭️ Presiona ENTER — siguiente grupo (${paquetesOrdenados.length - batchFinIndex} paquetes más)`
-                            : 'Presiona ENTER cuando tengas todos los sub-paquetes'}
-                </p>
-                <div style="font-size:0.9em;color:#6c757d;margin-bottom:14px;">
-                    Paquete ${paqueteActualIndex + 1} de ${paquetesOrdenados.length}
-                    ${paquetesSaltados.length > 0 ? `<span style="color:#e67e22;margin-left:10px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</span>` : ''}
+            </div>
+
+            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
+                        <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
+                    </div>
+                    <div style="text-align:right;">
+                        ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
+                        <div style="font-size:0.95em;color:#0d6efd;font-weight:700;">
+                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ ENTER — Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? `⏭️ ENTER — Siguiente grupo` : 'ENTER — Siguiente ▶'}
+                        </div>
+                    </div>
                 </div>
-                <button onclick="saltarPaquete()" style="padding:10px 22px;font-size:0.95em;background:#fff3cd;color:#856404;border:2px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ No tengo este paquete (saltarlo)</button>
             </div>
         </div>`;
 
@@ -2939,66 +3092,65 @@ async function mostrarPaqueteExpandido() {
                 document.removeEventListener('keypress', handlerEnterPaquete);
                 handlerEnterPaquete = null;
                 if (paqueteActualIndex === paquetesOrdenados.length - 1) {
-                    areaTrabajoV2.innerHTML = `<div style="background:white;border-radius:15px;padding:50px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;">Guardando progreso...</h2></div>`;
+                    modalEngaste.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;min-height:200px;"><div style="background:white;border-radius:16px;padding:50px 60px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;">Guardando progreso...</h2></div></div>`;
                 }
                 paqueteActualIndex++;
                 mostrarPaqueteExpandido();
             }
         };
         document.addEventListener('keypress', handlerEnterPaquete);
-        setTimeout(() => { if (areaTrabajoV2) areaTrabajoV2.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
         return;
     }
     // ── Fin renderizado grupo serie ──
-    areaTrabajoV2.innerHTML = `
-        <div style="background: white; border-radius: 15px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-            <div style="text-align: center; margin-bottom: 25px;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-                    <div style="font-size: 1.5em; font-weight: bold;">Terminal ${terminalActual}</div>
-                    <div style="font-size: 1.1em; margin-top: 5px;">Paquete ${paqueteActualIndex + 1} de ${paquetesOrdenados.length} · Grupo ${paginaPaquetes + 1}/${Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA)}</div>
-                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.3); display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; font-size: 0.88em; opacity: 0.92;">
-                        <span>🚗 Carro ${carrosDelBono[carroActualIndex]?.carro ?? ''}</span>
-                        <span>📋 ${carrosDelBono[carroActualIndex]?.proyecto_nombre ?? ''}</span>
+    modalEngaste.innerHTML = `
+        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:95%;max-width:975px;">
+
+            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="display:flex;flex-direction:column;align-items:center;">
+                        <span style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Carro</span>
+                        <div style="background:#f59e0b;color:#1e293b;padding:8px 22px;border-radius:8px;font-size:2.2em;font-weight:900;letter-spacing:1px;line-height:1;margin-top:2px;">🚗 ${carrosDelBono[carroActualIndex]?.carro ?? ''}</div>
                     </div>
+                    <div style="font-size:0.95em;color:rgba(255,255,255,0.65);border-left:1px solid rgba(255,255,255,0.15);padding-left:14px;">${carrosDelBono[carroActualIndex]?.proyecto_nombre ?? ''}</div>
                 </div>
-                ${etiquetaHtml}
-                <h2 style="color: #212529; margin-bottom: 10px;">${paquete.elemento}</h2>
-                <div style="color: #6c757d; font-size: 1.1em;">Cable: ${paquete.cod_cable}</div>
-            </div>
-            
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
-                <div style="display: flex; gap: 30px; justify-content: center; text-align: center;">
-                    <div>
-                        <div style="font-size: 2em; font-weight: bold; color: #0d6efd;">${paquete.num_cables}</div>
-                        <div style="color: #6c757d;">Total Cables</div>
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <div style="text-align:right;">
+                        <div style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Terminal</div>
+                        <div style="font-size:1.25em;font-weight:700;margin-top:2px;">${terminalActual}</div>
+                        <div style="font-size:0.8em;opacity:0.5;margin-top:1px;">${paqueteActualIndex + 1} / ${paquetesOrdenados.length}</div>
                     </div>
-                    <div>
-                        <div style="font-size: 2em; font-weight: bold; color: #0d6efd;">${paquete.num_terminales}</div>
-                        <div style="color: #6c757d;">Total Terminales</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 2em; font-weight: bold; color: #0d6efd;">${paquete.seccion || 'N/A'}</div>
-                        <div style="color: #6c757d;">Sección</div>
-                    </div>
+                    <button onclick="cancelarModalPaquetes()" title="Salir" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);color:white;border-radius:8px;width:40px;height:40px;font-size:1.2em;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&times;</button>
                 </div>
             </div>
-            
-            <div class="terminals-grid" style="display: grid; gap: 15px; margin-bottom: 30px;">
-                <h3 style="margin-bottom: 10px;">Terminales a engastar:</h3>
+
+            <div style="flex:1;padding:20px 24px 16px;">
+            <div style="text-align:center;margin-bottom:16px;">
+                ${numeroEtiqueta ? `
+                <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etqColor};color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
+                    <span style="font-size:2.8em;font-weight:900;letter-spacing:2px;line-height:1;">${numeroEtiqueta}</span>
+                    <span style="font-size:0.9em;font-weight:700;margin-top:4px;">${paquete.elemento}</span>
+                </div>` : `<div style="font-size:1.5em;font-weight:700;color:#212529;">${paquete.elemento}</div>`}
+            </div>
+
+            <div style="display:grid;gap:12px;">
                 
                 ${cablesDeTerminal.length > 0 ? `
                     <div class="terminal-group terminal-group-azul" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-left: 5px solid #2196f3; padding: 15px; border-radius: 10px;">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                             <span style="font-size: 1.5em;">📍</span>
-                            <span style="font-weight: bold; color: #1976d2; font-size: 1.1em;">De Terminal</span>
-                            <span style="background: #2196f3; color: white; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto;">
+                            <span style="font-weight: bold; color: #0d2a4a; font-size: 1.15em;">De Terminal</span>
+                            <span style="background: #bbdefb; color: #0d2a4a; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto; border: 1.5px solid #64b5f6;">
                                 ${cablesDeTerminal.length}
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                             ${cablesDeTerminal.map(cable => 
-                                `<span class="cable-badge" style="background: #2196f3; color: white; padding: 8px 14px; border-radius: 8px; font-weight: bold; font-size: 1em;">${cable}</span>`
+                                `<span class="cable-badge" style="background: #bbdefb; color: #0d2a4a; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #64b5f6;">${cable}</span>`
                             ).join('')}
+                        </div>
+                        <div style="margin-top: 10px; padding: 7px 12px; background: rgba(33,150,243,0.12); border-radius: 7px; display: flex; align-items: center; gap: 7px;">
+                            <span style="font-size: 1.1em;">✅</span>
+                            <span style="font-size: 0.88em; color: #1565c0; font-style: italic;">Pon el terminal en el lado <strong>liso</strong> del cable (el lado sin guion)</span>
                         </div>
                     </div>
                 ` : ''}
@@ -3007,15 +3159,19 @@ async function mostrarPaqueteExpandido() {
                     <div class="terminal-group terminal-group-verde" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-left: 5px solid #4caf50; padding: 15px; border-radius: 10px;">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                             <span style="font-size: 1.5em;">🎯</span>
-                            <span style="font-weight: bold; color: #388e3c; font-size: 1.1em;">Para Terminal</span>
-                            <span style="background: #4caf50; color: white; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto;">
+                            <span style="font-weight: bold; color: #1b5e20; font-size: 1.15em;">Para Terminal</span>
+                            <span style="background: #c8e6c9; color: #1b5e20; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto; border: 1.5px solid #81c784;">
                                 ${cablesParaTerminal.length}
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                             ${cablesParaTerminal.map(cable => 
-                                `<span class="cable-badge" style="background: #4caf50; color: white; padding: 8px 14px; border-radius: 8px; font-weight: bold; font-size: 1em;">${cable}</span>`
+                                `<span class="cable-badge" style="background: #c8e6c9; color: #1b5e20; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #81c784;">${cable}</span>`
                             ).join('')}
+                        </div>
+                        <div style="margin-top: 10px; padding: 7px 12px; background: rgba(76,175,80,0.15); border-radius: 7px; display: flex; align-items: center; gap: 7px;">
+                            <span style="font-size: 1.1em;">✂️</span>
+                            <span style="font-size: 0.88em; color: #2e7d32; font-style: italic;">Pon el terminal en el lado del <strong>guion</strong> — la máquina de corte marca así todos los cables, ej: <strong>208-</strong></span>
                         </div>
                     </div>
                 ` : ''}
@@ -3024,33 +3180,35 @@ async function mostrarPaqueteExpandido() {
                     <div class="terminal-group terminal-group-rojo" style="background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-left: 5px solid #f44336; padding: 15px; border-radius: 10px;">
                         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                             <span style="font-size: 1.5em;">🔗</span>
-                            <span style="font-weight: bold; color: #d32f2f; font-size: 1.1em;">Ambos Lados</span>
-                            <span style="background: #f44336; color: white; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto;">
+                            <span style="font-weight: bold; color: #7f0000; font-size: 1.15em;">Ambos Lados</span>
+                            <span style="background: #ffcdd2; color: #7f0000; padding: 4px 12px; border-radius: 12px; font-size: 1em; font-weight: bold; margin-left: auto; border: 1.5px solid #e57373;">
                                 ${cablesAmbos.length}
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                             ${cablesAmbos.map(cable => 
-                                `<span class="cable-badge" style="background: #f44336; color: white; padding: 8px 14px; border-radius: 8px; font-weight: bold; font-size: 1em;">${cable}</span>`
+                                `<span class="cable-badge" style="background: #ffcdd2; color: #7f0000; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #e57373;">${cable}</span>`
                             ).join('')}
                         </div>
                     </div>
                 ` : ''}
             </div>
-            
-            <div style="text-align: center; background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                <p style="font-size: 1.2em; color: #0d6efd; margin-bottom: 15px; font-weight: bold;">
-                    ${paqueteActualIndex === paquetesOrdenados.length - 1
-                        ? '✅ Presiona ENTER para finalizar este carro'
-                        : paqueteActualIndex === batchFinIndex - 1
-                            ? `⏭️ Presiona ENTER — siguiente grupo (${paquetesOrdenados.length - batchFinIndex} paquetes más)`
-                            : 'Presiona ENTER cuando termines este paquete'}
-                </p>
-                <div style="font-size: 0.9em; color: #6c757d; margin-bottom: 14px;">
-                    Paquete ${paqueteActualIndex + 1} de ${paquetesOrdenados.length}
-                    ${paquetesSaltados.length > 0 ? `<span style="color:#e67e22;margin-left:10px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</span>` : ''}
+
+            </div>
+
+            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
+                        <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
+                    </div>
+                    <div style="text-align:right;">
+                        ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
+                        <div style="font-size:0.95em;color:#0d6efd;font-weight:700;">
+                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ ENTER — Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? `⏭️ ENTER — Siguiente grupo` : 'ENTER — Siguiente ▶'}
+                        </div>
+                    </div>
                 </div>
-                <button onclick="saltarPaquete()" style="padding:10px 22px;font-size:0.95em;background:#fff3cd;color:#856404;border:2px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ No tengo este paquete (saltarlo)</button>
             </div>
         </div>
     `;
@@ -3059,24 +3217,35 @@ async function mostrarPaqueteExpandido() {
     if (handlerEnterPaquete) {
         document.removeEventListener('keypress', handlerEnterPaquete);
     }
+    window._confirmandoFinal = false;
     
     // Evento para pasar al siguiente paquete con Enter
     handlerEnterPaquete = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            const esUltimo = paqueteActualIndex === paquetesOrdenados.length - 1;
+
+            if (esUltimo && !window._confirmandoFinal) {
+                window._confirmandoFinal = true;
+                const footer = document.getElementById('footer-paquete');
+                if (footer) {
+                    footer.innerHTML = `
+                        <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:18px;text-align:center;">
+                            <p style="font-size:1.25em;color:#e65100;font-weight:bold;margin-bottom:8px;">⚠️ ¿Seguro que has terminado el carro?</p>
+                            <p style="color:#6c757d;font-size:0.9em;margin-bottom:16px;">Pulsa <strong>ENTER</strong> otra vez para guardar y cerrar</p>
+                            <button onclick="cancelarConfirmacionFinal()" style="padding:10px 26px;font-size:0.95em;background:#e9ecef;color:#495057;border:2px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Volver al paquete</button>
+                        </div>`;
+                }
+                return;
+            }
+
             document.removeEventListener('keypress', handlerEnterPaquete);
             handlerEnterPaquete = null;
+            window._confirmandoFinal = false;
             
-            // Mostrar indicador de carga si es el último paquete
-            if (paqueteActualIndex === paquetesOrdenados.length - 1) {
-                const areaTrabajoV2 = document.getElementById('area-trabajo');
-                areaTrabajoV2.innerHTML = `
-                    <div style="background: white; border-radius: 15px; padding: 50px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                        <div style="font-size: 3em; margin-bottom: 20px;">⏳</div>
-                        <h2 style="color: #0d6efd; margin-bottom: 15px;">Guardando progreso...</h2>
-                        <div style="color: #6c757d;">Por favor espera un momento</div>
-                    </div>
-                `;
+            if (esUltimo) {
+                const me = document.getElementById('modal-engaste');
+                if (me) me.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;min-height:200px;"><div style="background:white;border-radius:16px;padding:50px 60px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;margin-bottom:15px;">Guardando progreso...</h2><div style="color:#6c757d;">Por favor espera un momento</div></div></div>`;
             }
             
             paqueteActualIndex++;
@@ -3084,14 +3253,6 @@ async function mostrarPaqueteExpandido() {
         }
     };
     document.addEventListener('keypress', handlerEnterPaquete);
-    
-    // Scroll automático al área de trabajo
-    setTimeout(() => {
-        const areaTrabajoV2 = document.getElementById('area-trabajo');
-        if (areaTrabajoV2) {
-            areaTrabajoV2.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }, 100);
 }
 
 /**
@@ -3142,6 +3303,9 @@ async function paqueteCompletado() {
     }
 
     setTimeout(() => {
+        document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
+        const _me2 = document.getElementById('modal-engaste');
+        if (_me2) _me2.remove();
         mostrarSeleccionCarro();
     }, paquetesSaltados.length > 0 ? 3500 : 1200);
 }

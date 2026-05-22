@@ -287,6 +287,17 @@
     min-height: 200px;
 }
 
+.workspace-v2.fullscreen-engaste {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    overflow-y: auto;
+    border-radius: 0;
+    border: none;
+    padding: 0;
+    background: #f0f2f5;
+}
+
 .v2-integration {
     text-align: center;
     padding: 30px;
