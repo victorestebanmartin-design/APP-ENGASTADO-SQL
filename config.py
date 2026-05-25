@@ -9,7 +9,7 @@ class Config:
     # CONFIGURACIÓN BÁSICA
     # =====================================================
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-SQL-2026-change-in-production'
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     # Rutas de directorios
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
