@@ -2932,8 +2932,8 @@ function _agregarSwipeModal() {
     const _onEnd = (e) => {
         const dx = e.changedTouches[0].clientX - _tx;
         if (Math.abs(dx) < 60) return;
-        if (dx < 0) avanzarPaquete();
-        else volverPaqueteAnterior();
+        if (dx < 0 && !window._confirmandoFinal) avanzarPaquete();
+        else if (dx > 0) volverPaqueteAnterior();
     };
     if (modal._swipeStart) modal.removeEventListener('touchstart', modal._swipeStart);
     if (modal._swipeEnd)   modal.removeEventListener('touchend',   modal._swipeEnd);

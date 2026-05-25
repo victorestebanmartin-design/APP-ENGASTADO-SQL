@@ -59,22 +59,6 @@ def home():
     return render_template('home.html')
 
 
-@bp.route('/v1')
-def index():
-    """Vista principal V1 - Operación de engastado"""
-    codigo_repo = CodigoCorteRepository(db)
-    cortes = codigo_repo.obtener_todos_codigos()
-    return render_template('index.html', cortes=cortes)
-
-
-@bp.route('/v2')
-def index_v2():
-    """Vista principal V2"""
-    codigo_repo = CodigoCorteRepository(db)
-    cortes = codigo_repo.obtener_todos_codigos()
-    return render_template('index-v2.html', cortes=cortes)
-
-
 @bp.route('/v3')
 def index_v3():
     """Vista principal V3 - Sistema de bonos"""
@@ -707,12 +691,6 @@ def api_listar_ordenes_alias():
 
 
 # ==================== GESTIÓN DE BONOS ====================
-
-@bp.route('/bonos')
-def gestion_bonos():
-    """Vista de gestión de bonos"""
-    return render_template('gestion-bonos.html')
-
 
 @bp.route('/api/bonos', methods=['GET'])
 def api_obtener_bonos():
