@@ -2893,6 +2893,56 @@ function cancelarConfirmacionFinal() {
     mostrarPaqueteExpandido();
 }
 
+function avanzarPaquete() {
+    const esUltimo = paqueteActualIndex === paquetesOrdenados.length - 1;
+    if (esUltimo && !window._confirmandoFinal) {
+        window._confirmandoFinal = true;
+        const footer = document.getElementById('footer-paquete');
+        if (footer) {
+            footer.innerHTML = `
+                <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:18px;text-align:center;">
+                    <p style="font-size:1.25em;color:#e65100;font-weight:bold;margin-bottom:8px;">⚠️ ¿Seguro que has terminado el carro?</p>
+                    <p style="color:#6c757d;font-size:0.9em;margin-bottom:16px;">Pulsa <strong>Confirmar</strong> o <strong>ENTER</strong> para guardar y cerrar</p>
+                    <div style="display:flex;gap:10px;justify-content:center;">
+                        <button onclick="cancelarConfirmacionFinal()" style="padding:10px 26px;font-size:0.95em;background:#e9ecef;color:#495057;border:2px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Volver</button>
+                        <button onclick="avanzarPaquete()" style="padding:10px 26px;font-size:0.95em;background:#28a745;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700;">✅ Confirmar</button>
+                    </div>
+                </div>`;
+        }
+        return;
+    }
+    if (handlerEnterPaquete) {
+        document.removeEventListener('keypress', handlerEnterPaquete);
+        handlerEnterPaquete = null;
+    }
+    window._confirmandoFinal = false;
+    if (esUltimo) {
+        const me = document.getElementById('modal-engaste');
+        if (me) me.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;min-height:200px;"><div style="background:white;border-radius:16px;padding:50px 60px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;margin-bottom:15px;">Guardando progreso...</h2><div style="color:#6c757d;">Por favor espera un momento</div></div></div>`;
+    }
+    paqueteActualIndex++;
+    mostrarPaqueteExpandido();
+}
+
+function _agregarSwipeModal() {
+    const modal = document.getElementById('modal-engaste');
+    if (!modal) return;
+    let _tx = 0;
+    const _onStart = (e) => { _tx = e.changedTouches[0].clientX; };
+    const _onEnd = (e) => {
+        const dx = e.changedTouches[0].clientX - _tx;
+        if (Math.abs(dx) < 60) return;
+        if (dx < 0) avanzarPaquete();
+        else volverPaqueteAnterior();
+    };
+    if (modal._swipeStart) modal.removeEventListener('touchstart', modal._swipeStart);
+    if (modal._swipeEnd)   modal.removeEventListener('touchend',   modal._swipeEnd);
+    modal._swipeStart = _onStart;
+    modal._swipeEnd   = _onEnd;
+    modal.addEventListener('touchstart', _onStart, { passive: true });
+    modal.addEventListener('touchend',   _onEnd,   { passive: true });
+}
+
 function confirmarPaquetesYComenzar() {
     confirmarPaginaPaquetes();
 }
@@ -3077,28 +3127,18 @@ async function mostrarPaqueteExpandido() {
                     </div>
                     <div style="text-align:right;">
                         ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
-                        <div style="font-size:0.95em;color:#0d6efd;font-weight:700;">
-                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ ENTER — Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? `⏭️ ENTER — Siguiente grupo` : 'ENTER — Siguiente ▶'}
-                        </div>
+                        <button onclick="avanzarPaquete()" style="padding:10px 22px;font-size:0.95em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:8px;cursor:pointer;min-width:160px;touch-action:manipulation;">
+                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
+                        </button>
                     </div>
                 </div>
             </div>
         </div>`;
 
         if (handlerEnterPaquete) document.removeEventListener('keypress', handlerEnterPaquete);
-        handlerEnterPaquete = (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.removeEventListener('keypress', handlerEnterPaquete);
-                handlerEnterPaquete = null;
-                if (paqueteActualIndex === paquetesOrdenados.length - 1) {
-                    modalEngaste.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;min-height:200px;"><div style="background:white;border-radius:16px;padding:50px 60px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;">Guardando progreso...</h2></div></div>`;
-                }
-                paqueteActualIndex++;
-                mostrarPaqueteExpandido();
-            }
-        };
+        handlerEnterPaquete = (e) => { if (e.key === 'Enter') { e.preventDefault(); avanzarPaquete(); } };
         document.addEventListener('keypress', handlerEnterPaquete);
+        _agregarSwipeModal();
         return;
     }
     // ── Fin renderizado grupo serie ──
@@ -3204,9 +3244,9 @@ async function mostrarPaqueteExpandido() {
                     </div>
                     <div style="text-align:right;">
                         ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
-                        <div style="font-size:0.95em;color:#0d6efd;font-weight:700;">
-                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ ENTER — Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? `⏭️ ENTER — Siguiente grupo` : 'ENTER — Siguiente ▶'}
-                        </div>
+                        <button onclick="avanzarPaquete()" style="padding:10px 22px;font-size:0.95em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:8px;cursor:pointer;min-width:160px;touch-action:manipulation;">
+                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -3219,40 +3259,10 @@ async function mostrarPaqueteExpandido() {
     }
     window._confirmandoFinal = false;
     
-    // Evento para pasar al siguiente paquete con Enter
-    handlerEnterPaquete = (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const esUltimo = paqueteActualIndex === paquetesOrdenados.length - 1;
-
-            if (esUltimo && !window._confirmandoFinal) {
-                window._confirmandoFinal = true;
-                const footer = document.getElementById('footer-paquete');
-                if (footer) {
-                    footer.innerHTML = `
-                        <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:18px;text-align:center;">
-                            <p style="font-size:1.25em;color:#e65100;font-weight:bold;margin-bottom:8px;">⚠️ ¿Seguro que has terminado el carro?</p>
-                            <p style="color:#6c757d;font-size:0.9em;margin-bottom:16px;">Pulsa <strong>ENTER</strong> otra vez para guardar y cerrar</p>
-                            <button onclick="cancelarConfirmacionFinal()" style="padding:10px 26px;font-size:0.95em;background:#e9ecef;color:#495057;border:2px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Volver al paquete</button>
-                        </div>`;
-                }
-                return;
-            }
-
-            document.removeEventListener('keypress', handlerEnterPaquete);
-            handlerEnterPaquete = null;
-            window._confirmandoFinal = false;
-            
-            if (esUltimo) {
-                const me = document.getElementById('modal-engaste');
-                if (me) me.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;min-height:200px;"><div style="background:white;border-radius:16px;padding:50px 60px;text-align:center;"><div style="font-size:3em;margin-bottom:20px;">⏳</div><h2 style="color:#0d6efd;margin-bottom:15px;">Guardando progreso...</h2><div style="color:#6c757d;">Por favor espera un momento</div></div></div>`;
-            }
-            
-            paqueteActualIndex++;
-            mostrarPaqueteExpandido();
-        }
-    };
+    // Enter y swipe para pasar al siguiente paquete
+    handlerEnterPaquete = (e) => { if (e.key === 'Enter') { e.preventDefault(); avanzarPaquete(); } };
     document.addEventListener('keypress', handlerEnterPaquete);
+    _agregarSwipeModal();
 }
 
 /**

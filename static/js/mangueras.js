@@ -239,9 +239,19 @@
            '</div>';
   }
 
-  // ── Navegación ────────────────────────────────────────────────────────
+  // ── Navegación y gestos táctiles ─────────────────────────────────────
   btnPrev.addEventListener('click', function () { if (idx > 0) { idx--; renderManguera(); } });
   btnNext.addEventListener('click', function () { if (idx < mangueras.length - 1) { idx++; renderManguera(); } });
+  // Swipe izquierda → siguiente, swipe derecha → anterior
+  var _swTx = 0;
+  divActivo.addEventListener('touchstart', function (e) { _swTx = e.changedTouches[0].clientX; }, { passive: true });
+  divActivo.addEventListener('touchend', function (e) {
+    if (mangueras.length === 0) return;
+    var dx = e.changedTouches[0].clientX - _swTx;
+    if (Math.abs(dx) < 60) return;
+    if (dx < 0 && idx < mangueras.length - 1) { idx++; renderManguera(); }
+    else if (dx > 0 && idx > 0) { idx--; renderManguera(); }
+  }, { passive: true });
 
   document.addEventListener('keydown', function (e) {
     if (mangueras.length === 0) return;

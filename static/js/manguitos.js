@@ -304,9 +304,19 @@
     renderElemento();
   }
 
-  // ── Navegación por botones ───────────────────────────────────────────
+  // ── Navegación por botones y gestos táctiles ─────────────────────
   btnNext.addEventListener('click', avanzar);
   btnPrev.addEventListener('click', retroceder);
+  // Swipe izquierda → siguiente, swipe derecha → anterior
+  var _swTx = 0;
+  divActivo.addEventListener('touchstart', function (e) { _swTx = e.changedTouches[0].clientX; }, { passive: true });
+  divActivo.addEventListener('touchend', function (e) {
+    if (elementosFiltrados.length === 0) return;
+    var dx = e.changedTouches[0].clientX - _swTx;
+    if (Math.abs(dx) < 60) return;
+    if (dx < 0) avanzar();
+    else retroceder();
+  }, { passive: true });
 
   function avanzar() {
     if (elementosFiltrados.length === 0) return;
