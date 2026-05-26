@@ -1914,6 +1914,56 @@ def api_terminales_disponibles():
         }), 500
 
 
+@bp.route('/api/excel/<path:archivo>/terminales', methods=['GET'])
+def api_excel_terminales(archivo):
+    """Obtener terminales únicos de un archivo Excel excluyendo los que terminan en *"""
+    try:
+        archivo = os.path.basename((archivo or '').strip())
+        if not archivo:
+            return jsonify({
+                'success': False,
+                'error': 'Archivo no especificado'
+            }), 400
+
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/cortes')
+        filepath = os.path.join(upload_folder, archivo)
+
+        if not os.path.exists(filepath):
+            return jsonify({
+                'success': False,
+                'error': f'Archivo no encontrado: {archivo}'
+            }), 404
+
+        df = pd.read_excel(filepath, sheet_name=_detectar_hoja(filepath))
+
+        columnas_terminales = [
+            col for col in df.columns
+            if 'terminal' in str(col).lower()
+        ]
+
+        terminales_unicos = set()
+        for col in columnas_terminales:
+            valores = df[col].dropna().unique()
+            for valor in valores:
+                terminal = str(valor).strip()
+                if terminal and not terminal.endswith('*'):
+                    terminales_unicos.add(terminal)
+
+        terminales = sorted(list(terminales_unicos))
+
+        return jsonify({
+            'success': True,
+            'terminales': terminales,
+            'total': len(terminales)
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @bp.route('/api/asignar-terminal', methods=['POST'])
 def api_asignar_terminal():
     """Asignar un terminal a una máquina"""

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualización de Bonos</title>
+    <title>Visualización · Engastado</title>
     <style>
         * {
             margin: 0;
@@ -159,40 +159,56 @@
             letter-spacing: 0.5px;
         }
         
-        .bono-stats {
-            display: flex;
-            gap: 10px;
+        .bono-avance {
             margin-bottom: 10px;
-            justify-content: space-around;
-            padding: 8px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 8px;
             flex-shrink: 0;
-            border: 1px solid #dee2e6;
         }
-        
-        .bono-stat {
-            text-align: center;
-            flex: 1;
+
+        .bono-avance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 5px;
         }
-        
-        .bono-stat-value {
-            font-size: 1.8em;
+
+        .bono-avance-label {
+            font-size: 0.72em;
+            font-weight: 700;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bono-avance-valor {
+            font-size: 0.88em;
             font-weight: 800;
             background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            line-height: 1;
         }
-        
-        .bono-stat-label {
-            color: #6c757d;
-            font-size: 0.7em;
-            margin-top: 3px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
+
+        .bono-avance-bar {
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+            border-radius: 12px;
+            height: 22px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.12);
+            border: 1px solid #dee2e6;
+            position: relative;
+        }
+
+        .bono-avance-fill {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 60%, #0dcaf0 100%);
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 900;
+            font-size: 0.82em;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }
         
         .carros-section {
@@ -213,11 +229,123 @@
             letter-spacing: 1px;
         }
         
-        .carros-grid {
+        .carros-header {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            grid-template-columns: 48px 140px 1fr 2fr;
+            gap: 12px;
+            padding: 2px 14px 6px 16px;
+            flex-shrink: 0;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 4px;
+        }
+
+        .carros-header-cell {
+            font-size: 0.68em;
+            font-weight: 700;
+            color: #adb5bd;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .carros-lista {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
             flex: 1;
+            min-height: 0;
+        }
+
+        .carro-fila {
+            display: grid;
+            grid-template-columns: 48px 140px 1fr 2fr;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px 10px 16px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .carro-fila::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: transparent;
+            transition: background 0.2s;
+        }
+
+        .carro-fila.ocupado {
+            border-color: #c7d8fb;
+            background: linear-gradient(135deg, #f0f5ff 0%, #fff 100%);
+        }
+
+        .carro-fila.ocupado::before {
+            background: linear-gradient(180deg, #667eea, #0dcaf0);
+        }
+
+        .carro-fila.vacio {
+            opacity: 0.38;
+            cursor: default;
+            background: #f8f9fa;
+        }
+
+        .carro-fila.vacio:hover { transform: none; box-shadow: none; }
+
+        .carro-fila.ocupado:hover {
+            box-shadow: 0 2px 10px rgba(13, 110, 253, 0.18);
+            transform: translateX(2px);
+        }
+
+        .carro-fila-num {
+            font-size: clamp(1em, 2vh, 2em);
+            font-weight: 900;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+        }
+
+        .carro-fila-orden {
+            font-size: clamp(0.85em, 1.7vh, 1.5em);
+            font-weight: 700;
+            color: #212529;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .carro-fila-desc {
+            font-size: clamp(0.8em, 1.5vh, 1.3em);
+            color: #495057;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .carro-fila-barra {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .carro-fila-barra .carro-progreso-bar {
+            height: clamp(16px, 3vh, 40px);
+        }
+
+        .carro-fila-barra .carro-progreso-text {
+            font-size: clamp(0.65em, 1.1vh, 0.95em);
+            color: #6c757d;
+            text-align: right;
+            font-weight: 600;
         }
         
         .carro-item {
@@ -294,6 +422,42 @@
         .carro-item.ocupado::before {
             background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%);
         }
+
+        .carro-item.estado-completo {
+            border-color: #198754;
+            background: linear-gradient(135deg, #e8f8ef 0%, #ffffff 100%);
+        }
+
+        .carro-item.estado-completo::before {
+            background: linear-gradient(90deg, #198754 0%, #20c997 100%);
+        }
+
+        .carro-item.estado-en-uso {
+            border-color: #0d6efd;
+            background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%);
+        }
+
+        .carro-item.estado-en-uso::before {
+            background: linear-gradient(90deg, #0d6efd 0%, #0dcaf0 100%);
+        }
+
+        .carro-item.estado-bloqueado {
+            border-color: #ffc107;
+            background: linear-gradient(135deg, #fff8e1 0%, #ffffff 100%);
+        }
+
+        .carro-item.estado-bloqueado::before {
+            background: linear-gradient(90deg, #ffc107 0%, #ff9800 100%);
+        }
+
+        .carro-item.estado-no-iniciado {
+            border-color: #ced4da;
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        }
+
+        .carro-item.estado-no-iniciado::before {
+            background: linear-gradient(90deg, #ced4da 0%, #adb5bd 100%);
+        }
         
         .carro-item.vacio {
             opacity: 0.4;
@@ -340,6 +504,29 @@
         .carro-estado-badge.vacio {
             background: #e9ecef;
             color: #adb5bd;
+        }
+
+        .carro-estado-badge.estado-completo {
+            background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(25, 135, 84, 0.3);
+        }
+
+        .carro-estado-badge.estado-en-uso {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+            color: white;
+            box-shadow: 0 2px 6px rgba(13, 110, 253, 0.3);
+        }
+
+        .carro-estado-badge.estado-bloqueado {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: #212529;
+            box-shadow: 0 2px 6px rgba(255, 193, 7, 0.35);
+        }
+
+        .carro-estado-badge.estado-no-iniciado {
+            background: #e9ecef;
+            color: #6c757d;
         }
         
         .carro-proyecto {
@@ -396,6 +583,24 @@
             overflow: hidden;
             text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
+
+        .carro-progreso-fill.estado-completo {
+            background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        }
+
+        .carro-progreso-fill.estado-en-uso {
+            background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+        }
+
+        .carro-progreso-fill.estado-bloqueado {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: #212529;
+            text-shadow: none;
+        }
+
+        .carro-progreso-fill.estado-no-iniciado {
+            background: linear-gradient(135deg, #ced4da 0%, #adb5bd 100%);
+        }
         
         .carro-progreso-fill::after {
             content: '';
@@ -444,9 +649,185 @@
             color: #6c757d;
             font-size: 0.85em;
         }
+
+        .detalle-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(20, 24, 40, 0.6);
+            z-index: 9999;
+            padding: 16px;
+        }
+
+        .detalle-modal.activo {
+            display: flex;
+        }
+
+        .detalle-modal-card {
+            width: min(760px, 96vw);
+            max-height: 88vh;
+            overflow: auto;
+            background: linear-gradient(135deg, #ffffff 0%, #f7f9ff 100%);
+            border-radius: 14px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            box-shadow: 0 18px 40px rgba(16, 24, 40, 0.28);
+            padding: 16px;
+        }
+
+        .detalle-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        .detalle-titulo {
+            font-size: 1.1em;
+            font-weight: 800;
+            color: #2b2f42;
+        }
+
+        .detalle-cerrar {
+            border: 0;
+            border-radius: 8px;
+            background: #e5e7eb;
+            color: #111827;
+            font-weight: 700;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+
+        .detalle-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .detalle-item {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+
+        .detalle-item-label {
+            font-size: 0.75em;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 2px;
+            font-weight: 700;
+        }
+
+        .detalle-item-valor {
+            font-size: 0.95em;
+            color: #111827;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .detalle-terminales {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .detalle-terminales-lista {
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 220px;
+            overflow: auto;
+        }
+
+        .terminal-chip {
+            background: #eef2ff;
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+            border-radius: 999px;
+            padding: 3px 9px;
+            font-size: 0.78em;
+            font-weight: 700;
+        }
+
+        .terminal-chip.estado-completo {
+            background: #e8f8ef;
+            color: #166534;
+            border-color: #86efac;
+        }
+
+        .terminal-chip.estado-en-uso {
+            background: #e7f1ff;
+            color: #1e3a8a;
+            border-color: #93c5fd;
+        }
+
+        .terminal-chip.estado-bloqueado {
+            background: #fff8e1;
+            color: #78350f;
+            border-color: #fcd34d;
+        }
+
+        .terminal-chip.estado-no-iniciado {
+            background: #f1f3f5;
+            color: #6b7280;
+            border-color: #d1d5db;
+        }
+
+        .terminales-leyenda {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 0.78em;
+            color: #4b5563;
+            font-weight: 700;
+        }
+
+        .terminales-leyenda-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .terminales-leyenda-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+        }
+
+        .terminales-leyenda-dot.estado-completo {
+            background: #22c55e;
+        }
+
+        .terminales-leyenda-dot.estado-en-uso {
+            background: #3b82f6;
+        }
+
+        .terminales-leyenda-dot.estado-bloqueado {
+            background: #f59e0b;
+        }
+
+        .terminales-leyenda-dot.estado-no-iniciado {
+            background: #d1d5db;
+        }
         
         @media (max-width: 1400px) {
             .bonos-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .detalle-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -480,6 +861,16 @@
                 <h2>Cargando bonos...</h2>
             </div>
         </div>
+
+        <div id="detalle-carro-modal" class="detalle-modal" aria-hidden="true">
+            <div class="detalle-modal-card" role="dialog" aria-modal="true" aria-label="Detalle de carro">
+                <div class="detalle-header">
+                    <div id="detalle-carro-titulo" class="detalle-titulo">Detalle de carro</div>
+                    <button id="detalle-carro-cerrar" class="detalle-cerrar" type="button">Cerrar</button>
+                </div>
+                <div id="detalle-carro-contenido"></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -487,6 +878,172 @@
         let todosLosBonos = [];
         let bono1Seleccionado = null;
         let bono2Seleccionado = null;
+        let detallesCarro = {};
+
+        function escaparHtml(valor) {
+            return String(valor ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function resumirEstadosTerminales(terminales) {
+            const resumen = {
+                'completo': 0,
+                'en-uso': 0,
+                'bloqueado': 0,
+                'no-iniciado': 0
+            };
+
+            (terminales || []).forEach(item => {
+                const estado = (typeof item === 'string' ? 'no-iniciado' : item.estado) || 'no-iniciado';
+                if (Object.prototype.hasOwnProperty.call(resumen, estado)) {
+                    resumen[estado] += 1;
+                } else {
+                    resumen['no-iniciado'] += 1;
+                }
+            });
+
+            return resumen;
+        }
+
+        function abrirDetalleCarro(detalleKey) {
+            const detalle = detallesCarro[detalleKey];
+            if (!detalle) return;
+
+            const modal = document.getElementById('detalle-carro-modal');
+            const titulo = document.getElementById('detalle-carro-titulo');
+            const contenido = document.getElementById('detalle-carro-contenido');
+
+            const terminales = Array.isArray(detalle.terminales) ? detalle.terminales : [];
+            const resumenEstados = detalle.resumenTerminales || resumirEstadosTerminales(terminales);
+            const totalTerminales = terminales.length;
+            const completados = resumenEstados['completo'] || 0;
+            const porcentaje = totalTerminales > 0 ? Math.round((completados / totalTerminales) * 100) : 0;
+            const chips = terminales.length > 0
+                ? terminales.map(item => {
+                    const terminal = typeof item === 'string' ? item : item.terminal;
+                    const estado = (typeof item === 'string' ? 'no-iniciado' : item.estado) || 'no-iniciado';
+                    const estadoTexto = estado === 'completo'
+                        ? 'Completo'
+                        : estado === 'en-uso'
+                            ? 'En uso'
+                            : estado === 'bloqueado'
+                                ? 'Bloqueado'
+                                : 'No iniciado';
+                    return `<span class="terminal-chip estado-${escaparHtml(estado)}" title="${escaparHtml(estadoTexto)}">${escaparHtml(terminal)}</span>`;
+                }).join('')
+                : '<span style="color:#6b7280; font-size:0.9em;">Sin terminales detectados</span>';
+
+            titulo.textContent = `Bono ${detalle.bono} - Carro C${detalle.carro}`;
+            contenido.innerHTML = `
+                <div class="detalle-grid">
+                    <div class="detalle-item">
+                        <div class="detalle-item-label">Proyecto</div>
+                        <div class="detalle-item-valor">${escaparHtml(detalle.proyecto || 'Sin nombre')}</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="detalle-item-label">Archivo Excel</div>
+                        <div class="detalle-item-valor">${escaparHtml(detalle.archivo || '-')}</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="detalle-item-label">Progreso</div>
+                        <div class="detalle-item-valor">${escaparHtml(completados)} / ${escaparHtml(totalTerminales)} terminales (${escaparHtml(porcentaje)}%)</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="detalle-item-label">Resumen Estados</div>
+                        <div class="detalle-item-valor">Completos: ${escaparHtml(resumenEstados['completo'])} · En uso: ${escaparHtml(resumenEstados['en-uso'])} · Bloqueados: ${escaparHtml(resumenEstados['bloqueado'])} · No iniciado: ${escaparHtml(resumenEstados['no-iniciado'])}</div>
+                    </div>
+                    <div class="detalle-item">
+                        <div class="detalle-item-label">Terminales Detectados</div>
+                        <div class="detalle-item-valor">${escaparHtml(terminales.length)}</div>
+                    </div>
+                </div>
+                <div class="detalle-terminales">
+                    <div class="detalle-item-label">Lista de terminales</div>
+                    <div class="detalle-terminales-lista">${chips}</div>
+                    <div class="terminales-leyenda">
+                        <span class="terminales-leyenda-item"><span class="terminales-leyenda-dot estado-completo"></span>Completo</span>
+                        <span class="terminales-leyenda-item"><span class="terminales-leyenda-dot estado-en-uso"></span>En uso</span>
+                        <span class="terminales-leyenda-item"><span class="terminales-leyenda-dot estado-bloqueado"></span>Bloqueado</span>
+                        <span class="terminales-leyenda-item"><span class="terminales-leyenda-dot estado-no-iniciado"></span>No iniciado</span>
+                    </div>
+                </div>
+            `;
+
+            modal.classList.add('activo');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function cerrarDetalleCarro() {
+            const modal = document.getElementById('detalle-carro-modal');
+            modal.classList.remove('activo');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function obtenerTimestampBono(bono) {
+            const nombre = String((bono && bono.nombre) || '');
+            const m = nombre.match(/^(\d{2})(\d{2})(\d{4})_(\d+)$/);
+            if (m) {
+                const dd = m[1];
+                const mm = m[2];
+                const yyyy = m[3];
+                const lote = Number(m[4] || 0);
+                const fecha = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+                if (!Number.isNaN(fecha.getTime())) {
+                    return fecha.getTime() + lote;
+                }
+            }
+
+            const fechaCreacion = String((bono && bono.fecha_creacion) || '').replace(' ', 'T');
+            const parsed = new Date(fechaCreacion);
+            return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+        }
+
+        function ordenarBonosMasNuevosPrimero(bonos) {
+            return [...bonos].sort((a, b) => obtenerTimestampBono(b) - obtenerTimestampBono(a));
+        }
+
+        function obtenerEstadoTerminalEnCarro(terminal, carroNumero, progresoBono) {
+            const terminalKey = String(terminal || '').trim().toUpperCase();
+            if (!terminalKey) return 'no-iniciado';
+            if (!progresoBono || typeof progresoBono !== 'object') return 'no-iniciado';
+
+            let info = progresoBono[terminal] || progresoBono[terminalKey];
+            if (!info) {
+                const matchKey = Object.keys(progresoBono).find(
+                    k => String(k || '').trim().toUpperCase() === terminalKey
+                );
+                info = matchKey ? progresoBono[matchKey] : null;
+            }
+            if (!info || typeof info !== 'object') return 'no-iniciado';
+
+            const carroKey = String(carroNumero);
+            const completados = Array.isArray(info.carros_completados)
+                ? info.carros_completados.map(v => String(v))
+                : [];
+            if (completados.includes(carroKey)) {
+                return 'completo';
+            }
+
+            const pendientes = info.carros_con_pendientes;
+            if (pendientes && typeof pendientes === 'object' && Object.prototype.hasOwnProperty.call(pendientes, carroKey)) {
+                return 'bloqueado';
+            }
+
+            const estado = String(info.estado || '').toLowerCase();
+            if (estado && !['pendiente', 'no_iniciado', 'sin_iniciar', 'nuevo'].includes(estado)) {
+                return 'en-uso';
+            }
+
+            if (completados.length > 0) {
+                return 'en-uso';
+            }
+
+            return 'no-iniciado';
+        }
         
         async function cargarBonos() {
             try {
@@ -495,7 +1052,7 @@
                 
                 if (data.success) {
                     const bonos = Object.values(data.bonos);
-                    const bonosActivos = bonos.filter(b => b.estado === 'activo');
+                    const bonosActivos = ordenarBonosMasNuevosPrimero(bonos.filter(b => b.estado === 'activo'));
                     todosLosBonos = bonosActivos;
                     
                     actualizarSelectores(bonosActivos);
@@ -506,7 +1063,7 @@
                             bono1Seleccionado = BONO_INICIAL;
                             document.getElementById('bono1-select').value = BONO_INICIAL;
                         } else {
-                            const ultimosBonos = bonosActivos.slice(-2);
+                            const ultimosBonos = bonosActivos.slice(0, 2);
                             if (ultimosBonos.length >= 1) {
                                 bono1Seleccionado = ultimosBonos[0].nombre;
                                 document.getElementById('bono1-select').value = bono1Seleccionado;
@@ -538,12 +1095,12 @@
             bonos.forEach(bono => {
                 const option1 = document.createElement('option');
                 option1.value = bono.nombre;
-                option1.textContent = `${bono.nombre} (${bono.num_cortes})`;
+                option1.textContent = bono.nombre;
                 select1.appendChild(option1);
                 
                 const option2 = document.createElement('option');
                 option2.value = bono.nombre;
-                option2.textContent = `${bono.nombre} (${bono.num_cortes})`;
+                option2.textContent = bono.nombre;
                 select2.appendChild(option2);
             });
         }
@@ -577,38 +1134,75 @@
             const bonosConProgreso = await Promise.all(
                 bonosAMostrar.map(async (bono) => {
                     try {
-                        const progresoResponse = await fetch(`/api/bonos/${bono.nombre}/progreso`);
+                        const bonoDetalleResponse = await fetch(`/api/bonos/${encodeURIComponent(bono.nombre)}`);
+                        const bonoDetalleData = await bonoDetalleResponse.json();
+                        const carrosBono = (bonoDetalleData.success && bonoDetalleData.bono && Array.isArray(bonoDetalleData.bono.carros))
+                            ? bonoDetalleData.bono.carros
+                            : [];
+                        const ordenesBono = (bonoDetalleData.success && bonoDetalleData.bono && Array.isArray(bonoDetalleData.bono.ordenes))
+                            ? bonoDetalleData.bono.ordenes
+                            : [];
+
+                        const progresoResponse = await fetch(`/api/bonos/${encodeURIComponent(bono.nombre)}/progreso-ponderado`);
                         const progresoData = await progresoResponse.json();
-                        
-                        const progresoCarroResponse = await fetch(`/api/bonos/${bono.nombre}/progreso-por-carro`);
-                        const progresoCarroData = await progresoCarroResponse.json();
+                        const progresoBono = progresoData.success
+                            ? {
+                                porcentaje: progresoData.porcentaje_bono || 0,
+                                pesoTotal: progresoData.peso_total_bono || 0,
+                                pesoCompletado: progresoData.peso_completado_bono || 0,
+                                porcentajePorCarro: progresoData.progreso_por_carro || {},
+                                terminalesDetalle: {}
+                              }
+                            : { porcentaje: 0, pesoTotal: 0, pesoCompletado: 0, porcentajePorCarro: {}, terminalesDetalle: {} };
+
+                        // Indexar terminales del endpoint ponderado por clave uppercase para lookup en estado
+                        const progresoSimpleParaEstado = {};
+                        if (progresoData.success && Array.isArray(progresoData.terminales)) {
+                            for (const t of progresoData.terminales) {
+                                progresoSimpleParaEstado[t.terminal] = {
+                                    carros_completados: t.carros_completados || [],
+                                    carros_con_pendientes: t.tiene_pendientes
+                                        ? Object.fromEntries(
+                                            Object.entries(t.pesos_por_carro || {}).filter(
+                                                ([cid]) => !( (t.carros_completados || []).map(String).includes(String(cid)) )
+                                            ).map(([cid]) => [cid, true])
+                                          )
+                                        : {},
+                                    estado: t.estado
+                                };
+                            }
+                        }
                         
                         const carrosConTerminales = await Promise.all(
-                            bono.carros.map(async (carro) => {
+                            carrosBono.map(async (carro) => {
                                 try {
-                                    const terminalesResponse = await fetch(`/api/excel/${carro.archivo_excel}/terminales`);
+                                    const terminalesResponse = await fetch(`/api/excel/${encodeURIComponent(carro.archivo_excel)}/terminales`);
                                     const terminalesData = await terminalesResponse.json();
-                                    
-                                    let terminalesCompletados = 0;
-                                    
-                                    // Contar terminales realmente completados del progreso general
-                                    if (progresoData.success && progresoData.progreso) {
-                                        // Iterar sobre el progreso general del bono
-                                        for (const [terminal, info] of Object.entries(progresoData.progreso)) {
-                                            // Verificar si este terminal está completado en este carro
-                                            if (info.carros_completados && info.carros_completados.includes(carro.carro)) {
-                                                terminalesCompletados++;
-                                            }
-                                        }
-                                    }
+                                    const terminales = terminalesData.success && Array.isArray(terminalesData.terminales)
+                                        ? terminalesData.terminales
+                                        : [];
+                                    const terminalesEstado = terminales.map(terminal => ({
+                                        terminal,
+                                        estado: obtenerEstadoTerminalEnCarro(
+                                            terminal,
+                                            carro.carro,
+                                            progresoSimpleParaEstado
+                                        )
+                                    }));
+                                    const resumenTerminales = resumirEstadosTerminales(terminalesEstado);
+                                    const terminalesCompletados = resumenTerminales['completo'];
                                     
                                     return {
                                         ...carro,
-                                        totalTerminales: terminalesData.success ? terminalesData.total : 0,
-                                        terminalesCompletados: terminalesCompletados
+                                        bonoNombre: bono.nombre,
+                                        totalTerminales: terminales.length,
+                                        terminalesCompletados: terminalesCompletados,
+                                        terminales,
+                                        terminalesEstado,
+                                        resumenTerminales
                                     };
                                 } catch (error) {
-                                    return { ...carro, totalTerminales: 0, terminalesCompletados: 0 };
+                                    return { ...carro, bonoNombre: bono.nombre, totalTerminales: 0, terminalesCompletados: 0, terminales: [], terminalesEstado: [], resumenTerminales: resumirEstadosTerminales([]) };
                                 }
                             })
                         );
@@ -616,10 +1210,11 @@
                         return {
                             ...bono,
                             carros: carrosConTerminales,
-                            progreso: progresoData.success ? progresoData.progreso : {}
+                            ordenes: ordenesBono,
+                            progresoBono
                         };
                     } catch (error) {
-                        return { ...bono, progreso: {} };
+                        return { ...bono, progresoBono: { porcentaje: 0, pesoTotal: 0, pesoCompletado: 0, porcentajePorCarro: {} } };
                     }
                 })
             );
@@ -650,87 +1245,107 @@
             
             const carrosConProgreso = carros.map(carro => {
                 if (carro.vacio) {
-                    return { ...carro, porcentaje: 0, terminalesCompletados: 0, totalTerminales: 0 };
+                    return {
+                        ...carro,
+                        porcentaje: 0,
+                        terminalesCompletados: 0,
+                        totalTerminales: 0,
+                        terminales: []
+                    };
                 }
                 
                 const totalTerminales = carro.totalTerminales || 0;
                 const terminalesCompletados = carro.terminalesCompletados || 0;
-                const porcentaje = totalTerminales > 0 ? Math.round((terminalesCompletados / totalTerminales) * 100) : 0;
+                const datosPCarro = bono.progresoBono && bono.progresoBono.porcentajePorCarro
+                    ? (bono.progresoBono.porcentajePorCarro[String(carro.carro)] || null)
+                    : null;
+                const porcentaje = datosPCarro
+                    ? Math.round(datosPCarro.porcentaje)
+                    : (totalTerminales > 0 ? Math.round((terminalesCompletados / totalTerminales) * 100) : 0);
+                const pesoCarro = datosPCarro
+                    ? { completado: datosPCarro.peso_completado, total: datosPCarro.peso_total }
+                    : null;
                 
                 return {
                     ...carro,
                     porcentaje,
                     terminalesCompletados,
-                    totalTerminales
+                    totalTerminales,
+                    pesoCarro,
+                    detalleKey: `${bono.nombre}::${carro.carro}`
+                };
+            });
+
+            carrosConProgreso.forEach(carro => {
+                if (carro.vacio || !carro.detalleKey) return;
+                detallesCarro[carro.detalleKey] = {
+                    bono: bono.nombre,
+                    carro: carro.carro,
+                    proyecto: carro.proyecto_nombre,
+                    archivo: carro.archivo_excel,
+                    total: carro.totalTerminales || 0,
+                    completados: carro.terminalesCompletados || 0,
+                    porcentaje: carro.porcentaje || 0,
+                    terminales: carro.terminalesEstado || carro.terminales || [],
+                    resumenTerminales: carro.resumenTerminales || resumirEstadosTerminales(carro.terminalesEstado || carro.terminales || [])
                 };
             });
             
-            function obtenerIconoRejilla(porcentaje, vacio) {
-                if (vacio) return '<img src="/static/img/reloj_0.png" alt="Vacío">';
-                if (porcentaje === 0) return '<img src="/static/img/reloj_0.png" alt="0%">';
-                if (porcentaje < 20) return '<img src="/static/img/reloj_0.png" alt="0-19%">';
-                if (porcentaje < 40) return '<img src="/static/img/reloj_20.png" alt="20-39%">';
-                if (porcentaje < 60) return '<img src="/static/img/reloj_40.png" alt="40-59%">';
-                if (porcentaje < 80) return '<img src="/static/img/reloj_60.png" alt="60-79%">';
-                if (porcentaje < 100) return '<img src="/static/img/reloj_80.png" alt="80-99%">';
-                return '<img src="/static/img/reloj_100.png" alt="100%">';
-            }
-            
+            const ordenesPorCarro = {};
+            (bono.ordenes || []).forEach(o => { ordenesPorCarro[o.carro_numero] = o; });
+
             return `
                 <div class="bono-card">
                     <div class="bono-card-header">
                         <div class="bono-nombre">${bono.nombre}</div>
                         <div class="bono-estado">✓ Activo</div>
                     </div>
-                    
-                    <div class="bono-stats">
-                        <div class="bono-stat">
-                            <div class="bono-stat-value">${bono.num_cortes}</div>
-                            <div class="bono-stat-label">Cortes</div>
+
+                    <div class="bono-avance">
+                        <div class="bono-avance-header">
+                            <span class="bono-avance-label">Avance ponderado del bono</span>
+                            <span class="bono-avance-valor">${bono.progresoBono ? Math.round(bono.progresoBono.porcentaje) : 0}%
+                                <span style="font-size:0.78em; font-weight:600; color:#6c757d; -webkit-text-fill-color:#6c757d;">(${bono.progresoBono ? bono.progresoBono.pesoCompletado : 0}&nbsp;/&nbsp;${bono.progresoBono ? bono.progresoBono.pesoTotal : 0} crimp.)</span>
+                            </span>
                         </div>
-                        <div class="bono-stat">
-                            <div class="bono-stat-value">${bono.carros.length}</div>
-                            <div class="bono-stat-label">Ocupados</div>
-                        </div>
-                        <div class="bono-stat">
-                            <div class="bono-stat-value">${Object.keys(bono.progreso || {}).length}</div>
-                            <div class="bono-stat-label">En Trabajo</div>
+                        <div class="bono-avance-bar">
+                            <div class="bono-avance-fill" style="width: ${bono.progresoBono ? Math.round(bono.progresoBono.porcentaje) : 0}%">
+                                ${bono.progresoBono && bono.progresoBono.porcentaje > 10 ? Math.round(bono.progresoBono.porcentaje) + '%' : ''}
+                            </div>
                         </div>
                     </div>
-                    
+
                     <div class="carros-section">
-                        <div class="carros-title">🚛 Estado de los 6 Carros</div>
-                        <div class="carros-grid">
-                            ${carrosConProgreso.map(carro => `
-                                <div class="carro-item ${carro.vacio ? 'vacio' : 'ocupado'}">
-                                    <div class="carro-header">
-                                        <div class="carro-numero">C${carro.carro}</div>
-                                        <div class="carro-estado-badge ${carro.vacio ? 'vacio' : 'ocupado'}">
-                                            ${carro.vacio ? 'Vacío' : 'Ocupado'}
-                                        </div>
-                                    </div>
-                                    <div class="carro-visual">
-                                        <div class="carro-icon-grande">
-                                            ${obtenerIconoRejilla(carro.porcentaje, carro.vacio)}
-                                        </div>
-                                    </div>
-                                    <div class="carro-proyecto" title="${carro.vacio ? '' : carro.proyecto_nombre || ''}">
-                                        ${carro.vacio ? '-' : carro.proyecto_nombre || 'Sin nombre'}
-                                    </div>
-                                    ${!carro.vacio ? `
-                                        <div class="carro-progreso">
+                        <div class="carros-header">
+                            <div class="carros-header-cell">C#</div>
+                            <div class="carros-header-cell">Nº Orden</div>
+                            <div class="carros-header-cell">Descripción</div>
+                            <div class="carros-header-cell">Barra de avance</div>
+                        </div>
+                        <div class="carros-lista">
+                            ${carrosConProgreso.map(carro => {
+                                const orden = ordenesPorCarro[carro.carro];
+                                const numOrden = carro.vacio ? '—' : (orden ? orden.numero : carro.proyecto_nombre || '—');
+                                const descOrden = carro.vacio ? '—' : (orden ? (orden.proyecto || orden.descripcion || '—') : '—');
+                                return `
+                                <div class="carro-fila ${carro.vacio ? 'vacio' : 'ocupado'}" ${!carro.vacio ? `data-detalle-key="${escaparHtml(carro.detalleKey)}"` : ''}>
+                                    <div class="carro-fila-num">C${carro.carro}</div>
+                                    <div class="carro-fila-orden" title="${numOrden}">${numOrden}</div>
+                                    <div class="carro-fila-desc" title="${descOrden}">${descOrden}</div>
+                                    <div class="carro-fila-barra">
+                                        ${!carro.vacio ? `
                                             <div class="carro-progreso-bar">
                                                 <div class="carro-progreso-fill" style="width: ${carro.porcentaje}%">
-                                                    ${carro.porcentaje > 15 ? carro.porcentaje + '%' : ''}
+                                                    ${carro.porcentaje > 20 ? carro.porcentaje + '%' : ''}
                                                 </div>
                                             </div>
                                             <div class="carro-progreso-text">
-                                                ${carro.terminalesCompletados} / ${carro.totalTerminales} terminales
+                                                ${carro.pesoCarro ? `${carro.pesoCarro.completado} / ${carro.pesoCarro.total} crimp.` : `${carro.terminalesCompletados}/${carro.totalTerminales}`}
                                             </div>
-                                        </div>
-                                    ` : ''}
-                                </div>
-                            `).join('')}
+                                        ` : ''}
+                                    </div>
+                                </div>`;
+                            }).join('')}
                         </div>
                     </div>
                 </div>
@@ -746,6 +1361,22 @@
             document.getElementById('bono2-select').addEventListener('change', function(e) {
                 bono2Seleccionado = e.target.value || null;
                 mostrarBonosSeleccionados();
+            });
+
+            document.getElementById('bonos-container').addEventListener('click', function(e) {
+                const target = e.target.closest('.carro-fila.ocupado');
+                if (!target) return;
+                const detalleKey = target.getAttribute('data-detalle-key');
+                if (detalleKey) abrirDetalleCarro(detalleKey);
+            });
+
+            document.getElementById('detalle-carro-cerrar').addEventListener('click', cerrarDetalleCarro);
+            document.getElementById('detalle-carro-modal').addEventListener('click', function(e) {
+                if (e.target.id === 'detalle-carro-modal') cerrarDetalleCarro();
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') cerrarDetalleCarro();
             });
         });
         
