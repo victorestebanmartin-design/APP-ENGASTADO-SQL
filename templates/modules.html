@@ -5,23 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>COJOsw — Módulos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=modules4">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=modules5">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     html, body {
       height: 100%;
       overflow: hidden;
-      background: #f3f4f6;
+      background: #0f172a;
+      font-family: 'Inter', system-ui, sans-serif;
     }
 
     .modules-wrap {
       display: flex;
       flex-direction: column;
       height: 100vh;
-      padding: 10px 16px 10px;
-      gap: 10px;
+      padding: 12px 16px;
+      gap: 12px;
     }
 
     /* ── Cabecera ── */
@@ -29,102 +30,111 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 14px;
-      background: #ffffff;
-      border-radius: 10px;
-      border: 0.5px solid #e5e7eb;
+      padding: 10px 18px;
+      background: #1e293b;
+      border-radius: 12px;
+      border: 1px solid #334155;
       flex-shrink: 0;
-      font-family: 'DM Mono', monospace;
     }
     .modules-header-logo {
       font-family: 'Bebas Neue', sans-serif;
-      font-size: 24px;
-      color: #111827;
+      font-size: 26px;
+      color: #f8fafc;
       letter-spacing: .06em;
       text-decoration: none;
     }
-    .modules-header-logo .sw { font-size: 14px; color: #9ca3af; }
+    .modules-header-logo .sw { font-size: 15px; color: #475569; }
+    .modules-header-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: #475569;
+      letter-spacing: .12em;
+    }
     .modules-header-back {
+      font-family: 'DM Mono', monospace;
       font-size: 10px;
-      color: #6b7280;
+      color: #64748b;
       letter-spacing: .08em;
       text-decoration: none;
-      border: 0.5px solid #d1d5db;
+      border: 1px solid #334155;
       border-radius: 6px;
-      padding: 4px 12px;
-      transition: background 0.15s;
+      padding: 5px 14px;
+      transition: all 0.15s;
     }
-    .modules-header-back:hover { background: #f3f4f6; color: #111827; }
+    .modules-header-back:hover { background: #334155; color: #f8fafc; }
 
     /* ── Grid de módulos ── */
     .modules-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       grid-template-rows: repeat(2, 1fr);
-      gap: 10px;
+      gap: 12px;
       flex: 1;
       min-height: 0;
     }
 
     .mod-card {
-      background: var(--accent-bg, #ffffff);
-      border: 1.5px solid color-mix(in srgb, var(--accent, #667eea) 30%, transparent);
+      background: var(--grad);
       border-radius: 16px;
-      padding: 20px 20px 16px;
+      padding: 22px 22px 18px;
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
       position: relative;
       overflow: hidden;
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
       text-decoration: none;
       cursor: pointer;
     }
-    .mod-card::before {
+    /* brillo diagonal en la card */
+    .mod-card::after {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 5px;
-      background: var(--accent, #667eea);
-      border-radius: 16px 16px 0 0;
+      inset: 0;
+      background: radial-gradient(ellipse at 25% 15%, rgba(255,255,255,0.13) 0%, transparent 60%);
+      pointer-events: none;
     }
     .mod-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 16px 36px rgba(0,0,0,0.14);
+      transform: translateY(-6px) scale(1.015);
+      box-shadow: 0 24px 48px rgba(0,0,0,0.45);
     }
 
     .mod-badge {
       position: absolute;
-      top: 14px; right: 12px;
-      background: #22c55e;
-      color: white;
+      top: 14px; right: 14px;
+      background: rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.95);
+      font-family: 'DM Mono', monospace;
       font-size: 9px;
-      font-weight: 700;
-      letter-spacing: .06em;
+      letter-spacing: .08em;
       text-transform: uppercase;
-      padding: 3px 9px;
+      padding: 3px 10px;
       border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.28);
     }
 
     .mod-icon {
-      font-size: 48px;
+      font-size: 60px;
       line-height: 1;
-      margin-bottom: 10px;
-      margin-top: 6px;
+      margin-top: 4px;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 3px 10px rgba(0,0,0,0.3));
     }
 
     .mod-title {
-      font-size: 18px;
-      font-weight: 800;
-      color: var(--accent, #111827);
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 26px;
+      letter-spacing: .10em;
+      color: #ffffff;
       margin-bottom: 8px;
-      line-height: 1.2;
+      line-height: 1.0;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
 
     .mod-desc {
-      font-size: 12px;
-      color: #4b5563;
+      font-size: 12.5px;
+      color: rgba(255,255,255,0.72);
       line-height: 1.55;
       flex: 1;
       margin-bottom: 16px;
@@ -134,30 +144,30 @@
       display: block;
       width: 100%;
       text-align: center;
-      padding: 14px 12px;
+      padding: 13px 12px;
       border-radius: 10px;
       font-family: 'Bebas Neue', sans-serif;
       font-size: 17px;
-      letter-spacing: .14em;
-      color: white;
-      background: var(--accent, #667eea);
-      box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-      transition: opacity 0.15s, transform 0.15s;
+      letter-spacing: .16em;
+      color: var(--btn-color, #1e293b);
+      background: rgba(255,255,255,0.93);
+      box-shadow: 0 3px 12px rgba(0,0,0,0.22);
+      transition: background 0.15s, transform 0.15s;
     }
     .mod-card:hover .mod-btn {
-      opacity: 0.9;
+      background: #ffffff;
       transform: scale(1.03);
     }
 
-    /* Colores por módulo */
-    .mod-engastado  { --accent: #7c3aed; --accent-bg: #f5f3ff; }
-    .mod-admin      { --accent: #9333ea; --accent-bg: #faf5ff; }
-    .mod-bonos      { --accent: #f97316; --accent-bg: #fff7ed; }
-    .mod-viz        { --accent: #06b6d4; --accent-bg: #ecfeff; }
-    .mod-ordenes    { --accent: #059669; --accent-bg: #ecfdf5; }
-    .mod-etiquetas  { --accent: #8b5cf6; --accent-bg: #f5f3ff; }
-    .mod-manguitos  { --accent: #0ea5e9; --accent-bg: #f0f9ff; }
-    .mod-mangueras  { --accent: #64748b; --accent-bg: #f8fafc; }
+    /* Gradientes y color de botón por módulo */
+    .mod-engastado  { --grad: linear-gradient(145deg, #7c3aed 0%, #4338ca 100%); --btn-color: #4338ca; }
+    .mod-admin      { --grad: linear-gradient(145deg, #a855f7 0%, #7c3aed 100%); --btn-color: #7c3aed; }
+    .mod-bonos      { --grad: linear-gradient(145deg, #f97316 0%, #dc2626 100%); --btn-color: #dc2626; }
+    .mod-viz        { --grad: linear-gradient(145deg, #06b6d4 0%, #0369a1 100%); --btn-color: #0369a1; }
+    .mod-ordenes    { --grad: linear-gradient(145deg, #10b981 0%, #047857 100%); --btn-color: #047857; }
+    .mod-etiquetas  { --grad: linear-gradient(145deg, #f59e0b 0%, #b45309 100%); --btn-color: #b45309; }
+    .mod-manguitos  { --grad: linear-gradient(145deg, #38bdf8 0%, #0284c7 100%); --btn-color: #0284c7; }
+    .mod-mangueras  { --grad: linear-gradient(145deg, #64748b 0%, #1e293b 100%); --btn-color: #1e293b; }
   </style>
 </head>
 <body>
@@ -165,7 +175,7 @@
 
     <div class="modules-header">
       <a href="{{ url_for('main.home') }}" class="modules-header-logo">COJO<span class="sw">sw</span></a>
-      <span style="font-family:'DM Mono',monospace;font-size:11px;color:#9ca3af;letter-spacing:.06em;">MÓDULOS DEL SISTEMA</span>
+      <span class="modules-header-title">MÓDULOS DEL SISTEMA</span>
       <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
     </div>
 
@@ -176,8 +186,8 @@
         <div class="mod-badge">Operación</div>
         <div class="mod-icon">🚀</div>
         <div class="mod-title">Engastado</div>
-        <div class="mod-desc">Sistema principal con lectura de códigos de barras, asignación de terminales y flujo guiado.</div>
-        <div class="mod-btn">🔧 Iniciar Engastado</div>
+        <div class="mod-desc">Sistema principal con lectura de códigos de barras, asignación de terminales y flujo guiado paso a paso.</div>
+        <div class="mod-btn">Iniciar Engastado</div>
       </a>
 
       <!-- Administración -->
@@ -185,7 +195,7 @@
         <div class="mod-icon">⚙️</div>
         <div class="mod-title">Administración</div>
         <div class="mod-desc">Gestión de archivos Excel, configuración de terminales, impresora y actualizaciones del sistema.</div>
-        <div class="mod-btn">⚙️ Administrar</div>
+        <div class="mod-btn">Administrar</div>
       </a>
 
       <!-- Gestión de Bonos -->
@@ -193,7 +203,7 @@
         <div class="mod-icon">🚛</div>
         <div class="mod-title">Gestión de Bonos</div>
         <div class="mod-desc">Crea bonos de producción, asigna carros y genera reportes detallados de progreso.</div>
-        <div class="mod-btn">🚛 Gestionar Bonos</div>
+        <div class="mod-btn">Gestionar Bonos</div>
       </a>
 
       <!-- Visualización -->
@@ -201,7 +211,7 @@
         <div class="mod-icon">📊</div>
         <div class="mod-title">Visualización</div>
         <div class="mod-desc">Dashboard en tiempo real con progreso de bonos y estados de carros. Ideal para pantallas externas.</div>
-        <div class="mod-btn">📊 Monitorear</div>
+        <div class="mod-btn">Monitorear</div>
       </a>
 
       <!-- Órdenes de Producción -->
@@ -209,7 +219,7 @@
         <div class="mod-icon">📋</div>
         <div class="mod-title">Órdenes de Producción</div>
         <div class="mod-desc">Registra y organiza órdenes. Control de stock de cortes de cable y planificación de bonos.</div>
-        <div class="mod-btn">📋 Ver Órdenes</div>
+        <div class="mod-btn">Ver Órdenes</div>
       </a>
 
       <!-- Etiquetas -->
@@ -217,7 +227,7 @@
         <div class="mod-icon">🏷️</div>
         <div class="mod-title">Etiquetas</div>
         <div class="mod-desc">Genera e imprime etiquetas para elementos de cortes. Formato A4 con 65 uds troqueladas.</div>
-        <div class="mod-btn">🏷️ Etiquetar</div>
+        <div class="mod-btn">Etiquetar</div>
       </a>
 
       <!-- Manguitos -->
@@ -225,7 +235,7 @@
         <div class="mod-icon">🔌</div>
         <div class="mod-title">Manguitos</div>
         <div class="mod-desc">Guiado de colocación de manguitos y generación de pedidos por tipo y sección.</div>
-        <div class="mod-btn">🔌 Manguitos</div>
+        <div class="mod-btn">Manguitos</div>
       </a>
 
       <!-- Preparación Mangueras -->
@@ -233,7 +243,7 @@
         <div class="mod-icon">🛠️</div>
         <div class="mod-title">Preparación Mangueras</div>
         <div class="mod-desc">Lectura del fichero de mangueras y preparación guiada según observaciones.</div>
-        <div class="mod-btn">🛠️ Mangueras</div>
+        <div class="mod-btn">Mangueras</div>
       </a>
 
     </div>
