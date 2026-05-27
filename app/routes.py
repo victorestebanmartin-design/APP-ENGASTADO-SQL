@@ -59,6 +59,12 @@ def home():
     return render_template('home.html')
 
 
+@bp.route('/modules')
+def modules():
+    """Página de módulos del sistema"""
+    return render_template('modules.html')
+
+
 @bp.route('/v3')
 def index_v3():
     """Vista principal V3 - Sistema de bonos"""
