@@ -6,6 +6,285 @@
   <title>COJOsw — Módulos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=modules2">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: #f3f4f6;
+    }
+
+    .modules-wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 10px 16px 10px;
+      gap: 10px;
+    }
+
+    /* ── Cabecera ── */
+    .modules-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: #ffffff;
+      border-radius: 10px;
+      border: 0.5px solid #e5e7eb;
+      flex-shrink: 0;
+      font-family: 'DM Mono', monospace;
+    }
+    .modules-header-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px;
+      color: #111827;
+      letter-spacing: .06em;
+      text-decoration: none;
+    }
+    .modules-header-logo .sw { font-size: 14px; color: #9ca3af; }
+    .modules-header-back {
+      font-size: 10px;
+      color: #6b7280;
+      letter-spacing: .08em;
+      text-decoration: none;
+      border: 0.5px solid #d1d5db;
+      border-radius: 6px;
+      padding: 4px 12px;
+      transition: background 0.15s;
+    }
+    .modules-header-back:hover { background: #f3f4f6; color: #111827; }
+
+    /* ── Grid de módulos ── */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 10px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .mod-card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px 18px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      text-decoration: none;
+    }
+    .mod-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent, #667eea);
+    }
+    .mod-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+    }
+
+    .mod-badge {
+      position: absolute;
+      top: 10px; right: 12px;
+      background: #22c55e;
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .mod-icon { font-size: 26px; line-height: 1; }
+
+    .mod-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent, #111827);
+      margin-top: 2px;
+    }
+
+    .mod-desc {
+      font-size: 11.5px;
+      color: #6b7280;
+      line-height: 1.45;
+      flex: 1;
+    }
+
+    .mod-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .mod-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: #374151;
+      background: #f3f4f6;
+      border: 0.5px solid #d1d5db;
+      border-radius: 8px;
+      padding: 2px 7px;
+    }
+
+    .mod-btn {
+      display: block;
+      text-align: center;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      background: var(--accent, #667eea);
+      text-decoration: none;
+      margin-top: auto;
+      transition: opacity 0.15s;
+    }
+    .mod-btn:hover { opacity: 0.88; }
+
+    /* Colores por módulo */
+    .mod-engastado  { --accent: #7c3aed; }
+    .mod-admin      { --accent: #9333ea; }
+    .mod-bonos      { --accent: #f97316; }
+    .mod-viz        { --accent: #06b6d4; }
+    .mod-ordenes    { --accent: #059669; }
+    .mod-etiquetas  { --accent: #8b5cf6; }
+    .mod-manguitos  { --accent: #0ea5e9; }
+    .mod-mangueras  { --accent: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="modules-wrap">
+
+    <div class="modules-header">
+      <a href="{{ url_for('main.home') }}" class="modules-header-logo">COJO<span class="sw">sw</span></a>
+      <span style="font-family:'DM Mono',monospace;font-size:11px;color:#9ca3af;letter-spacing:.06em;">MÓDULOS DEL SISTEMA</span>
+      <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
+    </div>
+
+    <div class="modules-grid">
+
+      <!-- Engastado V3 -->
+      <div class="mod-card mod-engastado">
+        <div class="mod-badge">Operación</div>
+        <div class="mod-icon">🚀</div>
+        <div class="mod-title">Engastado V3</div>
+        <div class="mod-desc">Sistema principal con lectura de códigos de barras, asignación de terminales y flujo guiado.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Scanner</span>
+          <span class="mod-tag">Flujo guiado</span>
+          <span class="mod-tag">Agrupado</span>
+        </div>
+        <a href="{{ url_for('main.index_v3') }}" class="mod-btn">🔧 Iniciar Engastado</a>
+      </div>
+
+      <!-- Administración -->
+      <div class="mod-card mod-admin">
+        <div class="mod-icon">⚙️</div>
+        <div class="mod-title">Administración</div>
+        <div class="mod-desc">Gestión de archivos Excel, configuración de terminales, impresora y actualizaciones.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Excel</span>
+          <span class="mod-tag">Terminales</span>
+          <span class="mod-tag">Sistema</span>
+        </div>
+        <a href="{{ url_for('main.admin') }}" class="mod-btn">⚙️ Administrar</a>
+      </div>
+
+      <!-- Gestión de Bonos -->
+      <div class="mod-card mod-bonos">
+        <div class="mod-icon">🚛</div>
+        <div class="mod-title">Gestión de Bonos</div>
+        <div class="mod-desc">Crea bonos de producción, asigna carros y genera reportes de progreso.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Bonos</span>
+          <span class="mod-tag">Carros</span>
+          <span class="mod-tag">Reportes</span>
+        </div>
+        <a href="{{ url_for('main.gestion_proyectos') }}" class="mod-btn">🚛 Gestionar Bonos</a>
+      </div>
+
+      <!-- Visualización -->
+      <div class="mod-card mod-viz">
+        <div class="mod-icon">📊</div>
+        <div class="mod-title">Visualización</div>
+        <div class="mod-desc">Dashboard en tiempo real con progreso de bonos y estados de carros. Ideal para pantallas externas.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Tiempo real</span>
+          <span class="mod-tag">Multi-pantalla</span>
+        </div>
+        <a href="{{ url_for('main.visualizacion') }}" class="mod-btn" target="_blank">📊 Monitorear</a>
+      </div>
+
+      <!-- Órdenes -->
+      <div class="mod-card mod-ordenes">
+        <div class="mod-icon">📋</div>
+        <div class="mod-title">Órdenes de Producción</div>
+        <div class="mod-desc">Registra y organiza órdenes. Control de stock de cortes y planificación de bonos.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Órdenes</span>
+          <span class="mod-tag">Stock</span>
+          <span class="mod-tag">Planificación</span>
+        </div>
+        <a href="{{ url_for('main.registro_ordenes') }}" class="mod-btn">📋 Órdenes</a>
+      </div>
+
+      <!-- Etiquetas -->
+      <div class="mod-card mod-etiquetas">
+        <div class="mod-icon">🏷️</div>
+        <div class="mod-title">Etiquetas</div>
+        <div class="mod-desc">Genera e imprime etiquetas para elementos de cortes. Formato A4, 65 uds troqueladas.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Formato A4</span>
+          <span class="mod-tag">65 uds</span>
+          <span class="mod-tag">Impresión</span>
+        </div>
+        <a href="{{ url_for('main.etiquetas') }}" class="mod-btn">🏷️ Etiquetar</a>
+      </div>
+
+      <!-- Manguitos -->
+      <div class="mod-card mod-manguitos">
+        <div class="mod-icon">🔧</div>
+        <div class="mod-title">Manguitos</div>
+        <div class="mod-desc">Guiado de colocación de manguitos y generación de pedidos por tipo y sección.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Guiado</span>
+          <span class="mod-tag">Pedidos</span>
+          <span class="mod-tag">Preparación</span>
+        </div>
+        <a href="{{ url_for('main.manguitos') }}" class="mod-btn">🔧 Manguitos</a>
+      </div>
+
+      <!-- Mangueras -->
+      <div class="mod-card mod-mangueras">
+        <div class="mod-icon">🛠️</div>
+        <div class="mod-title">Preparación Mangueras</div>
+        <div class="mod-desc">Lectura del fichero de mangueras y preparación guiada según observaciones.</div>
+        <div class="mod-tags">
+          <span class="mod-tag">Preparación</span>
+          <span class="mod-tag">Observaciones</span>
+        </div>
+        <a href="{{ url_for('main.mangueras') }}" class="mod-btn">🛠️ Mangueras</a>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COJOsw — Módulos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=modules1">
   <style>
     .modules-header {
