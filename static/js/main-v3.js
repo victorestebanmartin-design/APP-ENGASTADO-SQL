@@ -3455,7 +3455,7 @@ async function mostrarPaqueteExpandido() {
                 </div>
             </div>
 
-            <div style="flex:1;overflow-y:auto;padding:20px 24px 12px;">
+            <div id="engaste-scroll-body" style="flex:1;overflow-y:auto;padding:20px 24px 12px;">
 
             <div style="text-align:center;margin-bottom:18px;">
                 ${numPadre ? `
@@ -3469,20 +3469,22 @@ async function mostrarPaqueteExpandido() {
                 ${subPaquetesHtml}
             </div>
 
+            <div style="padding-top:20px;padding-bottom:6px;text-align:right;">
+                ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:6px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
+                <button onclick="avanzarPaquete()" style="padding:14px 32px;font-size:1.05em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:10px;cursor:pointer;min-width:180px;touch-action:manipulation;">
+                    ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
+                </button>
             </div>
 
-            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            </div>
+
+            <div id="footer-paquete" style="padding:12px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
                         <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
                     </div>
-                    <div style="text-align:right;">
-                        ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
-                        <button onclick="avanzarPaquete()" style="padding:10px 22px;font-size:0.95em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:8px;cursor:pointer;min-width:160px;touch-action:manipulation;">
-                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
-                        </button>
-                    </div>
+                    <button onclick="document.getElementById('engaste-scroll-body')?.scrollTo({top:99999,behavior:'smooth'})" style="padding:10px 22px;font-size:1em;font-weight:700;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;touch-action:manipulation;">↓ Bajar</button>
                 </div>
             </div>
         </div>`;
@@ -3515,7 +3517,7 @@ async function mostrarPaqueteExpandido() {
                 </div>
             </div>
 
-            <div style="flex:1;overflow-y:auto;padding:20px 24px 16px;">
+            <div id="engaste-scroll-body" style="flex:1;overflow-y:auto;padding:20px 24px 16px;">
             <div style="text-align:center;margin-bottom:16px;">
                 ${numeroEtiqueta ? `
                 <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etqColor};color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
@@ -3586,20 +3588,22 @@ async function mostrarPaqueteExpandido() {
                 ` : ''}
             </div>
 
+            <div style="padding-top:20px;padding-bottom:6px;text-align:right;">
+                ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:6px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
+                <button onclick="avanzarPaquete()" style="padding:14px 32px;font-size:1.05em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:10px;cursor:pointer;min-width:180px;touch-action:manipulation;">
+                    ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
+                </button>
             </div>
 
-            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
-                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            </div>
+
+            <div id="footer-paquete" style="padding:12px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
                         <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
                     </div>
-                    <div style="text-align:right;">
-                        ${paquetesSaltados.length > 0 ? `<div style="font-size:0.78em;color:#e67e22;margin-bottom:3px;">⚠️ ${paquetesSaltados.length} saltado${paquetesSaltados.length>1?'s':''}</div>` : ''}
-                        <button onclick="avanzarPaquete()" style="padding:10px 22px;font-size:0.95em;font-weight:700;background:#0d6efd;color:white;border:none;border-radius:8px;cursor:pointer;min-width:160px;touch-action:manipulation;">
-                            ${paqueteActualIndex === paquetesOrdenados.length - 1 ? '✅ Finalizar carro' : paqueteActualIndex === batchFinIndex - 1 ? '⏭️ Siguiente grupo' : 'Siguiente ▶'}
-                        </button>
-                    </div>
+                    <button onclick="document.getElementById('engaste-scroll-body')?.scrollTo({top:99999,behavior:'smooth'})" style="padding:10px 22px;font-size:1em;font-weight:700;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;touch-action:manipulation;">↓ Bajar</button>
                 </div>
             </div>
         </div>
