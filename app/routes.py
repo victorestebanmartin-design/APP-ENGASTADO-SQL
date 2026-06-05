@@ -4149,13 +4149,14 @@ def api_bonos_progreso_ponderado(nombre_bono):
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():
-    """Lee el token de deploy: primero env var, luego fichero .deploy_token."""
+    """Lee el token: primero env var, luego fichero .deploy_token junto a la app."""
     token = os.environ.get('PA_TOKEN', '')
     if not token:
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # current_app.root_path es la carpeta 'app/', su padre es la raíz del proyecto
+        project_dir = os.path.dirname(current_app.root_path)
         token_file = os.path.join(project_dir, '.deploy_token')
         if os.path.exists(token_file):
-            with open(token_file) as f:
+            with open(token_file, encoding='utf-8') as f:
                 token = f.read().strip()
     return token
 
@@ -4165,9 +4166,9 @@ def deploy_pull():
     token = request.headers.get('X-Deploy-Token', '')
     expected = _deploy_token()
     if not expected or token != expected:
-        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+        return jsonify({'success': False, 'error': 'unauthorized', 'path_checked': os.path.join(os.path.dirname(current_app.root_path), '.deploy_token')}), 401
 
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    project_dir = os.path.dirname(current_app.root_path)
     try:
         result = subprocess.run(
             ['git', 'pull', 'origin', 'main'],
