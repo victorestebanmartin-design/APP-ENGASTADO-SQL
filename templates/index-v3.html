@@ -28,6 +28,65 @@
         </div>
     </div>
 
+    <!-- Modal selección de bono -->
+    <div id="modal-bono" class="modal-operario-overlay hidden">
+        <div class="modal-bono-card">
+
+            <!-- Vista 1: elegir método -->
+            <div id="modal-bono-metodo">
+                <div class="modal-operario-header">
+                    <div class="modal-operario-icon">🎫</div>
+                    <h2>Cargar Bono de Trabajo</h2>
+                    <p id="modal-bono-subtitulo">Elige cómo quieres cargarlo</p>
+                </div>
+                <div class="modal-bono-opciones">
+                    <button type="button" onclick="mostrarInputBono()" class="modal-bono-opcion">
+                        <span class="opcion-icon">⌨️</span>
+                        <span class="opcion-titulo">Introducir código</span>
+                        <span class="opcion-desc">Escribe o escanea el código del bono</span>
+                    </button>
+                    <button type="button" onclick="mostrarListaBonosModal()" class="modal-bono-opcion">
+                        <span class="opcion-icon">📋</span>
+                        <span class="opcion-titulo">Bonos disponibles</span>
+                        <span class="opcion-desc">Selecciona de la lista de bonos activos</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Vista 2: introducir código -->
+            <div id="modal-bono-input" class="hidden">
+                <div class="modal-operario-header">
+                    <div class="modal-operario-icon">⌨️</div>
+                    <h2>Introducir Código de Bono</h2>
+                </div>
+                <div class="modal-operario-body">
+                    <label for="modal-input-bono">Código de Bono</label>
+                    <input type="text" id="modal-input-bono" placeholder="Ej: 20251201_1" autocomplete="off">
+                    <div id="modal-bono-error" class="modal-operario-error hidden">Introduce un código de bono.</div>
+                </div>
+                <div class="modal-bono-footer">
+                    <button type="button" onclick="volverMetodoBono()" class="btn-volver-modal">← Volver</button>
+                    <button type="button" onclick="confirmarBonoCodigo()" class="btn-confirmar-operario btn-confirmar-flex">Cargar Bono</button>
+                </div>
+            </div>
+
+            <!-- Vista 3: lista de bonos disponibles -->
+            <div id="modal-bono-lista" class="hidden">
+                <div class="modal-operario-header">
+                    <div class="modal-operario-icon">📋</div>
+                    <h2>Bonos Disponibles</h2>
+                </div>
+                <div id="modal-bonos-lista-contenido" class="modal-bonos-scroll">
+                    <p class="modal-bonos-cargando">Cargando bonos...</p>
+                </div>
+                <div class="modal-bono-footer">
+                    <button type="button" onclick="volverMetodoBono()" class="btn-volver-modal">← Volver</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>🚀 Sistema de Engastado V3.0</h1>

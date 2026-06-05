@@ -125,6 +125,156 @@
     transform: translateY(0);
 }
 
+/* ================================
+   Modal de selección de bono
+   ================================ */
+
+.modal-bono-card {
+    background: white;
+    border-radius: 20px;
+    padding: 44px 40px 36px;
+    max-width: 520px;
+    width: 92%;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+    animation: slideUpCard 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Dos opciones grandes tipo card */
+.modal-bono-opciones {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.modal-bono-opcion {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 14px;
+    padding: 28px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.modal-bono-opcion:hover {
+    border-color: var(--primary-color, #2563eb);
+    background: #eff6ff;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
+}
+
+.opcion-icon {
+    font-size: 2.4em;
+    line-height: 1;
+}
+
+.opcion-titulo {
+    font-weight: 700;
+    font-size: 1em;
+    color: #111827;
+}
+
+.opcion-desc {
+    font-size: 0.82em;
+    color: #6c757d;
+    line-height: 1.4;
+}
+
+/* Footer con volver + acción */
+.modal-bono-footer {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.btn-volver-modal {
+    background: #f1f3f5;
+    color: #495057;
+    border: none;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.btn-volver-modal:hover {
+    background: #e9ecef;
+}
+
+.btn-confirmar-flex {
+    flex: 1;
+}
+
+/* Lista de bonos disponibles */
+.modal-bonos-scroll {
+    max-height: 320px;
+    overflow-y: auto;
+    margin-top: 4px;
+    padding-right: 4px;
+}
+
+.modal-bonos-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+.modal-bonos-scroll::-webkit-scrollbar-track { background: #f1f3f5; border-radius: 3px; }
+.modal-bonos-scroll::-webkit-scrollbar-thumb { background: #adb5bd; border-radius: 3px; }
+
+.modal-bono-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.modal-bono-item:hover {
+    border-color: var(--primary-color, #2563eb);
+    background: #eff6ff;
+    transform: translateX(4px);
+}
+
+.modal-bono-item-nombre {
+    font-weight: 700;
+    font-size: 1.05em;
+    color: #1d4ed8;
+}
+
+.modal-bono-item-fecha {
+    font-size: 0.82em;
+    color: #6c757d;
+    margin-top: 3px;
+}
+
+.modal-bono-item-arrow {
+    font-size: 1.3em;
+    color: #1d4ed8;
+}
+
+.modal-bonos-cargando {
+    color: #6c757d;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.modal-bonos-vacio {
+    color: #6c757d;
+    text-align: center;
+    padding: 20px 0;
+}
+
 /* Badge operario en el header */
 .badge-operario {
     background: linear-gradient(135deg, #10b981, #059669);

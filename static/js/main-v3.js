@@ -80,7 +80,7 @@ function confirmarOperario() {
 function _activarOperario(nombre) {
     operarioActual = nombre;
 
-    // Ocultar modal
+    // Ocultar modal de operario
     const modal = document.getElementById('modal-operario');
     if (modal) modal.classList.add('hidden');
 
@@ -91,9 +91,104 @@ function _activarOperario(nombre) {
         badge.classList.remove('hidden');
     }
 
-    // Dar foco al input de bono
-    const codigoBonoInput = document.getElementById('codigo-bono');
-    if (codigoBonoInput) codigoBonoInput.focus();
+    // Actualizar subtítulo del modal de bono con el nombre
+    const subtitulo = document.getElementById('modal-bono-subtitulo');
+    if (subtitulo) subtitulo.textContent = `Hola, ${nombre}. Elige cómo cargar el bono.`;
+
+    // Mostrar modal de selección de bono
+    abrirModalBono();
+}
+
+// ==================== MODAL DE BONO ====================
+
+function abrirModalBono() {
+    _mostrarVistaBono('metodo');
+    const modalBono = document.getElementById('modal-bono');
+    if (modalBono) modalBono.classList.remove('hidden');
+}
+
+function _mostrarVistaBono(vista) {
+    ['metodo', 'input', 'lista'].forEach(v => {
+        const el = document.getElementById(`modal-bono-${v}`);
+        if (el) el.classList.toggle('hidden', v !== vista);
+    });
+    if (vista === 'input') {
+        setTimeout(() => {
+            const inp = document.getElementById('modal-input-bono');
+            if (inp) inp.focus();
+        }, 50);
+    }
+}
+
+function mostrarInputBono() {
+    document.getElementById('modal-bono-error').classList.add('hidden');
+    document.getElementById('modal-input-bono').value = '';
+    _mostrarVistaBono('input');
+
+    const inp = document.getElementById('modal-input-bono');
+    inp.onkeypress = (e) => { if (e.key === 'Enter') confirmarBonoCodigo(); };
+}
+
+async function mostrarListaBonosModal() {
+    _mostrarVistaBono('lista');
+    const contenido = document.getElementById('modal-bonos-lista-contenido');
+    contenido.innerHTML = '<p class="modal-bonos-cargando">Cargando bonos...</p>';
+
+    try {
+        const response = await fetch('/api/bonos');
+        const data = await response.json();
+        const bonos = data.success ? data.bonos.filter(b => b.estado === 'activo') : [];
+
+        if (bonos.length === 0) {
+            contenido.innerHTML = '<p class="modal-bonos-vacio">No hay bonos activos disponibles.</p>';
+            return;
+        }
+
+        contenido.innerHTML = bonos.map(bono => `
+            <div class="modal-bono-item" onclick="seleccionarBonoDesdeModal('${bono.nombre}')">
+                <div>
+                    <div class="modal-bono-item-nombre">${bono.nombre}</div>
+                    <div class="modal-bono-item-fecha">
+                        Creado: ${new Date(bono.fecha_creacion).toLocaleDateString('es-ES')}
+                    </div>
+                </div>
+                <span class="modal-bono-item-arrow">▶</span>
+            </div>
+        `).join('');
+    } catch {
+        contenido.innerHTML = '<p class="modal-bonos-vacio">Error al cargar los bonos.</p>';
+    }
+}
+
+function volverMetodoBono() {
+    _mostrarVistaBono('metodo');
+}
+
+async function confirmarBonoCodigo() {
+    const inp = document.getElementById('modal-input-bono');
+    const errorDiv = document.getElementById('modal-bono-error');
+    const valor = inp ? inp.value.trim() : '';
+
+    if (!valor) {
+        errorDiv.classList.remove('hidden');
+        inp.focus();
+        return;
+    }
+    errorDiv.classList.add('hidden');
+    await seleccionarBonoDesdeModal(valor);
+}
+
+async function seleccionarBonoDesdeModal(nombreBono) {
+    // Poner el valor en el input legacy y llamar a cargarBono()
+    const inputLegacy = document.getElementById('codigo-bono');
+    if (inputLegacy) inputLegacy.value = nombreBono;
+
+    // Cerrar modal de bono
+    const modalBono = document.getElementById('modal-bono');
+    if (modalBono) modalBono.classList.add('hidden');
+
+    // Cargar el bono con la lógica existente
+    await cargarBono();
 }
 
 /**
