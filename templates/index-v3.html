@@ -87,6 +87,57 @@
         </div>
     </div>
 
+    <!-- Modal selección de puesto -->
+    <div id="modal-puesto" class="modal-operario-overlay hidden">
+        <div class="modal-puesto-card">
+            <div class="modal-operario-header">
+                <div class="modal-operario-icon">🏭</div>
+                <h2>Puesto de Trabajo</h2>
+                <p id="modal-puesto-subtitulo">Selecciona tu puesto</p>
+            </div>
+            <div id="modal-puesto-lista-contenido" class="modal-bonos-scroll">
+                <p class="modal-bonos-cargando">Cargando puestos...</p>
+            </div>
+            <div class="modal-bono-footer">
+                <button type="button" onclick="volverModalBonoDesdeModalPuesto()" class="btn-volver-modal">← Cambiar bono</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal selección de máquina -->
+    <div id="modal-maquina" class="modal-operario-overlay hidden">
+        <div class="modal-puesto-card">
+            <div class="modal-operario-header">
+                <div class="modal-operario-icon">🔧</div>
+                <h2>Máquina</h2>
+                <p id="modal-maquina-subtitulo">Selecciona la máquina</p>
+            </div>
+            <div id="modal-maquina-lista-contenido" class="modal-bonos-scroll">
+                <p class="modal-bonos-cargando">Cargando máquinas...</p>
+            </div>
+            <div class="modal-bono-footer">
+                <button type="button" onclick="abrirModalPuesto()" class="btn-volver-modal">← Cambiar puesto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal selección de terminal -->
+    <div id="modal-terminal" class="modal-operario-overlay hidden">
+        <div class="modal-terminal-card">
+            <div class="modal-operario-header">
+                <div class="modal-operario-icon">🔌</div>
+                <h2>Terminal</h2>
+                <p id="modal-terminal-subtitulo">Selecciona el terminal</p>
+            </div>
+            <div id="modal-terminal-contenido" class="modal-terminal-grid-wrap">
+                <p class="modal-bonos-cargando">Cargando terminales...</p>
+            </div>
+            <div class="modal-bono-footer">
+                <button type="button" onclick="abrirModalMaquina()" class="btn-volver-modal">← Cambiar máquina</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>🚀 Sistema de Engastado V3.0</h1>

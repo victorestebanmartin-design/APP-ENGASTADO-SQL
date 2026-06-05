@@ -6,6 +6,10 @@
 // Operario identificado en esta sesión
 let operarioActual = null;
 
+// Caché para los modales de navegación
+let _puestosCache = [];
+let _maquinasCache = [];
+
 // Variables globales V3
 let bonoActual = null;
 let proyectoActual = null;
@@ -189,6 +193,234 @@ async function seleccionarBonoDesdeModal(nombreBono) {
 
     // Cargar el bono con la lógica existente
     await cargarBono();
+}
+
+// ==================== MODALES WIZARD: PUESTO / MÁQUINA / TERMINAL ====================
+
+function _mostrarModalWizard(id) {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal'].forEach(mid => {
+        const el = document.getElementById(mid);
+        if (el) el.classList.toggle('hidden', mid !== id);
+    });
+}
+
+function _cerrarModalesWizard() {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal'].forEach(mid => {
+        const el = document.getElementById(mid);
+        if (el) el.classList.add('hidden');
+    });
+}
+
+function volverModalBonoDesdeModalPuesto() {
+    document.getElementById('modal-puesto').classList.add('hidden');
+    abrirModalBono();
+}
+
+async function abrirModalPuesto() {
+    _mostrarModalWizard('modal-puesto');
+
+    const subtitulo = document.getElementById('modal-puesto-subtitulo');
+    if (subtitulo && bonoActual) subtitulo.textContent = `Bono: ${bonoActual.nombre}`;
+
+    const lista = document.getElementById('modal-puesto-lista-contenido');
+    lista.innerHTML = '<p class="modal-bonos-cargando">Cargando puestos...</p>';
+
+    try {
+        const [rPuestos, rTerminales] = await Promise.all([
+            fetch('/api/puestos').then(r => r.json()),
+            bonoActual
+                ? fetch(`/api/bonos/${encodeURIComponent(bonoActual.nombre)}/terminales-disponibles`).then(r => r.json())
+                : Promise.resolve({ success: false, terminales: [] })
+        ]);
+
+        const terminalesConDatos = rTerminales.success ? rTerminales.terminales : [];
+        _puestosCache = rPuestos.success ? rPuestos.puestos.filter(p => p.activo) : [];
+
+        if (_puestosCache.length === 0) {
+            lista.innerHTML = '<p class="modal-bonos-vacio">No hay puestos disponibles.</p>';
+            return;
+        }
+
+        lista.innerHTML = _puestosCache.map((puesto, i) => {
+            let total = 0, completados = 0;
+            if (puesto.maquinas) {
+                puesto.maquinas.filter(m => m.activo).forEach(m => {
+                    const asignados = m.terminales_asignados || [];
+                    const filtrados = terminalesConDatos.length > 0 ? asignados.filter(t => terminalesConDatos.includes(t)) : asignados;
+                    total += filtrados.length;
+                    if (window.progresoCompleto) {
+                        completados += filtrados.filter(t => window.progresoCompleto[t]?.estado === 'completado').length;
+                    }
+                });
+            }
+            const pct = total > 0 ? Math.round(completados / total * 100) : 0;
+            const hecho = total > 0 && completados === total;
+
+            return `<div class="modal-puesto-item${hecho ? ' completado' : ''}" onclick="seleccionarPuestoDesdeModal(${i})">
+                <div class="modal-puesto-item-info">
+                    <div class="modal-puesto-item-nombre">${hecho ? '✅ ' : ''}${puesto.nombre}</div>
+                    ${puesto.descripcion ? `<div class="modal-puesto-item-desc">${puesto.descripcion}</div>` : ''}
+                    ${total > 0 ? `<div class="modal-puesto-item-prog">
+                        <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
+                        <span class="modal-prog-text">${completados}/${total} terminales</span>
+                    </div>` : ''}
+                </div>
+                <span class="modal-bono-item-arrow">▶</span>
+            </div>`;
+        }).join('');
+
+    } catch {
+        lista.innerHTML = '<p class="modal-bonos-vacio">Error al cargar puestos.</p>';
+    }
+}
+
+async function seleccionarPuestoDesdeModal(idx) {
+    puestoSeleccionado = _puestosCache[idx];
+    await abrirModalMaquina();
+}
+
+async function abrirModalMaquina() {
+    _mostrarModalWizard('modal-maquina');
+
+    const subtitulo = document.getElementById('modal-maquina-subtitulo');
+    if (subtitulo && puestoSeleccionado) subtitulo.textContent = `Puesto: ${puestoSeleccionado.nombre}`;
+
+    const lista = document.getElementById('modal-maquina-lista-contenido');
+    lista.innerHTML = '<p class="modal-bonos-cargando">Cargando máquinas...</p>';
+
+    if (bonoActual) await cargarProgresoDelBono(bonoActual.nombre);
+
+    let terminalesConDatos = [];
+    try {
+        const r = await fetch(`/api/bonos/${encodeURIComponent(bonoActual.nombre)}/terminales-disponibles`);
+        const d = await r.json();
+        if (d.success) terminalesConDatos = d.terminales || [];
+    } catch { /* continuar sin filtro */ }
+
+    _maquinasCache = puestoSeleccionado?.maquinas
+        ? puestoSeleccionado.maquinas.filter(m => {
+            if (!m.activo) return false;
+            const asignados = m.terminales_asignados || [];
+            const filtrados = terminalesConDatos.length > 0 ? asignados.filter(t => terminalesConDatos.includes(t)) : asignados;
+            return filtrados.length > 0;
+        })
+        : [];
+
+    if (_maquinasCache.length === 0) {
+        lista.innerHTML = '<p class="modal-bonos-vacio">Ninguna máquina de este puesto tiene terminales en el bono actual.</p>';
+        return;
+    }
+
+    lista.innerHTML = _maquinasCache.map((maquina, i) => {
+        const asignados = maquina.terminales_asignados || [];
+        const filtrados = terminalesConDatos.length > 0 ? asignados.filter(t => terminalesConDatos.includes(t)) : asignados;
+        const total = filtrados.length;
+        let completados = 0;
+        if (window.progresoCompleto) {
+            completados = filtrados.filter(t => window.progresoCompleto[t]?.estado === 'completado').length;
+        }
+        const pct = total > 0 ? Math.round(completados / total * 100) : 0;
+        const hecho = total > 0 && completados === total;
+
+        return `<div class="modal-puesto-item${hecho ? ' completado' : ''}" onclick="seleccionarMaquinaDesdeModal(${i})">
+            <div class="modal-puesto-item-info">
+                <div class="modal-puesto-item-nombre">${hecho ? '✅ ' : ''}${maquina.nombre}</div>
+                ${maquina.modelo ? `<div class="modal-puesto-item-desc">Modelo: ${maquina.modelo}</div>` : ''}
+                <div class="modal-puesto-item-prog">
+                    <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
+                    <span class="modal-prog-text">${completados}/${total} terminales</span>
+                </div>
+            </div>
+            <span class="modal-bono-item-arrow">▶</span>
+        </div>`;
+    }).join('');
+}
+
+async function seleccionarMaquinaDesdeModal(idx) {
+    maquinaSeleccionada = _maquinasCache[idx];
+    await abrirModalTerminal();
+}
+
+async function abrirModalTerminal() {
+    _mostrarModalWizard('modal-terminal');
+
+    const subtitulo = document.getElementById('modal-terminal-subtitulo');
+    if (subtitulo) subtitulo.textContent = `${puestoSeleccionado?.nombre || ''} → ${maquinaSeleccionada?.nombre || ''}`;
+
+    const contenido = document.getElementById('modal-terminal-contenido');
+    contenido.innerHTML = '<p class="modal-bonos-cargando">Cargando terminales...</p>';
+
+    let terminalesConDatos = [];
+    try {
+        const r = await fetch(`/api/bonos/${encodeURIComponent(bonoActual.nombre)}/terminales-disponibles`);
+        const d = await r.json();
+        if (d.success) terminalesConDatos = d.terminales || [];
+    } catch { /* continuar sin filtro */ }
+
+    const todosAsignados = maquinaSeleccionada.terminales_asignados || [];
+    terminalesAsignados = terminalesConDatos.length > 0
+        ? todosAsignados.filter(t => terminalesConDatos.includes(t))
+        : todosAsignados;
+
+    await cargarProgresoMaquina();
+
+    const total = terminalesAsignados.length;
+    const numCompletados = terminalesCompletados.length;
+    const pct = total > 0 ? Math.round(numCompletados / total * 100) : 0;
+
+    if (total === 0) {
+        contenido.innerHTML = '<p class="modal-bonos-vacio">No hay terminales disponibles en este bono.</p>';
+        return;
+    }
+
+    contenido.innerHTML = `
+        <div class="modal-terminal-progress">
+            <div class="modal-terminal-progress-bar-wrap">
+                <div class="modal-terminal-progress-bar" style="width:${pct}%"></div>
+            </div>
+            <span class="modal-terminal-progress-text">${numCompletados}/${total}</span>
+        </div>
+        <div class="modal-terminal-grid">
+            ${terminalesAsignados.map(terminal => {
+                const completado = terminalesCompletados.includes(terminal);
+                const enProceso = !completado && terminalesEnProceso.includes(terminal);
+                const enEspera  = !completado && !enProceso && terminalesEnEspera.includes(terminal);
+                const clazz = completado ? 'completado' : enProceso ? 'en-proceso' : enEspera ? 'en-espera' : '';
+                const etiqueta = completado ? '✅ Listo' : enProceso ? '🔵 En curso' : enEspera ? '🟡 Esperando' : '⬜ Pendiente';
+                return `<div class="modal-terminal-item ${clazz}" ${!completado ? `onclick="seleccionarTerminalDesdeModal('${terminal}')"` : ''}>
+                    <div class="modal-terminal-item-codigo">${terminal}</div>
+                    <div class="modal-terminal-item-estado">${etiqueta}</div>
+                </div>`;
+            }).join('')}
+        </div>`;
+}
+
+async function seleccionarTerminalDesdeModal(terminal) {
+    _cerrarModalesWizard();
+
+    // Mostrar workspace y paso-trabajo
+    document.getElementById('workspace-v3').classList.remove('hidden');
+    document.getElementById('paso-trabajo').classList.remove('hidden');
+    document.getElementById('paso-puesto').classList.add('hidden');
+    document.getElementById('paso-maquina').classList.add('hidden');
+
+    // Actualizar cabecera
+    document.getElementById('maquina-seleccionada-nombre').textContent = maquinaSeleccionada.nombre;
+    document.getElementById('ruta-puesto').textContent = puestoSeleccionado?.nombre || '';
+    document.getElementById('ruta-maquina').textContent = maquinaSeleccionada.nombre;
+
+    // Indicador compacto con botón de cambio
+    const container = document.getElementById('terminales-asignados');
+    container.innerHTML = `<div style="text-align:center;padding:10px;color:#6c757d;font-size:0.9em;">
+        Terminal activo: <strong style="color:#212529;">${terminal}</strong>
+        &nbsp;<button type="button" onclick="abrirModalTerminal()" style="background:#f1f3f5;border:none;padding:5px 12px;border-radius:8px;cursor:pointer;font-size:0.88em;">🔄 Cambiar terminal</button>
+    </div>`;
+
+    setTimeout(() => {
+        document.getElementById('paso-trabajo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+
+    await seleccionarTerminalTrabajo(terminal);
 }
 
 /**
@@ -470,17 +702,9 @@ async function cargarBono() {
             }
             
             document.getElementById('bono-info').classList.remove('hidden');
-            document.getElementById('workspace-v3').classList.remove('hidden');
-            
-            // Cargar puestos disponibles
-            await cargarPuestos();
-            
-            // Scroll automático a la sección de puestos
-            setTimeout(() => {
-                document.getElementById('workspace-v3')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-            
-            mostrarMensaje('Bono cargado correctamente. Selecciona un puesto de trabajo.', 'success');
+
+            // Abrir modal de selección de puesto
+            await abrirModalPuesto();
         } else {
             mostrarMensaje(data.message || 'Bono no encontrado', 'error');
         }
@@ -894,17 +1118,11 @@ async function cargarAreaTrabajoV2() {
  * Navegación - Volver a selección de puestos
  */
 async function volverAPuestos() {
-    document.getElementById('paso-maquina').classList.add('hidden');
-    document.getElementById('paso-puesto').classList.remove('hidden');
+    document.getElementById('paso-trabajo').classList.add('hidden');
+    document.getElementById('workspace-v3').classList.add('hidden');
     puestoSeleccionado = null;
-    
-    // Recargar progreso y puestos para mostrar datos actualizados
     await cargarProgresoDelBono(bonoActual.nombre);
-    await cargarPuestos();
-    
-    setTimeout(() => {
-        document.getElementById('paso-puesto')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    await abrirModalPuesto();
 }
 
 /**
@@ -912,18 +1130,10 @@ async function volverAPuestos() {
  */
 async function cambiarMaquina() {
     document.getElementById('paso-trabajo').classList.add('hidden');
-    document.getElementById('paso-maquina').classList.remove('hidden');
     maquinaSeleccionada = null;
     terminalesAsignados = [];
-    
-    // Recargar progreso y máquinas para mostrar datos actualizados
-    if (puestoSeleccionado) {
-        await cargarMaquinas(puestoSeleccionado.id);
-    }
-    
-    setTimeout(() => {
-        document.getElementById('paso-maquina')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    if (bonoActual) await cargarProgresoDelBono(bonoActual.nombre);
+    await abrirModalMaquina();
 }
 
 /**
@@ -1008,7 +1218,7 @@ async function mostrarSeleccionCarro() {
     areaTrabajo.innerHTML = `
         <div style="max-width: 600px; margin: 0 auto; padding: 10px;">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-                <button onclick="cargarAreaTrabajoV2()" style="background: #6c757d; color: white; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 0.9em;">← Volver</button>
+                <button onclick="abrirModalTerminal()" style="background: #6c757d; color: white; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 0.9em;">← Volver</button>
                 <div>
                     <div style="font-size: 1.3em; font-weight: bold;">🔌 Terminal ${terminalActual}</div>
                     <div style="color: #6c757d; font-size: 0.9em;">Elige el carro que vas a trabajar</div>
@@ -1190,7 +1400,7 @@ function volverATerminales() {
     document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
     const _me3 = document.getElementById('modal-engaste');
     if (_me3) _me3.remove();
-    cargarAreaTrabajoV2();
+    abrirModalTerminal();
 }
 
 /**
