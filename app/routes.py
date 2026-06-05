@@ -773,6 +773,31 @@ def api_obtener_bono_por_nombre(nombre):
         }), 500
 
 
+@bp.route('/api/bonos/<nombre>', methods=['DELETE'])
+def api_eliminar_bono(nombre):
+    """Eliminar bono por nombre"""
+    try:
+        bono_repo = BonoRepository(db)
+        bono = bono_repo.obtener_bono_por_nombre(nombre)
+        if not bono:
+            return jsonify({'success': False, 'error': 'Bono no encontrado'}), 404
+
+        ok = bono_repo.eliminar_bono(bono['id'])
+        if not ok:
+            return jsonify({'success': False, 'error': 'No se pudo eliminar el bono'}), 500
+
+        # Borrar fichero de progreso si existe
+        import os
+        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre}.json')
+        if os.path.exists(progreso_path):
+            os.remove(progreso_path)
+
+        return jsonify({'success': True, 'message': f'Bono {nombre} eliminado correctamente'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bp.route('/api/bonos', methods=['POST'])
 def api_crear_bono():
     """Crear nuevo bono"""

@@ -161,12 +161,21 @@ class BonoRepository(BaseRepository):
     def cambiar_estado(self, bono_id: str, estado: str) -> bool:
         """Cambiar estado de un bono"""
         query = """
-            UPDATE bonos 
+            UPDATE bonos
             SET estado = :estado
             WHERE id = :bono_id
         """
         params = {'bono_id': bono_id, 'estado': estado}
         rows = self.execute_update(query, params)
+        return rows > 0
+
+    def eliminar_bono(self, bono_id: str) -> bool:
+        """Eliminar bono y desasociar órdenes relacionadas"""
+        self.execute_update(
+            "UPDATE ordenes_produccion SET bono_id = NULL, estado = 'pendiente' WHERE bono_id = :bono_id",
+            {'bono_id': bono_id}
+        )
+        rows = self.execute_update("DELETE FROM bonos WHERE id = :id", {'id': bono_id})
         return rows > 0
 
 
