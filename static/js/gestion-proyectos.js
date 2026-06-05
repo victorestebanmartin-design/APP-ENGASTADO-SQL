@@ -558,30 +558,27 @@ async function cargarListaBonos() {
         const contenedor = document.getElementById('contenedorListaBonos');
         
         if (data.success && data.bonos.length > 0) {
-            let html = '<table class="tabla-bonos"><thead><tr><th>Nombre</th><th>Cortes</th><th>Carros</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>';
-            
+            let html = '<table class="tabla-bonos"><thead><tr><th>Nombre</th><th>Fecha</th><th>Estado</th><th style="text-align:right">Acciones</th></tr></thead><tbody>';
+
             data.bonos.forEach(bono => {
+                const fecha = bono.fecha_creacion
+                    ? new Date(bono.fecha_creacion).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'2-digit'})
+                    : '—';
+                const estado = bono.estado || 'activo';
                 html += `
                     <tr>
                         <td><strong>${bono.nombre}</strong></td>
-                        <td>${bono.cortes_total}</td>
-                        <td>${bono.carros_usados || 6}</td>
-                        <td><span class="badge badge-${bono.estado || 'activo'}">${bono.estado || 'activo'}</span></td>
-                        <td>
-                            <button class="btn-small btn-primary" onclick="abrirModalEditarBono('${bono.nombre}')" style="margin-right: 5px;">
-                                <i class="fas fa-edit"></i> Editar
-                            </button>
-                            <button class="btn-small btn-warning" onclick="resetearProgresoBonoConfirmar('${bono.nombre}')" style="margin-right: 5px; background: #ffc107; border-color: #ffc107;">
-                                <i class="fas fa-redo"></i> Reset Progreso
-                            </button>
-                            <button class="btn-small btn-danger" onclick="eliminarBonoConfirmar('${bono.nombre}')">
-                                <i class="fas fa-trash"></i> Eliminar
-                            </button>
+                        <td style="color:#6b7280">${fecha}</td>
+                        <td><span class="badge badge-${estado}">${estado}</span></td>
+                        <td class="td-acciones">
+                            <button class="btn-accion btn-accion-edit" onclick="abrirModalEditarBono('${bono.nombre}')"><i class="fas fa-edit"></i> Editar</button>
+                            <button class="btn-accion btn-accion-reset" onclick="resetearProgresoBonoConfirmar('${bono.nombre}')"><i class="fas fa-redo"></i> Reset</button>
+                            <button class="btn-accion btn-accion-del" onclick="eliminarBonoConfirmar('${bono.nombre}')"><i class="fas fa-trash"></i> Eliminar</button>
                         </td>
                     </tr>
                 `;
             });
-            
+
             html += '</tbody></table>';
             contenedor.innerHTML = html;
         } else {

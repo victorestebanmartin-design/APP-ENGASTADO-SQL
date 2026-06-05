@@ -705,10 +705,12 @@ body {
 .tabla-bonos, .tabla-reporte {
     width: 100%;
     background: white;
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-top: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    margin-top: 16px;
+    border-collapse: collapse;
+    font-size: 0.88em;
 }
 
 .tabla-bonos thead, .tabla-reporte thead {
@@ -716,45 +718,68 @@ body {
     color: white;
 }
 
-.tabla-bonos th, .tabla-reporte th,
-.tabla-bonos td, .tabla-reporte td {
-    padding: 12px 15px;
+.tabla-bonos th, .tabla-reporte th {
+    padding: 10px 14px;
     text-align: left;
-    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
 }
 
-.tabla-bonos tr:hover, .tabla-reporte tr:hover {
-    background: #f8f9fa;
+.tabla-bonos td, .tabla-reporte td {
+    padding: 7px 14px;
+    text-align: left;
+    border-bottom: 1px solid #f1f3f5;
+    vertical-align: middle;
+    color: #374151;
 }
 
+.tabla-bonos tbody tr:nth-child(even) { background: #fafafa; }
+.tabla-bonos tbody tr:last-child td { border-bottom: none; }
+.tabla-bonos tbody tr:hover td { background: #eff6ff; }
+
+.tabla-bonos td.td-acciones {
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Botones compactos de acción */
+.btn-accion {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    font-size: 0.78em;
+    font-weight: 600;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    margin-left: 3px;
+}
+
+.btn-accion:hover { opacity: 0.85; transform: translateY(-1px); }
+
+.btn-accion-edit  { background: #2563eb; color: white; }
+.btn-accion-reset { background: #f59e0b; color: #1e293b; }
+.btn-accion-del   { background: #ef4444; color: white; }
+
+/* Legacy btn-small (otros usos) */
 .btn-small {
-    padding: 6px 12px;
+    padding: 5px 10px;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.85em;
-    transition: all 0.3s ease;
+    font-size: 0.82em;
+    transition: all 0.2s ease;
 }
 
-.btn-small.btn-primary {
-    background: #0d6efd;
-    color: white;
-}
-
-.btn-small.btn-primary:hover {
-    background: #0b5ed7;
-    transform: translateY(-1px);
-}
-
-.btn-danger {
-    background: #dc3545;
-    color: white;
-}
-
-.btn-danger:hover {
-    background: #c82333;
-    transform: translateY(-1px);
-}
+.btn-small.btn-primary { background: #0d6efd; color: white; }
+.btn-small.btn-primary:hover { background: #0b5ed7; }
+.btn-danger { background: #dc3545; color: white; }
+.btn-danger:hover { background: #c82333; }
 
 /* Reporte card */
 .reporte-card {
