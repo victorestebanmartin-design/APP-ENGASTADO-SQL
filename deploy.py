@@ -41,12 +41,17 @@ def run(cmd, check=True):
         sys.exit(result.returncode)
     return result
 
-def pa_request(method, url, token, data=None):
-    headers = {"Authorization": f"Token {token}"}
+def pa_request(method, url, token, data=None, deploy_hook=False):
+    if deploy_hook:
+        headers = {"X-Deploy-Token": token, "Content-Type": "application/x-www-form-urlencoded"}
+    else:
+        headers = {"Authorization": f"Token {token}"}
     body = None
-    if data:
+    if data and not deploy_hook:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         body = urlencode(data).encode("utf-8")
+    elif deploy_hook:
+        body = b""  # POST sin cuerpo
     req = Request(url, data=body, headers=headers, method=method)
     try:
         with urlopen(req, timeout=30) as resp:
@@ -77,39 +82,21 @@ def git_push(commit_message):
     run("git push")
     print("  OK")
 
-def pa_git_pull(username, project_path, token):
+def pa_git_pull(domain, token):
     print("\n[2/3] Git pull en PythonAnywhere...")
-    base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
-
-    # Crear consola bash
-    status, data = pa_request("POST", f"{base}/consoles/", token, {"executable": "bash"})
-    if status not in (200, 201):
-        print(f"  AVISO: no se pudo crear consola ({status}): {data}")
+    url = f"https://{domain}/api/internal/deploy-pull"
+    status, data = pa_request("POST", url, token, deploy_hook=True)
+    if status == 200 and isinstance(data, dict) and data.get("success"):
+        out = data.get("stdout", "").strip()
+        if out:
+            print(f"  {out}")
+        print("  OK")
+    elif status == 404:
+        print("  AVISO: deploy hook no encontrado en la app (primera vez).")
+        print("  Haz 'git pull' manualmente en PythonAnywhere esta vez.")
+    else:
+        print(f"  AVISO: respuesta inesperada ({status}): {data}")
         print("  Haz 'git pull' manualmente en PythonAnywhere.")
-        return
-
-    console_id = data.get("id")
-    if not console_id:
-        print(f"  AVISO: respuesta inesperada de consola: {data}")
-        print("  Haz 'git pull' manualmente en PythonAnywhere.")
-        return
-
-    # Enviar git pull
-    cmd = f"git -C '{project_path}' pull origin main\n"
-    status2, _ = pa_request("POST", f"{base}/consoles/{console_id}/send_input/", token, {"input": cmd})
-    if status2 != 200:
-        print(f"  AVISO: no se pudo enviar git pull ({status2})")
-        print("  Haz 'git pull' manualmente en PythonAnywhere.")
-        return
-
-    # Esperar y leer output
-    time.sleep(5)
-    status3, out = pa_request("GET", f"{base}/consoles/{console_id}/get_latest_output/", token)
-    if status3 == 200 and isinstance(out, dict):
-        output = out.get("output", "").strip()
-        if output:
-            print(f"  {output}")
-    print("  OK")
 
 def pa_reload(username, domain, token):
     print(f"\n[3/3] Recargando app ({domain})...")
@@ -126,14 +113,9 @@ def pa_reload(username, domain, token):
 
 def main():
     load_env()
-    username     = os.environ["PA_USERNAME"]
-    domain       = os.environ["PA_DOMAIN"]
-    token        = os.environ["PA_TOKEN"]
-    project_path = os.environ.get("PA_PROJECT_PATH", "")
-
-    if not project_path:
-        print("ERROR: Falta PA_PROJECT_PATH en el archivo .env")
-        sys.exit(1)
+    username = os.environ["PA_USERNAME"]
+    domain   = os.environ["PA_DOMAIN"]
+    token    = os.environ["PA_TOKEN"]
 
     commit_message = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "deploy"
 
@@ -141,7 +123,7 @@ def main():
     print("=" * 50)
 
     git_push(commit_message)
-    pa_git_pull(username, project_path, token)
+    pa_git_pull(domain, token)
     pa_reload(username, domain, token)
 
     print("\n" + "=" * 50)

@@ -4144,3 +4144,29 @@ def api_bonos_progreso_ponderado(nombre_bono):
         import traceback
         print(traceback.format_exc())
         return jsonify({'success': False, 'message': str(e)})
+
+
+# ==================== DEPLOY HOOK ====================
+
+@bp.route('/api/internal/deploy-pull', methods=['POST'])
+def deploy_pull():
+    """Endpoint interno para hacer git pull desde el script de deploy local."""
+    token = request.headers.get('X-Deploy-Token', '')
+    expected = os.environ.get('PA_TOKEN', '')
+    if not expected or token != expected:
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        result = subprocess.run(
+            ['git', 'pull', 'origin', 'main'],
+            capture_output=True, text=True, cwd=project_dir, timeout=30
+        )
+        return jsonify({
+            'success': result.returncode == 0,
+            'stdout': result.stdout.strip(),
+            'stderr': result.stderr.strip(),
+            'returncode': result.returncode
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
