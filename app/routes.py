@@ -4148,11 +4148,22 @@ def api_bonos_progreso_ponderado(nombre_bono):
 
 # ==================== DEPLOY HOOK ====================
 
+def _deploy_token():
+    """Lee el token de deploy: primero env var, luego fichero .deploy_token."""
+    token = os.environ.get('PA_TOKEN', '')
+    if not token:
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        token_file = os.path.join(project_dir, '.deploy_token')
+        if os.path.exists(token_file):
+            with open(token_file) as f:
+                token = f.read().strip()
+    return token
+
 @bp.route('/api/internal/deploy-pull', methods=['POST'])
 def deploy_pull():
     """Endpoint interno para hacer git pull desde el script de deploy local."""
     token = request.headers.get('X-Deploy-Token', '')
-    expected = os.environ.get('PA_TOKEN', '')
+    expected = _deploy_token()
     if not expected or token != expected:
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
 

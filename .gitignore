@@ -23,3 +23,4 @@ passwords.txt
 # Variables de entorno y credenciales locales
 .env
 .env.local
+.deploy_token
