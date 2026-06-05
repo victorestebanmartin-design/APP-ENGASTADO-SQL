@@ -3359,7 +3359,7 @@ async function mostrarPaqueteExpandido() {
     if (!modalEngaste) {
         modalEngaste = document.createElement('div');
         modalEngaste.id = 'modal-engaste';
-        modalEngaste.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:flex-start;z-index:10000;overflow-y:auto;padding:20px 0;box-sizing:border-box;';
+        modalEngaste.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:center;z-index:10000;padding:16px;box-sizing:border-box;';
         document.body.appendChild(modalEngaste);
     }
 
@@ -3435,9 +3435,9 @@ async function mostrarPaqueteExpandido() {
         }).join('');
 
         modalEngaste.innerHTML = `
-        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:95%;max-width:975px;">
+        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:100%;max-width:975px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;">
 
-            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="display:flex;flex-direction:column;align-items:center;">
                         <span style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Carro</span>
@@ -3455,7 +3455,7 @@ async function mostrarPaqueteExpandido() {
                 </div>
             </div>
 
-            <div style="flex:1;padding:20px 24px 12px;">
+            <div style="flex:1;overflow-y:auto;padding:20px 24px 12px;">
 
             <div style="text-align:center;margin-bottom:18px;">
                 ${numPadre ? `
@@ -3471,7 +3471,7 @@ async function mostrarPaqueteExpandido() {
 
             </div>
 
-            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;">
+            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
@@ -3495,9 +3495,9 @@ async function mostrarPaqueteExpandido() {
     }
     // ── Fin renderizado grupo serie ──
     modalEngaste.innerHTML = `
-        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:95%;max-width:975px;">
+        <div style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:100%;max-width:975px;max-height:calc(100vh - 32px);display:flex;flex-direction:column;">
 
-            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div style="background:#1e293b;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;">
                 <div style="display:flex;align-items:center;gap:12px;">
                     <div style="display:flex;flex-direction:column;align-items:center;">
                         <span style="font-size:0.7em;letter-spacing:1px;text-transform:uppercase;opacity:0.55;">Carro</span>
@@ -3515,7 +3515,7 @@ async function mostrarPaqueteExpandido() {
                 </div>
             </div>
 
-            <div style="flex:1;padding:20px 24px 16px;">
+            <div style="flex:1;overflow-y:auto;padding:20px 24px 16px;">
             <div style="text-align:center;margin-bottom:16px;">
                 ${numeroEtiqueta ? `
                 <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etqColor};color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
@@ -3588,7 +3588,7 @@ async function mostrarPaqueteExpandido() {
 
             </div>
 
-            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;">
+            <div id="footer-paquete" style="padding:14px 20px;border-top:1px solid #e9ecef;background:#f8f9fa;flex-shrink:0;">
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
@@ -3604,7 +3604,7 @@ async function mostrarPaqueteExpandido() {
             </div>
         </div>
     `;
-    
+
     // Remover handler anterior si existe
     if (handlerEnterPaquete) {
         document.removeEventListener('keypress', handlerEnterPaquete);
