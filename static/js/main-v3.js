@@ -2558,15 +2558,10 @@ function maquinaCompletaV3() {
  * Puesto completado - flujo final V3
  */
 function puestoCompletoV3() {
-    mostrarMensaje(`Puesto ${puestoSeleccionado.nombre} completado! ¡Excelente trabajo!`, 'success');
-    
+    mostrarMensaje(`Puesto ${puestoSeleccionado.nombre} completado!`, 'success');
     setTimeout(() => {
-        if (confirm('¿Quieres seleccionar otro puesto para continuar trabajando?')) {
-            volverAPuestos();
-        } else {
-            mostrarMensaje('Trabajo finalizado. ¡Buen trabajo!', 'success');
-        }
-    }, 3000);
+        volverAPuestos();
+    }, 2000);
 }
 
 /**
@@ -3708,23 +3703,21 @@ async function terminarTerminal() {
     await cargarProgresoDelBono(bonoActual.nombre);
     await cargarProgresoMaquina(); // Actualizar terminalesCompletados[] basado en progreso real
     
-    // Actualizar visualización de terminales inmediatamente
-    mostrarTerminalesAsignados();
-    
     // Forzar un repaint del DOM antes de continuar
     await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Verificar si terminamos todos
+
+    // Verificar si terminamos todos los terminales de esta máquina
     if (terminalesCompletados.length === terminalesAsignados.length) {
         mostrarMensaje('🎉 ¡Todos los terminales completados!', 'success');
-        // Esperar un poco más para que se vea la actualización visual antes de mostrar el resumen
         setTimeout(() => {
             mostrarResumenFinal();
         }, 1000);
     } else {
-        mostrarMensaje(`✅ Terminal ${terminalActual} completado. ${terminalesAsignados.length - terminalesCompletados.length} pendientes.`, 'success');
-        // Volver al área de selección solo si no terminamos todos
-        cargarAreaTrabajoV2();
+        const pendientes = terminalesAsignados.length - terminalesCompletados.length;
+        mostrarMensaje(`✅ Terminal completado. Quedan ${pendientes} pendiente${pendientes > 1 ? 's' : ''}.`, 'success');
+        setTimeout(() => {
+            abrirModalTerminal();
+        }, 1200);
     }
     
     terminalActual = null;
@@ -3787,40 +3780,29 @@ async function mostrarResumenFinal() {
         });
     }
     
-    // Decidir el siguiente paso y el mensaje
-    let siguientePaso, textoBoton, iconoBoton;
-    if (terminalesPendientesEnPuesto > 0) {
-        siguientePaso = 'maquina';
-        textoBoton = '🔧 Seleccionar otra máquina';
-        iconoBoton = '🔧';
-    } else {
-        siguientePaso = 'puesto';
-        textoBoton = '🏭 Seleccionar otro puesto';
-        iconoBoton = '🏭';
-    }
-    
+    // Decidir el siguiente paso
+    const siguientePaso = terminalesPendientesEnPuesto > 0 ? 'maquina' : 'puesto';
+    const icono = terminalesPendientesEnPuesto > 0 ? '🔧' : '🏭';
+    const mensajeSig = terminalesPendientesEnPuesto > 0
+        ? `Quedan ${terminalesPendientesEnPuesto} terminal${terminalesPendientesEnPuesto > 1 ? 'es' : ''} en otras máquinas`
+        : `Seleccionando otro puesto...`;
+
+    // Celebración breve en el área de trabajo
     const areaTrabajoV2 = document.getElementById('area-trabajo');
     areaTrabajoV2.innerHTML = `
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 15px; text-align: center;">
-            <div style="font-size: 4em; margin-bottom: 20px;">${iconoBoton}</div>
-            <h2 style="font-size: 2.5em; margin-bottom: 20px;">¡Trabajo Completado!</h2>
-            <p style="font-size: 1.3em; margin-bottom: 30px;">
-                Has completado todos los terminales de <strong>${maquinaSeleccionada.nombre}</strong>
-            </p>
-            <div style="background: rgba(255,255,255,0.2); padding: 20px; border-radius: 10px; margin-bottom: 30px;">
-                <div style="font-size: 3em; font-weight: bold;">${terminalesCompletados.length}</div>
-                <div style="font-size: 1.2em;">Terminales procesados en esta máquina</div>
+        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:40px;border-radius:15px;text-align:center;">
+            <div style="font-size:4em;margin-bottom:16px;">${icono}</div>
+            <h2 style="font-size:2em;margin-bottom:12px;">¡Máquina completada!</h2>
+            <div style="background:rgba(255,255,255,0.2);padding:18px;border-radius:10px;margin-bottom:18px;">
+                <div style="font-size:2.8em;font-weight:bold;">${terminalesCompletados.length}</div>
+                <div style="font-size:1.1em;">terminales procesados</div>
             </div>
-            ${terminalesPendientesEnPuesto > 0 ? `
-                <p style="font-size: 1.1em; margin-bottom: 20px; background: rgba(255,255,255,0.15); padding: 15px; border-radius: 8px;">
-                    ℹ️ Quedan <strong>${terminalesPendientesEnPuesto} terminales</strong> pendientes en otras máquinas de este puesto
-                </p>
-            ` : ''}
-            <button onclick="continuarDespuesDeCompletarMaquina('${siguientePaso}')" class="btn-primary" style="padding: 15px 40px; font-size: 1.2em; background: white; color: #667eea; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
-                ${textoBoton}
-            </button>
-        </div>
-    `;
+            <p style="font-size:1em;opacity:0.85;">${mensajeSig}</p>
+        </div>`;
+
+    // Abrir el modal apropiado automáticamente
+    await new Promise(resolve => setTimeout(resolve, 2200));
+    await continuarDespuesDeCompletarMaquina(siguientePaso);
 }
 
 /**
@@ -3828,38 +3810,17 @@ async function mostrarResumenFinal() {
  */
 async function continuarDespuesDeCompletarMaquina(siguientePaso) {
     if (siguientePaso === 'maquina') {
-        // Recargar progreso antes de mostrar máquinas
-        await cargarProgresoMaquina();
-        
-        // Forzar repaint del DOM
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Volver a selección de máquinas
-        document.getElementById('paso-trabajo').classList.add('hidden');
-        document.getElementById('paso-maquina').classList.remove('hidden');
-        await cargarMaquinas(puestoSeleccionado.id);
-        
-        // Esperar para que se vea la actualización antes de permitir interacción
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-    } else if (siguientePaso === 'puesto') {
-        // Recargar todo el progreso antes de mostrar puestos
         await cargarProgresoDelBono(bonoActual.nombre);
-        
-        // Forzar repaint del DOM
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Volver a selección de puestos
+        maquinaSeleccionada = null;
+        terminalesAsignados = [];
+        await abrirModalMaquina();
+    } else if (siguientePaso === 'puesto') {
+        await cargarProgresoDelBono(bonoActual.nombre);
         document.getElementById('paso-trabajo').classList.add('hidden');
-        document.getElementById('paso-maquina').classList.add('hidden');
-        document.getElementById('paso-puesto').classList.remove('hidden');
-        await cargarPuestos();
-        
-        // Esperar para que se vea la actualización antes de permitir interacción
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
+        document.getElementById('workspace-v3').classList.add('hidden');
+        puestoSeleccionado = null;
+        await abrirModalPuesto();
     } else {
-        // Volver al inicio
         window.location.href = '/';
     }
 }
