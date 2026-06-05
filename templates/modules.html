@@ -114,6 +114,11 @@
       border: 1px solid rgba(255,255,255,0.28);
     }
 
+    .mod-icon-img {
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
     .mod-icon {
       font-size: 60px;
       line-height: 1;
@@ -312,7 +317,7 @@
 
       <!-- Preparación Mangueras -->
       <a href="{{ url_for('main.mangueras') }}" class="mod-card mod-mangueras">
-        <div class="mod-icon">🛠️</div>
+        <div class="mod-icon"><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="72" height="72" class="mod-icon-img" alt="Mangueras"></div>
         <div class="mod-title">Preparación Mangueras</div>
         <div class="mod-desc">Lectura del fichero de mangueras y preparación guiada según observaciones.</div>
         <div class="mod-btn">Mangueras</div>
