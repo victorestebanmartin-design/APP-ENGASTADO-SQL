@@ -198,14 +198,14 @@ async function seleccionarBonoDesdeModal(nombreBono) {
 // ==================== MODALES WIZARD: PUESTO / MÁQUINA / TERMINAL ====================
 
 function _mostrarModalWizard(id) {
-    ['modal-puesto', 'modal-maquina', 'modal-terminal'].forEach(mid => {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro'].forEach(mid => {
         const el = document.getElementById(mid);
         if (el) el.classList.toggle('hidden', mid !== id);
     });
 }
 
 function _cerrarModalesWizard() {
-    ['modal-puesto', 'modal-maquina', 'modal-terminal'].forEach(mid => {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro'].forEach(mid => {
         const el = document.getElementById(mid);
         if (el) el.classList.add('hidden');
     });
@@ -234,14 +234,10 @@ async function abrirModalPuesto() {
         ]);
 
         const terminalesConDatos = rTerminales.success ? rTerminales.terminales : [];
-        _puestosCache = rPuestos.success ? rPuestos.puestos.filter(p => p.activo) : [];
+        const todosActivos = rPuestos.success ? rPuestos.puestos.filter(p => p.activo) : [];
 
-        if (_puestosCache.length === 0) {
-            lista.innerHTML = '<p class="modal-bonos-vacio">No hay puestos disponibles.</p>';
-            return;
-        }
-
-        lista.innerHTML = _puestosCache.map((puesto, i) => {
+        // Calcular totales y filtrar puestos sin terminales en este bono
+        const puestosConInfo = todosActivos.map((puesto, i) => {
             let total = 0, completados = 0;
             if (puesto.maquinas) {
                 puesto.maquinas.filter(m => m.activo).forEach(m => {
@@ -253,6 +249,17 @@ async function abrirModalPuesto() {
                     }
                 });
             }
+            return { puesto, total, completados };
+        }).filter(({ total }) => terminalesConDatos.length === 0 || total > 0);
+
+        _puestosCache = puestosConInfo.map(({ puesto }) => puesto);
+
+        if (_puestosCache.length === 0) {
+            lista.innerHTML = '<p class="modal-bonos-vacio">No hay puestos con trabajo en este bono.</p>';
+            return;
+        }
+
+        lista.innerHTML = puestosConInfo.map(({ puesto, total, completados }, i) => {
             const pct = total > 0 ? Math.round(completados / total * 100) : 0;
             const hecho = total > 0 && completados === total;
 
@@ -1166,12 +1173,9 @@ async function seleccionarTerminalTrabajo(terminal) {
 }
 
 /**
- * Mostrar pantalla para que el usuario elija qué carro va a trabajar
+ * Mostrar modal para que el usuario elija qué carro va a trabajar
  */
 async function mostrarSeleccionCarro() {
-    const areaTrabajo = document.getElementById('area-trabajo');
-    if (!areaTrabajo) return;
-
     await cargarProgresoDelBono(bonoActual.nombre);
 
     const carrosCompletados = (window.progresoCompleto && window.progresoCompleto[terminalActual])
@@ -1182,11 +1186,7 @@ async function mostrarSeleccionCarro() {
         : {};
 
     const carrosPendientes = carrosDelBono.filter(c => !carrosCompletados.includes(c.carro));
-    const carrosHechos = carrosDelBono.filter(c => carrosCompletados.includes(c.carro));
-
-    console.log('carrosDelBono:', carrosDelBono);
-    console.log('carrosCompletados:', carrosCompletados);
-    console.log('carrosPendientes:', carrosPendientes);
+    const carrosHechos    = carrosDelBono.filter(c =>  carrosCompletados.includes(c.carro));
 
     if (carrosPendientes.length === 0) {
         mostrarMensaje(`✅ Terminal ${terminalActual} ya completado en todos los carros`, 'success');
@@ -1194,10 +1194,7 @@ async function mostrarSeleccionCarro() {
         return;
     }
 
-    areaTrabajo.style.display = 'block';
-    areaTrabajo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    // Comprobar qué carros tienen datos para este terminal antes de mostrarlos
+    // Filtrar carros que realmente tienen datos para este terminal
     const carrosPendientesFiltrados = [];
     for (const carro of carrosPendientes) {
         try {
@@ -1206,7 +1203,7 @@ async function mostrarSeleccionCarro() {
             if (d.success && d.paquetes && d.paquetes.length > 0) {
                 carrosPendientesFiltrados.push(carro);
             }
-        } catch(e) { carrosPendientesFiltrados.push(carro); } // en caso de error lo mostramos igualmente
+        } catch(e) { carrosPendientesFiltrados.push(carro); }
     }
 
     if (carrosPendientesFiltrados.length === 0) {
@@ -1215,47 +1212,50 @@ async function mostrarSeleccionCarro() {
         return;
     }
 
-    areaTrabajo.innerHTML = `
-        <div style="max-width: 600px; margin: 0 auto; padding: 10px;">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-                <button onclick="abrirModalTerminal()" style="background: #6c757d; color: white; border: none; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 0.9em;">← Volver</button>
-                <div>
-                    <div style="font-size: 1.3em; font-weight: bold;">🔌 Terminal ${terminalActual}</div>
-                    <div style="color: #6c757d; font-size: 0.9em;">Elige el carro que vas a trabajar</div>
-                </div>
-            </div>
+    // Actualizar subtítulo y contenido del modal
+    const subtitulo = document.getElementById('modal-carro-subtitulo');
+    if (subtitulo) subtitulo.textContent = `Terminal: ${terminalActual}`;
 
-            <div style="margin-bottom: 24px;">
-                <div style="font-weight: 600; color: #212529; margin-bottom: 10px; font-size: 1em;">📦 Carros pendientes (${carrosPendientesFiltrados.length})</div>
-                ${carrosPendientesFiltrados.map(carro => {
-                    const pendInfo = carrosConPendientes[String(carro.carro)];
-                    const numPend = pendInfo?.paquetes?.length || 0;
-                    return `
-                    <div onclick="elegirCarro('${carro.carro}')" style="background: white; border: 2px solid ${numPend > 0 ? '#f59e0b' : '#0d6efd'}; border-radius: 10px; padding: 16px 20px; margin-bottom: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.15s;"
-                         onmouseover="this.style.background='${numPend > 0 ? '#fffbeb' : '#e7f1ff'}'; this.style.transform='translateX(4px)'"
-                         onmouseout="this.style.background='white'; this.style.transform='translateX(0)'">
-                        <div>
-                            <div style="font-size: 1.25em; font-weight: bold; color: ${numPend > 0 ? '#d97706' : '#0d6efd'};">🚗 Carro ${carro.carro}${numPend > 0 ? ` <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-left:6px;">⚠️ ${numPend} pend.</span>` : ''}</div>
-                            <div style="font-size: 0.85em; color: #6c757d; margin-top: 2px;">${carro.archivo_excel || ''}</div>
+    const contenido = document.getElementById('modal-carro-contenido');
+    contenido.innerHTML = `
+        <div>
+            <div style="font-weight:600;color:#212529;margin-bottom:10px;font-size:0.95em;">📦 Pendientes (${carrosPendientesFiltrados.length})</div>
+            ${carrosPendientesFiltrados.map(carro => {
+                const pendInfo = carrosConPendientes[String(carro.carro)];
+                const numPend = pendInfo?.paquetes?.length || 0;
+                return `<div class="modal-puesto-item${numPend > 0 ? ' en-espera' : ''}" onclick="elegirCarroDesdeModal('${carro.carro}')">
+                    <div class="modal-puesto-item-info">
+                        <div class="modal-puesto-item-nombre" style="color:${numPend > 0 ? '#d97706' : '#1d4ed8'}">
+                            🚗 Carro ${carro.carro}
+                            ${numPend > 0 ? `<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:0.75em;margin-left:6px;">⚠️ ${numPend} pend.</span>` : ''}
                         </div>
-                        <div style="font-size: 1.8em; color: ${numPend > 0 ? '#d97706' : '#0d6efd'};">▶</div>
-                    </div>`;
-                }).join('')}
-            </div>
-
+                        ${carro.archivo_excel ? `<div class="modal-puesto-item-desc">${carro.archivo_excel}</div>` : ''}
+                    </div>
+                    <span class="modal-bono-item-arrow" style="color:${numPend > 0 ? '#d97706' : '#1d4ed8'}">▶</span>
+                </div>`;
+            }).join('')}
             ${carrosHechos.length > 0 ? `
-                <div>
-                    <div style="font-weight: 600; color: #6c757d; margin-bottom: 10px; font-size: 0.95em;">✅ Ya completados (${carrosHechos.length})</div>
-                    ${carrosHechos.map(carro => `
-                        <div style="background: #f0fdf4; border: 2px solid #22c55e; border-radius: 10px; padding: 12px 20px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; opacity: 0.7;">
-                            <div style="font-size: 1.1em; font-weight: 600; color: #16a34a;">✅ Carro ${carro.carro}</div>
-                            <div style="color: #16a34a; font-size: 1.4em;">✓</div>
-                        </div>
-                    `).join('')}
-                </div>
-            ` : ''}
-        </div>
-    `;
+                <div style="margin-top:14px;">
+                    <div style="font-weight:600;color:#6c757d;margin-bottom:8px;font-size:0.88em;">✅ Completados (${carrosHechos.length})</div>
+                    ${carrosHechos.map(c => `
+                        <div class="modal-puesto-item completado" style="cursor:default;">
+                            <div class="modal-puesto-item-info">
+                                <div class="modal-puesto-item-nombre">✅ Carro ${c.carro}</div>
+                            </div>
+                            <span style="color:#16a34a;font-size:1.1em;">✓</span>
+                        </div>`).join('')}
+                </div>` : ''}
+        </div>`;
+
+    document.getElementById('modal-carro').classList.remove('hidden');
+}
+
+async function elegirCarroDesdeModal(numeroCarro) {
+    document.getElementById('modal-carro').classList.add('hidden');
+    await elegirCarro(numeroCarro);
+    setTimeout(() => {
+        document.getElementById('area-trabajo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
 }
 
 /**

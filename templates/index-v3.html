@@ -121,6 +121,23 @@
         </div>
     </div>
 
+    <!-- Modal selección de carro -->
+    <div id="modal-carro" class="modal-operario-overlay hidden">
+        <div class="modal-puesto-card">
+            <div class="modal-operario-header">
+                <div class="modal-operario-icon">🚗</div>
+                <h2>Seleccionar Carro</h2>
+                <p id="modal-carro-subtitulo">Elige el carro a trabajar</p>
+            </div>
+            <div id="modal-carro-contenido" class="modal-bonos-scroll">
+                <p class="modal-bonos-cargando">Cargando carros...</p>
+            </div>
+            <div class="modal-bono-footer">
+                <button type="button" onclick="abrirModalTerminal()" class="btn-volver-modal">← Cambiar terminal</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal selección de terminal -->
     <div id="modal-terminal" class="modal-operario-overlay hidden">
         <div class="modal-terminal-card">

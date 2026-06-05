@@ -314,6 +314,16 @@
     opacity: 0.85;
 }
 
+.modal-puesto-item.en-espera {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+
+.modal-puesto-item.en-espera:hover {
+    border-color: #d97706;
+    background: #fef3c7;
+}
+
 .modal-puesto-item-info {
     flex: 1;
     min-width: 0;
