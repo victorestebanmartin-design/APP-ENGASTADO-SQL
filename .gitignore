@@ -19,3 +19,7 @@ __pycache__/
 Thumbs.db
 desktop.ini
 passwords.txt
+
+# Variables de entorno y credenciales locales
+.env
+.env.local

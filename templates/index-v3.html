@@ -8,10 +8,31 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v3.css') }}">
 </head>
 <body>
+
+    <!-- Modal identificación operario -->
+    <div id="modal-operario" class="modal-operario-overlay">
+        <div class="modal-operario-card">
+            <div class="modal-operario-header">
+                <div class="modal-operario-icon">⚡</div>
+                <h2>Sistema de Engastado V3.0</h2>
+                <p>Identifícate para acceder</p>
+            </div>
+            <div class="modal-operario-body">
+                <label for="input-operario">Nombre o Nº de Operario</label>
+                <input type="text" id="input-operario" placeholder="Ej: Juan García o 1042" autocomplete="off">
+                <div id="modal-operario-error" class="modal-operario-error hidden">Debes introducir tu nombre o número de operario.</div>
+            </div>
+            <div class="modal-operario-footer">
+                <button onclick="confirmarOperario()" class="btn-confirmar-operario">Entrar al módulo</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>🚀 Sistema de Engastado V3.0</h1>
             <div class="header-actions">
+                <span id="badge-operario" class="badge-operario hidden"></span>
                 <button onclick="abrirDashboardProgreso()" class="btn-secondary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer;">📊 Dashboard Progreso</button>
                 <a href="{{ url_for('main.modules') }}" class="btn-secondary">🔙 Inicio</a>
                 <a href="{{ url_for('main.admin') }}" class="btn-admin">⚙️ Admin</a>

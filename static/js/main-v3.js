@@ -3,6 +3,9 @@
  * JavaScript Principal - Modo Avanzado
  */
 
+// Operario identificado en esta sesión
+let operarioActual = null;
+
 // Variables globales V3
 let bonoActual = null;
 let proyectoActual = null;
@@ -31,9 +34,23 @@ window.addEventListener('beforeunload', function() {
 // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initCableColors === 'function') initCableColors();
-    const codigoBonoInput = document.getElementById('codigo-bono');
-    
+
+    // Mostrar modal de operario o recuperar sesión activa
+    const operarioGuardado = sessionStorage.getItem('operario_actual');
+    if (operarioGuardado) {
+        _activarOperario(operarioGuardado);
+    } else {
+        const inputOperario = document.getElementById('input-operario');
+        if (inputOperario) {
+            inputOperario.focus();
+            inputOperario.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') confirmarOperario();
+            });
+        }
+    }
+
     // Event listener para código de bono
+    const codigoBonoInput = document.getElementById('codigo-bono');
     if (codigoBonoInput) {
         codigoBonoInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
@@ -43,6 +60,41 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+function confirmarOperario() {
+    const input = document.getElementById('input-operario');
+    const errorDiv = document.getElementById('modal-operario-error');
+    const valor = input ? input.value.trim() : '';
+
+    if (!valor) {
+        errorDiv.classList.remove('hidden');
+        input.focus();
+        return;
+    }
+
+    errorDiv.classList.add('hidden');
+    sessionStorage.setItem('operario_actual', valor);
+    _activarOperario(valor);
+}
+
+function _activarOperario(nombre) {
+    operarioActual = nombre;
+
+    // Ocultar modal
+    const modal = document.getElementById('modal-operario');
+    if (modal) modal.classList.add('hidden');
+
+    // Mostrar badge en el header
+    const badge = document.getElementById('badge-operario');
+    if (badge) {
+        badge.textContent = `Operario: ${nombre}`;
+        badge.classList.remove('hidden');
+    }
+
+    // Dar foco al input de bono
+    const codigoBonoInput = document.getElementById('codigo-bono');
+    if (codigoBonoInput) codigoBonoInput.focus();
+}
 
 /**
  * Abrir dashboard de progreso con el bono actual
