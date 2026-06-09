@@ -17,6 +17,11 @@ __pycache__/
 # Logs locales (servidor de desarrollo, etc.)
 logs/
 
+# Datos de runtime generados por la app (prevalece la versión del servidor)
+data/progreso_bono_*.json
+data/engastado.db
+data/*.db
+
 # Basura del sistema operativo
 .DS_Store
 Thumbs.db
