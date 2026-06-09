@@ -4,6 +4,7 @@ Inicialización de la aplicación Flask con SQLite
 from flask import Flask
 from config import Config
 import os
+import re
 import sqlite3
 
 
@@ -27,15 +28,21 @@ def _apply_migrations(db_path):
 
     for sql in missing:
         cur.execute(sql)
+    conn.commit()
 
     # Comprobar si el UNIQUE constraint incluye sub_numero
-    # En SQLite, los índices únicos se listan en sqlite_master
+    # (un ALTER TABLE añade la columna al SQL pero NO modifica el UNIQUE inline)
     cur.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='etiquetas_elementos'"
     )
     row = cur.fetchone()
-    if row and 'sub_numero' not in (row[0] or ''):
-        # Recrear tabla con el UNIQUE correcto
+    table_sql = row[0] if row else ''
+    unique_match = re.search(r'UNIQUE\s*\(([^)]+)\)', table_sql, re.IGNORECASE)
+    unique_cols = unique_match.group(1) if unique_match else ''
+    needs_recreate = 'sub_numero' not in unique_cols
+
+    if needs_recreate:
+        # Recrear tabla con el UNIQUE correcto preservando datos
         cur.executescript("""
             BEGIN;
             CREATE TABLE etiquetas_elementos_new (
@@ -75,7 +82,6 @@ def _apply_migrations(db_path):
             COMMIT;
         """)
 
-    conn.commit()
     conn.close()
 
 
