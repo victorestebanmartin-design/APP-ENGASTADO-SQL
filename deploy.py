@@ -56,7 +56,7 @@ def pa_request(method, url, token, data=None):
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urlopen(req, timeout=30, context=ctx) as resp:
+        with urlopen(req, timeout=60, context=ctx) as resp:
             status = resp.status
             raw = resp.read().decode("utf-8").strip()
             try:

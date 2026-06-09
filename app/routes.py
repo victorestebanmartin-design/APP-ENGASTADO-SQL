@@ -4195,8 +4195,11 @@ def deploy_pull():
 
     project_dir = os.path.dirname(current_app.root_path)
     try:
+        # fetch + reset --hard: siempre sincroniza con GitHub sin conflictos
+        subprocess.run(['git', 'fetch', 'origin', 'main'],
+                       capture_output=True, text=True, cwd=project_dir, timeout=30)
         result = subprocess.run(
-            ['git', 'pull', 'origin', 'main'],
+            ['git', 'reset', '--hard', 'origin/main'],
             capture_output=True, text=True, cwd=project_dir, timeout=30
         )
         return jsonify({
