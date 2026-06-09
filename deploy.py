@@ -100,7 +100,7 @@ def pa_upload_file(username, token, remote_path, local_path):
         "Authorization": f"Token {token}",
         "Content-Type": f"multipart/form-data; boundary={boundary}",
     }
-    req = Request(url, data=body, headers=headers, method="POST")
+    req = Request(url, data=body, headers=headers, method="PUT")
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
