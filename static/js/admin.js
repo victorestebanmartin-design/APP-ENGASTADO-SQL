@@ -197,10 +197,10 @@ async function cargarArchivos() {
                 let html = '<table><thead><tr><th>Nombre del Archivo</th><th>Tamaño</th><th>Acciones</th></tr></thead><tbody>';
                 data.files.forEach(file => {
                     html += `
-                        <tr>
-                            <td style="color:#e2e8f0">${file.nombre}</td>
-                            <td style="color:#e2e8f0">${file.tamano}</td>
-                            <td>
+                        <tr style="background:#1a2535; color:#e2e8f0;">
+                            <td style="color:#e2e8f0; padding:8px 10px;">${file.nombre}</td>
+                            <td style="color:#e2e8f0; padding:8px 10px;">${file.tamano}</td>
+                            <td style="padding:8px 10px;">
                                 <button onclick="regenerarEtiquetas('${file.nombre}')" class="btn-secondary" title="Regenerar etiquetas desde el Excel actual" style="margin-right:4px;">
                                     🔄 Etiquetas
                                 </button>
@@ -364,12 +364,12 @@ async function cargarCortes() {
                 
                 data.cortes.forEach(corte => {
                     html += `
-                        <tr>
-                            <td style="color:#e2e8f0"><strong style="color:#fff">${corte.codigo_barras}</strong></td>
-                            <td style="color:#e2e8f0">${corte.archivo}</td>
-                            <td style="color:#e2e8f0">${corte.descripcion}</td>
-                            <td style="color:#e2e8f0">${corte.proyecto || '-'}</td>
-                            <td>
+                        <tr style="background:#1a2535; color:#e2e8f0;">
+                            <td style="color:#e2e8f0; padding:8px 10px;"><strong style="color:#fff">${corte.codigo_barras}</strong></td>
+                            <td style="color:#e2e8f0; padding:8px 10px;">${corte.archivo}</td>
+                            <td style="color:#e2e8f0; padding:8px 10px;">${corte.descripcion}</td>
+                            <td style="color:#e2e8f0; padding:8px 10px;">${corte.proyecto || '-'}</td>
+                            <td style="padding:8px 10px;">
                                 <button onclick="eliminarCorte('${corte.codigo_barras}')" class="btn-delete" title="Eliminar">
                                     🗑️
                                 </button>
