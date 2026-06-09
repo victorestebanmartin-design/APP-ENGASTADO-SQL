@@ -85,12 +85,22 @@ def git_push(commit_message):
     print("  OK")
 
 def pa_upload_file(username, token, remote_path, local_path):
-    """Sube un archivo directamente a PA via API (sin necesitar git pull)."""
+    """Sube un archivo directamente a PA via API (multipart/form-data)."""
     url = f"https://www.pythonanywhere.com/api/v0/user/{username}/files/path{remote_path}"
     with open(local_path, 'rb') as f:
         content = f.read()
-    headers = {"Authorization": f"Token {token}", "Content-Type": "application/octet-stream"}
-    req = Request(url, data=content, headers=headers, method="POST")
+    boundary = "----PAboundary1234567890"
+    filename = os.path.basename(local_path)
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="content"; filename="{filename}"\r\n'
+        f"Content-Type: application/octet-stream\r\n\r\n"
+    ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    headers = {
+        "Authorization": f"Token {token}",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+    req = Request(url, data=body, headers=headers, method="POST")
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
