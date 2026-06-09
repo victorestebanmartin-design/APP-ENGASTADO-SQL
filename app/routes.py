@@ -4194,12 +4194,13 @@ def deploy_pull():
         return jsonify({'success': False, 'error': 'unauthorized', 'path_checked': os.path.join(os.path.dirname(current_app.root_path), '.deploy_token')}), 401
 
     project_dir = os.path.dirname(current_app.root_path)
+    git = '/usr/bin/git'
     try:
         # fetch + reset --hard: siempre sincroniza con GitHub sin conflictos
-        subprocess.run(['git', 'fetch', 'origin', 'main'],
+        subprocess.run([git, 'fetch', 'origin', 'main'],
                        capture_output=True, text=True, cwd=project_dir, timeout=30)
         result = subprocess.run(
-            ['git', 'reset', '--hard', 'origin/main'],
+            [git, 'reset', '--hard', 'origin/main'],
             capture_output=True, text=True, cwd=project_dir, timeout=30
         )
         return jsonify({
