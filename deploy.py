@@ -45,12 +45,16 @@ def run(cmd, check=True):
         sys.exit(result.returncode)
     return result
 
-def pa_request(method, url, token, data=None):
+def pa_request(method, url, token, data=None, json_body=False):
     headers = {"Authorization": f"Token {token}"}
     body = None
     if data:
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        body = urlencode(data).encode("utf-8")
+        if json_body:
+            headers["Content-Type"] = "application/json"
+            body = json.dumps(data).encode("utf-8")
+        else:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            body = urlencode(data).encode("utf-8")
     req = Request(url, data=body, headers=headers, method=method)
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -89,7 +93,9 @@ def pa_git_pull(username, token):
     base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
 
     # Crear consola bash
-    status, data = pa_request("POST", f"{base}/consoles/", token, data={"executable": "bash"})
+    status, data = pa_request("POST", f"{base}/consoles/", token,
+                              data={"executable": "bash", "arguments": "", "working_directory": f"/home/{username}/APP-ENGASTADO-SQL"},
+                              json_body=True)
     if status not in (200, 201) or "id" not in data:
         print(f"  AVISO: no se pudo crear consola ({status}): {data}")
         print("  Haz 'git pull' manualmente en PythonAnywhere.")
