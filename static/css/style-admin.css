@@ -296,8 +296,11 @@
   border-bottom: 1px solid var(--border-soft) !important;
   color: var(--text) !important;
 }
-.admin-app table td strong { color: #fff; }
+.admin-app table td strong { color: #fff !important; }
 .admin-app table tbody tr:hover { background: rgba(255,255,255,.025); }
+/* Tablas generadas dinámicamente por admin.js */
+.admin-app .tabla-container table td,
+.admin-app .tabla-container table td * { color: #e2e8f0 !important; }
 
 /* ── Gestión organizacional ──────────────────────────────────────── */
 .admin-app .gestion-organizacional { display: grid; gap: 14px; }
