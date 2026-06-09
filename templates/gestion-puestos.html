@@ -78,20 +78,31 @@
             transition: border-color .12s !important;
             transform: none !important; box-shadow: none !important;
         }
-        .terminal-card:hover { border-color: rgba(59,130,246,.4) !important; transform: none !important; box-shadow: none !important; }
-        /* LED de estado: dot pequeño, sin fondos de color */
-        .terminal-card.asignado  { border-left: 2px solid rgba(59,130,246,.35) !important; background: var(--panel-2) !important; }
-        .terminal-card.sin-asignar { border-left: 2px solid rgba(245,158,11,.35) !important; background: var(--panel-2) !important; }
+        .terminal-card.sin-asignar { cursor: pointer; border-left: 2px solid rgba(245,158,11,.4) !important; }
+        .terminal-card.asignado   { border-left: 2px solid rgba(34,197,94,.45) !important; }
+        .terminal-card.sin-asignar:hover { border-color: rgba(245,158,11,.7) !important; }
+        .terminal-card.seleccionado {
+            border-color: var(--accent) !important;
+            background: rgba(59,130,246,.08) !important;
+            box-shadow: 0 0 0 1px rgba(59,130,246,.3) !important;
+        }
         .terminal-header { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
         .terminal-nombre { font-family: 'DM Mono', monospace; font-size: 0.82rem; font-weight: 600; flex: 1; color: var(--text); }
-        .terminal-checkbox { accent-color: var(--accent); transform: none !important; }
         /* Info de asignación: sin caja verde */
         .terminal-info { font-size: 0.73rem; color: var(--text-dim); }
         .asignacion-actual { background: none !important; padding: 0 !important; color: var(--text-dim) !important; }
-        .asignacion-actual strong { color: var(--text-dim); font-weight: 400; }
-        .maquina-info { color: var(--text-muted) !important; font-weight: 500 !important; }
-        .estado-pendiente { color: rgba(245,158,11,.7); }
-        .terminal-actions { display: flex; gap: 4px; }
+        .maquina-info { color: rgba(74,222,128,.8) !important; font-weight: 500 !important; font-family: 'DM Mono', monospace; }
+        .estado-pendiente { color: rgba(245,158,11,.6); font-size: 0.72rem; }
+        .terminal-actions { display: flex; gap: 4px; align-items: center; }
+        /* Botón desasignar chic */
+        .btn-desvincular {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 50%;
+            background: transparent; border: 1px solid rgba(239,68,68,.25);
+            color: rgba(239,68,68,.5); font-size: 11px; cursor: pointer;
+            transition: all .15s; line-height: 1; flex-shrink: 0;
+        }
+        .btn-desvincular:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.6); color: #f87171; }
 
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }

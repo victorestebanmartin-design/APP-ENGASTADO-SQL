@@ -524,31 +524,21 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
             ${dataTerminales.terminales.map(terminal => `
                 <div class="terminal-card ${terminal.asignado ? 'asignado' : 'sin-asignar'}" 
                      data-terminal="${terminal.terminal}" 
-                     data-estado="${terminal.asignado ? 'asignado' : 'sin-asignar'}">
+                     data-estado="${terminal.asignado ? 'asignado' : 'sin-asignar'}"
+                     ${!terminal.asignado ? `onclick="toggleSeleccionTerminal(this)"` : ''}>
                     <div class="terminal-header">
-                        <input type="checkbox" class="terminal-checkbox" value="${terminal.terminal}" 
-                               ${terminal.asignado ? 'disabled' : ''}>
                         <span class="terminal-nombre">${terminal.terminal}</span>
                         <div class="terminal-actions">
                             ${terminal.asignado ? 
-                                `<button class="btn-icon btn-desasignar" onclick="desasignarTerminal('${terminal.terminal}')" title="Desasignar">
-                                    ❌
-                                </button>` : 
-                                `<button class="btn-icon btn-asignar" onclick="mostrarAsignacionRapida('${terminal.terminal}')" title="Asignar">
-                                    ➕
-                                </button>`
+                                `<button class="btn-desvincular" onclick="event.stopPropagation();desasignarTerminal('${terminal.terminal}')" title="Desasignar">✕</button>` : 
+                                ''
                             }
                         </div>
                     </div>
                     <div class="terminal-info">
                         ${terminal.asignado ? 
-                            `<div class="asignacion-actual">
-                                <strong>Asignado a:</strong><br>
-                                <span class="maquina-info">${terminal.asignacion.puesto_nombre} - ${terminal.asignacion.maquina_nombre}</span>
-                            </div>` :
-                            `<div class="sin-asignacion">
-                                <span class="estado-pendiente">⚠️ Pendiente de asignar</span>
-                            </div>`
+                            `<span class="maquina-info">${terminal.asignacion.puesto_nombre} · ${terminal.asignacion.maquina_nombre}</span>` :
+                            `<span class="estado-pendiente">sin asignar</span>`
                         }
                     </div>
                 </div>
@@ -598,13 +588,13 @@ async function asignarSeleccionados() {
         return;
     }
     
-    const checkboxes = document.querySelectorAll('.terminal-checkbox:checked');
-    if (checkboxes.length === 0) {
-        alert('Selecciona al menos un terminal');
+    const seleccionadas = document.querySelectorAll('.terminal-card.seleccionado');
+    if (seleccionadas.length === 0) {
+        alert('Pulsa sobre las tarjetas de terminal que quieras asignar');
         return;
     }
     
-    const terminales = Array.from(checkboxes).map(cb => cb.value);
+    const terminales = Array.from(seleccionadas).map(card => card.dataset.terminal);
     
     try {
         for (const terminal of terminales) {
@@ -658,17 +648,13 @@ async function desasignarTerminal(terminal) {
  * Mostrar asignación rápida para un terminal específico
  */
 function mostrarAsignacionRapida(terminal) {
-    const maquinaSelect = document.getElementById('maquina-destino');
-    const checkbox = document.querySelector(`input[value="${terminal}"]`);
-    
-    // Limpiar otras selecciones
-    document.querySelectorAll('.terminal-checkbox').forEach(cb => cb.checked = false);
-    
-    // Seleccionar este terminal
-    checkbox.checked = true;
-    
-    // Enfocar selector de máquina
-    maquinaSelect.focus();
+    const card = document.querySelector(`.terminal-card[data-terminal="${terminal}"]`);
+    if (card) toggleSeleccionTerminal(card);
+    document.getElementById('maquina-destino').focus();
+}
+
+function toggleSeleccionTerminal(card) {
+    card.classList.toggle('seleccionado');
 }
 
 // ================================
