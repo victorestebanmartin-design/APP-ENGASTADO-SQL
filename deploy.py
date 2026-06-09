@@ -84,8 +84,26 @@ def git_push(commit_message):
     run("git push")
     print("  OK")
 
-def pa_git_pull(domain, deploy_secret):
-    print("\n[2/3] Git pull en PythonAnywhere...")
+def pa_upload_file(username, token, remote_path, local_path):
+    """Sube un archivo directamente a PA via API (sin necesitar git pull)."""
+    url = f"https://www.pythonanywhere.com/api/v0/user/{username}/files/path{remote_path}"
+    with open(local_path, 'rb') as f:
+        content = f.read()
+    headers = {"Authorization": f"Token {token}", "Content-Type": "application/octet-stream"}
+    req = Request(url, data=content, headers=headers, method="POST")
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        with urlopen(req, timeout=60, context=ctx) as resp:
+            return resp.status
+    except HTTPError as e:
+        return e.code
+    except Exception:
+        return 0
+
+def pa_git_pull(domain, deploy_secret, username, token):
+    print("\n[2/3] Sync en PythonAnywhere...")
     url = f"https://{domain}/api/internal/deploy-pull"
     headers = {"X-Deploy-Token": deploy_secret, "Content-Type": "application/x-www-form-urlencoded"}
     req = Request(url, data=b"", headers=headers, method="POST")
@@ -101,12 +119,33 @@ def pa_git_pull(domain, deploy_secret):
                 if out:
                     print(f"  {out}")
                 print("  OK")
+                return
             else:
-                print(f"  AVISO: {data}")
-                print("  Haz 'git pull' manualmente en PythonAnywhere.")
+                print(f"  Hook respondio pero fallo: {data}")
     except Exception as e:
-        print(f"  AVISO: error al llamar al deploy hook: {e}")
-        print("  Haz 'git pull' manualmente en PythonAnywhere.")
+        print(f"  Hook no disponible ({e}), usando upload directo...")
+
+    # Fallback: subir routes.py directamente via API de archivos
+    project = f"/home/{username}/APP-ENGASTADO-SQL"
+    files_to_sync = [
+        ("app/routes.py",   f"{project}/app/routes.py"),
+        ("deploy.py",       f"{project}/deploy.py"),
+        ("templates/admin.html", f"{project}/templates/admin.html"),
+        ("static/css/style-admin.css", f"{project}/static/css/style-admin.css"),
+        ("static/js/admin.js", f"{project}/static/js/admin.js"),
+    ]
+    base = os.path.dirname(__file__)
+    ok = 0
+    for local_rel, remote in files_to_sync:
+        local = os.path.join(base, local_rel.replace("/", os.sep))
+        if not os.path.exists(local):
+            continue
+        status = pa_upload_file(username, token, remote, local)
+        if status in (200, 201):
+            ok += 1
+        else:
+            print(f"  AVISO upload {local_rel}: {status}")
+    print(f"  Upload directo: {ok}/{len(files_to_sync)} archivos OK")
 
 def pa_reload(username, domain, token):
     print(f"\n[3/3] Recargando app ({domain})...")
@@ -137,7 +176,7 @@ def main():
     print("=" * 50)
 
     git_push(commit_message)
-    pa_git_pull(domain, deploy_secret)
+    pa_git_pull(domain, deploy_secret, username, token)
     pa_reload(username, domain, token)
 
     print("\n" + "=" * 50)
