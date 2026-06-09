@@ -110,16 +110,19 @@ def pa_git_pull(domain, deploy_secret):
 
 def pa_reload(username, domain, token):
     print(f"\n[3/3] Recargando app ({domain})...")
-    status, data = pa_request(
-        "POST",
-        f"https://www.pythonanywhere.com/api/v0/user/{username}/webapps/{domain}/reload/",
-        token
-    )
-    if status == 200:
-        print("  App recargada correctamente.")
-    else:
-        print(f"  ERROR al recargar: {status} {data}")
-        sys.exit(1)
+    try:
+        status, data = pa_request(
+            "POST",
+            f"https://www.pythonanywhere.com/api/v0/user/{username}/webapps/{domain}/reload/",
+            token
+        )
+        if status == 200:
+            print("  App recargada correctamente.")
+        else:
+            print(f"  AVISO al recargar: {status} {data}")
+    except Exception as e:
+        print(f"  AVISO: timeout/error en reload ({e})")
+        print("  Es posible que la app se haya recargado igualmente. Comprueba manualmente.")
 
 def main():
     load_env()
