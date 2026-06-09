@@ -45,16 +45,12 @@ def run(cmd, check=True):
         sys.exit(result.returncode)
     return result
 
-def pa_request(method, url, token, data=None, json_body=False):
+def pa_request(method, url, token, data=None):
     headers = {"Authorization": f"Token {token}"}
     body = None
     if data:
-        if json_body:
-            headers["Content-Type"] = "application/json"
-            body = json.dumps(data).encode("utf-8")
-        else:
-            headers["Content-Type"] = "application/x-www-form-urlencoded"
-            body = urlencode(data).encode("utf-8")
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        body = urlencode(data).encode("utf-8")
     req = Request(url, data=body, headers=headers, method=method)
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -88,36 +84,29 @@ def git_push(commit_message):
     run("git push")
     print("  OK")
 
-def pa_git_pull(username, token):
+def pa_git_pull(domain, deploy_secret):
     print("\n[2/3] Git pull en PythonAnywhere...")
-    base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
-
-    # Crear consola bash
-    status, data = pa_request("POST", f"{base}/consoles/", token,
-                              data={"executable": "bash", "arguments": "", "working_directory": f"/home/{username}/APP-ENGASTADO-SQL"},
-                              json_body=True)
-    if status not in (200, 201) or "id" not in data:
-        print(f"  AVISO: no se pudo crear consola ({status}): {data}")
+    url = f"https://{domain}/api/internal/deploy-pull"
+    headers = {"X-Deploy-Token": deploy_secret, "Content-Type": "application/x-www-form-urlencoded"}
+    req = Request(url, data=b"", headers=headers, method="POST")
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        with urlopen(req, timeout=30, context=ctx) as resp:
+            raw = resp.read().decode("utf-8").strip()
+            data = json.loads(raw) if raw else {}
+            if data.get("success"):
+                out = data.get("stdout", "").strip()
+                if out:
+                    print(f"  {out}")
+                print("  OK")
+            else:
+                print(f"  AVISO: {data}")
+                print("  Haz 'git pull' manualmente en PythonAnywhere.")
+    except Exception as e:
+        print(f"  AVISO: error al llamar al deploy hook: {e}")
         print("  Haz 'git pull' manualmente en PythonAnywhere.")
-        return
-    console_id = data["id"]
-
-    # Enviar git pull
-    pa_request("POST", f"{base}/consoles/{console_id}/send_input/", token,
-               data={"input": "cd ~/APP-ENGASTADO-SQL && git pull\n"})
-    time.sleep(6)
-
-    # Leer output
-    status2, out = pa_request("GET", f"{base}/consoles/{console_id}/get_latest_output/", token)
-    if status2 == 200:
-        output = out.get("output", "").strip()
-        if output:
-            for line in output.splitlines()[-6:]:
-                print(f"  {line}")
-
-    # Cerrar consola
-    pa_request("DELETE", f"{base}/consoles/{console_id}/", token)
-    print("  OK")
 
 def pa_reload(username, domain, token):
     print(f"\n[3/3] Recargando app ({domain})...")
@@ -138,13 +127,14 @@ def main():
     domain   = os.environ["PA_DOMAIN"]
     token    = os.environ["PA_TOKEN"]
 
+    deploy_secret = os.environ["DEPLOY_SECRET"]
     commit_message = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "deploy"
 
     print(f"\nDesplegando '{commit_message}' -> {domain}")
     print("=" * 50)
 
     git_push(commit_message)
-    pa_git_pull(username, token)
+    pa_git_pull(domain, deploy_secret)
     pa_reload(username, domain, token)
 
     print("\n" + "=" * 50)

@@ -4174,8 +4174,8 @@ def api_bonos_progreso_ponderado(nombre_bono):
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():
-    """Lee el token: primero env var, luego fichero .deploy_token junto a la app."""
-    token = os.environ.get('PA_TOKEN', '')
+    """Lee el token: primero env var DEPLOY_SECRET, luego fichero .deploy_token junto a la app."""
+    token = os.environ.get('DEPLOY_SECRET', '')
     if not token:
         # current_app.root_path es la carpeta 'app/', su padre es la raíz del proyecto
         project_dir = os.path.dirname(current_app.root_path)
