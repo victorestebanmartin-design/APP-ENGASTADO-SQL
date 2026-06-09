@@ -100,7 +100,7 @@ def pa_upload_file(username, token, remote_path, local_path):
         "Authorization": f"Token {token}",
         "Content-Type": f"multipart/form-data; boundary={boundary}",
     }
-    req = Request(url, data=body, headers=headers, method="PUT")
+    req = Request(url, data=body, headers=headers, method="POST")
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -108,9 +108,12 @@ def pa_upload_file(username, token, remote_path, local_path):
         with urlopen(req, timeout=60, context=ctx) as resp:
             return resp.status
     except HTTPError as e:
+        # 200 o 201 = ok, intenta leer body si es 4xx
+        try:
+            print(f"    HTTP {e.code}: {e.read().decode('utf-8','replace')[:120]}")
+        except Exception:
+            pass
         return e.code
-    except Exception:
-        return 0
 
 def pa_git_pull(domain, deploy_secret, username, token):
     print("\n[2/3] Sync en PythonAnywhere...")
@@ -135,8 +138,9 @@ def pa_git_pull(domain, deploy_secret, username, token):
     except Exception as e:
         print(f"  Hook no disponible ({e}), usando upload directo...")
 
-    # Fallback: subir routes.py directamente via API de archivos
-    project = f"/home/{username}/APP-ENGASTADO-SQL"
+    # El home en PA es /home/Viktor85 (capital V aunque el username es viktor85)
+    pa_home = os.environ.get("PA_HOME", f"/home/Viktor85")
+    project = f"{pa_home}/APP-ENGASTADO-SQL"
     files_to_sync = [
         ("app/routes.py",   f"{project}/app/routes.py"),
         ("deploy.py",       f"{project}/deploy.py"),
