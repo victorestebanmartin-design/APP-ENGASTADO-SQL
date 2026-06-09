@@ -14,5 +14,14 @@
       }
     },
     "carros_con_pendientes": {}
+  },
+  "641M10196": {
+    "estado": "completado",
+    "carros_completados": [
+      1
+    ],
+    "fecha_inicio": "2026-06-08T17:01:43.796440",
+    "fecha_ultima_actualizacion": "2026-06-08T17:02:09.824317",
+    "carros_con_pendientes": {}
   }
 }

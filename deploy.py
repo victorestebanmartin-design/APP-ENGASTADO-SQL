@@ -29,7 +29,10 @@ def load_env():
                 key, _, value = line.partition("=")
                 os.environ.setdefault(key.strip(), value.strip())
 
+GIT = r"C:\Users\estebanv\AppData\Local\GitHubDesktop\app-3.5.8\resources\app\git\cmd\git.exe"
+
 def run(cmd, check=True):
+    cmd = cmd.replace("git ", f'"{GIT}" ', 1) if cmd.startswith("git ") else cmd
     print(f"  > {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.stdout:
