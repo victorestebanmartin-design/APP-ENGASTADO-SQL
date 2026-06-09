@@ -66,11 +66,30 @@
     /* ── Grid de módulos ── */
     .modules-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      grid-auto-rows: 1fr;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: 1.55fr 1fr;
       gap: 12px;
       flex: 1;
       min-height: 0;
+    }
+    /* Fila inferior: 4 columnas */
+    .mod-card.mod-small {
+      grid-row: 2;
+      padding: 14px 14px 12px;
+    }
+    .mod-card.mod-small .mod-icon { font-size: 36px; margin-bottom: 8px; margin-top: 0; }
+    .mod-card.mod-small .mod-icon svg { width: 42px; height: 42px; }
+    .mod-card.mod-small .mod-icon img { width: 42px; height: 42px; }
+    .mod-card.mod-small .mod-title { font-size: 18px; margin-bottom: 4px; }
+    .mod-card.mod-small .mod-desc  { font-size: 10.5px; margin-bottom: 10px; }
+    .mod-card.mod-small .mod-btn   { padding: 8px 8px; font-size: 13px; }
+    /* Las 4 small forman su propia sub-grid ocupando los 3 col pero en 4 */
+    .modules-row-bottom {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
     }
 
     .mod-card {
@@ -243,6 +262,8 @@
 
     <div class="modules-grid">
 
+      <!-- ══ FILA 1: Cards grandes ══════════════════════════════ -->
+
       <!-- Engastado -->
       <a href="{{ url_for('main.index_v3') }}" class="mod-card mod-engastado">
         <div class="mod-badge">Operación</div>
@@ -252,128 +273,12 @@
         <div class="mod-btn">Iniciar Engastado</div>
       </a>
 
-      <!-- Administración -->
-      <a href="{{ url_for('main.admin') }}" class="mod-card mod-admin">
-        <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="40" cy="40" r="22" fill="#607D8B"/><rect x="36" y="12" width="8" height="7" rx="2" fill="#607D8B"/><rect x="36" y="61" width="8" height="7" rx="2" fill="#607D8B"/><rect x="61" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="12" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="56" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 59.5 21)"/><rect x="17" y="56" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 20.5 60)"/><rect x="56" y="55" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 59.5 59)"/><rect x="17" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 20.5 21)"/><circle cx="40" cy="40" r="22" fill="none" stroke="#000" stroke-width="2.5"/><circle cx="40" cy="40" r="10" fill="#455A64"/><g transform="rotate(-45 40 40)"><rect x="35" y="18" width="10" height="44" rx="3" fill="#FFB300"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="#FFB300"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="#FFB300"/><rect x="35" y="18" width="10" height="44" rx="3" fill="none" stroke="#000" stroke-width="2"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="none" stroke="#000" stroke-width="2"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="none" stroke="#000" stroke-width="2"/></g></g></svg></div>
-        <div class="mod-title">Administración</div>
-        <div class="mod-desc">Gestión de archivos Excel, configuración de terminales, impresora y actualizaciones del sistema.</div>
-        <div class="mod-btn">Administrar</div>
-      </a>
-
-      <!-- Producción (Bonos + Órdenes) -->
-      <div class="mod-card mod-produccion" onclick="document.getElementById('prod-overlay').classList.add('open')">
-        <div class="mod-badge">Planificación</div>
-        <div class="mod-icon">
-          <svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
-            <g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
-              <rect x="8" y="14" width="30" height="52" rx="4" fill="#EFEBE9"/>
-              <rect x="14" y="8" width="18" height="12" rx="6" fill="none" stroke="#5D4037" stroke-width="2.5"/>
-              <rect x="13" y="24" width="8" height="7" rx="2" fill="#4CAF50"/>
-              <line x1="25" y1="27" x2="34" y2="27" stroke="#9E9E9E" stroke-width="2"/>
-              <rect x="13" y="35" width="8" height="7" rx="2" fill="#4CAF50"/>
-              <line x1="25" y1="38" x2="34" y2="38" stroke="#9E9E9E" stroke-width="2"/>
-              <rect x="13" y="46" width="8" height="7" rx="2" fill="#FF9800"/>
-              <line x1="25" y1="49" x2="34" y2="49" stroke="#9E9E9E" stroke-width="2"/>
-              <rect x="42" y="14" width="30" height="52" rx="4" fill="#FFF8E1"/>
-              <circle cx="57" cy="26" r="8" fill="#4CAF50"/>
-              <polyline points="52,26 56,30 63,22" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-              <rect x="47" y="38" width="16" height="3" rx="1.5" fill="#FFB300"/>
-              <rect x="47" y="44" width="12" height="3" rx="1.5" fill="#FFB300"/>
-              <rect x="47" y="50" width="14" height="3" rx="1.5" fill="#FFB300"/>
-            </g>
-          </svg>
-        </div>
-        <div class="mod-title">Producción</div>
-        <div class="mod-desc">Gestiona bonos de producción y órdenes de trabajo desde un único acceso.</div>
-        <div class="mod-btn">Bonos · Órdenes</div>
-      </div>
-
-      <!-- Visualización -->
-      <a href="{{ url_for('main.visualizacion') }}" class="mod-card mod-viz" target="_blank">
-        <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="10" width="68" height="46" rx="4" fill="#37474F"/><rect x="11" y="15" width="58" height="36" rx="2" fill="#1A237E"/><rect x="30" y="56" width="20" height="6" rx="1" fill="#546E7A"/><rect x="24" y="62" width="32" height="5" rx="2" fill="#607D8B"/><rect x="16" y="43" width="8" height="8" rx="1" fill="#F44336"/><rect x="27" y="38" width="8" height="13" rx="1" fill="#FF9800"/><rect x="38" y="30" width="8" height="21" rx="1" fill="#4CAF50"/><rect x="49" y="33" width="8" height="18" rx="1" fill="#2196F3"/><rect x="60" y="25" width="7" height="26" rx="1" fill="#9C27B0"/><line x1="14" y1="51" x2="69" y2="51" stroke="#fff" stroke-width="1" opacity="0.5"/><rect x="16" y="54" width="30" height="3" rx="1.5" fill="#4CAF50"/><rect x="46" y="54" width="22" height="3" rx="1.5" fill="#455A64"/></g></svg></div>
-        <div class="mod-title">Visualización</div>
-        <div class="mod-desc">Dashboard en tiempo real con progreso de bonos y estados de carros. Ideal para pantallas externas.</div>
-        <div class="mod-btn">Monitorear</div>
-      </a>
-
-      <!-- Etiquetas -->
-      <a href="{{ url_for('main.etiquetas') }}" class="mod-card mod-etiquetas">
-        <div class="mod-icon">
-          <svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
-  <g stroke-linejoin="round" stroke-linecap="round">
-    <rect x="6" y="4" width="68" height="72" rx="3" fill="#FAFAFA" stroke="#000" stroke-width="2.5"/>
-    <rect x="11" y="10" width="17" height="11" rx="1.5" fill="#E53935" stroke="#000" stroke-width="1.5"/>
-    <rect x="11" y="10" width="17" height="4" rx="1.5" fill="#C62828"/>
-    <line x1="11" y1="14" x2="28" y2="14" stroke="#000" stroke-width="0.8"/>
-    <text x="19.5" y="17.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">L1</text>
-    <text x="19.5" y="13" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K8</text>
-    <rect x="31" y="10" width="17" height="11" rx="1.5" fill="#1565C0" stroke="#000" stroke-width="1.5"/>
-    <rect x="31" y="10" width="17" height="4" rx="1.5" fill="#0D47A1"/>
-    <line x1="31" y1="14" x2="48" y2="14" stroke="#000" stroke-width="0.8"/>
-    <text x="39.5" y="17.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">L2</text>
-    <text x="39.5" y="13" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K8</text>
-    <rect x="51" y="10" width="17" height="11" rx="1.5" fill="#2E7D32" stroke="#000" stroke-width="1.5"/>
-    <rect x="51" y="10" width="17" height="4" rx="1.5" fill="#1B5E20"/>
-    <line x1="51" y1="14" x2="68" y2="14" stroke="#000" stroke-width="0.8"/>
-    <text x="59.5" y="17.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">GND</text>
-    <text x="59.5" y="13" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K8</text>
-    <rect x="11" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/>
-    <rect x="11" y="24" width="17" height="4" rx="1.5" fill="#F57F17"/>
-    <line x1="11" y1="28" x2="28" y2="28" stroke="#000" stroke-width="0.8"/>
-    <text x="19.5" y="31.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">Q1</text>
-    <text x="19.5" y="27" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">T1</text>
-    <rect x="31" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/>
-    <rect x="31" y="24" width="17" height="4" rx="1.5" fill="#F57F17"/>
-    <line x1="31" y1="28" x2="48" y2="28" stroke="#000" stroke-width="0.8"/>
-    <text x="39.5" y="31.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">Q2</text>
-    <text x="39.5" y="27" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">T1</text>
-    <rect x="51" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/>
-    <rect x="51" y="24" width="17" height="4" rx="1.5" fill="#F57F17"/>
-    <line x1="51" y1="28" x2="68" y2="28" stroke="#000" stroke-width="0.8"/>
-    <text x="59.5" y="31.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">Q3</text>
-    <text x="59.5" y="27" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">T1</text>
-    <rect x="11" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/>
-    <rect x="11" y="38" width="17" height="4" rx="1.5" fill="#B0BEC5"/>
-    <line x1="11" y1="42" x2="28" y2="42" stroke="#000" stroke-width="0.8"/>
-    <text x="19.5" y="45.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">TB1</text>
-    <text x="19.5" y="41" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">K5</text>
-    <rect x="31" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/>
-    <rect x="31" y="38" width="17" height="4" rx="1.5" fill="#B0BEC5"/>
-    <line x1="31" y1="42" x2="48" y2="42" stroke="#000" stroke-width="0.8"/>
-    <text x="39.5" y="45.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">TB2</text>
-    <text x="39.5" y="41" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">K5</text>
-    <rect x="51" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/>
-    <rect x="51" y="38" width="17" height="4" rx="1.5" fill="#B0BEC5"/>
-    <line x1="51" y1="42" x2="68" y2="42" stroke="#000" stroke-width="0.8"/>
-    <text x="59.5" y="45.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#212121">TB3</text>
-    <text x="59.5" y="41" font-size="3" font-family="Arial" text-anchor="middle" fill="#212121">K5</text>
-    <rect x="11" y="52" width="17" height="11" rx="1.5" fill="#E53935" stroke="#000" stroke-width="1.5"/>
-    <rect x="11" y="52" width="17" height="4" rx="1.5" fill="#C62828"/>
-    <line x1="11" y1="56" x2="28" y2="56" stroke="#000" stroke-width="0.8"/>
-    <text x="19.5" y="59.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">L1</text>
-    <text x="19.5" y="55" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K9</text>
-    <rect x="31" y="52" width="17" height="11" rx="1.5" fill="#1565C0" stroke="#000" stroke-width="1.5"/>
-    <rect x="31" y="52" width="17" height="4" rx="1.5" fill="#0D47A1"/>
-    <line x1="31" y1="56" x2="48" y2="56" stroke="#000" stroke-width="0.8"/>
-    <text x="39.5" y="59.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">L2</text>
-    <text x="39.5" y="55" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K9</text>
-    <rect x="51" y="52" width="17" height="11" rx="1.5" fill="#2E7D32" stroke="#000" stroke-width="1.5"/>
-    <rect x="51" y="52" width="17" height="4" rx="1.5" fill="#1B5E20"/>
-    <line x1="51" y1="56" x2="68" y2="56" stroke="#000" stroke-width="0.8"/>
-    <text x="59.5" y="59.5" font-size="3.5" font-family="Arial" font-weight="bold" text-anchor="middle" fill="#fff">GND</text>
-    <text x="59.5" y="55" font-size="3" font-family="Arial" text-anchor="middle" fill="#fff">K9</text>
-    <rect x="11" y="66" width="17" height="8" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/>
-    <rect x="11" y="66" width="17" height="3.5" rx="1.5" fill="#F57F17"/>
-    <rect x="31" y="66" width="17" height="8" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/>
-    <rect x="31" y="66" width="17" height="3.5" rx="1.5" fill="#B0BEC5"/>
-    <rect x="51" y="66" width="17" height="8" rx="1.5" fill="#E53935" stroke="#000" stroke-width="1.5"/>
-    <rect x="51" y="66" width="17" height="3.5" rx="1.5" fill="#C62828"/>
-  </g>
-</svg>
-        </div>
-        <div class="mod-title">Etiquetas</div>
-        <div class="mod-desc">Genera e imprime etiquetas para elementos de cortes. Formato A4 con 65 uds troqueladas.</div>
-        <div class="mod-btn">Etiquetar</div>
+      <!-- Preparación Mangueras -->
+      <a href="{{ url_for('main.mangueras') }}" class="mod-card mod-mangueras">
+        <div class="mod-icon"><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="72" height="72" class="mod-icon-img" alt="Mangueras"></div>
+        <div class="mod-title">Preparación Mangueras</div>
+        <div class="mod-desc">Lectura del fichero de mangueras y preparación guiada según observaciones.</div>
+        <div class="mod-btn">Mangueras</div>
       </a>
 
       <!-- Manguitos -->
@@ -384,13 +289,43 @@
         <div class="mod-btn">Manguitos</div>
       </a>
 
-      <!-- Preparación Mangueras -->
-      <a href="{{ url_for('main.mangueras') }}" class="mod-card mod-mangueras">
-        <div class="mod-icon"><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="72" height="72" class="mod-icon-img" alt="Mangueras"></div>
-        <div class="mod-title">Preparación Mangueras</div>
-        <div class="mod-desc">Lectura del fichero de mangueras y preparación guiada según observaciones.</div>
-        <div class="mod-btn">Mangueras</div>
-      </a>
+      <!-- ══ FILA 2: Cards pequeñas (4 columnas) ════════════════ -->
+      <div class="modules-row-bottom">
+
+        <!-- Administración -->
+        <a href="{{ url_for('main.admin') }}" class="mod-card mod-admin">
+          <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="40" cy="40" r="22" fill="#607D8B"/><rect x="36" y="12" width="8" height="7" rx="2" fill="#607D8B"/><rect x="36" y="61" width="8" height="7" rx="2" fill="#607D8B"/><rect x="61" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="12" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="56" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 59.5 21)"/><rect x="17" y="56" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 20.5 60)"/><rect x="56" y="55" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 59.5 59)"/><rect x="17" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 20.5 21)"/><circle cx="40" cy="40" r="22" fill="none" stroke="#000" stroke-width="2.5"/><circle cx="40" cy="40" r="10" fill="#455A64"/><g transform="rotate(-45 40 40)"><rect x="35" y="18" width="10" height="44" rx="3" fill="#FFB300"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="#FFB300"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="#FFB300"/><rect x="35" y="18" width="10" height="44" rx="3" fill="none" stroke="#000" stroke-width="2"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="none" stroke="#000" stroke-width="2"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="none" stroke="#000" stroke-width="2"/></g></g></svg></div>
+          <div class="mod-title">Administración</div>
+          <div class="mod-desc">Configuración de terminales, impresora y sistema.</div>
+          <div class="mod-btn">Administrar</div>
+        </a>
+
+        <!-- Producción (Bonos + Órdenes) -->
+        <div class="mod-card mod-produccion" onclick="document.getElementById('prod-overlay').classList.add('open')">
+          <div class="mod-badge">Planificación</div>
+          <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><rect x="8" y="14" width="30" height="52" rx="4" fill="#EFEBE9"/><rect x="14" y="8" width="18" height="12" rx="6" fill="none" stroke="#5D4037" stroke-width="2.5"/><rect x="13" y="24" width="8" height="7" rx="2" fill="#4CAF50"/><line x1="25" y1="27" x2="34" y2="27" stroke="#9E9E9E" stroke-width="2"/><rect x="13" y="35" width="8" height="7" rx="2" fill="#4CAF50"/><line x1="25" y1="38" x2="34" y2="38" stroke="#9E9E9E" stroke-width="2"/><rect x="13" y="46" width="8" height="7" rx="2" fill="#FF9800"/><line x1="25" y1="49" x2="34" y2="49" stroke="#9E9E9E" stroke-width="2"/><rect x="42" y="14" width="30" height="52" rx="4" fill="#FFF8E1"/><circle cx="57" cy="26" r="8" fill="#4CAF50"/><polyline points="52,26 56,30 63,22" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/><rect x="47" y="38" width="16" height="3" rx="1.5" fill="#FFB300"/><rect x="47" y="44" width="12" height="3" rx="1.5" fill="#FFB300"/><rect x="47" y="50" width="14" height="3" rx="1.5" fill="#FFB300"/></g></svg></div>
+          <div class="mod-title">Producción</div>
+          <div class="mod-desc">Bonos de producción y órdenes de trabajo.</div>
+          <div class="mod-btn">Bonos · Órdenes</div>
+        </div>
+
+        <!-- Visualización -->
+        <a href="{{ url_for('main.visualizacion') }}" class="mod-card mod-viz" target="_blank">
+          <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="10" width="68" height="46" rx="4" fill="#37474F"/><rect x="11" y="15" width="58" height="36" rx="2" fill="#1A237E"/><rect x="30" y="56" width="20" height="6" rx="1" fill="#546E7A"/><rect x="24" y="62" width="32" height="5" rx="2" fill="#607D8B"/><rect x="16" y="43" width="8" height="8" rx="1" fill="#F44336"/><rect x="27" y="38" width="8" height="13" rx="1" fill="#FF9800"/><rect x="38" y="30" width="8" height="21" rx="1" fill="#4CAF50"/><rect x="49" y="33" width="8" height="18" rx="1" fill="#2196F3"/><rect x="60" y="25" width="7" height="26" rx="1" fill="#9C27B0"/><line x1="14" y1="51" x2="69" y2="51" stroke="#fff" stroke-width="1" opacity="0.5"/><rect x="16" y="54" width="30" height="3" rx="1.5" fill="#4CAF50"/><rect x="46" y="54" width="22" height="3" rx="1.5" fill="#455A64"/></g></svg></div>
+          <div class="mod-title">Visualización</div>
+          <div class="mod-desc">Dashboard en tiempo real de bonos y carros.</div>
+          <div class="mod-btn">Monitorear</div>
+        </a>
+
+        <!-- Etiquetas -->
+        <a href="{{ url_for('main.etiquetas') }}" class="mod-card mod-etiquetas">
+          <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="4" width="68" height="72" rx="3" fill="#FAFAFA" stroke="#000" stroke-width="2.5"/><rect x="11" y="10" width="17" height="11" rx="1.5" fill="#E53935" stroke="#000" stroke-width="1.5"/><rect x="11" y="10" width="17" height="4" rx="1.5" fill="#C62828"/><rect x="31" y="10" width="17" height="11" rx="1.5" fill="#1565C0" stroke="#000" stroke-width="1.5"/><rect x="51" y="10" width="17" height="11" rx="1.5" fill="#2E7D32" stroke="#000" stroke-width="1.5"/><rect x="11" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/><rect x="31" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/><rect x="51" y="24" width="17" height="11" rx="1.5" fill="#F9A825" stroke="#000" stroke-width="1.5"/><rect x="11" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/><rect x="31" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/><rect x="51" y="38" width="17" height="11" rx="1.5" fill="#ECEFF1" stroke="#000" stroke-width="1.5"/></g></svg></div>
+          <div class="mod-title">Etiquetas</div>
+          <div class="mod-desc">Genera etiquetas para cortes. Formato A4 65 uds.</div>
+          <div class="mod-btn">Etiquetar</div>
+        </a>
+
+      </div><!-- /modules-row-bottom -->
 
     </div>
   </div>
