@@ -82,6 +82,13 @@ def _apply_migrations(db_path):
             COMMIT;
         """)
 
+    # Migración cable_colores.color_texto
+    cur.execute("PRAGMA table_info(cable_colores)")
+    cc_cols = {row[1] for row in cur.fetchall()}
+    if cc_cols and 'color_texto' not in cc_cols:
+        cur.execute("ALTER TABLE cable_colores ADD COLUMN color_texto TEXT")
+        conn.commit()
+
     conn.close()
 
 

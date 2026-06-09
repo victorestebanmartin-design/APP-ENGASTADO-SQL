@@ -194,14 +194,15 @@
                             <table id="cc-tabla" style="width:100%; border-collapse:collapse; font-size:0.9em;">
                                 <thead>
                                     <tr>
-                                        <th>Color</th>
+                                        <th>Preview</th>
                                         <th>Cod. Cable</th>
-                                        <th>Hex</th>
+                                        <th>Hex fondo</th>
+                                        <th>Color nº</th>
                                         <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="cc-tabla-body">
-                                    <tr><td colspan="4" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
+                                    <tr><td colspan="5" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -214,12 +215,26 @@
                                     <input type="text" id="cc-input-cod" placeholder="Ej: 640C10050A" style="width:160px; text-transform:uppercase;">
                                 </div>
                                 <div>
-                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Color</label>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Fondo</label>
                                     <input type="color" id="cc-input-color" value="#2563eb" style="width:50px; height:40px;">
                                 </div>
                                 <div>
-                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Hex manual</label>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Hex fondo</label>
                                     <input type="text" id="cc-input-hex" placeholder="#2563eb" maxlength="7" style="width:90px;">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Color número</label>
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <label style="display:flex; align-items:center; gap:4px; font-size:0.82em; cursor:pointer;">
+                                            <input type="checkbox" id="cc-texto-auto" checked onchange="ccToggleTextoAuto()"> Auto
+                                        </label>
+                                        <input type="color" id="cc-input-texto" value="#ffffff" style="width:40px; height:32px; display:none;">
+                                    </div>
+                                </div>
+                                <!-- Preview de la etiqueta -->
+                                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                    <label style="font-size:0.82em;">Preview</label>
+                                    <span id="cc-preview-badge" style="display:inline-flex; align-items:center; justify-content:center; min-width:38px; height:28px; border-radius:6px; font-weight:bold; font-size:14px; padding:0 8px; background:#2563eb; color:#ffffff; box-shadow:0 2px 4px rgba(0,0,0,.3);">42</span>
                                 </div>
                                 <button class="btn-primary" onclick="ccGuardarColor()">💾 Guardar</button>
                                 <button class="btn-secondary" onclick="ccLimpiarForm()">✕ Limpiar</button>
@@ -433,21 +448,64 @@
     (function () {
         'use strict';
 
+        // ── Luminancia WCAG: devuelve '#000000' o '#ffffff' para un fondo hex ──
+        function _autoTextColor(hex) {
+            try {
+                var h = (hex || '').replace('#', '');
+                if (h.length !== 6) return '#ffffff';
+                var r = parseInt(h.slice(0,2),16),
+                    g = parseInt(h.slice(2,4),16),
+                    b = parseInt(h.slice(4,6),16);
+                function lin(c) { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+                var L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+                return L > 0.179 ? '#000000' : '#ffffff';
+            } catch(e) { return '#ffffff'; }
+        }
+
+        // ── Actualizar preview badge ──
+        function _actualizarPreview() {
+            var badge   = document.getElementById('cc-preview-badge');
+            var bgHex   = document.getElementById('cc-input-hex').value.trim() ||
+                          document.getElementById('cc-input-color').value;
+            var autoChk = document.getElementById('cc-texto-auto');
+            var txtPicker = document.getElementById('cc-input-texto');
+            var txtColor = (autoChk && autoChk.checked) ? _autoTextColor(bgHex) : (txtPicker ? txtPicker.value : '#ffffff');
+            if (badge) {
+                badge.style.background = /^#[0-9a-fA-F]{6}$/.test(bgHex) ? bgHex : '#2563eb';
+                badge.style.color = txtColor;
+            }
+        }
+
+        // ── Toggle manual/auto color texto ──
+        window.ccToggleTextoAuto = function () {
+            var autoChk  = document.getElementById('cc-texto-auto');
+            var txtPicker = document.getElementById('cc-input-texto');
+            if (txtPicker) txtPicker.style.display = (autoChk && !autoChk.checked) ? 'inline-block' : 'none';
+            _actualizarPreview();
+        };
+
         // Sincronizar color picker ↔ hex manual
         var inputColor = document.getElementById('cc-input-color');
         var inputHex   = document.getElementById('cc-input-hex');
+        var inputTexto = document.getElementById('cc-input-texto');
         if (inputColor && inputHex) {
             inputColor.addEventListener('input', function () {
                 inputHex.value = inputColor.value;
+                _actualizarPreview();
             });
             inputHex.addEventListener('input', function () {
                 var v = inputHex.value.trim();
                 if (/^#[0-9a-fA-F]{6}$/.test(v)) inputColor.value = v;
+                _actualizarPreview();
             });
             inputHex.value = inputColor.value;
         }
+        if (inputTexto) {
+            inputTexto.addEventListener('input', _actualizarPreview);
+        }
+        _actualizarPreview();
 
-        // Cargar tabla de colores desde BD
+        // ── Cargar tabla de colores desde BD ──
         window.ccCargarTabla = function () {
             fetch('/api/cable-colores')
                 .then(function (r) { return r.json(); })
@@ -455,20 +513,24 @@
                     if (!data.success) { console.error('Error cargando colores'); return; }
                     var tbody = document.getElementById('cc-tabla-body');
                     if (!data.colores.length) {
-                        tbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:#94a3b8;">Sin colores definidos</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:#94a3b8;">Sin colores definidos</td></tr>';
                         return;
                     }
                     tbody.innerHTML = data.colores.map(function (c) {
                         var cod = c.cod_cable.replace(/"/g, '&quot;');
-                        var hex = c.color_hex;
+                        var bgHex = c.color_hex;
+                        var txtColor = c.color_texto || _autoTextColor(bgHex);
+                        var txtLabel = c.color_texto ? ('manual: ' + c.color_texto) : 'auto';
+                        var txtHexArg = c.color_texto ? (',\'' + c.color_texto.replace(/'/g,'') + '\'') : ',\'\'';
                         return '<tr style="background:#1a2535; color:#e2e8f0; border-bottom:1px solid #2a3a52;">' +
                             '<td style="padding:8px 10px;">' +
-                              '<span style="display:inline-block;width:32px;height:22px;border-radius:5px;background:' + hex + ';border:1px solid rgba(0,0,0,.15);vertical-align:middle;"></span>' +
+                              '<span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:26px;border-radius:5px;background:' + bgHex + ';color:' + txtColor + ';font-weight:bold;font-size:13px;border:1px solid rgba(0,0,0,.15);">42</span>' +
                             '</td>' +
                             '<td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#e2e8f0;">' + c.cod_cable + '</td>' +
-                            '<td style="padding:8px 10px; font-family:monospace; color:#94a3b8;">' + hex + '</td>' +
+                            '<td style="padding:8px 10px; font-family:monospace; color:#94a3b8;">' + bgHex + '</td>' +
+                            '<td style="padding:8px 10px; font-size:0.8em; color:#64748b;">' + txtLabel + '</td>' +
                             '<td style="padding:8px 10px;">' +
-                              '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + hex + '\')">✏️ Editar</button> ' +
+                              '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + bgHex + '\'' + txtHexArg + ')">✏️ Editar</button> ' +
                               '<button class="btn-danger"   style="padding:4px 10px;font-size:0.8em;" onclick="ccEliminarColor(\'' + cod + '\')">🗑️</button>' +
                             '</td>' +
                           '</tr>';
@@ -477,30 +539,43 @@
                 .catch(function () { console.error('Error de red cargando colores'); });
         };
 
-        // Rellenar formulario para editar
-        window.ccEditarColor = function (cod, hex) {
+        // ── Rellenar formulario para editar ──
+        window.ccEditarColor = function (cod, hex, txtHex) {
             var inputCod   = document.getElementById('cc-input-cod');
             var inputColor = document.getElementById('cc-input-color');
             var inputHex   = document.getElementById('cc-input-hex');
+            var autoChk    = document.getElementById('cc-texto-auto');
+            var txtPicker  = document.getElementById('cc-input-texto');
             if (inputCod)   inputCod.value   = cod;
             if (inputHex)   inputHex.value   = hex;
             if (inputColor) inputColor.value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#2563eb';
+            // Color texto
+            var hasTxt = txtHex && /^#[0-9a-fA-F]{6}$/.test(txtHex);
+            if (autoChk)   autoChk.checked   = !hasTxt;
+            if (txtPicker) {
+                txtPicker.value   = hasTxt ? txtHex : '#ffffff';
+                txtPicker.style.display = hasTxt ? 'inline-block' : 'none';
+            }
             var formMsg = document.getElementById('cc-form-msg');
             if (formMsg) { formMsg.textContent = 'Editando: ' + cod; formMsg.style.color = '#3b82f6'; }
+            _actualizarPreview();
             document.getElementById('cc-input-cod').scrollIntoView({ behavior: 'smooth', block: 'center' });
         };
 
-        // Guardar (upsert)
+        // ── Guardar (upsert) ──
         window.ccGuardarColor = function () {
-            var cod   = (document.getElementById('cc-input-cod').value || '').trim().toUpperCase();
-            var hex   = (document.getElementById('cc-input-hex').value  || document.getElementById('cc-input-color').value || '').trim().toLowerCase();
-            var formMsg = document.getElementById('cc-form-msg');
+            var cod      = (document.getElementById('cc-input-cod').value || '').trim().toUpperCase();
+            var hex      = (document.getElementById('cc-input-hex').value || document.getElementById('cc-input-color').value || '').trim().toLowerCase();
+            var autoChk  = document.getElementById('cc-texto-auto');
+            var txtPicker = document.getElementById('cc-input-texto');
+            var colorTexto = (autoChk && autoChk.checked) ? '' : ((txtPicker ? txtPicker.value : '') || '');
+            var formMsg  = document.getElementById('cc-form-msg');
             if (!cod) { formMsg.textContent = '⚠️ Indica el código de cable.'; formMsg.style.color = '#f87171'; return; }
             if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { formMsg.textContent = '⚠️ Color inválido. Usa formato #rrggbb.'; formMsg.style.color = '#f87171'; return; }
             fetch('/api/cable-colores', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cod_cable: cod, color_hex: hex })
+                body: JSON.stringify({ cod_cable: cod, color_hex: hex, color_texto: colorTexto })
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -516,7 +591,7 @@
             });
         };
 
-        // Eliminar
+        // ── Eliminar ──
         window.ccEliminarColor = function (cod) {
             if (!confirm('¿Eliminar color de ' + cod + '? Volverá al color automático por hash.')) return;
             fetch('/api/cable-colores/' + encodeURIComponent(cod), { method: 'DELETE' })
@@ -527,18 +602,23 @@
                 });
         };
 
-        // Limpiar formulario
+        // ── Limpiar formulario ──
         window.ccLimpiarForm = function () {
             var inputCod = document.getElementById('cc-input-cod');
             if (inputCod) inputCod.value = '';
+            var autoChk = document.getElementById('cc-texto-auto');
+            if (autoChk) autoChk.checked = true;
+            var txtPicker = document.getElementById('cc-input-texto');
+            if (txtPicker) txtPicker.style.display = 'none';
             var formMsg = document.getElementById('cc-form-msg');
             if (formMsg) formMsg.textContent = '';
+            _actualizarPreview();
         };
 
-        // Detectar cables sin color
+        // ── Detectar cables sin color ──
         window.ccDetectarSinColor = function () {
-            var msg = document.getElementById('cc-sin-color-msg');
-            var box = document.getElementById('cc-sin-asignar-box');
+            var msg   = document.getElementById('cc-sin-color-msg');
+            var box   = document.getElementById('cc-sin-asignar-box');
             var lista = document.getElementById('cc-sin-asignar-lista');
             if (msg) msg.textContent = 'Buscando...';
             fetch('/api/cable-colores/sin-asignar')
@@ -555,7 +635,7 @@
                     if (lista) {
                         lista.innerHTML = data.cables.map(function (c) {
                             var cod = c.replace(/"/g, '&quot;');
-                            return '<button class="btn-secondary" style="font-size:0.82em;padding:4px 10px;" onclick="ccEditarColor(\'' + cod + '\',\'#2563eb\')">' + c + ' ➕</button>';
+                            return '<button class="btn-secondary" style="font-size:0.82em;padding:4px 10px;" onclick="ccEditarColor(\'' + cod + '\',\'#2563eb\',\'\')">' + c + ' ➕</button>';
                         }).join('');
                     }
                 });

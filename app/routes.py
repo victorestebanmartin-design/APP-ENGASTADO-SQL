@@ -2075,33 +2075,56 @@ def api_desasignar_terminal():
 
 # ==================== PALETA DE COLORES DE CABLES ====================
 
+def _text_color_for_bg(hex_color):
+    """Devuelve #000000 o #ffffff según la luminancia relativa (WCAG 2.1)."""
+    try:
+        h = str(hex_color).lstrip('#')
+        if len(h) != 6:
+            return '#ffffff'
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        def _lin(c):
+            c /= 255.0
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+        L = 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+        return '#000000' if L > 0.179 else '#ffffff'
+    except Exception:
+        return '#ffffff'
+
+
 @bp.route('/api/cable-colores', methods=['GET'])
 def api_cable_colores_get():
     """Devuelve todos los colores de cables definidos en BD"""
     try:
         with db.engine.connect() as conn:
             rows = conn.execute(text(
-                "SELECT cod_cable, color_hex FROM cable_colores ORDER BY cod_cable"
+                "SELECT cod_cable, color_hex, color_texto FROM cable_colores ORDER BY cod_cable"
             )).fetchall()
-        return jsonify({'success': True, 'colores': [{'cod_cable': r[0], 'color_hex': r[1]} for r in rows]})
+        return jsonify({'success': True, 'colores': [
+            {'cod_cable': r[0], 'color_hex': r[1],
+             'color_texto': r[2] if r[2] else None}
+            for r in rows
+        ]})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @bp.route('/api/cable-colores', methods=['POST'])
 def api_cable_colores_upsert():
-    """Crea o actualiza el color de un cable (cod_cable, color_hex)"""
+    """Crea o actualiza el color de un cable (cod_cable, color_hex, color_texto opcional)"""
     try:
         data = request.get_json() or {}
         cod = (data.get('cod_cable') or '').strip().upper()
         hex_col = (data.get('color_hex') or '').strip().lower()
+        # color_texto: None/'' = auto (calcular por luminancia), o un hex válido
+        color_texto_raw = (data.get('color_texto') or '').strip().lower()
+        color_texto = color_texto_raw if re.match(r'^#[0-9a-f]{6}$', color_texto_raw) else None
         if not cod or not hex_col:
             return jsonify({'success': False, 'error': 'cod_cable y color_hex son obligatorios'}), 400
         with db.engine.connect() as conn:
             conn.execute(text(
-                "INSERT INTO cable_colores (cod_cable, color_hex) VALUES (:c, :h) "
-                "ON CONFLICT(cod_cable) DO UPDATE SET color_hex=excluded.color_hex"
-            ), {'c': cod, 'h': hex_col})
+                "INSERT INTO cable_colores (cod_cable, color_hex, color_texto) VALUES (:c, :h, :t) "
+                "ON CONFLICT(cod_cable) DO UPDATE SET color_hex=excluded.color_hex, color_texto=excluded.color_texto"
+            ), {'c': cod, 'h': hex_col, 't': color_texto})
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -2946,15 +2969,17 @@ def generar_etiquetas_html():
         
         # Cargar colores desde BD
         color_map = {}
+        text_color_map = {}
         try:
             with db.engine.connect() as _cc:
-                _rows = _cc.execute(text("SELECT cod_cable, color_hex FROM cable_colores")).fetchall()
+                _rows = _cc.execute(text("SELECT cod_cable, color_hex, color_texto FROM cable_colores")).fetchall()
                 color_map = {r[0]: r[1] for r in _rows}
+                text_color_map = {r[0]: r[2] for r in _rows if r[2]}
         except Exception:
             pass
 
         # Generar HTML para imprimir
-        html = generar_html_etiquetas_impresion(grupos, archivo, codigo_corte, color_map=color_map)
+        html = generar_html_etiquetas_impresion(grupos, archivo, codigo_corte, color_map=color_map, text_color_map=text_color_map)
         
         return jsonify({
             'success': True,
@@ -2986,7 +3011,7 @@ def _get_cable_color(cod_cable, color_map=None):
     return _COLOR_PALETA[h % len(_COLOR_PALETA)]
 
 
-def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map=None):
+def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map=None, text_color_map=None):
     """
     Generar HTML con CSS para imprimir etiquetas en impresora normal
     Formato: 13 columnas x 5 filas = 65 etiquetas por hoja A4 apaisada
@@ -3086,7 +3111,6 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
         }}
         
         .etiqueta-numero {{
-            color: white;
             font-size: 16pt;
             font-weight: bold;
             padding: 2mm 4mm;
@@ -3202,6 +3226,9 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
         es_padre = grupo.get('es_grupo_padre', 0) == 1
         badge_label = f"★ {numero}" if es_padre else str(numero)
         etq_color   = _get_cable_color(grupo.get('cod_cable', ''), color_map=color_map)
+        # Color de texto: manual si existe, sino auto por luminancia
+        cod_key = str(grupo.get('cod_cable', '')).strip().upper()
+        etq_txt_color = (text_color_map or {}).get(cod_key) or _text_color_for_bg(etq_color)
         border_color = '#f59e0b' if es_padre else '#333'
         top_border   = '#f59e0b' if es_padre else '#0ea5e9'
 
@@ -3214,7 +3241,7 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
         html += f"""
         <div class="etiqueta" style="border-color: {border_color};">
             <div class="etiqueta-top" style="border-bottom-color: {top_border};">
-                <div class="etiqueta-numero" style="background: {etq_color};">{badge_label}</div>
+                <div class="etiqueta-numero" style="background: {etq_color}; color: {etq_txt_color};">{badge_label}</div>
                 <div class="etiqueta-elemento">{elemento}</div>
             </div>
             <div class="etiqueta-bottom">"""

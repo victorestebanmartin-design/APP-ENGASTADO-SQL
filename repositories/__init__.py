@@ -81,9 +81,16 @@ def init_db(app):
         _conn.execute(_text("""
             CREATE TABLE IF NOT EXISTS cable_colores (
                 cod_cable TEXT PRIMARY KEY,
-                color_hex TEXT NOT NULL
+                color_hex TEXT NOT NULL,
+                color_texto TEXT
             )
         """))
+        # Migración: añadir color_texto si la tabla ya existía sin ella
+        try:
+            _conn.execute(_text("ALTER TABLE cable_colores ADD COLUMN color_texto TEXT"))
+            _conn.commit()
+        except Exception:
+            pass  # ya existe
         for _cod, _hex in _INITIAL_COLORS:
             _conn.execute(_text(
                 "INSERT OR IGNORE INTO cable_colores (cod_cable, color_hex) VALUES (:c, :h)"
