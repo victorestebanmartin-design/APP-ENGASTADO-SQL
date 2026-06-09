@@ -142,11 +142,13 @@ def pa_git_pull(domain, deploy_secret, username, token):
     pa_home = os.environ.get("PA_HOME", f"/home/Viktor85")
     project = f"{pa_home}/APP-ENGASTADO-SQL"
     files_to_sync = [
-        ("app/routes.py",   f"{project}/app/routes.py"),
-        ("deploy.py",       f"{project}/deploy.py"),
-        ("templates/admin.html", f"{project}/templates/admin.html"),
+        ("app/routes.py",       f"{project}/app/routes.py"),
+        ("app/__init__.py",     f"{project}/app/__init__.py"),
+        ("deploy.py",           f"{project}/deploy.py"),
+        ("schema_sqlite.sql",   f"{project}/schema_sqlite.sql"),
+        ("templates/admin.html",       f"{project}/templates/admin.html"),
         ("static/css/style-admin.css", f"{project}/static/css/style-admin.css"),
-        ("static/js/admin.js", f"{project}/static/js/admin.js"),
+        ("static/js/admin.js",         f"{project}/static/js/admin.js"),
     ]
     base = os.path.dirname(__file__)
     ok = 0

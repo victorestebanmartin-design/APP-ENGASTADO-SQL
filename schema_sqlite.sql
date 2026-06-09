@@ -271,6 +271,9 @@ CREATE TABLE etiquetas_elementos (
     codigo_corte TEXT,
     orden_id TEXT,
     numero_etiqueta INTEGER NOT NULL,
+    sub_numero INTEGER NOT NULL DEFAULT 0,
+    es_grupo_padre INTEGER NOT NULL DEFAULT 0,
+    grupo_serie TEXT,
     cod_cable TEXT NOT NULL,
     elemento TEXT NOT NULL,
     descripcion TEXT,
@@ -282,7 +285,7 @@ CREATE TABLE etiquetas_elementos (
     fecha_generacion TEXT NOT NULL DEFAULT (datetime('now')),
     
     FOREIGN KEY (orden_id) REFERENCES ordenes_produccion(id) ON DELETE CASCADE,
-    UNIQUE(archivo_excel, numero_etiqueta)
+    UNIQUE(archivo_excel, numero_etiqueta, sub_numero)
 );
 
 CREATE INDEX idx_etiquetas_archivo ON etiquetas_elementos(archivo_excel);
