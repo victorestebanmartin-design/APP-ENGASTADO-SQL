@@ -12,6 +12,7 @@ import sys
 import subprocess
 import json
 import time
+import ssl
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
@@ -51,8 +52,11 @@ def pa_request(method, url, token, data=None):
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         body = urlencode(data).encode("utf-8")
     req = Request(url, data=body, headers=headers, method=method)
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urlopen(req, timeout=30) as resp:
+        with urlopen(req, timeout=30, context=ctx) as resp:
             status = resp.status
             raw = resp.read().decode("utf-8").strip()
             try:
