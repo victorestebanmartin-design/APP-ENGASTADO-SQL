@@ -526,6 +526,12 @@ def registro_ordenes():
     return render_template('registro-ordenes.html')
 
 
+@bp.route('/ordenes')
+def lista_ordenes():
+    """Tabla completa de órdenes con sidebar dark"""
+    return render_template('ordenes.html')
+
+
 @bp.route('/api/ordenes', methods=['GET'])
 def api_obtener_ordenes():
     """Obtener listado de órdenes"""

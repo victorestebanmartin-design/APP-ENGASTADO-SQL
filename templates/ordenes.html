@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Órdenes Registradas — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
+    <style>
+        /* Badges de estado */
+        .badge-estado { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.72rem; font-weight:600; font-family:'DM Mono',monospace; }
+        .badge-pendiente  { background:rgba(245,158,11,.15); color:#fcd34d; }
+        .badge-en_bono    { background:rgba(59,130,246,.15);  color:#93c5fd; }
+        .badge-engastando { background:rgba(168,85,247,.15);   color:#c4b5fd; }
+        .badge-finalizado { background:rgba(34,197,94,.15);    color:#4ade80; }
+        .badge-prioridad  { display:inline-block; padding:2px 8px; border-radius:4px; font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+        .badge-urgente { background:rgba(239,68,68,.2);   color:#f87171; }
+        .badge-alta    { background:rgba(245,158,11,.2);  color:#fcd34d; }
+        .badge-media   { background:rgba(59,130,246,.15); color:#93c5fd; }
+        .badge-baja    { background:rgba(100,116,139,.2); color:#94a3b8; }
+
+        /* Tabla */
+        .ord-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+        .ord-table th { background:var(--panel-3); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:.73rem; letter-spacing:.06em; text-transform:uppercase; padding:10px 14px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+        .ord-table td { padding:10px 14px; border-bottom:1px solid rgba(51,65,85,.4); color:var(--text); vertical-align:middle; }
+        .ord-table tbody tr:last-child td { border-bottom:none; }
+        .ord-table tbody tr:hover td { background:rgba(59,130,246,.04); }
+
+        /* Filtros */
+        .ord-filtros { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+        .ord-filtros label { font-size:.78rem; color:var(--text-muted); display:block; margin-bottom:4px; }
+        .ord-filtros input, .ord-filtros select {
+            background:var(--panel-3); border:1px solid var(--border); border-radius:7px;
+            color:var(--text); padding:7px 10px; font-size:.82rem; outline:none;
+        }
+        .ord-filtros input:focus, .ord-filtros select:focus { border-color:var(--accent); }
+
+        /* Stats chips */
+        .stat-chips { display:flex; gap:8px; flex-wrap:wrap; }
+        .stat-chip { font-family:'DM Mono',monospace; font-size:12px; padding:5px 14px; border-radius:20px; border:1px solid var(--border); background:var(--panel-2); color:var(--text-muted); }
+        .stat-chip.pendiente { color:#fcd34d; background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.25); }
+        .stat-chip.completada { color:#4ade80; background:rgba(34,197,94,.08); border-color:rgba(34,197,94,.25); }
+        .stat-chip.urgente { color:#f87171; background:rgba(239,68,68,.08); border-color:rgba(239,68,68,.25); }
+
+        /* Botones */
+        .btn-sm { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:6px; font-size:.75rem; font-weight:500; border:none; cursor:pointer; transition:background .13s; }
+        .btn-sm-secondary { background:var(--panel-3); border:1px solid var(--border); color:var(--text); }
+        .btn-sm-secondary:hover { background:var(--panel-2); border-color:var(--accent); }
+        .btn-sm-danger { background:transparent; border:1px solid rgba(239,68,68,.4); color:#f87171; }
+        .btn-sm-danger:hover { background:rgba(239,68,68,.15); border-color:#ef4444; }
+
+        .empty-state { padding:48px; text-align:center; color:var(--text-muted); }
+        .empty-state .empty-icon { font-size:2.5rem; margin-bottom:12px; }
+        .empty-state h4 { color:var(--text); font-size:1rem; margin-bottom:6px; }
+
+        /* Modal edición */
+        .ord-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:200; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+        .ord-modal-overlay.open { display:flex; }
+        .ord-modal-box { background:var(--panel); border:1px solid var(--border); border-radius:14px; width:min(480px,95vw); max-height:90vh; overflow-y:auto; box-shadow:0 24px 60px rgba(0,0,0,.5); animation:modalIn .15s cubic-bezier(.34,1.3,.64,1) both; }
+        @keyframes modalIn { from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)} }
+        .ord-modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+        .ord-modal-head h3 { margin:0; font-size:1rem; color:var(--text); }
+        .ord-modal-close-btn { background:none; border:none; color:var(--text-muted); font-size:1.4rem; cursor:pointer; line-height:1; padding:0 4px; }
+        .ord-modal-close-btn:hover { color:var(--text); }
+        .ord-modal-body { padding:20px; }
+        .ord-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid var(--border); }
+        .form-group { margin-bottom:14px; }
+        .form-group label { display:block; margin-bottom:5px; font-size:.82rem; color:var(--text-muted); }
+        .form-group input, .form-group select {
+            width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+            color:var(--text); padding:9px 12px; font-size:.9rem; font-family:inherit; outline:none; transition:border-color .15s;
+        }
+        .form-group input:focus, .form-group select:focus { border-color:var(--accent); }
+        .btn-primary-full { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:8px; font-size:.88rem; font-weight:500; background:var(--accent); color:#fff; border:none; cursor:pointer; }
+        .btn-primary-full:hover { background:var(--accent-hover); }
+        .btn-secondary-full { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:8px; font-size:.88rem; font-weight:500; background:var(--panel-2); border:1px solid var(--border); color:var(--text); cursor:pointer; }
+        .btn-secondary-full:hover { background:var(--panel-3); }
+        .ord-msg { padding:10px 14px; border-radius:8px; font-size:.85rem; margin-top:10px; display:none; }
+        .ord-msg.success { background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.3); color:#4ade80; display:block; }
+        .ord-msg.error   { background:rgba(239,68,68,.12);  border:1px solid rgba(239,68,68,.3);  color:#f87171; display:block; }
+    </style>
+</head>
+<body>
+<div class="admin-app">
+
+    <!-- Topbar -->
+    <header class="admin-topbar">
+        <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
+        <div class="admin-topbar-title">Órdenes de Producción</div>
+        <div class="admin-topbar-spacer"></div>
+        <a href="{{ url_for('main.registro_ordenes') }}" class="admin-back">← Volver</a>
+    </header>
+
+    <div class="admin-shell">
+        <!-- Sidebar -->
+        <nav class="admin-sidebar">
+            <div class="admin-nav-label">Filtrar por estado</div>
+            <button class="admin-nav-item active" data-filter="todos"    onclick="setFiltroEstado('todos')">   <span class="ico">📋</span> Todas</button>
+            <button class="admin-nav-item"         data-filter="pendiente" onclick="setFiltroEstado('pendiente')"><span class="ico">⏳</span> Pendientes</button>
+            <button class="admin-nav-item"         data-filter="en_bono"   onclick="setFiltroEstado('en_bono')">  <span class="ico">📦</span> En Bono</button>
+            <button class="admin-nav-item"         data-filter="engastando" onclick="setFiltroEstado('engastando')"><span class="ico">⚙️</span> Engastando</button>
+            <button class="admin-nav-item"         data-filter="finalizado" onclick="setFiltroEstado('finalizado')"><span class="ico">✅</span> Finalizadas</button>
+            <div class="admin-nav-label" style="margin-top:18px;">Prioridad</div>
+            <button class="admin-nav-item"         data-prio="urgente" onclick="setFiltroPrio('urgente')"><span class="ico">🔴</span> Urgente</button>
+            <button class="admin-nav-item"         data-prio="alta"    onclick="setFiltroPrio('alta')">   <span class="ico">🟡</span> Alta</button>
+            <button class="admin-nav-item"         data-prio="media"   onclick="setFiltroPrio('media')">  <span class="ico">🔵</span> Media</button>
+            <button class="admin-nav-item"         data-prio="baja"    onclick="setFiltroPrio('baja')">   <span class="ico">⚪</span> Baja</button>
+            <div style="margin-top:auto;padding:12px 0 4px;">
+                <button class="admin-nav-item" onclick="limpiarFiltrosNav()" style="opacity:.6;font-size:.78rem;">↺ Limpiar filtros</button>
+            </div>
+        </nav>
+
+        <!-- Content -->
+        <main class="admin-content">
+            <div class="admin-section-head" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                <div>
+                    <h1>Órdenes Registradas</h1>
+                    <p>Listado completo de órdenes de producción</p>
+                </div>
+                <div class="stat-chips">
+                    <span class="stat-chip">Total: <strong id="stat-total">—</strong></span>
+                    <span class="stat-chip pendiente">Pendientes: <strong id="stat-pendientes">—</strong></span>
+                    <span class="stat-chip completada">Completadas: <strong id="stat-completadas">—</strong></span>
+                    <span class="stat-chip urgente">Urgentes: <strong id="stat-urgentes">—</strong></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <!-- Buscador -->
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+                    <input type="text" id="filtro-busqueda" placeholder="Buscar por orden, código, proyecto…" onkeyup="aplicarFiltros()"
+                        style="flex:1;min-width:200px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-size:.88rem;outline:none;">
+                    <input type="date" id="filtro-fecha-desde" onchange="aplicarFiltros()"
+                        style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-size:.85rem;outline:none;">
+                    <input type="date" id="filtro-fecha-hasta" onchange="aplicarFiltros()"
+                        style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-size:.85rem;outline:none;">
+                    <button class="btn-sm btn-sm-secondary" onclick="limpiarFiltrosNav()">↺ Limpiar</button>
+                    <button class="btn-sm btn-sm-secondary" onclick="cargarOrdenes()">↻ Actualizar</button>
+                </div>
+
+                <!-- Contador -->
+                <div id="ord-count" style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px;"></div>
+
+                <!-- Tabla -->
+                <div style="overflow-x:auto;">
+                    <table class="ord-table">
+                        <thead>
+                            <tr>
+                                <th>Código Corte</th>
+                                <th>Archivo</th>
+                                <th>Nº Orden</th>
+                                <th>Cant.</th>
+                                <th>Estado</th>
+                                <th>Prioridad</th>
+                                <th>Fecha</th>
+                                <th>Bono</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="ord-tbody">
+                            <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted);">Cargando…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Modal editar orden -->
+<div id="modal-editar" class="ord-modal-overlay" onclick="if(event.target===this)cerrarModalEditar()">
+    <div class="ord-modal-box">
+        <div class="ord-modal-head">
+            <h3>Editar Orden</h3>
+            <button class="ord-modal-close-btn" onclick="cerrarModalEditar()">&times;</button>
+        </div>
+        <div class="ord-modal-body">
+            <input type="hidden" id="edit-id">
+            <div class="form-group">
+                <label>Número de Orden</label>
+                <input type="text" id="edit-numero" placeholder="OP-2024-001">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" id="edit-cantidad" min="1">
+            </div>
+            <div class="form-group">
+                <label>Estado</label>
+                <select id="edit-estado">
+                    <option value="pendiente">Pendiente</option>
+                    <option value="en_bono">En Bono</option>
+                    <option value="engastando">Engastando</option>
+                    <option value="finalizado">Finalizado</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Prioridad</label>
+                <select id="edit-prioridad">
+                    <option value="baja">Baja</option>
+                    <option value="media">Media</option>
+                    <option value="alta">Alta</option>
+                    <option value="urgente">Urgente</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Fecha de Liberación</label>
+                <input type="date" id="edit-fecha">
+            </div>
+            <div id="edit-msg" class="ord-msg"></div>
+        </div>
+        <div class="ord-modal-footer">
+            <button class="btn-secondary-full" onclick="cerrarModalEditar()">Cancelar</button>
+            <button class="btn-primary-full" onclick="guardarEdicion()">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let todasLasOrdenes = [];
+let filtroEstado = 'todos';
+let filtroPrio   = '';
+
+// ── Carga inicial ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    cargarOrdenes();
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') cerrarModalEditar();
+    });
+});
+
+async function cargarOrdenes() {
+    try {
+        const r = await fetch('/api/ordenes/listar');
+        const d = await r.json();
+        if (d.success) {
+            todasLasOrdenes = d.ordenes || [];
+            aplicarFiltros();
+            actualizarStats(todasLasOrdenes);
+        }
+    } catch(e) {
+        document.getElementById('ord-tbody').innerHTML =
+            '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--danger);">Error al cargar</td></tr>';
+    }
+}
+
+// ── Filtros ────────────────────────────────────────────────────
+function setFiltroEstado(v) {
+    filtroEstado = v;
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === v));
+    // limpiar prio sidebar highlight
+    aplicarFiltros();
+}
+function setFiltroPrio(v) {
+    filtroPrio = filtroPrio === v ? '' : v;
+    document.querySelectorAll('[data-prio]').forEach(b => b.classList.toggle('active', b.dataset.prio === filtroPrio));
+    aplicarFiltros();
+}
+function limpiarFiltrosNav() {
+    filtroEstado = 'todos';
+    filtroPrio   = '';
+    document.getElementById('filtro-busqueda').value = '';
+    document.getElementById('filtro-fecha-desde').value = '';
+    document.getElementById('filtro-fecha-hasta').value = '';
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'todos'));
+    document.querySelectorAll('[data-prio]').forEach(b => b.classList.remove('active'));
+    aplicarFiltros();
+}
+function aplicarFiltros() {
+    const busq  = (document.getElementById('filtro-busqueda')?.value || '').toLowerCase();
+    const desde = document.getElementById('filtro-fecha-desde')?.value || '';
+    const hasta = document.getElementById('filtro-fecha-hasta')?.value || '';
+
+    let lista = todasLasOrdenes.filter(o => {
+        if (filtroEstado !== 'todos' && o.estado !== filtroEstado) return false;
+        if (filtroPrio && o.prioridad !== filtroPrio) return false;
+        if (busq) {
+            const haystack = `${o.numero||''} ${o.codigo_corte||''} ${o.proyecto||''}`.toLowerCase();
+            if (!haystack.includes(busq)) return false;
+        }
+        const fecha = o.fecha_entrega || o.fecha_liberacion || '';
+        if (desde && fecha < desde) return false;
+        if (hasta && fecha > hasta) return false;
+        return true;
+    });
+
+    renderTabla(lista);
+    document.getElementById('ord-count').textContent = lista.length + ' orden' + (lista.length !== 1 ? 'es' : '');
+}
+
+// ── Render tabla ───────────────────────────────────────────────
+function renderTabla(ordenes) {
+    const tbody = document.getElementById('ord-tbody');
+    if (!ordenes.length) {
+        tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">📭</div><h4>Sin resultados</h4><p>Ajusta los filtros o registra una nueva orden.</p></div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = ordenes.map(o => {
+        const estado = o.estado || 'pendiente';
+        const prio   = o.prioridad || 'media';
+        const archivo = o.archivo_excel
+            ? `<span style="font-family:'DM Mono',monospace;font-size:.72rem;color:var(--text-dim);" title="${o.archivo_excel}">${o.archivo_excel.length>26?o.archivo_excel.substring(0,24)+'…':o.archivo_excel}</span>`
+            : '<span style="color:var(--text-dim);">—</span>';
+        const bono = o.bono
+            ? `<span style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--accent);">${o.bono}</span>`
+            : '<span style="color:var(--text-dim);">—</span>';
+        const acciones = (estado === 'pendiente'
+            ? `<button class="btn-sm btn-sm-secondary" style="margin-right:4px;" onclick="abrirEditar('${o.id}')">Editar</button>`
+            : '') +
+            `<button class="btn-sm btn-sm-danger" onclick="eliminarOrden('${o.id}','${estado}','${(o.numero||'').replace(/'/g,"\\'")}')">Eliminar</button>`;
+        return `<tr>
+            <td><span style="font-family:'DM Mono',monospace;font-size:.79rem;color:var(--accent);">${o.codigo_corte||'—'}</span></td>
+            <td>${archivo}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:.79rem;">${o.numero||'—'}</td>
+            <td style="text-align:center;">${o.cantidad||1}</td>
+            <td><span class="badge-estado badge-${estado}">${estado}</span></td>
+            <td><span class="badge-prioridad badge-${prio}">${prio}</span></td>
+            <td style="font-size:.78rem;color:var(--text-muted);">${o.fecha_entrega||o.fecha_liberacion||'—'}</td>
+            <td>${bono}</td>
+            <td style="white-space:nowrap;">${acciones}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Stats ──────────────────────────────────────────────────────
+function actualizarStats(ordenes) {
+    document.getElementById('stat-total').textContent      = ordenes.length;
+    document.getElementById('stat-pendientes').textContent = ordenes.filter(o=>o.estado==='pendiente').length;
+    document.getElementById('stat-completadas').textContent= ordenes.filter(o=>o.estado==='finalizado').length;
+    document.getElementById('stat-urgentes').textContent   = ordenes.filter(o=>o.prioridad==='urgente'&&o.estado==='pendiente').length;
+}
+
+// ── Editar ─────────────────────────────────────────────────────
+function abrirEditar(id) {
+    const o = todasLasOrdenes.find(x => x.id === id || x.id === parseInt(id));
+    if (!o) return;
+    document.getElementById('edit-id').value       = o.id;
+    document.getElementById('edit-numero').value   = o.numero || '';
+    document.getElementById('edit-cantidad').value = o.cantidad || 1;
+    document.getElementById('edit-estado').value   = o.estado || 'pendiente';
+    document.getElementById('edit-prioridad').value= o.prioridad || 'media';
+    document.getElementById('edit-fecha').value    = o.fecha_entrega || o.fecha_liberacion || '';
+    document.getElementById('edit-msg').className  = 'ord-msg';
+    document.getElementById('edit-msg').style.display = 'none';
+    document.getElementById('modal-editar').classList.add('open');
+}
+function cerrarModalEditar() {
+    document.getElementById('modal-editar').classList.remove('open');
+}
+async function guardarEdicion() {
+    const id = document.getElementById('edit-id').value;
+    const payload = {
+        numero:           document.getElementById('edit-numero').value,
+        cantidad:         parseInt(document.getElementById('edit-cantidad').value),
+        estado:           document.getElementById('edit-estado').value,
+        prioridad:        document.getElementById('edit-prioridad').value,
+        fecha_liberacion: document.getElementById('edit-fecha').value,
+    };
+    try {
+        const r = await fetch(`/api/ordenes/actualizar/${id}`, {
+            method: 'PUT', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const d = await r.json();
+        const msg = document.getElementById('edit-msg');
+        if (d.success) {
+            msg.className = 'ord-msg success'; msg.textContent = '✓ Guardado'; msg.style.display = 'block';
+            setTimeout(() => { cerrarModalEditar(); cargarOrdenes(); }, 1200);
+        } else {
+            msg.className = 'ord-msg error'; msg.textContent = d.message || 'Error'; msg.style.display = 'block';
+        }
+    } catch(e) {
+        const msg = document.getElementById('edit-msg');
+        msg.className = 'ord-msg error'; msg.textContent = 'Error de conexión'; msg.style.display = 'block';
+    }
+}
+
+// ── Eliminar ───────────────────────────────────────────────────
+async function eliminarOrden(id, estado, numero) {
+    const aviso = estado !== 'pendiente'
+        ? `⚠️ La orden ${numero} está en estado "${estado}".\n¿Eliminar de todos modos?`
+        : `¿Eliminar la orden ${numero}?`;
+    if (!confirm(aviso)) return;
+    try {
+        const r = await fetch(`/api/ordenes/eliminar/${id}`, { method:'DELETE' });
+        const d = await r.json();
+        if (d.success) cargarOrdenes();
+        else alert('Error: ' + (d.message || ''));
+    } catch(e) { alert('Error de conexión'); }
+}
+
+// Alias para compatibilidad con registro-ordenes.js si se carga en otras páginas
+function mostrarMensaje() {}
+function mostrarOrdenes() {}
+function toggleFormularioManual() {}
+</script>
+</body>
+</html>

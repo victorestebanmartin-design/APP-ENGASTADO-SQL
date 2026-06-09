@@ -168,11 +168,11 @@
                 <div class="ord-choice-desc">Introduce los datos manualmente sin código de barras</div>
             </button>
 
-            <button class="ord-choice ord-choice-lista" onclick="abrirOverlay('overlay-lista')">
+            <a href="{{ url_for('main.lista_ordenes') }}" class="ord-choice ord-choice-lista">
                 <div class="ord-choice-icon">📊</div>
                 <div class="ord-choice-label">Ver Órdenes</div>
                 <div class="ord-choice-desc">Consulta y gestiona todas las órdenes registradas</div>
-            </button>
+            </a>
 
         </div>
         <div class="ord-close-row">
