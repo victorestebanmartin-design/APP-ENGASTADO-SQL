@@ -461,11 +461,11 @@
                     tbody.innerHTML = data.colores.map(function (c) {
                         var cod = c.cod_cable.replace(/"/g, '&quot;');
                         var hex = c.color_hex;
-                        return '<tr style="border-bottom:1px solid #2a3a52;">' +
+                        return '<tr style="background:#1a2535; color:#e2e8f0; border-bottom:1px solid #2a3a52;">' +
                             '<td style="padding:8px 10px;">' +
                               '<span style="display:inline-block;width:32px;height:22px;border-radius:5px;background:' + hex + ';border:1px solid rgba(0,0,0,.15);vertical-align:middle;"></span>' +
                             '</td>' +
-                            '<td style="padding:8px 10px; font-family:monospace; font-weight:600;">' + c.cod_cable + '</td>' +
+                            '<td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#e2e8f0;">' + c.cod_cable + '</td>' +
                             '<td style="padding:8px 10px; font-family:monospace; color:#94a3b8;">' + hex + '</td>' +
                             '<td style="padding:8px 10px;">' +
                               '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + hex + '\')">✏️ Editar</button> ' +
