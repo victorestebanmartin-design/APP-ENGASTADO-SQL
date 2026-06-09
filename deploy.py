@@ -142,13 +142,14 @@ def pa_git_pull(domain, deploy_secret, username, token):
     pa_home = os.environ.get("PA_HOME", f"/home/Viktor85")
     project = f"{pa_home}/APP-ENGASTADO-SQL"
     files_to_sync = [
-        ("app/routes.py",       f"{project}/app/routes.py"),
-        ("app/__init__.py",     f"{project}/app/__init__.py"),
-        ("deploy.py",           f"{project}/deploy.py"),
-        ("schema_sqlite.sql",   f"{project}/schema_sqlite.sql"),
-        ("templates/admin.html",       f"{project}/templates/admin.html"),
-        ("static/css/style-admin.css", f"{project}/static/css/style-admin.css"),
-        ("static/js/admin.js",         f"{project}/static/js/admin.js"),
+        ("app/routes.py",           f"{project}/app/routes.py"),
+        ("app/__init__.py",         f"{project}/app/__init__.py"),
+        ("repositories/__init__.py",f"{project}/repositories/__init__.py"),
+        ("deploy.py",               f"{project}/deploy.py"),
+        ("schema_sqlite.sql",       f"{project}/schema_sqlite.sql"),
+        ("templates/admin.html",           f"{project}/templates/admin.html"),
+        ("static/css/style-admin.css",     f"{project}/static/css/style-admin.css"),
+        ("static/js/admin.js",             f"{project}/static/js/admin.js"),
     ]
     base = os.path.dirname(__file__)
     ok = 0
@@ -179,6 +180,30 @@ def pa_reload(username, domain, token):
         print(f"  AVISO: timeout/error en reload ({e})")
         print("  Es posible que la app se haya recargado igualmente. Comprueba manualmente.")
 
+def pa_backup_db(username, token):
+    """Descarga la BD de PythonAnywhere y la guarda como backup con timestamp."""
+    import datetime
+    pa_home = os.environ.get("PA_HOME", f"/home/Viktor85")
+    remote_db = f"{pa_home}/APP-ENGASTADO-SQL/data/engastado.db"
+    url = f"https://www.pythonanywhere.com/api/v0/user/{username}/files/path{remote_db}"
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    req = Request(url, headers={"Authorization": f"Token {token}"})
+    try:
+        with urlopen(req, context=ctx, timeout=60) as resp:
+            content = resp.read()
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(os.path.dirname(__file__), "data", f"engastado.db.backup_PA_{ts}")
+        with open(backup_path, "wb") as f:
+            f.write(content)
+        print(f"  Backup guardado: data/engastado.db.backup_PA_{ts} ({len(content)//1024} KB)")
+        return backup_path
+    except Exception as e:
+        print(f"  AVISO: no se pudo descargar backup ({e})")
+        return None
+
+
 def main():
     load_env()
     username = os.environ["PA_USERNAME"]
@@ -186,7 +211,15 @@ def main():
     token    = os.environ["PA_TOKEN"]
 
     deploy_secret = os.environ["DEPLOY_SECRET"]
-    commit_message = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "deploy"
+    args = sys.argv[1:]
+
+    # Modo backup: python deploy.py --backup
+    if args and args[0] == "--backup":
+        print("\nDescargando backup de BD de PythonAnywhere...")
+        pa_backup_db(username, token)
+        return
+
+    commit_message = " ".join(args) if args else "deploy"
 
     print(f"\nDesplegando '{commit_message}' -> {domain}")
     print("=" * 50)
@@ -194,6 +227,10 @@ def main():
     git_push(commit_message)
     pa_git_pull(domain, deploy_secret, username, token)
     pa_reload(username, domain, token)
+
+    # Backup automático post-deploy
+    print("\n[4/4] Backup BD de PythonAnywhere...")
+    pa_backup_db(username, token)
 
     print("\n" + "=" * 50)
     print(f"Deploy completado: https://{domain}")
