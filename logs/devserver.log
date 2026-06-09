@@ -1,0 +1,24 @@
+ * Tip: There are .env files present. Install python-dotenv to use them.
+ * Serving Flask app 'wsgi:app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5050
+Press CTRL+C to quit
+127.0.0.1 - - [09/Jun/2026 13:07:16] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /static/js/admin.js HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /static/css/style-admin.css?v=1 HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /static/css/style.css?v=13 HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /api/cable-colores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /api/list_files HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /api/list_cortes HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:27] "GET /api/puestos HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:07:28] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /static/css/style.css?v=13 HTTP/1.1" 304 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /static/js/admin.js HTTP/1.1" 304 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /static/css/style-admin.css?v=1 HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /api/cable-colores HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /api/list_cortes HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /api/list_files HTTP/1.1" 200 -
+127.0.0.1 - - [09/Jun/2026 13:08:38] "GET /api/puestos HTTP/1.1" 200 -

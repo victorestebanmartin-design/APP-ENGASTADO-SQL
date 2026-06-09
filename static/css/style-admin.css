@@ -1,0 +1,456 @@
+/* =====================================================================
+   ADMIN — Tema oscuro profesional (COJOsw)
+   Estilos scopeados bajo .admin-app para no afectar otras vistas.
+   ===================================================================== */
+
+.admin-app {
+  --bg:          #0f172a;
+  --panel:       #1e293b;
+  --panel-2:     #243044;
+  --panel-3:     #2a3a52;
+  --border:      #334155;
+  --border-soft: #2a3a52;
+  --text:        #f1f5f9;
+  --text-muted:  #94a3b8;
+  --text-dim:    #64748b;
+  --accent:      #3b82f6;
+  --accent-hover:#2563eb;
+  --danger:      #ef4444;
+  --danger-hover:#dc2626;
+  --success:     #22c55e;
+  --warn:        #f59e0b;
+
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+.admin-app *,
+.admin-app *::before,
+.admin-app *::after { box-sizing: border-box; }
+
+/* ── Topbar ──────────────────────────────────────────────────────── */
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.admin-logo {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 28px;
+  letter-spacing: .06em;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1;
+}
+.admin-logo .sw { font-size: 15px; color: var(--text-dim); }
+.admin-topbar-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .18em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.admin-topbar-spacer { flex: 1; }
+.admin-back {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 14px;
+  transition: all .15s ease;
+}
+.admin-back:hover { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
+
+/* ── Shell (sidebar + content) ───────────────────────────────────── */
+.admin-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+.admin-sidebar {
+  width: 230px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.admin-nav-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 14px 12px 6px;
+}
+.admin-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all .14s ease;
+}
+.admin-nav-item .ico { font-size: 16px; width: 20px; text-align: center; }
+.admin-nav-item:hover { background: var(--panel-2); color: var(--text); }
+.admin-nav-item.active {
+  background: linear-gradient(90deg, rgba(59,130,246,.18), rgba(59,130,246,.04));
+  border-color: rgba(59,130,246,.4);
+  color: #fff;
+}
+.admin-nav-item.danger.active {
+  background: linear-gradient(90deg, rgba(239,68,68,.18), rgba(239,68,68,.04));
+  border-color: rgba(239,68,68,.4);
+}
+.admin-nav-item.danger:hover { color: #fecaca; }
+
+/* ── Content ─────────────────────────────────────────────────────── */
+.admin-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 26px 30px 60px;
+}
+.admin-section { display: none; animation: adminFade .2s ease; }
+.admin-section.active { display: block; }
+@keyframes adminFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.admin-section-head { margin-bottom: 22px; }
+.admin-section-head h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 34px;
+  letter-spacing: .04em;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.1;
+}
+.admin-section-head p {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  margin: 4px 0 0;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────── */
+.admin-app .card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.admin-app .card h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-app .card h3 { color: var(--text); font-size: 14px; }
+.admin-app .instruccion,
+.admin-app .text-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────── */
+.admin-app .input-group { margin-bottom: 14px; }
+.admin-app .input-group label,
+.admin-app label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.admin-app input[type="text"],
+.admin-app input[type="file"],
+.admin-app input[type="number"],
+.admin-app select,
+.admin-app textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.admin-app input::placeholder,
+.admin-app textarea::placeholder { color: var(--text-dim); }
+.admin-app input:focus,
+.admin-app select:focus,
+.admin-app textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+.admin-app textarea { min-height: 80px; resize: vertical; }
+.admin-app input[type="file"] { padding: 8px; cursor: pointer; }
+.admin-app input[type="color"] { padding: 2px; cursor: pointer; }
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.admin-app .btn-primary,
+.admin-app .btn-secondary,
+.admin-app .btn-danger,
+.admin-app .btn-admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+  text-decoration: none;
+}
+.admin-app .btn-primary { background: var(--accent); color: #fff; }
+.admin-app .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.admin-app .btn-secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+.admin-app .btn-secondary:hover { background: var(--panel-3); border-color: var(--accent); }
+.admin-app .btn-danger { background: var(--danger); color: #fff; }
+.admin-app .btn-danger:hover { background: var(--danger-hover); transform: translateY(-1px); }
+
+/* ── Mensajes ────────────────────────────────────────────────────── */
+.admin-app .mensaje {
+  padding: 12px 14px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.admin-app .mensaje.hidden,
+.admin-app .hidden { display: none; }
+.admin-app .mensaje.exito,
+.admin-app .mensaje.success {
+  background: rgba(34,197,94,.12);
+  border-color: rgba(34,197,94,.4);
+  color: #86efac;
+}
+.admin-app .mensaje.error {
+  background: rgba(239,68,68,.12);
+  border-color: rgba(239,68,68,.4);
+  color: #fca5a5;
+}
+
+/* ── Tablas ──────────────────────────────────────────────────────── */
+.admin-app .tabla-container { margin-top: 14px; overflow-x: auto; }
+.admin-app table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.admin-app table thead tr { background: var(--panel-2) !important; }
+.admin-app table th {
+  padding: 10px 12px !important;
+  text-align: left;
+  color: var(--text-muted) !important;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border) !important;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.admin-app table td {
+  padding: 10px 12px !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  color: var(--text) !important;
+}
+.admin-app table td strong { color: #fff; }
+.admin-app table tbody tr:hover { background: rgba(255,255,255,.025); }
+
+/* ── Gestión organizacional ──────────────────────────────────────── */
+.admin-app .gestion-organizacional { display: grid; gap: 14px; }
+.admin-app .gestion-link-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  transition: all .15s ease;
+}
+.admin-app .gestion-link-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.3);
+}
+.admin-app .gestion-icon { font-size: 32px; }
+.admin-app .gestion-content h3 { margin: 0 0 4px; font-size: 15px; }
+.admin-app .gestion-content p { margin: 0 0 8px; color: var(--text-muted); font-size: 12.5px; }
+.admin-app .gestion-features { display: flex; flex-wrap: wrap; gap: 12px; }
+.admin-app .gestion-features span { color: var(--text-dim); font-size: 11.5px; }
+.admin-app .gestion-arrow { margin-left: auto; font-size: 22px; color: var(--accent); }
+
+/* ── Report skeleton ─────────────────────────────────────────────── */
+.report-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 20px;
+}
+.report-field { display: flex; flex-direction: column; gap: 5px; }
+.report-field label {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0;
+}
+.report-field input,
+.report-field select { min-width: 160px; }
+.report-toolbar-actions { margin-left: auto; display: flex; gap: 10px; }
+
+.report-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.report-stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.report-stat .num { font-family: 'Bebas Neue', sans-serif; font-size: 30px; color: var(--text); line-height: 1; }
+.report-stat .lbl {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.report-empty {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--text-dim);
+}
+.report-empty .ico { font-size: 42px; opacity: .5; }
+.report-empty p { margin: 12px 0 0; font-size: 13.5px; }
+
+.report-badge {
+  display: inline-block;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .06em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(245,158,11,.15);
+  border: 1px solid rgba(245,158,11,.4);
+  color: var(--warn);
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* ── Modales ─────────────────────────────────────────────────────── */
+.admin-app .modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.admin-app .modal.active,
+.admin-app .modal.show { display: flex; }
+.admin-app .modal-content {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 460px;
+  overflow: hidden;
+}
+.admin-app .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-app .modal-header h3 { margin: 0; }
+.admin-app .modal-close { cursor: pointer; font-size: 22px; color: var(--text-dim); }
+.admin-app .modal-close:hover { color: var(--text); }
+.admin-app .modal-body { padding: 20px; }
+.admin-app .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Printer containers ──────────────────────────────────────────── */
+.admin-app .printer-status-container,
+.admin-app .printer-simulated-container,
+.admin-app .printer-pending-container {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.admin-app .printer-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .admin-shell { flex-direction: column; }
+  .admin-sidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px;
+  }
+  .admin-nav-label { display: none; }
+  .admin-nav-item { white-space: nowrap; }
+  .admin-content { padding: 18px 16px 50px; }
+}

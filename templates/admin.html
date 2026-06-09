@@ -3,252 +3,347 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administración - Sistema de Engastado</title>
+    <title>Administración — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}?v=1">
     <style>
-        .campo-autorellenado { background: #f0fdf4 !important; border-color: #86efac !important; color: #166534 !important; font-weight: 600; }
-        .campo-autorellenado-label { font-size: 0.78em; color: #16a34a; margin-left: 6px; font-weight: 500; }
+        .campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
+        .campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <h1>⚙️ Administración del Sistema</h1>
-            <a href="{{ url_for('main.modules') }}" class="btn-admin">🔙 Volver al Inicio</a>
+    <div class="admin-app">
+        <!-- Topbar -->
+        <header class="admin-topbar">
+            <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
+            <div class="admin-topbar-title">Panel de Administración</div>
+            <div class="admin-topbar-spacer"></div>
+            <a href="{{ url_for('main.modules') }}" class="admin-back">← Volver al inicio</a>
         </header>
 
-        <!-- Sección: Subir Archivo Excel -->
-        <div class="card">
-            <h2>📤 Subir Archivo Excel</h2>
-            <p class="instruccion">Sube un nuevo archivo Excel con datos de cableado</p>
-            
-            <form id="upload-form" enctype="multipart/form-data">
-                <div class="input-group">
-                    <label for="file-upload">Seleccionar Archivo (.xlsx, .xls):</label>
-                    <input type="file" id="file-upload" name="file" accept=".xlsx,.xls" required>
-                </div>
-                
-                <button type="submit" class="btn-primary">📤 Subir Archivo</button>
-            </form>
-            
-            <div id="upload-mensaje" class="mensaje hidden"></div>
-        </div>
+        <div class="admin-shell">
+            <!-- Sidebar -->
+            <nav class="admin-sidebar">
+                <div class="admin-nav-label">Gestión</div>
+                <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
+                <button class="admin-nav-item" data-section="organizacion" onclick="adminNav('organizacion')"><span class="ico">🏢</span> Organización</button>
+                <button class="admin-nav-item" data-section="impresora" onclick="adminNav('impresora')"><span class="ico">🖨️</span> Impresora</button>
+                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Colores</button>
 
-        <!-- Sección: Asociar Código de Barras con Archivo -->
-        <div class="card">
-            <h2>🔗 Asociar Código de Barras</h2>
-            <p class="instruccion">Vincula un código de barras con un archivo Excel subido</p>
-            
-            <form id="asociar-form">
-                <div class="input-group">
-                    <label for="codigo-barras">Código de Barras: <span class="campo-autorellenado-label" id="lbl-codigo"></span></label>
-                    <input type="text" id="codigo-barras" placeholder="Ej: H0457486 (se rellena solo al subir el Excel)" required>
-                </div>
+                <div class="admin-nav-label">Auditoría</div>
+                <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
 
-                <div class="input-group">
-                    <label for="select-archivo">Archivo Excel: <span class="campo-autorellenado-label" id="lbl-archivo"></span></label>
-                    <select id="select-archivo" required>
-                        <option value="">-- Seleccionar archivo --</option>
-                    </select>
-                </div>
+                <div class="admin-nav-label">Sistema</div>
+                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">🔄</span> Sistema</button>
+                <button class="admin-nav-item danger" data-section="peligro" onclick="adminNav('peligro')"><span class="ico">⚠️</span> Zona de peligro</button>
+            </nav>
 
-                <div class="input-group">
-                    <label for="descripcion">Descripción: <span class="campo-autorellenado-label" id="lbl-desc"></span></label>
-                    <input type="text" id="descripcion" placeholder="Ej: H0457486_ED04 (se rellena solo al subir el Excel)" required>
-                </div>
+            <!-- Content -->
+            <main class="admin-content">
 
-                <div class="input-group">
-                    <label for="proyecto">Nombre del Proyecto:</label>
-                    <input type="text" id="proyecto" placeholder="Ej: Coradia Italia">
-                </div>
+                <!-- ============ ARCHIVOS ============ -->
+                <section id="sec-archivos" class="admin-section active">
+                    <div class="admin-section-head">
+                        <h1>Archivos & Cortes</h1>
+                        <p>Sube archivos Excel, asócialos a códigos de barras y consulta los registros</p>
+                    </div>
 
-                <button type="submit" class="btn-primary">✅ Asociar</button>
-            </form>
-            
-            <div id="asociar-mensaje" class="mensaje hidden"></div>
-        </div>
+                    <!-- Subir Archivo Excel -->
+                    <div class="card">
+                        <h2>📤 Subir Archivo Excel</h2>
+                        <p class="instruccion">Sube un nuevo archivo Excel con datos de cableado</p>
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <div class="input-group">
+                                <label for="file-upload">Seleccionar Archivo (.xlsx, .xls):</label>
+                                <input type="file" id="file-upload" name="file" accept=".xlsx,.xls" required>
+                            </div>
+                            <button type="submit" class="btn-primary">📤 Subir Archivo</button>
+                        </form>
+                        <div id="upload-mensaje" class="mensaje hidden"></div>
+                    </div>
 
-        <!-- Sección: Cortes Registrados -->
-        <div class="card">
-            <h2>📋 Cortes Registrados</h2>
-            <p class="instruccion">Lista de códigos de barras y archivos asociados</p>
-            
-            <button onclick="cargarCortes()" class="btn-secondary">🔄 Actualizar Lista</button>
-            
-            <div id="lista-cortes" class="tabla-container">
-                <p class="text-muted">Cargando...</p>
-            </div>
-        </div>
+                    <!-- Asociar Código de Barras -->
+                    <div class="card">
+                        <h2>🔗 Asociar Código de Barras</h2>
+                        <p class="instruccion">Vincula un código de barras con un archivo Excel subido</p>
+                        <form id="asociar-form">
+                            <div class="input-group">
+                                <label for="codigo-barras">Código de Barras: <span class="campo-autorellenado-label" id="lbl-codigo"></span></label>
+                                <input type="text" id="codigo-barras" placeholder="Ej: H0457486 (se rellena solo al subir el Excel)" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="select-archivo">Archivo Excel: <span class="campo-autorellenado-label" id="lbl-archivo"></span></label>
+                                <select id="select-archivo" required>
+                                    <option value="">-- Seleccionar archivo --</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="descripcion">Descripción: <span class="campo-autorellenado-label" id="lbl-desc"></span></label>
+                                <input type="text" id="descripcion" placeholder="Ej: H0457486_ED04 (se rellena solo al subir el Excel)" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="proyecto">Nombre del Proyecto:</label>
+                                <input type="text" id="proyecto" placeholder="Ej: Coradia Italia">
+                            </div>
+                            <button type="submit" class="btn-primary">✅ Asociar</button>
+                        </form>
+                        <div id="asociar-mensaje" class="mensaje hidden"></div>
+                    </div>
 
-        <!-- Sección: Archivos Disponibles -->
-        <div class="card">
-            <h2>📁 Archivos Excel Disponibles</h2>
-            <p class="instruccion">Archivos Excel subidos al sistema</p>
-            
-            <button onclick="cargarArchivos()" class="btn-secondary">🔄 Actualizar Lista</button>
-            
-            <div id="lista-archivos" class="tabla-container">
-                <p class="text-muted">Cargando...</p>
-            </div>
-        </div>
-
-        <!-- Sección: Gestión Organizacional -->
-        <div class="card">
-            <h2>🏢 Gestión Organizacional</h2>
-            <p class="instruccion">Administra la estructura de tu planta de producción</p>
-            
-            <div class="gestion-organizacional">
-                <a href="{{ url_for('main.gestion_puestos') }}" class="gestion-link-card">
-                    <div class="gestion-icon">🏭</div>
-                    <div class="gestion-content">
-                        <h3>Puestos y Máquinas</h3>
-                        <p>Gestiona puestos de trabajo, máquinas de producción y asignación de terminales</p>
-                        <div class="gestion-features">
-                            <span>• Crear y editar puestos</span>
-                            <span>• Gestionar máquinas</span>
-                            <span>• Asignar terminales</span>
+                    <!-- Cortes Registrados -->
+                    <div class="card">
+                        <h2>📋 Cortes Registrados</h2>
+                        <p class="instruccion">Lista de códigos de barras y archivos asociados</p>
+                        <button onclick="cargarCortes()" class="btn-secondary">🔄 Actualizar Lista</button>
+                        <div id="lista-cortes" class="tabla-container">
+                            <p class="text-muted">Cargando...</p>
                         </div>
                     </div>
-                    <div class="gestion-arrow">→</div>
-                </a>
-            </div>
-        </div>
 
-        <!-- Sección: Control de Impresora Zebra -->
-        <div class="card">
-            <h2>🖨️ Control de Impresora Zebra GK420T</h2>
-            <p class="instruccion">Monitoreo y control de la impresora de etiquetas</p>
-            
-            <div class="printer-controls">
-                <button onclick="verificarEstadoImpresora()" class="btn-secondary">
-                    🔍 Verificar Estado
-                </button>
-                
-                <button onclick="imprimirPrueba()" class="btn-primary" style="margin-left: 10px;">
-                    🧪 Imprimir Prueba
-                </button>
-                
-                <button onclick="listarEtiquetasSimuladas()" class="btn-secondary" style="margin-left: 10px;">
-                    📋 Ver Etiquetas Simuladas
-                </button>
-            </div>
-            
-            <div id="printer-status" class="printer-status-container" style="margin-top: 20px;">
-                <p class="text-muted">Haz clic en "Verificar Estado" para ver información de la impresora</p>
-            </div>
-            
-            <div id="printer-simulated" class="printer-simulated-container" style="margin-top: 20px; display: none;">
-                <h3>Etiquetas Simuladas</h3>
-                <div id="simulated-list"></div>
-                <button onclick="limpiarEtiquetasSimuladas()" class="btn-danger" style="margin-top: 10px;">
-                    🗑️ Limpiar Todas
-                </button>
-            </div>
-            
-            <div id="printer-pending" class="printer-pending-container" style="margin-top: 20px; display: none;">
-                <h3>Etiquetas Pendientes</h3>
-                <div id="pending-list"></div>
-                <button onclick="reintentarPendientes()" class="btn-primary" style="margin-top: 10px;">
-                    🔄 Reintentar Todas
-                </button>
-            </div>
-        </div>
-
-        <!-- Sección: Actualización del Sistema -->
-        <div class="card">
-            <h2>🔄 Actualización del Sistema</h2>
-            <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
-            
-            <div id="update-status" class="mensaje hidden"></div>
-            
-            <button onclick="comprobarActualizaciones()" class="btn-secondary">
-                🔍 Comprobar Actualizaciones
-            </button>
-            
-            <button onclick="actualizarSistema()" class="btn-primary" style="margin-left: 10px;">
-                ⬇️ Actualizar Ahora
-            </button>
-        </div>
-
-        <!-- Sección: Bloqueos de paquetes -->
-        <div class="card">
-            <h2>🔒 Bloqueos de Paquetes</h2>
-            <p class="instruccion">Sesiones activas que están bloqueando paquetes. Libéralas individualmente o todas a la vez.</p>
-            <div id="bloqueos-status" class="mensaje hidden"></div>
-            <button onclick="cargarSesionesActivas()" class="btn-secondary">🔍 Ver bloqueos activos</button>
-            <div id="bloqueos-lista" style="margin-top:14px;"></div>
-        </div>
-
-        <!-- Sección: Paleta de Colores de Cables -->
-        <div class="card" id="card-colores-cables">
-            <h2>🎨 Paleta de Colores de Cables</h2>
-            <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.</p>
-
-            <!-- Botón detectar nuevos -->
-            <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="btn-secondary" onclick="ccDetectarSinColor()">🔍 Detectar cables sin color</button>
-                <span id="cc-sin-color-msg" style="font-size:0.85em; color:#64748b;"></span>
-            </div>
-
-            <!-- Alerta cables sin asignar -->
-            <div id="cc-sin-asignar-box" style="display:none; margin-bottom:14px; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
-                <strong>⚠️ Cables sin color asignado:</strong>
-                <div id="cc-sin-asignar-lista" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
-            </div>
-
-            <!-- Tabla de colores -->
-            <div style="overflow-x:auto; margin-bottom:18px;">
-                <table id="cc-tabla" style="width:100%; border-collapse:collapse; font-size:0.9em;">
-                    <thead>
-                        <tr style="background:#f1f5f9; text-align:left;">
-                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Color</th>
-                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Cod. Cable</th>
-                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Hex</th>
-                            <th style="padding:8px 10px; border-bottom:2px solid #e2e8f0;">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="cc-tabla-body">
-                        <tr><td colspan="4" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Formulario añadir/editar -->
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px;">
-                <h3 style="margin:0 0 10px; font-size:1em; color:#334155;">➕ Añadir / Editar color</h3>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
-                    <div>
-                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Cod. Cable</label>
-                        <input type="text" id="cc-input-cod" placeholder="Ej: 640C10050A" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9em; width:160px; text-transform:uppercase;">
+                    <!-- Archivos Disponibles -->
+                    <div class="card">
+                        <h2>📁 Archivos Excel Disponibles</h2>
+                        <p class="instruccion">Archivos Excel subidos al sistema</p>
+                        <button onclick="cargarArchivos()" class="btn-secondary">🔄 Actualizar Lista</button>
+                        <div id="lista-archivos" class="tabla-container">
+                            <p class="text-muted">Cargando...</p>
+                        </div>
                     </div>
-                    <div>
-                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Color</label>
-                        <input type="color" id="cc-input-color" value="#2563eb" style="width:50px; height:34px; border:1px solid #cbd5e1; border-radius:6px; cursor:pointer; padding:2px;">
+                </section>
+
+                <!-- ============ ORGANIZACIÓN ============ -->
+                <section id="sec-organizacion" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Organización</h1>
+                        <p>Administra la estructura de tu planta de producción</p>
                     </div>
-                    <div>
-                        <label style="font-size:0.82em; color:#64748b; display:block; margin-bottom:3px;">Hex manual</label>
-                        <input type="text" id="cc-input-hex" placeholder="#2563eb" maxlength="7" style="padding:7px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9em; width:90px;">
+                    <div class="card">
+                        <h2>🏢 Gestión Organizacional</h2>
+                        <p class="instruccion">Administra la estructura de tu planta de producción</p>
+                        <div class="gestion-organizacional">
+                            <a href="{{ url_for('main.gestion_puestos') }}" class="gestion-link-card">
+                                <div class="gestion-icon">🏭</div>
+                                <div class="gestion-content">
+                                    <h3>Puestos y Máquinas</h3>
+                                    <p>Gestiona puestos de trabajo, máquinas de producción y asignación de terminales</p>
+                                    <div class="gestion-features">
+                                        <span>• Crear y editar puestos</span>
+                                        <span>• Gestionar máquinas</span>
+                                        <span>• Asignar terminales</span>
+                                    </div>
+                                </div>
+                                <div class="gestion-arrow">→</div>
+                            </a>
+                        </div>
                     </div>
-                    <button class="btn-primary" onclick="ccGuardarColor()">💾 Guardar</button>
-                    <button class="btn-secondary" onclick="ccLimpiarForm()">✕ Limpiar</button>
-                </div>
-                <div id="cc-form-msg" style="margin-top:8px; font-size:0.85em;"></div>
-            </div>
+                </section>
+
+                <!-- ============ IMPRESORA ============ -->
+                <section id="sec-impresora" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Impresora Zebra</h1>
+                        <p>Monitoreo y control de la impresora de etiquetas GK420T</p>
+                    </div>
+                    <div class="card">
+                        <h2>🖨️ Control de Impresora Zebra GK420T</h2>
+                        <p class="instruccion">Monitoreo y control de la impresora de etiquetas</p>
+                        <div class="printer-controls">
+                            <button onclick="verificarEstadoImpresora()" class="btn-secondary">🔍 Verificar Estado</button>
+                            <button onclick="imprimirPrueba()" class="btn-primary">🧪 Imprimir Prueba</button>
+                            <button onclick="listarEtiquetasSimuladas()" class="btn-secondary">📋 Ver Etiquetas Simuladas</button>
+                        </div>
+                        <div id="printer-status" class="printer-status-container" style="margin-top: 20px;">
+                            <p class="text-muted">Haz clic en "Verificar Estado" para ver información de la impresora</p>
+                        </div>
+                        <div id="printer-simulated" class="printer-simulated-container" style="margin-top: 20px; display: none;">
+                            <h3>Etiquetas Simuladas</h3>
+                            <div id="simulated-list"></div>
+                            <button onclick="limpiarEtiquetasSimuladas()" class="btn-danger" style="margin-top: 10px;">🗑️ Limpiar Todas</button>
+                        </div>
+                        <div id="printer-pending" class="printer-pending-container" style="margin-top: 20px; display: none;">
+                            <h3>Etiquetas Pendientes</h3>
+                            <div id="pending-list"></div>
+                            <button onclick="reintentarPendientes()" class="btn-primary" style="margin-top: 10px;">🔄 Reintentar Todas</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============ COLORES ============ -->
+                <section id="sec-colores" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Paleta de Colores</h1>
+                        <p>Asigna un color a cada código de cable; los cambios se aplican en tiempo real</p>
+                    </div>
+                    <div class="card" id="card-colores-cables">
+                        <h2>🎨 Colores de Cables</h2>
+                        <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.</p>
+
+                        <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <button class="btn-secondary" onclick="ccDetectarSinColor()">🔍 Detectar cables sin color</button>
+                            <span id="cc-sin-color-msg" style="font-size:0.85em; color:#94a3b8;"></span>
+                        </div>
+
+                        <div id="cc-sin-asignar-box" style="display:none; margin-bottom:14px; background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.4); border-radius:8px; padding:12px;">
+                            <strong style="color:#fbbf24;">⚠️ Cables sin color asignado:</strong>
+                            <div id="cc-sin-asignar-lista" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;"></div>
+                        </div>
+
+                        <div style="overflow-x:auto; margin-bottom:18px;">
+                            <table id="cc-tabla" style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                                <thead>
+                                    <tr>
+                                        <th>Color</th>
+                                        <th>Cod. Cable</th>
+                                        <th>Hex</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cc-tabla-body">
+                                    <tr><td colspan="4" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:14px;">
+                            <h3 style="margin:0 0 10px; font-size:1em;">➕ Añadir / Editar color</h3>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                                <div>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Cod. Cable</label>
+                                    <input type="text" id="cc-input-cod" placeholder="Ej: 640C10050A" style="width:160px; text-transform:uppercase;">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Color</label>
+                                    <input type="color" id="cc-input-color" value="#2563eb" style="width:50px; height:40px;">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.82em; display:block; margin-bottom:3px;">Hex manual</label>
+                                    <input type="text" id="cc-input-hex" placeholder="#2563eb" maxlength="7" style="width:90px;">
+                                </div>
+                                <button class="btn-primary" onclick="ccGuardarColor()">💾 Guardar</button>
+                                <button class="btn-secondary" onclick="ccLimpiarForm()">✕ Limpiar</button>
+                            </div>
+                            <div id="cc-form-msg" style="margin-top:8px; font-size:0.85em;"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============ REPORT (TRAZABILIDAD) ============ -->
+                <section id="sec-report" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Report — Trazabilidad <span class="report-badge">En desarrollo</span></h1>
+                        <p>Registro de quién, cuándo y con qué se ha trabajado. Exportable a PDF para auditorías.</p>
+                    </div>
+
+                    <!-- Toolbar de filtros (esqueleto) -->
+                    <div class="report-toolbar">
+                        <div class="report-field">
+                            <label>Desde</label>
+                            <input type="date" id="report-desde" disabled>
+                        </div>
+                        <div class="report-field">
+                            <label>Hasta</label>
+                            <input type="date" id="report-hasta" disabled>
+                        </div>
+                        <div class="report-field">
+                            <label>Operario / Máquina</label>
+                            <select id="report-operario" disabled>
+                                <option>— Todos —</option>
+                            </select>
+                        </div>
+                        <div class="report-field">
+                            <label>Bono</label>
+                            <input type="text" id="report-bono" placeholder="Todos" disabled>
+                        </div>
+                        <div class="report-toolbar-actions">
+                            <button class="btn-secondary" onclick="reportBuscar()">🔍 Buscar</button>
+                            <button class="btn-primary" onclick="reportGenerarPDF()">📄 Generar PDF</button>
+                        </div>
+                    </div>
+
+                    <!-- Estadísticas rápidas (esqueleto) -->
+                    <div class="report-stats">
+                        <div class="report-stat"><div class="num" id="report-stat-sesiones">—</div><div class="lbl">Sesiones</div></div>
+                        <div class="report-stat"><div class="num" id="report-stat-operarios">—</div><div class="lbl">Operarios</div></div>
+                        <div class="report-stat"><div class="num" id="report-stat-bonos">—</div><div class="lbl">Bonos</div></div>
+                        <div class="report-stat"><div class="num" id="report-stat-paquetes">—</div><div class="lbl">Paquetes</div></div>
+                    </div>
+
+                    <!-- Tabla de trazabilidad (esqueleto) -->
+                    <div class="card">
+                        <h2>🧾 Registro de actividad</h2>
+                        <p class="instruccion">Quién · Cuándo · Qué — cada acción quedará registrada aquí.</p>
+                        <div class="tabla-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Quién</th>
+                                        <th>Máquina / Terminal</th>
+                                        <th>Cuándo (inicio)</th>
+                                        <th>Cuándo (fin)</th>
+                                        <th>Qué (bono / carro)</th>
+                                        <th>Archivo</th>
+                                        <th>Paquetes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-tbody">
+                                    <tr>
+                                        <td colspan="7">
+                                            <div class="report-empty">
+                                                <div class="ico">📊</div>
+                                                <p>La trazabilidad se desarrollará en el siguiente paso.<br>Aquí se listará cada sesión de trabajo con su detalle completo.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============ SISTEMA ============ -->
+                <section id="sec-sistema" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Sistema</h1>
+                        <p>Actualizaciones y bloqueos de paquetes activos</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>🔄 Actualización del Sistema</h2>
+                        <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
+                        <div id="update-status" class="mensaje hidden"></div>
+                        <button onclick="comprobarActualizaciones()" class="btn-secondary">🔍 Comprobar Actualizaciones</button>
+                        <button onclick="actualizarSistema()" class="btn-primary" style="margin-left: 10px;">⬇️ Actualizar Ahora</button>
+                    </div>
+
+                    <div class="card">
+                        <h2>🔒 Bloqueos de Paquetes</h2>
+                        <p class="instruccion">Sesiones activas que están bloqueando paquetes. Libéralas individualmente o todas a la vez.</p>
+                        <div id="bloqueos-status" class="mensaje hidden"></div>
+                        <button onclick="cargarSesionesActivas()" class="btn-secondary">🔍 Ver bloqueos activos</button>
+                        <div id="bloqueos-lista" style="margin-top:14px;"></div>
+                    </div>
+                </section>
+
+                <!-- ============ ZONA DE PELIGRO ============ -->
+                <section id="sec-peligro" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Zona de peligro</h1>
+                        <p>Acciones irreversibles. Procede con precaución.</p>
+                    </div>
+                    <div class="card">
+                        <h2>⚠️ Resetear Sistema</h2>
+                        <p class="instruccion"><strong>Esta acción eliminará TODOS los archivos Excel y TODOS los códigos de barras registrados. No se puede deshacer.</strong></p>
+                        <button onclick="resetearSistema()" class="btn-danger">🗑️ RESETEAR TODO EL SISTEMA</button>
+                    </div>
+                </section>
+
+            </main>
         </div>
 
-        <!-- Sección: PELIGRO - Resetear Sistema -->
-        <div class="card">
-            <h2>⚠️ ZONA DE PELIGRO</h2>
-            <p class="instruccion"><strong>Esta acción eliminará TODOS los archivos Excel y TODOS los códigos de barras registrados. No se puede deshacer.</strong></p>
-            
-            <button onclick="resetearSistema()" class="btn-danger">
-                🗑️ RESETEAR TODO EL SISTEMA
-            </button>
-        </div>
-    </div>
-
-    <!-- Modales -->
-    <div id="modal-puesto" class="modal">
+        <!-- Modales -->
+        <div id="modal-puesto" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Nuevo Puesto</h3>
@@ -299,6 +394,37 @@
             </div>
         </div>
     </div>
+    </div>
+
+    <script>
+    // ──────────────────────────────────────────────────────────────
+    //  NAVEGACIÓN ENTRE SECCIONES DEL ADMIN
+    // ──────────────────────────────────────────────────────────────
+    function adminNav(section) {
+        document.querySelectorAll('.admin-section').forEach(function (s) { s.classList.remove('active'); });
+        document.querySelectorAll('.admin-nav-item').forEach(function (b) { b.classList.remove('active'); });
+        var sec = document.getElementById('sec-' + section);
+        var btn = document.querySelector('.admin-nav-item[data-section="' + section + '"]');
+        if (sec) sec.classList.add('active');
+        if (btn) btn.classList.add('active');
+        try { localStorage.setItem('adminSection', section); } catch (e) {}
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        var saved = null;
+        try { saved = localStorage.getItem('adminSection'); } catch (e) {}
+        if (saved && document.getElementById('sec-' + saved)) adminNav(saved);
+    });
+
+    // ──────────────────────────────────────────────────────────────
+    //  REPORT — placeholders (lógica en el siguiente paso)
+    // ──────────────────────────────────────────────────────────────
+    function reportBuscar() {
+        alert('La búsqueda de trazabilidad se implementará en el siguiente paso.');
+    }
+    function reportGenerarPDF() {
+        alert('La generación de PDF para auditorías se implementará en el siguiente paso.');
+    }
+    </script>
 
     <script>
     // ──────────────────────────────────────────────────────────────
@@ -335,12 +461,12 @@
                     tbody.innerHTML = data.colores.map(function (c) {
                         var cod = c.cod_cable.replace(/"/g, '&quot;');
                         var hex = c.color_hex;
-                        return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                        return '<tr style="border-bottom:1px solid #2a3a52;">' +
                             '<td style="padding:8px 10px;">' +
                               '<span style="display:inline-block;width:32px;height:22px;border-radius:5px;background:' + hex + ';border:1px solid rgba(0,0,0,.15);vertical-align:middle;"></span>' +
                             '</td>' +
                             '<td style="padding:8px 10px; font-family:monospace; font-weight:600;">' + c.cod_cable + '</td>' +
-                            '<td style="padding:8px 10px; font-family:monospace; color:#475569;">' + hex + '</td>' +
+                            '<td style="padding:8px 10px; font-family:monospace; color:#94a3b8;">' + hex + '</td>' +
                             '<td style="padding:8px 10px;">' +
                               '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + hex + '\')">✏️ Editar</button> ' +
                               '<button class="btn-danger"   style="padding:4px 10px;font-size:0.8em;" onclick="ccEliminarColor(\'' + cod + '\')">🗑️</button>' +
@@ -360,7 +486,7 @@
             if (inputHex)   inputHex.value   = hex;
             if (inputColor) inputColor.value = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#2563eb';
             var formMsg = document.getElementById('cc-form-msg');
-            if (formMsg) { formMsg.textContent = 'Editando: ' + cod; formMsg.style.color = '#2563eb'; }
+            if (formMsg) { formMsg.textContent = 'Editando: ' + cod; formMsg.style.color = '#3b82f6'; }
             document.getElementById('cc-input-cod').scrollIntoView({ behavior: 'smooth', block: 'center' });
         };
 
@@ -369,8 +495,8 @@
             var cod   = (document.getElementById('cc-input-cod').value || '').trim().toUpperCase();
             var hex   = (document.getElementById('cc-input-hex').value  || document.getElementById('cc-input-color').value || '').trim().toLowerCase();
             var formMsg = document.getElementById('cc-form-msg');
-            if (!cod) { formMsg.textContent = '⚠️ Indica el código de cable.'; formMsg.style.color = '#dc2626'; return; }
-            if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { formMsg.textContent = '⚠️ Color inválido. Usa formato #rrggbb.'; formMsg.style.color = '#dc2626'; return; }
+            if (!cod) { formMsg.textContent = '⚠️ Indica el código de cable.'; formMsg.style.color = '#f87171'; return; }
+            if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { formMsg.textContent = '⚠️ Color inválido. Usa formato #rrggbb.'; formMsg.style.color = '#f87171'; return; }
             fetch('/api/cable-colores', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -380,12 +506,12 @@
             .then(function (data) {
                 if (data.success) {
                     formMsg.textContent = '✅ Guardado: ' + cod + ' → ' + hex;
-                    formMsg.style.color = '#059669';
+                    formMsg.style.color = '#34d399';
                     ccLimpiarForm();
                     ccCargarTabla();
                 } else {
                     formMsg.textContent = '❌ Error: ' + (data.error || 'desconocido');
-                    formMsg.style.color = '#dc2626';
+                    formMsg.style.color = '#f87171';
                 }
             });
         };
