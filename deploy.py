@@ -44,17 +44,12 @@ def run(cmd, check=True):
         sys.exit(result.returncode)
     return result
 
-def pa_request(method, url, token, data=None, deploy_hook=False):
-    if deploy_hook:
-        headers = {"X-Deploy-Token": token, "Content-Type": "application/x-www-form-urlencoded"}
-    else:
-        headers = {"Authorization": f"Token {token}"}
+def pa_request(method, url, token, data=None):
+    headers = {"Authorization": f"Token {token}"}
     body = None
-    if data and not deploy_hook:
+    if data:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
         body = urlencode(data).encode("utf-8")
-    elif deploy_hook:
-        body = b""  # POST sin cuerpo
     req = Request(url, data=body, headers=headers, method=method)
     try:
         with urlopen(req, timeout=30) as resp:
@@ -85,21 +80,34 @@ def git_push(commit_message):
     run("git push")
     print("  OK")
 
-def pa_git_pull(domain, token):
+def pa_git_pull(username, token):
     print("\n[2/3] Git pull en PythonAnywhere...")
-    url = f"https://{domain}/api/internal/deploy-pull"
-    status, data = pa_request("POST", url, token, deploy_hook=True)
-    if status == 200 and isinstance(data, dict) and data.get("success"):
-        out = data.get("stdout", "").strip()
-        if out:
-            print(f"  {out}")
-        print("  OK")
-    elif status == 404:
-        print("  AVISO: deploy hook no encontrado en la app (primera vez).")
-        print("  Haz 'git pull' manualmente en PythonAnywhere esta vez.")
-    else:
-        print(f"  AVISO: respuesta inesperada ({status}): {data}")
+    base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
+
+    # Crear consola bash
+    status, data = pa_request("POST", f"{base}/consoles/", token, data={"executable": "bash"})
+    if status not in (200, 201) or "id" not in data:
+        print(f"  AVISO: no se pudo crear consola ({status}): {data}")
         print("  Haz 'git pull' manualmente en PythonAnywhere.")
+        return
+    console_id = data["id"]
+
+    # Enviar git pull
+    pa_request("POST", f"{base}/consoles/{console_id}/send_input/", token,
+               data={"input": "cd ~/APP-ENGASTADO-SQL && git pull\n"})
+    time.sleep(6)
+
+    # Leer output
+    status2, out = pa_request("GET", f"{base}/consoles/{console_id}/get_latest_output/", token)
+    if status2 == 200:
+        output = out.get("output", "").strip()
+        if output:
+            for line in output.splitlines()[-6:]:
+                print(f"  {line}")
+
+    # Cerrar consola
+    pa_request("DELETE", f"{base}/consoles/{console_id}/", token)
+    print("  OK")
 
 def pa_reload(username, domain, token):
     print(f"\n[3/3] Recargando app ({domain})...")
@@ -126,7 +134,7 @@ def main():
     print("=" * 50)
 
     git_push(commit_message)
-    pa_git_pull(domain, token)
+    pa_git_pull(username, token)
     pa_reload(username, domain, token)
 
     print("\n" + "=" * 50)
