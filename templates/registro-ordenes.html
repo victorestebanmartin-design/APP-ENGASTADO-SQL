@@ -8,251 +8,202 @@
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
     <style>
-        /* ── Reset & base ── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { height: 100%; overflow: hidden; }
+        html, body { height: 100%; overflow: hidden; background: #0f172a; }
 
-        /* ── Landing: pantalla principal ── */
-        .ord-landing {
-            display: flex; flex-direction: column;
-            height: 100vh;
-            background: var(--bg);
-            font-family: 'Inter', system-ui, sans-serif;
-            color: var(--text);
+        /* ── PRIMERA CAPA: selector de módulo (siempre visible) ── */
+        .ord-screen {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,.75);
+            backdrop-filter: blur(5px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10;
         }
-        .ord-topbar {
-            display: flex; align-items: center; gap: 18px;
-            padding: 12px 22px;
-            background: var(--panel); border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
+        .ord-popup {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 20px; padding: 32px 28px 28px;
+            width: min(560px, 92vw);
+            box-shadow: 0 32px 64px rgba(0,0,0,.6);
+            animation: popIn .18s cubic-bezier(.34,1.3,.64,1) both;
         }
-        .ord-logo { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: .06em; color: var(--text); text-decoration: none; line-height: 1; }
-        .ord-logo .sw { font-size: 15px; color: var(--text-dim); }
-        .ord-topbar-title { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .18em; color: var(--text-dim); text-transform: uppercase; }
-        .ord-back { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .08em; color: var(--text-muted); text-decoration: none; border: 1px solid var(--border); border-radius: 7px; padding: 7px 14px; transition: all .15s; margin-left: auto; }
-        .ord-back:hover { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
-
-        /* Stats strip */
-        .ord-stats {
-            display: flex; gap: 0; flex-shrink: 0;
-            border-bottom: 1px solid var(--border);
+        @keyframes popIn {
+            from { opacity:0; transform: scale(.88); }
+            to   { opacity:1; transform: scale(1); }
         }
-        .ord-stat {
-            flex: 1; padding: 12px 18px; display: flex; align-items: center; gap: 10px;
-            border-right: 1px solid var(--border);
+        .ord-popup-title {
+            font-family: 'DM Mono', monospace; font-size: 11px;
+            letter-spacing: .14em; color: #475569; text-transform: uppercase;
+            text-align: center; margin-bottom: 22px;
         }
-        .ord-stat:last-child { border-right: none; }
-        .ord-stat-icon { font-size: 20px; }
-        .ord-stat-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: var(--text); }
-        .ord-stat-lbl { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .1em; color: var(--text-dim); text-transform: uppercase; }
-
-        /* Hero con 3 botones */
-        .ord-hero {
-            flex: 1; display: flex; align-items: center; justify-content: center;
-            padding: 32px;
-        }
-        .ord-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; width: min(860px, 100%); }
-        .ord-action-btn {
+        .ord-choices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .ord-choice {
             display: flex; flex-direction: column; align-items: center;
-            padding: 36px 24px 28px;
-            border-radius: 18px; border: 1px solid var(--border);
-            background: var(--panel); cursor: pointer; text-decoration: none;
-            transition: transform .2s, box-shadow .2s, border-color .2s;
+            padding: 26px 12px 20px; border-radius: 14px;
+            cursor: pointer; border: none; text-align: center;
+            transition: transform .18s, box-shadow .18s;
             position: relative; overflow: hidden;
         }
-        .ord-action-btn::after {
+        .ord-choice::after {
             content: ''; position: absolute; inset: 0;
-            background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.07) 0%, transparent 65%);
+            background: radial-gradient(ellipse at 30% 15%, rgba(255,255,255,.14) 0%, transparent 60%);
             pointer-events: none;
         }
-        .ord-action-btn:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,.45); border-color: var(--accent); }
-        .ord-action-icon { font-size: 52px; line-height: 1; margin-bottom: 18px; filter: drop-shadow(0 4px 10px rgba(0,0,0,.35)); }
-        .ord-action-label { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: .12em; color: var(--text); margin-bottom: 8px; text-align: center; }
-        .ord-action-desc { font-size: 12px; color: var(--text-muted); text-align: center; line-height: 1.6; }
-        .ord-action-btn.scan   { --grad: linear-gradient(145deg, #7c3aed 0%, #4338ca 100%); background: var(--grad); }
-        .ord-action-btn.manual { --grad: linear-gradient(145deg, #0891b2 0%, #0369a1 100%); background: var(--grad); }
-        .ord-action-btn.list   { --grad: linear-gradient(145deg, #059669 0%, #047857 100%); background: var(--grad); }
-        .ord-action-btn .ord-action-label, .ord-action-btn .ord-action-desc { color: rgba(255,255,255,.9); }
-        .ord-action-btn .ord-action-desc { color: rgba(255,255,255,.65); }
+        .ord-choice:hover { transform: translateY(-5px) scale(1.02); box-shadow: 0 20px 40px rgba(0,0,0,.45); }
+        .ord-choice-scan    { background: linear-gradient(145deg, #7c3aed 0%, #4338ca 100%); }
+        .ord-choice-manual  { background: linear-gradient(145deg, #0891b2 0%, #0369a1 100%); }
+        .ord-choice-lista   { background: linear-gradient(145deg, #059669 0%, #047857 100%); }
+        .ord-choice-icon  { font-size: 40px; line-height:1; margin-bottom:12px; filter:drop-shadow(0 3px 8px rgba(0,0,0,.3)); }
+        .ord-choice-label { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:.1em; color:#fff; margin-bottom:5px; }
+        .ord-choice-desc  { font-size:11px; color:rgba(255,255,255,.65); line-height:1.5; }
+        .ord-close-row {
+            display: flex; justify-content: center; margin-top: 20px;
+        }
+        .ord-close-btn {
+            background: none; border: 1px solid #334155;
+            color: #64748b; font-family: 'DM Mono', monospace;
+            font-size: 11px; letter-spacing: .1em;
+            padding: 8px 28px; border-radius: 8px; cursor: pointer;
+            text-decoration: none; display: inline-block;
+            transition: all .15s;
+        }
+        .ord-close-btn:hover { background: #334155; color: #f8fafc; }
 
-        /* ── Overlays ── */
+        /* ── SEGUNDA CAPA: overlays de cada acción ── */
         .ord-overlay {
             display: none; position: fixed; inset: 0;
-            background: rgba(0,0,0,.75); z-index: 100;
+            background: rgba(0,0,0,.8); z-index: 20;
             align-items: flex-start; justify-content: center;
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(6px);
             padding: 40px 20px 20px; overflow-y: auto;
         }
         .ord-overlay.open { display: flex; }
-        .ord-popup {
-            background: var(--panel); border: 1px solid var(--border);
-            border-radius: 18px; width: min(740px, 100%);
+        .ord-modal {
+            background: #1e293b; border: 1px solid #334155;
+            border-radius: 18px; width: min(680px, 100%);
             box-shadow: 0 32px 64px rgba(0,0,0,.6);
-            animation: popIn .18s cubic-bezier(.34,1.3,.64,1) both;
+            animation: popIn .16s cubic-bezier(.34,1.3,.64,1) both;
             flex-shrink: 0; margin: auto;
         }
-        @keyframes popIn {
-            from { opacity:0; transform: scale(.9); }
-            to   { opacity:1; transform: scale(1); }
-        }
-        .ord-popup-head {
+        .ord-modal.wide { width: min(1020px, 100%); }
+        .ord-modal-head {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 18px 22px; border-bottom: 1px solid var(--border);
+            padding: 16px 22px; border-bottom: 1px solid #334155;
         }
-        .ord-popup-head h2 { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: .1em; color: var(--text); margin: 0; }
-        .ord-popup-close { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; line-height: 1; padding: 0 4px; }
-        .ord-popup-close:hover { color: var(--text); }
-        .ord-popup-body { padding: 22px; }
+        .ord-modal-head h2 { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:.1em; color:#f1f5f9; margin:0; }
+        .ord-modal-close { background:none; border:none; color:#64748b; font-size:1.5rem; cursor:pointer; line-height:1; padding:0 4px; }
+        .ord-modal-close:hover { color:#f1f5f9; }
+        .ord-modal-body { padding: 22px; }
+        .ord-modal-footer { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid #334155; }
 
-        /* Form elements */
+        /* ── Form ── */
         .ord-form-group { margin-bottom: 16px; }
-        .ord-form-group label { display: block; margin-bottom: 5px; font-size: 0.82rem; color: var(--text-muted); }
+        .ord-form-group label { display:block; margin-bottom:5px; font-size:.82rem; color:#94a3b8; }
         .ord-form-group input, .ord-form-group select, .ord-form-group textarea {
-            width: 100%; background: var(--panel-2); border: 1px solid var(--border);
-            border-radius: 8px; color: var(--text); padding: 9px 12px; font-size: 0.9rem;
-            font-family: inherit; outline: none; transition: border-color .15s;
+            width:100%; background:#243044; border:1px solid #334155;
+            border-radius:8px; color:#f1f5f9; padding:9px 12px; font-size:.9rem;
+            font-family:inherit; outline:none; transition:border-color .15s;
         }
-        .ord-form-group input:focus, .ord-form-group select:focus { border-color: var(--accent); }
-        .ord-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .ord-form-group input:focus, .ord-form-group select:focus { border-color:#3b82f6; }
+        .ord-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 
-        /* Msg / badge */
-        .ord-msg { padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-top: 12px; display: none; }
-        .ord-msg.success { background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.3); color: #4ade80; display: block; }
-        .ord-msg.error   { background: rgba(239,68,68,.12);  border: 1px solid rgba(239,68,68,.3);  color: #f87171; display: block; }
-        .ord-msg.info    { background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.3); color: #93c5fd; display: block; }
+        /* ── Mensajes ── */
+        .ord-msg { padding:10px 14px; border-radius:8px; font-size:.85rem; margin-top:12px; display:none; }
+        .ord-msg.success { background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.3); color:#4ade80; display:block; }
+        .ord-msg.error   { background:rgba(239,68,68,.12);  border:1px solid rgba(239,68,68,.3);  color:#f87171; display:block; }
+        .ord-msg.info    { background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.3); color:#93c5fd; display:block; }
 
-        /* Buttons */
-        .ord-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 500; border: none; cursor: pointer; transition: background .14s; }
-        .ord-btn-primary { background: var(--accent); color: #fff; }
-        .ord-btn-primary:hover { background: var(--accent-hover); }
-        .ord-btn-secondary { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
-        .ord-btn-secondary:hover { background: var(--panel-3); }
-        .ord-btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
-        .ord-btn-danger:hover { background: var(--danger); color: #fff; }
-        .ord-popup-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); }
+        /* ── Botones ── */
+        .ord-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:8px; font-size:.88rem; font-weight:500; border:none; cursor:pointer; transition:background .14s; }
+        .ord-btn-primary   { background:#3b82f6; color:#fff; }
+        .ord-btn-primary:hover { background:#2563eb; }
+        .ord-btn-secondary { background:#243044; border:1px solid #334155; color:#f1f5f9; }
+        .ord-btn-secondary:hover { background:#2a3a52; }
+        .ord-btn-danger    { background:transparent; border:1px solid #ef4444; color:#ef4444; }
+        .ord-btn-danger:hover { background:#ef4444; color:#fff; }
 
-        /* Table */
+        /* ── Tabla de órdenes ── */
         .ord-table-wrap { overflow-x: auto; }
-        .ord-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        .ord-table th { background: var(--panel-2); color: var(--text-muted); font-family: 'DM Mono', monospace; font-size: 0.75rem; letter-spacing: .06em; text-transform: uppercase; padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-        .ord-table td { padding: 9px 12px; border-bottom: 1px solid rgba(51,65,85,.4); color: var(--text); vertical-align: middle; }
-        .ord-table tr:last-child td { border-bottom: none; }
-        .ord-table tr:hover td { background: rgba(59,130,246,.04); }
-
-        /* Badges estado */
-        .badge-estado { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; font-family: 'DM Mono', monospace; }
-        .badge-pendiente  { background: rgba(245,158,11,.15); color: #fcd34d; }
-        .badge-en_bono    { background: rgba(59,130,246,.15); color: #93c5fd; }
-        .badge-engastando { background: rgba(168,85,247,.15);  color: #c4b5fd; }
-        .badge-finalizado { background: rgba(34,197,94,.15);   color: #4ade80; }
-
-        .badge-prioridad { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
-        .badge-urgente { background: rgba(239,68,68,.2); color: #f87171; }
-        .badge-alta    { background: rgba(245,158,11,.2); color: #fcd34d; }
-        .badge-media   { background: rgba(59,130,246,.15); color: #93c5fd; }
-        .badge-baja    { background: rgba(100,116,139,.2); color: var(--text-muted); }
+        .ord-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+        .ord-table th { background:#243044; color:#94a3b8; font-family:'DM Mono',monospace; font-size:.73rem; letter-spacing:.06em; text-transform:uppercase; padding:9px 12px; text-align:left; border-bottom:1px solid #334155; }
+        .ord-table td { padding:9px 12px; border-bottom:1px solid rgba(51,65,85,.4); color:#f1f5f9; vertical-align:middle; }
+        .ord-table tr:last-child td { border-bottom:none; }
+        .ord-table tr:hover td { background:rgba(59,130,246,.04); }
+        .badge-estado { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.72rem; font-weight:600; font-family:'DM Mono',monospace; }
+        .badge-pendiente  { background:rgba(245,158,11,.15); color:#fcd34d; }
+        .badge-en_bono    { background:rgba(59,130,246,.15);  color:#93c5fd; }
+        .badge-engastando { background:rgba(168,85,247,.15);   color:#c4b5fd; }
+        .badge-finalizado { background:rgba(34,197,94,.15);    color:#4ade80; }
+        .badge-prioridad  { display:inline-block; padding:2px 8px; border-radius:4px; font-size:.7rem; font-weight:700; text-transform:uppercase; }
+        .badge-urgente { background:rgba(239,68,68,.2);   color:#f87171; }
+        .badge-alta    { background:rgba(245,158,11,.2);  color:#fcd34d; }
+        .badge-media   { background:rgba(59,130,246,.15); color:#93c5fd; }
+        .badge-baja    { background:rgba(100,116,139,.2); color:#94a3b8; }
 
         /* Filtros */
-        .ord-filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; padding: 14px; background: var(--panel-2); border-radius: 10px; border: 1px solid var(--border); }
-        .ord-filtros label { font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
-        .ord-filtros input, .ord-filtros select { background: var(--panel-3); border: 1px solid var(--border); border-radius: 7px; color: var(--text); padding: 7px 10px; font-size: 0.82rem; outline: none; }
-        .ord-filtros input:focus, .ord-filtros select:focus { border-color: var(--accent); }
+        .ord-filtros { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; padding:14px; background:#243044; border-radius:10px; border:1px solid #334155; }
+        .ord-filtros label { font-size:.78rem; color:#94a3b8; display:block; margin-bottom:4px; }
+        .ord-filtros input, .ord-filtros select { background:#2a3a52; border:1px solid #334155; border-radius:7px; color:#f1f5f9; padding:7px 10px; font-size:.82rem; outline:none; }
+        .ord-filtros input:focus, .ord-filtros select:focus { border-color:#3b82f6; }
 
-        .loading-txt { padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+        .loading-txt { padding:24px; text-align:center; color:#64748b; font-size:.9rem; }
     </style>
 </head>
 <body>
-<div class="ord-landing">
 
-    <!-- Topbar -->
-    <header class="ord-topbar">
-        <a href="{{ url_for('main.modules') }}" class="ord-logo">COJO<span class="sw">sw</span></a>
-        <span class="ord-topbar-title">Órdenes de Producción</span>
-        <a href="{{ url_for('main.modules') }}" class="ord-back">← Módulos</a>
-    </header>
-
-    <!-- Stats strip -->
-    <div class="ord-stats">
-        <div class="ord-stat">
-            <span class="ord-stat-icon">📋</span>
-            <div>
-                <div class="ord-stat-val" id="stat-total">—</div>
-                <div class="ord-stat-lbl">Total órdenes</div>
-            </div>
-        </div>
-        <div class="ord-stat">
-            <span class="ord-stat-icon">⏳</span>
-            <div>
-                <div class="ord-stat-val" id="stat-pendientes">—</div>
-                <div class="ord-stat-lbl">Pendientes</div>
-            </div>
-        </div>
-        <div class="ord-stat">
-            <span class="ord-stat-icon">✅</span>
-            <div>
-                <div class="ord-stat-val" id="stat-completadas">—</div>
-                <div class="ord-stat-lbl">Completadas</div>
-            </div>
-        </div>
-        <div class="ord-stat">
-            <span class="ord-stat-icon">🔴</span>
-            <div>
-                <div class="ord-stat-val" id="stat-urgentes">—</div>
-                <div class="ord-stat-lbl">Urgentes</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hero -->
-    <div class="ord-hero">
-        <div class="ord-actions">
-
-            <button class="ord-action-btn scan" onclick="abrirOverlay('overlay-scan')">
-                <div class="ord-action-icon">📷</div>
-                <div class="ord-action-label">Procesar Código</div>
-                <div class="ord-action-desc">Escanea el código de barras de la orden de producción para registrarla automáticamente</div>
-            </button>
-
-            <button class="ord-action-btn manual" onclick="abrirOverlay('overlay-manual')">
-                <div class="ord-action-icon">✏️</div>
-                <div class="ord-action-label">Registro Manual</div>
-                <div class="ord-action-desc">Introduce los datos de la orden manualmente si no dispones de código de barras</div>
-            </button>
-
-            <button class="ord-action-btn list" onclick="abrirOverlay('overlay-lista')">
-                <div class="ord-action-icon">📊</div>
-                <div class="ord-action-label">Ver Órdenes</div>
-                <div class="ord-action-desc">Consulta, filtra y gestiona todas las órdenes de producción registradas</div>
-            </button>
-
-        </div>
-    </div>
-
-</div><!-- /ord-landing -->
-
-
-<!-- ══ OVERLAY: Procesar Código ══════════════════════════════════ -->
-<div id="overlay-scan" class="ord-overlay" onclick="if(event.target===this)cerrarOverlay('overlay-scan')">
+<!-- ══ PANTALLA 1: Selector de módulo (siempre visible) ══════════ -->
+<div class="ord-screen">
     <div class="ord-popup">
-        <div class="ord-popup-head">
-            <h2>📷 Procesar Código de Barras</h2>
-            <button class="ord-popup-close" onclick="cerrarOverlay('overlay-scan')">&times;</button>
+        <div class="ord-popup-title">Órdenes de Producción</div>
+        <div class="ord-choices">
+
+            <button class="ord-choice ord-choice-scan" onclick="abrirOverlay('overlay-scan')">
+                <div class="ord-choice-icon">📷</div>
+                <div class="ord-choice-label">Procesar Código</div>
+                <div class="ord-choice-desc">Escanea el código de barras para registrar automáticamente</div>
+            </button>
+
+            <button class="ord-choice ord-choice-manual" onclick="abrirOverlay('overlay-manual')">
+                <div class="ord-choice-icon">✏️</div>
+                <div class="ord-choice-label">Registro Manual</div>
+                <div class="ord-choice-desc">Introduce los datos manualmente sin código de barras</div>
+            </button>
+
+            <button class="ord-choice ord-choice-lista" onclick="abrirOverlay('overlay-lista')">
+                <div class="ord-choice-icon">📊</div>
+                <div class="ord-choice-label">Ver Órdenes</div>
+                <div class="ord-choice-desc">Consulta y gestiona todas las órdenes registradas</div>
+            </button>
+
         </div>
-        <div class="ord-popup-body">
-            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:18px;">
-                Escanea o introduce el código de barras de la orden.<br>
-                <span style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--text-dim);">Formato: CODIGO_CORTE-ORDEN-CANTIDAD-FECHA(YYYYMMDD)</span>
+        <div class="ord-close-row">
+            <a href="{{ url_for('main.modules') }}" class="ord-close-btn">× VOLVER A MÓDULOS</a>
+        </div>
+    </div>
+</div>
+
+
+<!-- ══ OVERLAY: Procesar Código ═════════════════════════════════ -->
+<div id="overlay-scan" class="ord-overlay" onclick="if(event.target===this)cerrarOverlay('overlay-scan')">
+    <div class="ord-modal">
+        <div class="ord-modal-head">
+            <h2>📷 Procesar Código de Barras</h2>
+            <button class="ord-modal-close" onclick="cerrarOverlay('overlay-scan')">&times;</button>
+        </div>
+        <div class="ord-modal-body">
+            <p style="font-size:.85rem;color:#94a3b8;margin-bottom:18px;">
+                Escanea o escribe el código de barras de la orden.<br>
+                <span style="font-family:'DM Mono',monospace;font-size:.76rem;color:#475569;">Formato esperado: CODIGO_CORTE-ORDEN-CANTIDAD-FECHA(YYYYMMDD)</span>
             </p>
             <form id="form-escanear-orden">
                 <div class="ord-form-group">
                     <label for="codigo-barras-orden">Código de Barras</label>
-                    <input type="text" id="codigo-barras-orden" placeholder="Ej: CORTE001-OP2024-50-20251215" autofocus>
+                    <input type="text" id="codigo-barras-orden" placeholder="Ej: CORTE001-OP2024-50-20251215">
                 </div>
                 <div id="validacion-corte" class="ord-msg info" style="display:none;"></div>
                 <div id="mensaje-escaneo" class="ord-msg" style="display:none;"></div>
             </form>
         </div>
-        <div class="ord-popup-footer">
+        <div class="ord-modal-footer">
             <button class="ord-btn ord-btn-secondary" onclick="cerrarOverlay('overlay-scan')">Cancelar</button>
             <button class="ord-btn ord-btn-primary" onclick="document.getElementById('form-escanear-orden').dispatchEvent(new Event('submit'))">Procesar</button>
         </div>
@@ -262,12 +213,12 @@
 
 <!-- ══ OVERLAY: Registro Manual ══════════════════════════════════ -->
 <div id="overlay-manual" class="ord-overlay" onclick="if(event.target===this)cerrarOverlay('overlay-manual')">
-    <div class="ord-popup">
-        <div class="ord-popup-head">
+    <div class="ord-modal">
+        <div class="ord-modal-head">
             <h2>✏️ Registro Manual</h2>
-            <button class="ord-popup-close" onclick="cerrarOverlay('overlay-manual')">&times;</button>
+            <button class="ord-modal-close" onclick="cerrarOverlay('overlay-manual')">&times;</button>
         </div>
-        <div class="ord-popup-body">
+        <div class="ord-modal-body">
             <form id="form-nueva-orden">
                 <div class="ord-form-grid">
                     <div class="ord-form-group">
@@ -275,7 +226,7 @@
                         <select id="orden-codigo-corte" required>
                             <option value="">— Seleccionar código —</option>
                         </select>
-                        <small id="info-archivo" style="font-size:.76rem;color:var(--accent);margin-top:4px;display:block;"></small>
+                        <small id="info-archivo" style="font-size:.76rem;color:#3b82f6;margin-top:4px;display:block;"></small>
                     </div>
                     <div class="ord-form-group">
                         <label for="orden-numero">Número de Orden *</label>
@@ -293,7 +244,7 @@
                 <div id="mensaje-orden" class="ord-msg" style="display:none;"></div>
             </form>
         </div>
-        <div class="ord-popup-footer">
+        <div class="ord-modal-footer">
             <button class="ord-btn ord-btn-secondary" onclick="cerrarOverlay('overlay-manual')">Cancelar</button>
             <button class="ord-btn ord-btn-primary" onclick="document.getElementById('form-nueva-orden').dispatchEvent(new Event('submit'))">Registrar Orden</button>
         </div>
@@ -301,47 +252,27 @@
 </div>
 
 
-<!-- ══ OVERLAY: Lista de Órdenes ══════════════════════════════════ -->
+<!-- ══ OVERLAY: Lista de Órdenes (ancho máximo) ══════════════════ -->
 <div id="overlay-lista" class="ord-overlay" onclick="if(event.target===this)cerrarOverlay('overlay-lista')">
-    <div class="ord-popup" style="width:min(1000px,100%);">
-        <div class="ord-popup-head">
+    <div class="ord-modal wide">
+        <div class="ord-modal-head">
             <h2>📊 Órdenes Registradas</h2>
-            <button class="ord-popup-close" onclick="cerrarOverlay('overlay-lista')">&times;</button>
+            <button class="ord-modal-close" onclick="cerrarOverlay('overlay-lista')">&times;</button>
         </div>
-        <div class="ord-popup-body">
+        <div class="ord-modal-body">
+            <!-- Stats inline -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                <span style="font-family:'DM Mono',monospace;font-size:12px;color:#94a3b8;background:#243044;border:1px solid #334155;padding:5px 14px;border-radius:20px;">Total: <strong id="stat-total" style="color:#f1f5f9;">—</strong></span>
+                <span style="font-family:'DM Mono',monospace;font-size:12px;color:#fcd34d;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);padding:5px 14px;border-radius:20px;">Pendientes: <strong id="stat-pendientes">—</strong></span>
+                <span style="font-family:'DM Mono',monospace;font-size:12px;color:#4ade80;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);padding:5px 14px;border-radius:20px;">Completadas: <strong id="stat-completadas">—</strong></span>
+                <span style="font-family:'DM Mono',monospace;font-size:12px;color:#f87171;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);padding:5px 14px;border-radius:20px;">Urgentes: <strong id="stat-urgentes">—</strong></span>
+            </div>
             <div class="ord-filtros">
-                <div>
-                    <label>Buscar</label>
-                    <input type="text" id="filtro-busqueda" placeholder="Orden, código..." onkeyup="aplicarFiltros()">
-                </div>
-                <div>
-                    <label>Estado</label>
-                    <select id="filtro-estado" onchange="aplicarFiltros()">
-                        <option value="">Todos</option>
-                        <option value="pendiente">Pendiente</option>
-                        <option value="en_bono">En Bono</option>
-                        <option value="engastando">Engastando</option>
-                        <option value="finalizado">Finalizado</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Prioridad</label>
-                    <select id="filtro-prioridad" onchange="aplicarFiltros()">
-                        <option value="">Todas</option>
-                        <option value="urgente">Urgente</option>
-                        <option value="alta">Alta</option>
-                        <option value="media">Media</option>
-                        <option value="baja">Baja</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Desde</label>
-                    <input type="date" id="filtro-fecha-desde" onchange="aplicarFiltros()">
-                </div>
-                <div>
-                    <label>Hasta</label>
-                    <input type="date" id="filtro-fecha-hasta" onchange="aplicarFiltros()">
-                </div>
+                <div><label>Buscar</label><input type="text" id="filtro-busqueda" placeholder="Orden, código..." onkeyup="aplicarFiltros()"></div>
+                <div><label>Estado</label><select id="filtro-estado" onchange="aplicarFiltros()"><option value="">Todos</option><option value="pendiente">Pendiente</option><option value="en_bono">En Bono</option><option value="engastando">Engastando</option><option value="finalizado">Finalizado</option></select></div>
+                <div><label>Prioridad</label><select id="filtro-prioridad" onchange="aplicarFiltros()"><option value="">Todas</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></div>
+                <div><label>Desde</label><input type="date" id="filtro-fecha-desde" onchange="aplicarFiltros()"></div>
+                <div><label>Hasta</label><input type="date" id="filtro-fecha-hasta" onchange="aplicarFiltros()"></div>
                 <div style="display:flex;align-items:flex-end;gap:8px;">
                     <button class="ord-btn ord-btn-secondary" onclick="limpiarFiltros()">Limpiar</button>
                     <button class="ord-btn ord-btn-secondary" onclick="cargarOrdenes()">↻</button>
@@ -351,7 +282,7 @@
                 <div class="loading-txt">Cargando órdenes...</div>
             </div>
         </div>
-        <div class="ord-popup-footer">
+        <div class="ord-modal-footer">
             <button class="ord-btn ord-btn-secondary" onclick="cerrarOverlay('overlay-lista')">Cerrar</button>
         </div>
     </div>
@@ -363,56 +294,14 @@ function abrirOverlay(id) {
     document.getElementById(id).classList.add('open');
     if (id === 'overlay-lista') cargarOrdenes();
     if (id === 'overlay-manual') { cargarCodigosCortes(); establecerFechaActual(); }
-    if (id === 'overlay-scan') setTimeout(()=>{ const el=document.getElementById('codigo-barras-orden'); if(el) el.focus(); }, 80);
+    if (id === 'overlay-scan') setTimeout(function(){ var el=document.getElementById('codigo-barras-orden'); if(el) el.focus(); }, 80);
 }
 function cerrarOverlay(id) { document.getElementById(id).classList.remove('open'); }
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') document.querySelectorAll('.ord-overlay.open').forEach(o => o.classList.remove('open'));
+    if (e.key === 'Escape') document.querySelectorAll('.ord-overlay.open').forEach(function(o){ o.classList.remove('open'); });
 });
 
-// Mostrar mensajes en overlays (reemplaza alert())
-function mostrarMensajeOverlay(idEl, texto, tipo) {
-    var el = document.getElementById(idEl);
-    if (!el) return;
-    el.className = 'ord-msg ' + tipo;
-    el.textContent = texto;
-    el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 4000);
-}
-
-// Renderizado de tabla de órdenes con clases dark
-function renderTablaOrdenes(ordenes) {
-    if (!ordenes || ordenes.length === 0) {
-        return '<div class="loading-txt" style="color:var(--text-dim);">No hay órdenes que mostrar.</div>';
-    }
-    var rows = ordenes.map(function(o) {
-        var estado = o.estado || 'pendiente';
-        var prio   = o.prioridad || 'media';
-        var archivo = o.archivo_excel ? '<span style="font-family:\'DM Mono\',monospace;font-size:.72rem;color:var(--text-dim);">'+o.archivo_excel+'</span>' : '—';
-        var bono = o.bono ? '<span style="color:var(--accent);font-family:\'DM Mono\',monospace;font-size:.78rem;">'+o.bono+'</span>' : '<span style="color:var(--text-dim);">—</span>';
-        var acciones = (estado === 'pendiente' ?
-            '<button class="ord-btn ord-btn-secondary" style="padding:3px 10px;font-size:.72rem;margin-right:4px;" onclick="editarOrden(\''+o.id+'\')">Editar</button>' : '') +
-            '<button class="ord-btn ord-btn-danger" style="padding:3px 10px;font-size:.72rem;" onclick="eliminarOrden(\''+o.id+'\',\''+estado+'\',\''+o.numero+'\')">Eliminar</button>';
-        return '<tr>' +
-            '<td><span style="font-family:\'DM Mono\',monospace;font-size:.8rem;color:var(--accent);">' + (o.codigo_corte||'—') + '</span></td>' +
-            '<td>' + archivo + '</td>' +
-            '<td style="font-family:\'DM Mono\',monospace;font-size:.8rem;">' + (o.numero||'—') + '</td>' +
-            '<td style="text-align:center;">' + (o.cantidad||1) + '</td>' +
-            '<td><span class="badge-estado badge-' + estado + '">' + estado + '</span></td>' +
-            '<td><span class="badge-prioridad badge-' + prio + '">' + prio + '</span></td>' +
-            '<td style="font-size:.78rem;color:var(--text-muted);">' + (o.fecha_entrega||o.fecha_liberacion||'—') + '</td>' +
-            '<td>' + bono + '</td>' +
-            '<td style="white-space:nowrap;">' + acciones + '</td>' +
-            '</tr>';
-    }).join('');
-    return '<div style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px;">'+ordenes.length+' órdenes</div>' +
-        '<table class="ord-table"><thead><tr>' +
-        '<th>Código Corte</th><th>Archivo</th><th>Nº Orden</th><th>Cant.</th><th>Estado</th><th>Prioridad</th><th>Fecha</th><th>Bono</th><th></th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>';
-}
-
-// ── Overrides para que el JS legacy use los elementos del nuevo HTML ──
-// mostrarMensaje redirige a los divs del overlay
+/* Overrides para el JS legacy */
 function mostrarMensaje(id, texto, tipo) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -421,13 +310,35 @@ function mostrarMensaje(id, texto, tipo) {
     el.style.display = 'block';
     setTimeout(function(){ el.style.display='none'; }, 4500);
 }
-// mostrarOrdenes usa renderTablaOrdenes del nuevo template
 function mostrarOrdenes(ordenes) {
     var container = document.getElementById('lista-ordenes');
     if (!container) return;
-    container.innerHTML = renderTablaOrdenes(ordenes);
+    if (!ordenes || ordenes.length === 0) {
+        container.innerHTML = '<div class="loading-txt">No hay órdenes que mostrar.</div>';
+        return;
+    }
+    var rows = ordenes.map(function(o) {
+        var estado = o.estado || 'pendiente';
+        var prio   = o.prioridad || 'media';
+        var archivo = o.archivo_excel ? '<span style="font-family:\'DM Mono\',monospace;font-size:.72rem;color:#64748b;" title="'+o.archivo_excel+'">'+o.archivo_excel.substring(0,28)+(o.archivo_excel.length>28?'…':'')+'</span>' : '<span style="color:#475569;">—</span>';
+        var bono = o.bono ? '<span style="color:#3b82f6;font-family:\'DM Mono\',monospace;font-size:.78rem;">'+o.bono+'</span>' : '<span style="color:#475569;">—</span>';
+        var acciones = (estado === 'pendiente' ? '<button class="ord-btn ord-btn-secondary" style="padding:3px 10px;font-size:.72rem;margin-right:4px;" onclick="editarOrden(\''+o.id+'\')">Editar</button>' : '') +
+            '<button class="ord-btn ord-btn-danger" style="padding:3px 10px;font-size:.72rem;" onclick="eliminarOrden(\''+o.id+'\',\''+estado+'\',\''+o.numero+'\')">Eliminar</button>';
+        return '<tr><td><span style="font-family:\'DM Mono\',monospace;font-size:.79rem;color:#3b82f6;">'+(o.codigo_corte||'—')+'</span></td>'+
+            '<td>'+archivo+'</td>'+
+            '<td style="font-family:\'DM Mono\',monospace;font-size:.79rem;">'+(o.numero||'—')+'</td>'+
+            '<td style="text-align:center;">'+(o.cantidad||1)+'</td>'+
+            '<td><span class="badge-estado badge-'+estado+'">'+estado+'</span></td>'+
+            '<td><span class="badge-prioridad badge-'+prio+'">'+prio+'</span></td>'+
+            '<td style="font-size:.78rem;color:#94a3b8;">'+(o.fecha_entrega||o.fecha_liberacion||'—')+'</td>'+
+            '<td>'+bono+'</td>'+
+            '<td style="white-space:nowrap;">'+acciones+'</td></tr>';
+    }).join('');
+    container.innerHTML = '<div style="font-size:.78rem;color:#64748b;margin-bottom:10px;">'+ordenes.length+' órdenes</div>'+
+        '<table class="ord-table"><thead><tr>'+
+        '<th>Código</th><th>Archivo</th><th>Nº Orden</th><th>Cant.</th><th>Estado</th><th>Prioridad</th><th>Fecha</th><th>Bono</th><th></th>'+
+        '</tr></thead><tbody>'+rows+'</tbody></table>';
 }
-// toggleFormularioManual ya no hace nada (el form siempre visible en overlay)
 function toggleFormularioManual() {}
 </script>
 <script src="{{ url_for('static', filename='js/registro-ordenes.js') }}"></script>
