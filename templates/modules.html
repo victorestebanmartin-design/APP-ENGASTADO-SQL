@@ -88,7 +88,7 @@
       grid-column: 1 / -1;
       grid-row: 2;
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 12px;
     }
 
@@ -191,7 +191,6 @@
     .mod-etiquetas  { --grad: linear-gradient(145deg, #f59e0b 0%, #b45309 100%); --btn-color: #b45309; }
     .mod-manguitos  { --grad: linear-gradient(145deg, #38bdf8 0%, #0284c7 100%); --btn-color: #0284c7; }
     .mod-mangueras  { --grad: linear-gradient(145deg, #64748b 0%, #1e293b 100%); --btn-color: #1e293b; }
-    .mod-ayuda      { --grad: linear-gradient(145deg, #14b8a6 0%, #0f766e 100%); --btn-color: #0f766e; }
 
     /* ── Enlace discreto de ayuda en la cabecera ── */
     .modules-header-help {
@@ -343,15 +342,6 @@
           <div class="mod-title">Etiquetas</div>
           <div class="mod-desc">Genera etiquetas para cortes. Formato A4 65 uds.</div>
           <div class="mod-btn">Etiquetar</div>
-        </a>
-
-        <!-- Ayuda / Manual -->
-        <a href="{{ url_for('main.manual') }}" class="mod-card mod-ayuda" target="_blank">
-          <div class="mod-badge">Documentación</div>
-          <div class="mod-icon">📖</div>
-          <div class="mod-title">Ayuda / Manual</div>
-          <div class="mod-desc">Guía de uso de la aplicación para operarios y jefe de línea.</div>
-          <div class="mod-btn">Abrir Manual</div>
         </a>
 
       </div><!-- /modules-row-bottom -->
