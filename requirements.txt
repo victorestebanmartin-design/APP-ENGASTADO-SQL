@@ -19,7 +19,8 @@ blinker==1.9.0
 
 # Base de datos SQLite (incluido en Python, no requiere instalación)
 # sqlite3 viene con Python standard library
-SQLAlchemy==2.0.25
+# 2.0.36+ requerido para Python 3.13 (fix TypingOnly __firstlineno__/__static_attributes__)
+SQLAlchemy==2.0.50
 
 # Procesamiento Excel
 openpyxl==3.1.5
