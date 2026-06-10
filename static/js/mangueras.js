@@ -14,8 +14,7 @@
   var cortes    = [];   // cortes registrados disponibles
 
   // ── Referencias DOM ──────────────────────────────────────────────────
-  var btnCargar   = document.getElementById('mg-cargar-btn');
-  var divVacio    = document.getElementById('mg-vacio');
+
   var divActivo   = document.getElementById('mg-activo');
   var lblCable    = document.getElementById('mg-cable-nombre');
   var lblContador = document.getElementById('mg-contador');
@@ -147,8 +146,6 @@
     var archivo = corte && corte.archivo ? corte.archivo : null;
     if (!archivo) { abrirModalCorte(); return; }
 
-    btnCargar.disabled = true;
-    btnCargar.textContent = 'Cargando...';
 
     try {
       var resp = await fetch('/api/mangueras/datos', {
@@ -173,21 +170,14 @@
 
       idx = 0;
       actualizarBanner(corte);
-      divVacio.style.display  = 'none';
       divActivo.style.display = 'block';
       renderManguera();
 
     } catch (e) {
       alert('Error de conexión: ' + e.message);
       abrirModalCorte();
-    } finally {
-      btnCargar.disabled = false;
-      btnCargar.textContent = '🔌 Cargar corte';
     }
   }
-
-  // Botón cabecera → reabrir modal
-  btnCargar.addEventListener('click', abrirModalCorte);
 
   // Botón cambiar corte del banner
   var btnCambiarCorte = document.getElementById('mg-corte-cambiar');
@@ -239,19 +229,6 @@
 
   function infoHtml(mg) {
     var html = '';
-    // Badge de etiqueta destacado en la info si existe
-    if (mg.numero_etiqueta) {
-      var c = badgeColor(mg.cod_cable);
-      html += '<div class="info-item">' +
-                '<span class="info-label">Paquete / Etiqueta</span>' +
-                '<span style="display:inline-flex;align-items:center;gap:6px;">' +
-                  '<span style="background:' + c.bg + ';color:' + c.text + ';' +
-                    'font-size:18px;font-weight:900;padding:4px 14px;border-radius:14px;">' +
-                    '#' + mg.numero_etiqueta +
-                  '</span>' +
-                '</span>' +
-              '</div>';
-    }
     if (mg.de_elemento) {
       html += itemInfo('Elemento', mg.de_elemento);
     }

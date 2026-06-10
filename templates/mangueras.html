@@ -144,18 +144,6 @@
     </div>
 
     <div class="section-card">
-      <h2>📋 Guiado de preparación</h2>
-      <p class="section-desc">Navega por las mangueras del corte con instrucciones de pelado. Usa ← → o Enter / Espacio.</p>
-
-      <div class="archivo-form">
-        <button id="mg-cargar-btn">🔌 Cargar corte</button>
-      </div>
-
-      <div id="mg-vacio">
-        <div class="cs-icon">🛠️</div>
-        <p>Carga un corte para comenzar. Solo se muestran filas con instrucciones de pelado en la columna Observaciones.</p>
-      </div>
-
       <div id="mg-activo" style="display:none">
         <!-- Nav -->
         <div class="nav-manguera">
@@ -242,6 +230,6 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=3"></script>
+  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=4"></script>
 </body>
 </html>
