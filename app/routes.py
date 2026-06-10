@@ -2405,6 +2405,17 @@ def datos_trabajo_v3():
             paquetes_raw.append(paquete)
             total_terminales += grupo['num_terminales']
 
+        # Ocultar paquetes que no tienen NADA que engastar para este terminal.
+        # Ocurre cuando todas las filas del grupo tienen el elemento marcado con '*'
+        # (terminal no se engasta ahí): las tres listas de cables quedan vacías.
+        # El operario no debe ver esos paquetes (no hay trabajo que hacer en ellos).
+        def _tiene_engaste(p):
+            return (len(p.get('cables_de_terminal', [])) +
+                    len(p.get('cables_para_terminal', [])) +
+                    len(p.get('cables_doble_terminal', []))) > 0
+
+        paquetes_raw = [p for p in paquetes_raw if _tiene_engaste(p)]
+
         # Fusionar paquetes de la misma serie SXX en un paquete virtual único
         _SERIE_PAT = re.compile(r'\((\w+)\)$')
         series_paquetes = {}       # serie_code -> [paquete, ...]
