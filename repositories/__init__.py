@@ -1,7 +1,7 @@
 """
 Inicialización de la capa de repositorios (Data Access Layer)
 """
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -30,8 +30,17 @@ def init_db(app):
         pool_size=app.config.get('SQLALCHEMY_POOL_SIZE', 10),
         pool_recycle=app.config.get('SQLALCHEMY_POOL_RECYCLE', 3600),
         pool_timeout=app.config.get('SQLALCHEMY_POOL_TIMEOUT', 30),
-        pool_pre_ping=True  # Verificar conexiones antes de usar
+        pool_pre_ping=True,  # Verificar conexiones antes de usar
+        connect_args={'timeout': 30}
     )
+
+    # PRAGMAs por conexión (SQLite los aplica por conexión, no globalmente)
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
     
     # Crear sesión con scope thread-safe
     session_factory = sessionmaker(bind=engine)
