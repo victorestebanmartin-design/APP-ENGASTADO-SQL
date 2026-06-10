@@ -1321,15 +1321,15 @@ async function mostrarPantallaPaquetesTerminal(terminal, grupos, elementosNecesa
             </div>
 
             <div class="elementos-lista">
-                ${elementosConEtiquetas.map(item => `
-                    <div class="elemento-item" style="display: flex; align-items: center; gap: 12px; background: #f8f9fa; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; border-left: 4px solid ${item.numeroEtiqueta ? getCodCableColor(item.codCable).bg : '#dee2e6'};">
+                ${elementosConEtiquetas.map(item => { const _c = getCodCableColor(item.codCable); return `
+                    <div class="elemento-item" style="display: flex; align-items: center; gap: 12px; background: #f8f9fa; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; border-left: 4px solid ${item.numeroEtiqueta ? _c.bg : '#dee2e6'};">
                         ${item.numeroEtiqueta
-                            ? `<span style="min-width: 70px; text-align: center; background: ${getCodCableColor(item.codCable).bg}; color: white; padding: 6px 10px; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ ${item.numeroEtiqueta}</span>`
+                            ? `<span style="min-width: 70px; text-align: center; background: ${_c.bg}; color: ${_c.text}; padding: 6px 10px; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ ${item.numeroEtiqueta}</span>`
                             : `<span style="min-width: 70px; text-align: center; color: #adb5bd; font-size: 0.85em;">Sin nº</span>`
                         }
                         <span class="elemento-numero" style="font-size: 1.1em; font-weight: 600; color: #212529;">${item.elemento}</span>
                     </div>
-                `).join('')}
+                `; }).join('')}
             </div>
 
             <div class="resumen-grupos">
@@ -1646,11 +1646,11 @@ async function mostrarPantallaPaquetesV3(todosLosGrupos, elementosNecesarios) {
             </div>
             
             <div class="elementos-grid">
-                ${elementosConEtiquetas.map(item => `
-                    <div class="elemento-paquete" style="border-left: 4px solid ${item.numeroEtiqueta ? getCodCableColor(item.codCable).bg : '#dee2e6'};">
+                ${elementosConEtiquetas.map(item => { const _c = getCodCableColor(item.codCable); return `
+                    <div class="elemento-paquete" style="border-left: 4px solid ${item.numeroEtiqueta ? _c.bg : '#dee2e6'};">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             ${item.numeroEtiqueta
-                                ? `<span style="min-width: 60px; text-align: center; background: ${getCodCableColor(item.codCable).bg}; color: white; padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ ${item.numeroEtiqueta}</span>`
+                                ? `<span style="min-width: 60px; text-align: center; background: ${_c.bg}; color: ${_c.text}; padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 1.1em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ ${item.numeroEtiqueta}</span>`
                                 : `<span style="min-width: 60px; text-align: center; color: #adb5bd; font-size: 0.85em;">Sin nº</span>`
                             }
                             <span class="elemento-codigo" style="font-weight: 600;">${item.elemento}</span>
@@ -1659,7 +1659,7 @@ async function mostrarPantallaPaquetesV3(todosLosGrupos, elementosNecesarios) {
                             ✓ Recogido
                         </button>
                     </div>
-                `).join('')}
+                `; }).join('')}
             </div>
             
             <div class="detalle-terminales">
@@ -2887,7 +2887,7 @@ async function mostrarModalPaquetes(carro) {
                 <h3 style="margin-bottom:4px;font-size:1em;">📦 ${total > PAQUETES_POR_PAGINA ? `Paquetes ${inicio+1}–${fin} (grupo ${paginaNum}/${totalPaginas}):` : 'Paquetes a coger:'}</h3>
                 ${libresEnPagina > 0 ? '<p style="font-size:0.78em;color:#6c757d;margin-bottom:6px;">👆 Pulsa en un paquete que <strong>no tengas</strong> para saltarlo al inicio</p>' : ''}
                 ${bloqueadosEnPagina > 0 ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;font-size:0.88em;"><span>⚠️</span><span><strong>${bloqueadosEnPagina} paquete${bloqueadosEnPagina>1?'s están siendo trabajados':'  está siendo trabajado'} por otro puesto.</strong> Se saltarán automáticamente y quedarán pendientes.</span></div>` : ''}
-                ${paginaActual.map((paquete, i) => paquete.bloqueado ? `
+                ${paginaActual.map((paquete, i) => { const _c = paquete.numeroEtiqueta ? getCodCableColor(paquete.cod_cable) : null; return paquete.bloqueado ? `
                 <div style="background:#f1f3f5;border-left:4px solid #adb5bd;border-radius:8px;padding:14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;opacity:0.6;cursor:not-allowed;">
                     <div style="display:flex;align-items:center;gap:14px;flex:1;">
                         <span style="min-width:68px;text-align:center;background:#adb5bd;color:white;padding:10px 12px;border-radius:10px;font-size:1.3em;">🔒</span>
@@ -2901,10 +2901,10 @@ async function mostrarModalPaquetes(carro) {
                         <div style="font-size:0.82em;color:#adb5bd;">cables</div>
                     </div>
                 </div>` : `
-                <div id="pkg-row-${inicio+i}" onclick="toggleSkipModal(${inicio+i})" title="Pulsa para marcar como no disponible" style="background:#f8f9fa;border-left:4px solid ${paquete.numeroEtiqueta?getCodCableColor(paquete.cod_cable).bg:'#0d6efd'};border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:opacity 0.2s;">
+                <div id="pkg-row-${inicio+i}" onclick="toggleSkipModal(${inicio+i})" title="Pulsa para marcar como no disponible" style="background:#f8f9fa;border-left:4px solid ${_c?_c.bg:'#0d6efd'};border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:opacity 0.2s;">
                     <div style="display:flex;align-items:center;gap:10px;flex:1;">
                         ${paquete.numeroEtiqueta
-                            ? `<span style="min-width:54px;text-align:center;background:${getCodCableColor(paquete.cod_cable).bg};color:white;padding:5px 8px;border-radius:8px;font-weight:bold;font-size:1.05em;box-shadow:0 2px 4px rgba(0,0,0,0.15);">🏷️ ${paquete.numeroEtiqueta}</span>`
+                            ? `<span style="min-width:54px;text-align:center;background:${_c.bg};color:${_c.text};padding:5px 8px;border-radius:8px;font-weight:bold;font-size:1.05em;box-shadow:0 2px 4px rgba(0,0,0,0.15);">🏷️ ${paquete.numeroEtiqueta}</span>`
                             : `<span style="min-width:54px;text-align:center;background:#e9ecef;color:#6c757d;padding:5px 8px;border-radius:8px;font-size:0.85em;">Sin nº</span>`
                         }
                         <div>
@@ -2917,7 +2917,7 @@ async function mostrarModalPaquetes(carro) {
                         <div style="font-size:1.2em;font-weight:bold;color:#0d6efd;">${paquete.num_cables}</div>
                         <div style="font-size:0.78em;color:#6c757d;">cables</div>
                     </div>
-                </div>`).join('')}
+                </div>`; }).join('')}
             </div>
 
             <div style="text-align:center;border-top:2px solid #dee2e6;padding-top:10px;">
@@ -3353,9 +3353,9 @@ async function mostrarPaqueteExpandido() {
     // Cargar grupos de etiquetas y obtener número
     const gruposEtiquetas = await cargarGruposEtiquetas();
     const numeroEtiqueta = obtenerNumeroEtiqueta(paquete.cod_cable, paquete.elemento, gruposEtiquetas, paquete.archivo_excel);
-    const _etqColor = getCodCableColor(paquete.cod_cable).bg;
+    const _etq = getCodCableColor(paquete.cod_cable);
     const etiquetaHtml = numeroEtiqueta 
-        ? `<span style="display: inline-block; background: ${_etqColor}; color: white; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ #${numeroEtiqueta}</span>`
+        ? `<span style="display: inline-block; background: ${_etq.bg}; color: ${_etq.text}; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ #${numeroEtiqueta}</span>`
         : '';
     
     const cablesDeTerminal = paquete.cables_de_terminal || [];
@@ -3384,7 +3384,7 @@ async function mostrarPaqueteExpandido() {
 
         const subPaquetesHtml = (paquete.sub_paquetes || []).map((sub, i) => {
             const numSub = numPadre ? `${numPadre}.${String(sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
-            const _subColor = getCodCableColor(sub.cod_cable).bg;
+            const _sub = getCodCableColor(sub.cod_cable);
             const cablesDe   = sub.cables_de_terminal   || [];
             const cablesPara = sub.cables_para_terminal || [];
             const cablesAmb  = sub.cables_doble_terminal|| [];
@@ -3435,7 +3435,7 @@ async function mostrarPaqueteExpandido() {
             return `
             <div style="padding:14px 0;border-bottom:1px solid #e9ecef;">
                 <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px;">
-                    <div style="background:${_subColor};color:white;padding:8px 16px;border-radius:10px;border:2px dashed rgba(255,255,255,0.6);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.15);min-width:54px;">
+                    <div style="background:${_sub.bg};color:${_sub.text};padding:8px 16px;border-radius:10px;border:2px dashed rgba(255,255,255,0.6);text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.15);min-width:54px;">
                         <div style="font-size:1.5em;font-weight:900;letter-spacing:1px;line-height:1;">${numSub}</div>
                     </div>
                     <span style="font-size:1.05em;font-weight:700;color:#212529;">${sub.elemento}</span>

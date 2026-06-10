@@ -38,20 +38,44 @@
     '#db2777','#65a30d','#0d9488','#ea580c','#4f46e5','#be185d',
   ];
 
+  // Color de texto explícito por cable (desde BD). null/ausente = auto por luminancia.
+  var MAPA_TEXTO = {};
+
+  // Luminancia WCAG: devuelve '#000000' o '#ffffff' según el fondo hex.
+  function _autoTextColor(hex) {
+    try {
+      var h = String(hex || '').replace('#', '');
+      if (h.length !== 6) return '#ffffff';
+      var r = parseInt(h.slice(0, 2), 16),
+          g = parseInt(h.slice(2, 4), 16),
+          b = parseInt(h.slice(4, 6), 16);
+      function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+      var L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      return L > 0.179 ? '#000000' : '#ffffff';
+    } catch (e) { return '#ffffff'; }
+  }
+
+  function _textoPara(key, bg) {
+    var txt = MAPA_TEXTO[key];
+    if (txt && /^#[0-9a-fA-F]{6}$/.test(txt)) return txt;
+    return _autoTextColor(bg);
+  }
+
   function getCodCableColor(codCable) {
     if (!codCable || String(codCable).trim() === '' || String(codCable).toLowerCase() === 'nan') {
       return { bg: '#6b7280', text: '#fff' };
     }
     var key = String(codCable).trim().toUpperCase();
     if (MAPA[key]) {
-      return { bg: MAPA[key], text: '#fff' };
+      return { bg: MAPA[key], text: _textoPara(key, MAPA[key]) };
     }
     // Hash fallback para cables no listados
     var h = 0;
     for (var i = 0; i < key.length; i++) {
       h = (h * 31 + key.charCodeAt(i)) >>> 0;
     }
-    return { bg: PALETA[h % PALETA.length], text: '#fff' };
+    var bg = PALETA[h % PALETA.length];
+    return { bg: bg, text: _textoPara(key, bg) };
   }
 
   /**
@@ -65,7 +89,9 @@
       var data = await resp.json();
       if (data.success && Array.isArray(data.colores)) {
         data.colores.forEach(function (c) {
-          MAPA[c.cod_cable.toUpperCase()] = c.color_hex;
+          var key = c.cod_cable.toUpperCase();
+          MAPA[key] = c.color_hex;
+          MAPA_TEXTO[key] = c.color_texto || null;
         });
       }
     } catch (e) {
