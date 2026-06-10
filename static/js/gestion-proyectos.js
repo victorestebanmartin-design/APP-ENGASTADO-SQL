@@ -237,57 +237,67 @@ async function abrirModalGenerarBono() {
 function mostrarModalConfirmacionCarros(carrosOcupados) {
     return new Promise((resolve) => {
         const modalHtml = `
-            <div id="modalConfirmacionCarros" class="modal active" style="z-index: 10000;">
-                <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
-                    <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px 8px 0 0; padding: 18px; margin: -20px -20px 0 -20px; flex-shrink: 0;">
-                        <h3 style="margin: 0; font-size: 1.25em; font-weight: 600;">
-                            <i class="fas fa-check-circle"></i> Confirmar Carros para el Bono
+            <div id="modalConfirmacionCarros" style="
+                position:fixed; inset:0; z-index:10000;
+                background:rgba(0,0,0,.72); backdrop-filter:blur(6px);
+                display:flex; align-items:center; justify-content:center;
+                padding:20px; animation:mcFadeIn .18s ease both;">
+                <style>
+                    @keyframes mcFadeIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
+                    #mcPanel { background:#1e293b; border:1px solid #334155; border-radius:18px; width:100%; max-width:520px; max-height:88vh; display:flex; flex-direction:column; box-shadow:0 32px 64px rgba(0,0,0,.6); overflow:hidden; }
+                    #mcHead  { padding:22px 26px 20px; border-bottom:1px solid #334155; flex-shrink:0; }
+                    #mcHead .mc-tag { font-family:'DM Mono',monospace; font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:#3b82f6; margin-bottom:6px; }
+                    #mcHead h3 { margin:0; font-size:1.15rem; font-weight:600; color:#f1f5f9; display:flex; align-items:center; gap:10px; }
+                    #mcHead h3 .mc-icon { width:30px; height:30px; background:rgba(59,130,246,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; color:#3b82f6; font-size:.85rem; flex-shrink:0; }
+                    #mcBody  { padding:20px 26px; flex:1; overflow-y:auto; min-height:0; }
+                    #mcBody .mc-label { font-size:.78rem; font-family:'DM Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:#64748b; margin-bottom:12px; }
+                    .mc-carro-row { display:flex; align-items:center; gap:12px; padding:12px 14px; background:#243044; border:1px solid #334155; border-left:3px solid #3b82f6; border-radius:10px; margin-bottom:8px; }
+                    .mc-carro-info { flex:1; min-width:0; }
+                    .mc-carro-num { font-size:.82rem; font-weight:600; color:#93c5fd; font-family:'DM Mono',monospace; letter-spacing:.05em; margin-bottom:2px; }
+                    .mc-carro-name { font-size:.78rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                    .mc-btn-quitar { flex-shrink:0; padding:5px 11px; background:rgba(239,68,68,.12); color:#f87171; border:1px solid rgba(239,68,68,.25); border-radius:7px; cursor:pointer; font-size:.75rem; font-weight:500; transition:all .15s; white-space:nowrap; }
+                    .mc-btn-quitar:hover { background:rgba(239,68,68,.22); border-color:rgba(239,68,68,.45); color:#fca5a5; }
+                    .mc-hint { display:flex; align-items:flex-start; gap:10px; padding:11px 14px; background:rgba(245,158,11,.07); border:1px solid rgba(245,158,11,.2); border-radius:9px; margin-top:16px; }
+                    .mc-hint i { color:#f59e0b; margin-top:1px; font-size:.8rem; flex-shrink:0; }
+                    .mc-hint span { font-size:.8rem; color:#94a3b8; line-height:1.5; }
+                    #mcFoot { padding:16px 26px; border-top:1px solid #334155; display:flex; gap:10px; justify-content:flex-end; flex-shrink:0; background:#1a2235; }
+                    .mc-btn { padding:9px 20px; border-radius:9px; border:none; cursor:pointer; font-size:.83rem; font-weight:500; display:flex; align-items:center; gap:7px; transition:all .15s; }
+                    .mc-btn-cancel { background:#243044; color:#94a3b8; border:1px solid #334155; }
+                    .mc-btn-cancel:hover { background:#2d3f5c; color:#f1f5f9; }
+                    .mc-btn-confirm { background:#3b82f6; color:#fff; box-shadow:0 0 0 0 rgba(59,130,246,.4); }
+                    .mc-btn-confirm:hover { background:#2563eb; box-shadow:0 4px 14px rgba(59,130,246,.35); transform:translateY(-1px); }
+                </style>
+                <div id="mcPanel">
+                    <div id="mcHead">
+                        <div class="mc-tag">Bono de Trabajo</div>
+                        <h3>
+                            <span class="mc-icon"><i class="fas fa-truck"></i></span>
+                            Confirmar Carros para el Bono
                         </h3>
                     </div>
-                    <div class="modal-body" style="padding: 20px; flex: 1; overflow-y: auto; min-height: 0;">
-                        <p style="margin-bottom: 14px; font-size: 0.95em; color: #495057;">
-                            <i class="fas fa-info-circle" style="color: #0d6efd;"></i> 
-                            Los siguientes carros serán incluidos en el bono:
-                        </p>
-                        <div style="background: linear-gradient(to bottom, #f8f9fa, #e9ecef); padding: 14px; border-radius: 8px; margin-bottom: 14px;">
-                            ${carrosOcupados.map(carro => `
-                                <div style="padding: 12px; background: white; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid #0d6efd; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
-                                    <div style="flex: 1; padding-right: 10px; min-width: 0; overflow-wrap: break-word;">
-                                        <div style="font-size: 0.95em; color: #212529; margin-bottom: 3px;">
-                                            <i class="fas fa-shopping-cart" style="color: #0d6efd; margin-right: 6px; font-size: 0.9em;"></i>
-                                            <strong style="color: #0d6efd;">Carro ${carro.numero}</strong>
-                                        </div>
-                                        <div style="font-size: 0.85em; color: #6c757d; padding-left: 22px; word-wrap: break-word; overflow-wrap: break-word;">
-                                            ${carro.proyecto_nombre}
-                                        </div>
-                                    </div>
-                                    <button onclick="event.stopPropagation(); liberarCarroYActualizar(${carro.numero})" 
-                                            style="padding: 6px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 0.8em; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(220,53,69,0.3); flex-shrink: 0;"
-                                            onmouseover="this.style.background='#c82333'; this.style.transform='scale(1.05)'; this.style.boxShadow='0 3px 6px rgba(220,53,69,0.4)'" 
-                                            onmouseout="this.style.background='#dc3545'; this.style.transform='scale(1)'; this.style.boxShadow='0 2px 4px rgba(220,53,69,0.3)'">
-                                        <i class="fas fa-times"></i> Quitar
-                                    </button>
+                    <div id="mcBody">
+                        <div class="mc-label">Carros incluidos</div>
+                        ${carrosOcupados.map(carro => `
+                            <div class="mc-carro-row">
+                                <div class="mc-carro-info">
+                                    <div class="mc-carro-num"><i class="fas fa-truck" style="margin-right:6px;font-size:.7rem;"></i>Carro ${carro.numero}</div>
+                                    <div class="mc-carro-name">${carro.proyecto_nombre}</div>
                                 </div>
-                            `).join('')}
-                        </div>
-                        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 14px; border-radius: 6px;">
-                            <p style="color: #856404; font-size: 0.85em; margin: 0; line-height: 1.4;">
-                                <i class="fas fa-question-circle" style="margin-right: 6px;"></i>
-                                ¿Deseas modificar algún carro antes de generar el bono?
-                            </p>
+                                <button class="mc-btn-quitar" onclick="event.stopPropagation(); liberarCarroYActualizar(${carro.numero})">
+                                    <i class="fas fa-times"></i> Quitar
+                                </button>
+                            </div>
+                        `).join('')}
+                        <div class="mc-hint">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Puedes quitar carros antes de continuar. Una vez confirmado, se generará el bono con los carros listados.</span>
                         </div>
                     </div>
-                    <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 16px 20px; margin: 0 -20px -20px -20px; background: #f8f9fa; border-radius: 0 0 8px 8px; border-top: 1px solid #dee2e6; flex-shrink: 0;">
-                        <button class="btn-secondary" onclick="cerrarModalConfirmacionCarros(false)" 
-                                style="padding: 10px 20px; font-size: 0.9em; border-radius: 5px; transition: all 0.2s; font-weight: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
-                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(0,0,0,0.15)'" 
-                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'">
-                            <i class="fas fa-edit"></i> Modificar Carros
+                    <div id="mcFoot">
+                        <button class="mc-btn mc-btn-cancel" onclick="cerrarModalConfirmacionCarros(false)">
+                            <i class="fas fa-arrow-left"></i> Modificar Carros
                         </button>
-                        <button class="btn-primary" onclick="cerrarModalConfirmacionCarros(true)" 
-                                style="padding: 10px 24px; font-size: 0.9em; border-radius: 5px; transition: all 0.2s; font-weight: 500; box-shadow: 0 2px 4px rgba(13,110,253,0.3);"
-                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(13,110,253,0.4)'" 
-                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(13,110,253,0.3)'">
+                        <button class="mc-btn mc-btn-confirm" onclick="cerrarModalConfirmacionCarros(true)">
                             <i class="fas fa-check"></i> Continuar con Estos Carros
                         </button>
                     </div>
