@@ -618,6 +618,12 @@
         } catch(e) { return iso; }
     }
 
+    function _fmtCarros(carros) {
+        const lista = (carros || []).map(c => String(c)).filter(c => c !== '');
+        if (!lista.length) return '<span style="color:#475569">— (sin carro concreto)</span>';
+        return lista.map(c => `Carro ${c}`).join(', ');
+    }
+
     function _estadoBadge(estado) {
         const color = estado === 'completado' ? '#22c55e' : '#f59e0b';
         return `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:12px;font-size:0.8em;">${estado || 'en_proceso'}</span>`;
@@ -638,10 +644,10 @@
                     _estadoBadge(r.estado),
                     _fmtFecha(r.fecha_inicio),
                     _fmtFecha(r.fecha_ultima_actualizacion),
-                    (r.carros_completados || []).join(', ') || '—'
+                    _fmtCarros(r.carros_completados)
                 ]);
                 cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} terminal${data.total !== 1 ? 'es' : ''} en el bono <strong style="color:#f1f5f9;">${bono}</strong></p>` +
-                    _reportTabla(['Terminal','Operario','Estado','Fecha inicio','Última actualización','Carros completados'], filas, 'Sin datos para este bono.');
+                    _reportTabla(['Terminal','Operario','Estado','Fecha inicio','Última actualización','Carros engastados'], filas, 'Sin datos para este bono.');
             });
     }
 

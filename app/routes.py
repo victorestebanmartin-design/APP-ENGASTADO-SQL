@@ -23,6 +23,24 @@ from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
 
+try:
+    from zoneinfo import ZoneInfo
+    _TZ_LOCAL = ZoneInfo('Europe/Madrid')
+except Exception:
+    _TZ_LOCAL = None
+
+
+def _ahora_iso() -> str:
+    """Hora local real (Europe/Madrid) en isoformat naive.
+
+    El servidor (PythonAnywhere) corre en UTC; sin esto las fechas se guardaban
+    2 horas por detrás. Devolvemos la hora local de España para que el report
+    anote la hora real.
+    """
+    if _TZ_LOCAL is not None:
+        return datetime.now(_TZ_LOCAL).replace(tzinfo=None).isoformat()
+    return datetime.now().isoformat()
+
 
 def _detectar_hoja(filepath: str) -> str:
     """Devuelve 'Format' si existe en el archivo, sino la primera hoja disponible."""
@@ -2243,6 +2261,36 @@ def api_operarios_activar(op_id):
 
 # ==================== REPORTS / TRAZABILIDAD ====================
 
+def _terminales_validos_bono(nombre_bono):
+    """Set de terminales que REALMENTE se engastan en un bono (crimps > 0).
+
+    Devuelve None si no se puede determinar (bono desconocido o sin archivos),
+    en cuyo caso el llamante no debe filtrar. Si devuelve un set no vacío,
+    los terminales que no estén en él solo aparecen con '*' y no se ponen.
+    """
+    try:
+        bono_repo = BonoRepository(db)
+        orden_repo = OrdenRepository(db)
+        bono = bono_repo.obtener_bono_por_nombre(nombre_bono)
+        if not bono:
+            return None
+        ordenes = orden_repo.obtener_ordenes_por_bono(bono['id'])
+        validos = set()
+        cache = {}
+        for orden in ordenes:
+            archivo = orden.get('archivo_excel')
+            if not archivo:
+                continue
+            if archivo not in cache:
+                cache[archivo] = _crimps_por_terminal_archivo(archivo)
+            for terminal, n in cache[archivo].items():
+                if terminal and n and n > 0:
+                    validos.add(str(terminal).upper())
+        return validos or None
+    except Exception:
+        return None
+
+
 @bp.route('/api/report/progreso', methods=['GET'])
 def api_report_progreso():
     """
@@ -2260,6 +2308,10 @@ def api_report_progreso():
         data_dir = current_app.config['DATA_DIR']
         registros = []
 
+        # Cache de terminales que REALMENTE se engastan por bono (crimps > 0),
+        # para no mostrar terminales que solo aparecen con '*' (no se ponen).
+        _validos_cache = {}
+
         for fname in sorted(os.listdir(data_dir)):
             if not (fname.startswith('progreso_bono_') and fname.endswith('.json')):
                 continue
@@ -2273,8 +2325,15 @@ def api_report_progreso():
             except Exception:
                 continue
 
+            if nombre_bono not in _validos_cache:
+                _validos_cache[nombre_bono] = _terminales_validos_bono(nombre_bono)
+            validos = _validos_cache[nombre_bono]
+
             for terminal, datos in progreso.items():
                 if filtro_terminal and terminal.upper() != filtro_terminal:
+                    continue
+                # Ocultar terminales que no se engastan (solo aparecen con '*')
+                if validos and terminal.upper() not in validos:
                     continue
                 operario = datos.get('operario', '')
                 if filtro_operario and operario.lower() != filtro_operario.lower():
@@ -4056,8 +4115,8 @@ def api_bonos_progreso_post(nombre_bono):
             progreso[terminal] = {
                 'estado': 'en_proceso',
                 'carros_completados': [],
-                'fecha_inicio': datetime.now().isoformat(),
-                'fecha_ultima_actualizacion': datetime.now().isoformat()
+                'fecha_inicio': _ahora_iso(),
+                'fecha_ultima_actualizacion': _ahora_iso()
             }
 
         # Guardar operario si se envió
@@ -4074,7 +4133,7 @@ def api_bonos_progreso_post(nombre_bono):
         progreso[terminal]['carros_con_pendientes'] = carros_pend
         
         # Actualizar fecha
-        progreso[terminal]['fecha_ultima_actualizacion'] = datetime.now().isoformat()
+        progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
         
         # Marcar como completado si ya no hay más carros pendientes
         # Nota: necesitaríamos saber el total de carros del bono, por ahora solo marcamos como en_proceso
@@ -4123,8 +4182,8 @@ def api_bonos_progreso_parcial(nombre_bono):
             progreso[terminal] = {
                 'estado': 'en_proceso',
                 'carros_completados': [],
-                'fecha_inicio': datetime.now().isoformat(),
-                'fecha_ultima_actualizacion': datetime.now().isoformat()
+                'fecha_inicio': _ahora_iso(),
+                'fecha_ultima_actualizacion': _ahora_iso()
             }
 
         # Guardar operario si se envió
@@ -4145,7 +4204,7 @@ def api_bonos_progreso_parcial(nombre_bono):
                 progreso[terminal]['carros_con_pendientes'] = {}
             progreso[terminal]['carros_con_pendientes'][carro_key] = {
                 'paquetes': paquetes_pendientes,
-                'fecha': datetime.now().isoformat()
+                'fecha': _ahora_iso()
             }
         else:
             # Sin pendientes: marcar como completado y limpiar cualquier entrada previa
@@ -4157,9 +4216,9 @@ def api_bonos_progreso_parcial(nombre_bono):
         progreso[terminal]['paquetes_saltados_por_carro'][carro_key] = {
             'paquetes_hechos': paquetes_hechos,
             'saltados': paquetes_saltados,
-            'fecha': datetime.now().isoformat()
+            'fecha': _ahora_iso()
         }
-        progreso[terminal]['fecha_ultima_actualizacion'] = datetime.now().isoformat()
+        progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
 
         with open(progreso_path, 'w', encoding='utf-8') as f:
             json.dump(progreso, f, indent=2, ensure_ascii=False)
@@ -4199,12 +4258,12 @@ def api_bonos_progreso_estado(nombre_bono):
             progreso[terminal] = {
                 'estado': estado,
                 'carros_completados': [],
-                'fecha_inicio': datetime.now().isoformat(),
-                'fecha_ultima_actualizacion': datetime.now().isoformat()
+                'fecha_inicio': _ahora_iso(),
+                'fecha_ultima_actualizacion': _ahora_iso()
             }
         else:
             progreso[terminal]['estado'] = estado
-            progreso[terminal]['fecha_ultima_actualizacion'] = datetime.now().isoformat()
+            progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
 
         if operario:
             progreso[terminal]['operario'] = operario
