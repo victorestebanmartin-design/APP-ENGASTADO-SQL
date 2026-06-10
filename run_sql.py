@@ -58,6 +58,14 @@ def init_sqlite_db_file():
 
 def get_local_ip():
     """Obtiene la IP local de la máquina"""
+    # 1er intento: resolver el hostname (funciona en redes aisladas sin internet)
+    try:
+        local_ip = socket.gethostbyname(socket.gethostname())
+        if local_ip and not local_ip.startswith("127."):
+            return local_ip
+    except Exception:
+        pass
+    # 2o intento: deducir la IP por la ruta de salida (requiere red con gateway)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -114,14 +122,26 @@ if __name__ == '__main__':
     print()
     
     # Arrancar servidor
-    # Nota: use_reloader=False para que el watchdog de run.bat controle el reinicio
-    # y el codigo de salida 42 (reinicio OTA) funcione correctamente.
+    # Nota: use_reloader=False (en el fallback) para que el watchdog de run.bat
+    # controle el reinicio y el codigo de salida 42 (reinicio OTA) funcione.
+    # El reinicio OTA usa os._exit(42) desde un hilo daemon (ver app/routes.py),
+    # que termina el proceso entero desde cualquier thread, por lo que funciona
+    # igual con el dev server de Flask que con el pool de threads de waitress.
     try:
-        app.run(
-            host='0.0.0.0',
-            port=port,
-            debug=False,
-            use_reloader=False
-        )
-    except SystemExit as e:
-        sys.exit(e.code)
+        from waitress import serve
+        serve(app, host='0.0.0.0', port=port, threads=8)
+    except ImportError:
+        print("=" * 80)
+        print("AVISO: waitress no esta instalado.")
+        print("   Usando el servidor de DESARROLLO de Flask (NO apto para produccion).")
+        print("   Instala waitress con: python -m pip install -r requirements.txt")
+        print("=" * 80)
+        try:
+            app.run(
+                host='0.0.0.0',
+                port=port,
+                debug=False,
+                use_reloader=False
+            )
+        except SystemExit as e:
+            sys.exit(e.code)

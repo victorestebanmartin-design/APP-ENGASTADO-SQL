@@ -6,6 +6,7 @@
 
 # Servidor WSGI para producción
 gunicorn==21.2.0
+waitress==3.0.2
 
 # Framework Web
 Flask==3.1.0
@@ -32,7 +33,6 @@ pytz==2024.2
 six==1.16.0
 tzdata==2024.2
 colorama==0.4.6
-gunicorn==21.2.0
 
 # Para desarrollo y testing
 # pytest==8.3.4
