@@ -472,16 +472,16 @@
                 }
                 const filas = data.operarios.map(op => `
                     <tr id="op-row-${op.id}">
-                        <td style="padding:10px 14px;">
-                            <span id="op-nombre-${op.id}" style="color:#f1f5f9;">${op.nombre}</span>
+                        <td>
+                            <span id="op-nombre-${op.id}">${op.nombre}</span>
                             <input type="text" id="op-edit-${op.id}" value="${op.nombre}"
                                 style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:180px;"
                                 onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
                         </td>
-                        <td style="padding:10px 14px;">
+                        <td>
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
                         </td>
-                        <td style="padding:10px 14px;white-space:nowrap;">
+                        <td style="white-space:nowrap;">
                             <span id="op-btns-${op.id}">
                                 <button onclick="editarOperario('${op.id}')" class="btn-accion-edit" title="Editar">✏️</button>
                                 ${op.activo
@@ -496,16 +496,18 @@
                         </td>
                     </tr>`).join('');
                 cont.innerHTML = `
-                    <table style="width:100%;border-collapse:collapse;">
-                        <thead>
-                            <tr style="border-bottom:1px solid #334155;color:#64748b;font-size:0.85em;">
-                                <th style="padding:8px 14px;text-align:left;">Nombre</th>
-                                <th style="padding:8px 14px;text-align:left;">Estado</th>
-                                <th style="padding:8px 14px;text-align:left;">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>${filas}</tbody>
-                    </table>`;
+                    <div class="tabla-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filas}</tbody>
+                        </table>
+                    </div>`;
                 // Cargar también en select del report
                 const selOp = document.getElementById('report-sel-operario');
                 if (selOp) {

@@ -39,30 +39,27 @@ window.addEventListener('beforeunload', function() {
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initCableColors === 'function') initCableColors();
 
-    // Mostrar modal de operario o recuperar sesión activa
-    const operarioGuardado = sessionStorage.getItem('operario_actual');
-    if (operarioGuardado) {
-        _activarOperario(operarioGuardado);
-    } else {
-        // Cargar lista de operarios en el select
-        fetch('/api/operarios')
-            .then(r => r.json())
-            .then(data => {
-                const sel = document.getElementById('input-operario');
-                if (sel && data.operarios) {
-                    data.operarios.filter(o => o.activo).forEach(o => {
-                        const opt = document.createElement('option');
-                        opt.value = o.nombre;
-                        opt.textContent = o.nombre;
-                        sel.appendChild(opt);
-                    });
-                }
-            })
-            .catch(() => {}); // silencioso si falla
-        const inputOperario = document.getElementById('input-operario');
-        if (inputOperario) {
-            inputOperario.focus();
-        }
+    // Siempre pedir el operario al entrar (no recordar de sesiones anteriores)
+    sessionStorage.removeItem('operario_actual');
+
+    // Cargar lista de operarios en el select
+    fetch('/api/operarios')
+        .then(r => r.json())
+        .then(data => {
+            const sel = document.getElementById('input-operario');
+            if (sel && data.operarios) {
+                data.operarios.filter(o => o.activo).forEach(o => {
+                    const opt = document.createElement('option');
+                    opt.value = o.nombre;
+                    opt.textContent = o.nombre;
+                    sel.appendChild(opt);
+                });
+            }
+        })
+        .catch(() => {}); // silencioso si falla
+    const inputOperario = document.getElementById('input-operario');
+    if (inputOperario) {
+        inputOperario.focus();
     }
 
     // Event listener para código de bono

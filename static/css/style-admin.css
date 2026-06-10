@@ -279,8 +279,9 @@
 
 /* ── Tablas ──────────────────────────────────────────────────────── */
 .admin-app .tabla-container { margin-top: 14px; overflow-x: auto; }
-.admin-app table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.admin-app table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: transparent !important; border-radius: 10px; overflow: hidden; }
 .admin-app table thead tr { background: var(--panel-2) !important; }
+.admin-app table tbody tr { background: transparent !important; }
 .admin-app table th {
   padding: 10px 12px !important;
   text-align: left;
