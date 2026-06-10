@@ -403,6 +403,63 @@
     font-weight: 600;
 }
 
+/* Grid compacto de máquinas (sin scroll: los operarios no scrollean) */
+.modal-maquina-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.modal-maquina-item {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 92px;
+}
+
+.modal-maquina-item:hover {
+    border-color: var(--primary-color, #2563eb);
+    background: #eff6ff;
+    transform: translateY(-3px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.modal-maquina-item.completado {
+    background: #f0fdf4;
+    border-color: #22c55e;
+}
+
+.modal-maquina-item-nombre {
+    font-weight: 700;
+    font-size: 1.02em;
+    color: #1d4ed8;
+    line-height: 1.2;
+}
+
+.modal-maquina-item.completado .modal-maquina-item-nombre {
+    color: #16a34a;
+}
+
+.modal-maquina-item-desc {
+    font-size: 0.78em;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.modal-maquina-item .modal-puesto-item-prog {
+    margin-top: 10px;
+}
+
+@media (max-width: 480px) {
+    .modal-maquina-grid { grid-template-columns: 1fr; }
+}
+
 /* Modal terminal */
 .modal-terminal-card {
     background: white;

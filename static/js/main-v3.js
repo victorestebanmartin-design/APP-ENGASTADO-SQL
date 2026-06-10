@@ -338,18 +338,16 @@ async function abrirModalMaquina() {
         const pct = total > 0 ? Math.round(completados / total * 100) : 0;
         const hecho = total > 0 && completados === total;
 
-        return `<div class="modal-puesto-item${hecho ? ' completado' : ''}" onclick="seleccionarMaquinaDesdeModal(${i})">
-            <div class="modal-puesto-item-info">
-                <div class="modal-puesto-item-nombre">${hecho ? '✅ ' : ''}${maquina.nombre}</div>
-                ${maquina.modelo ? `<div class="modal-puesto-item-desc">Modelo: ${maquina.modelo}</div>` : ''}
-                <div class="modal-puesto-item-prog">
-                    <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
-                    <span class="modal-prog-text">${completados}/${total} terminales</span>
-                </div>
+        return `<div class="modal-maquina-item${hecho ? ' completado' : ''}" onclick="seleccionarMaquinaDesdeModal(${i})">
+            <div class="modal-maquina-item-nombre">${hecho ? '✅ ' : ''}${maquina.nombre}</div>
+            ${maquina.modelo ? `<div class="modal-maquina-item-desc">${maquina.modelo}</div>` : ''}
+            <div class="modal-puesto-item-prog">
+                <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
+                <span class="modal-prog-text">${completados}/${total}</span>
             </div>
-            <span class="modal-bono-item-arrow">▶</span>
         </div>`;
     }).join('');
+    lista.innerHTML = `<div class="modal-maquina-grid">${lista.innerHTML}</div>`;
 }
 
 async function seleccionarMaquinaDesdeModal(idx) {
