@@ -2,14 +2,87 @@
 Configuración de la aplicación Flask con SQL Server
 """
 import os
+import secrets
 from urllib.parse import quote_plus
+
+_BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _cargar_env():
+    """Carga el fichero .env (si existe) en os.environ, sin dependencias extra.
+
+    No sobreescribe variables ya presentes en el entorno (setdefault).
+    """
+    env_path = os.path.join(_BASE_DIR, '.env')
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, _, value = line.partition('=')
+                    os.environ.setdefault(key.strip(), value.strip())
+    except OSError:
+        pass
+
+
+def _cargar_o_generar_secret_key():
+    """Obtiene la SECRET_KEY real de cada instalación.
+
+    Orden de prioridad:
+      1. Variable de entorno SECRET_KEY.
+      2. Fichero .secret_key junto a la app.
+      3. Si no existe, GENERA una clave aleatoria, la guarda en .secret_key y la usa.
+
+    Así cada instalación tiene su propia clave única sin tocar el código
+    (importante porque este repositorio es público).
+    """
+    clave = os.environ.get('SECRET_KEY')
+    if clave:
+        return clave
+
+    ruta = os.path.join(_BASE_DIR, '.secret_key')
+    if os.path.exists(ruta):
+        try:
+            with open(ruta, encoding='utf-8') as f:
+                contenido = f.read().strip()
+            if contenido:
+                return contenido
+        except OSError:
+            pass
+
+    clave = secrets.token_hex(32)
+    try:
+        with open(ruta, 'w', encoding='utf-8') as f:
+            f.write(clave)
+    except OSError:
+        # Si no se puede escribir, al menos la app arranca con una clave válida
+        pass
+    return clave
+
+
+# Cargar .env antes de leer cualquier variable de entorno en la clase Config
+_cargar_env()
+
 
 class Config:
     # =====================================================
     # CONFIGURACIÓN BÁSICA
     # =====================================================
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-SQL-2026-change-in-production'
+    SECRET_KEY = _cargar_o_generar_secret_key()
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+
+    # =====================================================
+    # PROTECCIÓN MÓDULO ADMINISTRACIÓN (PIN)
+    # =====================================================
+    # Hash SHA-256 del PIN de administración. Se configura en el .env
+    # (ADMIN_PIN_HASH=...). Si está vacío, la protección queda DESACTIVADA
+    # y la app funciona como siempre (con un aviso en consola al arrancar).
+    # Generar el hash con: python _scripts_utiles/generar_pin_hash.py
+    ADMIN_PIN_HASH = os.environ.get('ADMIN_PIN_HASH', '').strip()
+    # Duración de la sesión de administración (horas) antes de pedir el PIN otra vez.
+    ADMIN_SESSION_HOURS = int(os.environ.get('ADMIN_SESSION_HOURS', '8'))
     
     # Rutas de directorios
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))

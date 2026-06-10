@@ -1,7 +1,7 @@
 """
 Rutas principales de la aplicación Flask con SQLite
 """
-from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for, send_file
+from flask import Blueprint, render_template, request, jsonify, current_app, redirect, url_for, send_file, session
 import io
 import zipfile as _zipfile
 from werkzeug.utils import secure_filename
@@ -12,6 +12,9 @@ import json
 import re
 import subprocess
 import sys
+import time
+import hmac
+import hashlib
 import traceback
 from datetime import datetime
 import pandas as pd
@@ -24,6 +27,13 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
+from app.auth import (
+    requiere_pin_admin,
+    proteccion_activa,
+    sesion_admin_valida,
+    marcar_sesion_admin,
+    cerrar_sesion_admin,
+)
 
 try:
     from zoneinfo import ZoneInfo
@@ -118,9 +128,43 @@ def index_v3():
 
 
 @bp.route('/admin')
+@requiere_pin_admin
 def admin():
     """Panel de administración"""
-    return render_template('admin.html')
+    return render_template('admin.html', pin_activo=proteccion_activa())
+
+
+@bp.route('/admin/pin', methods=['GET', 'POST'])
+def admin_pin():
+    """Pantalla de introducción del PIN de administración."""
+    # Si la protección no está activa, no tiene sentido pedir PIN
+    if not proteccion_activa():
+        return redirect(url_for('main.admin'))
+    # Si ya está verificado, directo al panel
+    if sesion_admin_valida():
+        return redirect(url_for('main.admin'))
+
+    error = None
+    if request.method == 'POST':
+        pin = (request.form.get('pin') or '').strip()
+        hash_introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
+        hash_correcto = current_app.config.get('ADMIN_PIN_HASH', '')
+        # Comparación en tiempo constante para no filtrar info por timing
+        if pin and hmac.compare_digest(hash_introducido, hash_correcto):
+            marcar_sesion_admin()
+            return redirect(url_for('main.admin'))
+        # Fallo: freno anti fuerza bruta + mensaje genérico
+        time.sleep(1)
+        error = 'PIN incorrecto'
+
+    return render_template('admin-pin.html', error=error)
+
+
+@bp.route('/admin/logout', methods=['GET', 'POST'])
+def admin_logout():
+    """Cierra la sesión de administración."""
+    cerrar_sesion_admin()
+    return redirect(url_for('main.admin_pin'))
 
 
 @bp.route('/gestion-puestos')
@@ -1245,6 +1289,7 @@ def api_obtener_codigo(codigo):
 # ==================== GESTIÓN DE ARCHIVOS EXCEL ====================
 
 @bp.route('/api/upload', methods=['POST'])
+@requiere_pin_admin
 def upload_file():
     """Subir archivo Excel"""
     try:
@@ -1366,6 +1411,7 @@ def list_files():
 
 
 @bp.route('/api/add_corte', methods=['POST'])
+@requiere_pin_admin
 def add_corte():
     """Agregar nuevo corte de cable (asociar código de barras con archivo)"""
     try:
@@ -1426,6 +1472,7 @@ def add_corte():
 
 
 @bp.route('/api/list_cortes', methods=['GET'])
+@requiere_pin_admin
 def list_cortes():
     """Listar todos los cortes registrados"""
     try:
@@ -1478,6 +1525,7 @@ def api_listar_codigos_alias():
 
 
 @bp.route('/api/delete_corte', methods=['POST'])
+@requiere_pin_admin
 def delete_corte():
     """Eliminar corte de cable"""
     try:
@@ -1508,6 +1556,7 @@ def delete_corte():
 
 
 @bp.route('/api/delete_file', methods=['POST'])
+@requiere_pin_admin
 def delete_file():
     """Eliminar archivo Excel"""
     try:
@@ -2625,6 +2674,7 @@ def api_verificar_pendientes():
 
 
 @bp.route('/api/sesion/sesiones-activas', methods=['GET'])
+@requiere_pin_admin
 def api_sesiones_activas():
     """
     Devuelve las sesiones activas con info del bono al que pertenecen.
@@ -2677,6 +2727,7 @@ def api_sesiones_activas():
 
 
 @bp.route('/api/sesion/liberar-sesion/<sesion_id>', methods=['POST'])
+@requiere_pin_admin
 def api_liberar_sesion_admin(sesion_id):
     """Libera una sesión concreta por su ID."""
     try:
@@ -2688,6 +2739,7 @@ def api_liberar_sesion_admin(sesion_id):
 
 
 @bp.route('/api/sesion/limpiar-sesiones-fantasma', methods=['POST'])
+@requiere_pin_admin
 def api_limpiar_sesiones_fantasma():
     """Libera TODAS las sesiones activas de golpe."""
     try:
@@ -2882,6 +2934,7 @@ def api_actualizar_sistema():
 
 
 @bp.route('/api/stats', methods=['GET'])
+@requiere_pin_admin
 def api_stats():
     """Estadísticas generales del sistema"""
     try:
@@ -3519,6 +3572,7 @@ def api_etiquetas_grupos_bono(nombre_bono):
 
 
 @bp.route('/api/etiquetas/regenerar', methods=['POST'])
+@requiere_pin_admin
 def api_etiquetas_regenerar():
     """
     Elimina las etiquetas almacenadas para un archivo y las regenera desde el Excel actual.

@@ -153,6 +153,17 @@ def create_app(config_class=Config):
     # Configurar logging hacia fichero con rotación
     _configurar_logging(app)
 
+    # Aviso si el módulo de administración no está protegido por PIN
+    if not app.config.get('ADMIN_PIN_HASH'):
+        aviso = ("ADVERTENCIA: el modulo de ADMINISTRACION esta SIN PROTEGER "
+                 "(no hay ADMIN_PIN_HASH en el .env). Cualquiera con acceso a la "
+                 "web puede entrar al panel de administracion. Genera un PIN con "
+                 "'python _scripts_utiles/generar_pin_hash.py' y ponlo en el .env.")
+        print("\n" + "=" * 70)
+        print(aviso)
+        print("=" * 70 + "\n")
+        app.logger.warning(aviso)
+
     # Inicializar base de datos
     from repositories import init_db
     db = init_db(app)

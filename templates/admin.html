@@ -25,6 +25,9 @@
             <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
             <div class="admin-topbar-title">Panel de Administración</div>
             <div class="admin-topbar-spacer"></div>
+            {% if pin_activo %}
+            <a href="{{ url_for('main.admin_logout') }}" class="admin-back" style="margin-right:14px;">🔒 Cerrar sesión admin</a>
+            {% endif %}
             <a href="{{ url_for('main.modules') }}" class="admin-back">← Volver al inicio</a>
         </header>
 

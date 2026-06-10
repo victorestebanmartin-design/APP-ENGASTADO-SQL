@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso administración — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        .pin-card {
+            background: #1e293b;
+            border: 1px solid rgba(148,163,184,.18);
+            border-radius: 16px;
+            padding: 38px 34px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.45);
+            text-align: center;
+        }
+        .pin-logo {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.4em;
+            letter-spacing: 2px;
+            color: #f1f5f9;
+            margin-bottom: 4px;
+        }
+        .pin-logo .sw { color: #3b82f6; }
+        .pin-sub {
+            color: #94a3b8;
+            font-size: 0.92em;
+            margin-bottom: 26px;
+        }
+        .pin-input {
+            width: 100%;
+            box-sizing: border-box;
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.28);
+            border-radius: 10px;
+            color: #f1f5f9;
+            font-size: 1.5em;
+            letter-spacing: 8px;
+            text-align: center;
+            padding: 14px 12px;
+            margin-bottom: 18px;
+            font-family: 'DM Mono', monospace;
+        }
+        .pin-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,.25);
+        }
+        .pin-btn {
+            width: 100%;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 13px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background .15s;
+        }
+        .pin-btn:hover { background: #2563eb; }
+        .pin-error {
+            background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.4);
+            color: #fca5a5;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 18px;
+            font-size: 0.9em;
+        }
+        .pin-back {
+            display: inline-block;
+            margin-top: 22px;
+            color: #64748b;
+            text-decoration: none;
+            font-size: 0.88em;
+        }
+        .pin-back:hover { color: #f1f5f9; }
+    </style>
+</head>
+<body>
+    <div class="pin-card">
+        <div class="pin-logo">COJO<span class="sw">sw</span></div>
+        <div class="pin-sub">Introduce el PIN de administración</div>
+
+        {% if error %}
+        <div class="pin-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('main.admin_pin') }}">
+            <input type="password" name="pin" class="pin-input" inputmode="numeric"
+                   autocomplete="off" autofocus required>
+            <button type="submit" class="pin-btn">Entrar</button>
+        </form>
+
+        <a href="{{ url_for('main.modules') }}" class="pin-back">← Volver al inicio</a>
+    </div>
+</body>
+</html>
