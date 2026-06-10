@@ -40,9 +40,6 @@
   var pagina     = 0;
 
   // ── Referencias DOM ──────────────────────────────────────────────────
-  var selArchivo    = document.getElementById('guiado-archivo');
-  var btnCargar     = document.getElementById('guiado-cargar-btn');
-  var divVacio      = document.getElementById('guiado-vacio');
   var divActivo     = document.getElementById('guiado-activo');
   var tira          = document.getElementById('tira-manguitos');
   var lblNombre     = document.getElementById('elem-nombre');
@@ -54,6 +51,11 @@
   var btnNext           = document.getElementById('btn-elem-next');
   var divRistraSelector = document.getElementById('ristra-selector');
 
+  // Banner corte actual
+  var corteBanner   = document.getElementById('mg-corte-banner');
+  var corteCodigoEl = document.getElementById('mg-corte-codigo');
+  var corteDescEl   = document.getElementById('mg-corte-desc');
+
   // Delegación de eventos del selector de ristra (se registra una sola vez)
   divRistraSelector.addEventListener('click', function (e) {
     var btn = e.target.closest('.ristra-btn');
@@ -63,45 +65,10 @@
     aplicarFiltroRistra(btn.dataset.codigo || null);
   });
 
-  // ── Tabs ─────────────────────────────────────────────────────────────
-  document.querySelectorAll('.tab-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
-      document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
-      btn.classList.add('active');
-      var panel = document.getElementById('tab-' + btn.dataset.tab);
-      if (panel) panel.classList.add('active');
-    });
-  });
-
-  // ── Cargar lista de archivos Excel ───────────────────────────────────
-  async function cargarListaArchivos() {
-    // Limpiar opciones previas (evita duplicados si se llama más de una vez)
-    selArchivo.innerHTML = '<option value="">Selecciona un archivo Excel...</option>';
-    try {
-      var res  = await fetch('/api/list_files');
-      var data = await res.json();
-      if (data.success && data.files) {
-        data.files.forEach(function (f) {
-          var nombre = (typeof f === 'object') ? f.nombre : f;
-          var opt = document.createElement('option');
-          opt.value = nombre;
-          opt.textContent = nombre;
-          selArchivo.appendChild(opt);
-        });
-      }
-    } catch (e) {
-      console.error('Error cargando lista de archivos:', e);
-    }
-  }
-
-  // ── Cargar manguitos del Excel seleccionado ──────────────────────────
-  btnCargar.addEventListener('click', async function () {
-    var archivo = selArchivo.value;
-    if (!archivo) { alert('Selecciona un archivo Excel'); return; }
-
-    btnCargar.textContent = 'Cargando...';
-    btnCargar.disabled = true;
+  // ── Cargar manguitos del Excel del corte ─────────────────────────────
+  async function cargarGuiado(corte) {
+    var archivo = corte && corte.archivo ? corte.archivo : null;
+    if (!archivo) { abrirModalMg(); return; }
 
     try {
       var res  = await fetch('/api/manguitos/datos', {
@@ -113,30 +80,38 @@
 
       if (!data.success) {
         alert('Error: ' + data.error);
+        abrirModalMg();
         return;
       }
 
       elementos = data.elementos || [];
 
       if (elementos.length === 0) {
-        alert('No se encontraron manguitos en este archivo\n(todas las filas tienen "S/M" o la columna "De Manguito" está vacía).');
+        alert('No se encontraron manguitos en este corte\n(todas las filas tienen "S/M" o la columna "De Manguito" está vacía).');
+        abrirModalMg();
         return;
       }
 
       idxElem = 0;
       pagina  = 0;
-      divVacio.style.display  = 'none';
+      actualizarBanner(corte);
       divActivo.style.display = 'block';
       construirBotonesRistra();
       aplicarFiltroRistra(null);
 
     } catch (e) {
       alert('Error de conexión: ' + e.message);
-    } finally {
-      btnCargar.textContent = 'Cargar';
-      btnCargar.disabled = false;
+      abrirModalMg();
     }
-  });
+  }
+
+  function actualizarBanner(corte) {
+    if (!corteBanner) return;
+    var desc = corte.descripcion || corte.proyecto || '';
+    corteCodigoEl.textContent = corte.codigo || '';
+    corteDescEl.textContent = desc;
+    corteBanner.classList.add('activo');
+  }
 
   // ── Render del elemento actual ───────────────────────────────────────
   function renderElemento() {
@@ -352,115 +327,179 @@
   });
 
   // ── Init ─────────────────────────────────────────────────────────────
-  cargarListaArchivos();
+  // Referencia para reabrir el modal desde el flujo de guiado
+  var abrirModalMg = function () {};
+  initModalMg();
 
-  // ── Generar TXT de pedido (Fase 3) ───────────────────────────────────
-  (function () {
-    var selPedidoArchivo = document.getElementById('pedido-archivo');
-    var inputRef         = document.getElementById('pedido-ref');
-    var inputEdicion     = document.getElementById('pedido-edicion');
-    var btnGenerar       = document.getElementById('pedido-generar-btn');
-    var divResultado     = document.getElementById('pedido-resultado');
-    var tablaBody        = document.getElementById('pedido-tabla-body');
-    var divError         = document.getElementById('pedido-error');
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
-    if (!selPedidoArchivo) return;
+  // ═════════════════════════════════════════════════════════════════════
+  //  MODAL WIZARD MANGUITOS
+  // ═════════════════════════════════════════════════════════════════════
+  function initModalMg() {
+    var modal       = document.getElementById('modal-mg');
+    var cortes      = [];
+    var flujo       = 'guiado';          // 'guiado' | 'txt_sw'
+    var corteSel    = null;              // corte elegido (para txt_sw)
 
-    // Cargar lista de archivos en el select de pedido (reutiliza el mismo endpoint)
-    async function cargarListaArchivosPedido() {
-      selPedidoArchivo.innerHTML = '<option value="">Selecciona un archivo Excel...</option>';
-      try {
-        var res  = await fetch('/api/list_files');
-        var data = await res.json();
-        if (data.success && data.files) {
-          data.files.forEach(function (f) {
-            var nombre = (typeof f === 'object') ? f.nombre : f;
-            var opt = document.createElement('option');
-            opt.value = nombre;
-            opt.textContent = nombre;
-            selPedidoArchivo.appendChild(opt);
-          });
-        }
-      } catch (e) {
-        console.error('Error cargando lista de archivos pedido:', e);
+    var inputCorte  = document.getElementById('modal-mg-input-corte');
+    var errorCorte  = document.getElementById('modal-mg-corte-error');
+    var listaEl     = document.getElementById('modal-mg-lista-contenido');
+
+    var VISTAS = ['modo', 'txttipo', 'metodo', 'input', 'lista', 'swform', 'excelform'];
+
+    function mostrarVista(v) {
+      VISTAS.forEach(function (n) {
+        var el = document.getElementById('modal-mg-' + n);
+        if (el) el.classList.toggle('hidden', n !== v);
+      });
+      if (v === 'input') {
+        setTimeout(function () { if (inputCorte) inputCorte.focus(); }, 50);
       }
     }
 
-    btnGenerar.addEventListener('click', async function () {
-      var archivo = selPedidoArchivo.value;
-      if (!archivo) { alert('Selecciona un archivo Excel'); return; }
-      var ref     = (inputRef.value || 'PC_CAB_BADEN').trim();
-      var edicion = (inputEdicion.value || 'ed_04').trim();
+    function abrir() { mostrarVista('modo'); modal.classList.remove('hidden'); }
+    function cerrar() { modal.classList.add('hidden'); }
+    abrirModalMg = abrir;   // exponer al scope exterior
 
-      btnGenerar.textContent = '⏳ Generando...';
-      btnGenerar.disabled = true;
-      divResultado.style.display = 'none';
-      divError.style.display = 'none';
+    // ── Cargar lista de cortes ──────────────────────────────────────────
+    async function cargarCortes() {
+      try {
+        var res  = await fetch('/api/codigos_cortes/listar');
+        var data = await res.json();
+        cortes = (data.success && data.codigos) ? data.codigos : [];
+      } catch (e) {
+        console.error('Error cargando cortes:', e);
+        cortes = [];
+      }
+    }
+
+    // ── Selección de corte (Introducir código / Lista) ──────────────────
+    function irAMetodoCorte() {
+      var titulo = document.getElementById('mg-metodo-titulo');
+      if (titulo) titulo.textContent = (flujo === 'guiado')
+        ? 'Cargar Corte para Guiado'
+        : 'Cargar Corte · TXT según SW';
+      mostrarVista('metodo');
+    }
+
+    function mostrarInputCorte() {
+      if (errorCorte) errorCorte.classList.add('hidden');
+      if (inputCorte) inputCorte.value = '';
+      mostrarVista('input');
+    }
+
+    function mostrarListaCortes() {
+      mostrarVista('lista');
+      if (cortes.length === 0) {
+        listaEl.innerHTML = '<p class="modal-bonos-vacio">No hay cortes registrados.</p>';
+        return;
+      }
+      listaEl.innerHTML = cortes.map(function (c) {
+        var desc = c.descripcion || c.proyecto || '';
+        return '<div class="modal-bono-item" data-codigo="' + esc(c.codigo) + '">' +
+                 '<div>' +
+                   '<div class="modal-bono-item-nombre">' + esc(c.codigo) + '</div>' +
+                   (desc ? '<div class="modal-bono-item-fecha">' + esc(desc) + '</div>' : '') +
+                 '</div>' +
+                 '<span class="modal-bono-item-arrow">▶</span>' +
+               '</div>';
+      }).join('');
+      Array.prototype.forEach.call(listaEl.querySelectorAll('.modal-bono-item'), function (item) {
+        item.addEventListener('click', function () {
+          seleccionarCorte(item.getAttribute('data-codigo'));
+        });
+      });
+    }
+
+    function confirmarCorteCodigo() {
+      var valor = inputCorte ? inputCorte.value.trim() : '';
+      if (!valor) {
+        if (errorCorte) { errorCorte.textContent = 'Introduce un código de corte válido.'; errorCorte.classList.remove('hidden'); }
+        if (inputCorte) inputCorte.focus();
+        return;
+      }
+      seleccionarCorte(valor);
+    }
+
+    function seleccionarCorte(codigo) {
+      var cod = String(codigo || '').trim();
+      var corte = cortes.find(function (c) {
+        return String(c.codigo).toUpperCase() === cod.toUpperCase();
+      });
+      if (!corte) {
+        if (errorCorte) {
+          errorCorte.textContent = 'El código "' + cod + '" no está registrado.';
+          errorCorte.classList.remove('hidden');
+        }
+        mostrarVista('input');
+        if (inputCorte) { inputCorte.value = cod; inputCorte.focus(); }
+        return;
+      }
+
+      if (flujo === 'guiado') {
+        cerrar();
+        cargarGuiado(corte);
+      } else {
+        // txt_sw → pasar al formulario de ref/edición
+        corteSel = corte;
+        var lbl = document.getElementById('mg-swform-corte');
+        if (lbl) lbl.textContent = corte.codigo + (corte.descripcion ? ' · ' + corte.descripcion : '');
+        mostrarVista('swform');
+      }
+    }
+
+    // ── Generar TXT según SW ────────────────────────────────────────────
+    async function generarTxtSw() {
+      if (!corteSel) { mostrarVista('metodo'); return; }
+      var btn     = document.getElementById('btn-mg-sw-generar');
+      var errEl   = document.getElementById('modal-mg-sw-error');
+      var ref     = (document.getElementById('mg-sw-ref').value || 'PC_CAB_BADEN').trim();
+      var edicion = (document.getElementById('mg-sw-edicion').value || 'ed_04').trim();
+
+      errEl.classList.add('hidden');
+      btn.textContent = '⏳ Generando...';
+      btn.disabled = true;
 
       try {
         var res = await fetch('/api/manguitos/generar-txt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ archivo: archivo, ref: ref, edicion: edicion })
+          body: JSON.stringify({ archivo: corteSel.archivo, ref: ref, edicion: edicion })
         });
-
-        // Si el servidor devuelve JSON es un error
-        var contentType = res.headers.get('Content-Type') || '';
-        if (contentType.includes('application/json')) {
-          var data = await res.json();
-          divError.textContent = 'Error: ' + (data.error || 'desconocido');
-          divError.style.display = 'block';
-          return;
-        }
-
-        // Descargar el fichero (txt o zip)
-        var blob = await res.blob();
-        var disposition = res.headers.get('Content-Disposition') || '';
-        var match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        var filename = match ? match[1].replace(/['"]/g, '') : 'manguitos.zip';
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url; a.download = filename; a.click();
-        URL.revokeObjectURL(url);
-
-        divResultado.innerHTML = '<p style="color:#16a34a;font-weight:600;">Descarga iniciada: ' + filename + '</p>';
-        divResultado.style.display = 'block';
-
+        await descargarRespuesta(res, errEl);
       } catch (e) {
-        divError.textContent = 'Error de red: ' + e.message;
-        divError.style.display = 'block';
+        errEl.textContent = 'Error de red: ' + e.message;
+        errEl.classList.remove('hidden');
       } finally {
-        btnGenerar.textContent = '⚙ Generar TXT';
-        btnGenerar.disabled = false;
+        btn.textContent = '⚙ Generar TXT';
+        btn.disabled = false;
       }
-    });
+    }
 
-    cargarListaArchivosPedido();
-  })();
+    // ── Generar TXT orden del Excel ─────────────────────────────────────
+    async function generarTxtExcel() {
+      var btn     = document.getElementById('btn-mg-excel-generar');
+      var errEl   = document.getElementById('modal-mg-excel-error');
+      var fileEl  = document.getElementById('mg-excel-file');
+      var file    = fileEl ? fileEl.files[0] : null;
+      if (!file) {
+        errEl.textContent = 'Selecciona un archivo Excel.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      var ref     = (document.getElementById('mg-excel-ref').value || 'PC_CAB_BADEN').trim();
+      var edicion = (document.getElementById('mg-excel-edicion').value || 'ed_04').trim();
 
-  // ── Generar TXT desde Excel propio (Tab excel) ────────────────────────
-  (function () {
-    var inputFile   = document.getElementById('excel-file-input');
-    var inputRef    = document.getElementById('excel-ref');
-    var inputEdicion = document.getElementById('excel-edicion');
-    var btnGenerar  = document.getElementById('excel-generar-btn');
-    var divResultado = document.getElementById('excel-resultado');
-    var tablaBody   = document.getElementById('excel-tabla-body');
-    var divError    = document.getElementById('excel-error');
-
-    if (!btnGenerar) return;
-
-    btnGenerar.addEventListener('click', async function () {
-      var file = inputFile ? inputFile.files[0] : null;
-      if (!file) { alert('Selecciona un archivo Excel'); return; }
-
-      var ref     = (inputRef ? inputRef.value : 'PC_CAB_BADEN').trim() || 'PC_CAB_BADEN';
-      var edicion = (inputEdicion ? inputEdicion.value : 'ed_04').trim() || 'ed_04';
-
-      btnGenerar.textContent = 'Generando...';
-      btnGenerar.disabled = true;
-      divResultado.style.display = 'none';
-      divError.style.display = 'none';
+      errEl.classList.add('hidden');
+      btn.textContent = '⏳ Generando...';
+      btn.disabled = true;
 
       var formData = new FormData();
       formData.append('excel', file);
@@ -468,41 +507,86 @@
       formData.append('edicion', edicion);
 
       try {
-        var res  = await fetch('/api/manguitos/generar-txt-desde-excel', {
+        var res = await fetch('/api/manguitos/generar-txt-desde-excel', {
           method: 'POST',
-          body: formData   // sin Content-Type para que el browser ponga el boundary
+          body: formData
         });
-
-        // Si el servidor devuelve JSON es un error
-        var contentType = res.headers.get('Content-Type') || '';
-        if (contentType.includes('application/json')) {
-          var data = await res.json();
-          divError.textContent = 'Error: ' + (data.error || 'desconocido');
-          divError.style.display = 'block';
-          return;
-        }
-
-        // Descargar el fichero (txt o zip)
-        var blob = await res.blob();
-        var disposition = res.headers.get('Content-Disposition') || '';
-        var match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        var filename = match ? match[1].replace(/['"]/g, '') : 'manguitos.zip';
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url; a.download = filename; a.click();
-        URL.revokeObjectURL(url);
-
-        divResultado.innerHTML = '<p style="color:#16a34a;font-weight:600;">Descarga iniciada: ' + filename + '</p>';
-        divResultado.style.display = 'block';
-
+        await descargarRespuesta(res, errEl);
       } catch (e) {
-        divError.textContent = 'Error de red: ' + e.message;
-        divError.style.display = 'block';
+        errEl.textContent = 'Error de red: ' + e.message;
+        errEl.classList.remove('hidden');
       } finally {
-        btnGenerar.textContent = 'Generar TXT';
-        btnGenerar.disabled = false;
+        btn.textContent = '⚙ Generar TXT';
+        btn.disabled = false;
       }
+    }
+
+    // ── Descargar respuesta (txt/zip) o mostrar error ───────────────────
+    async function descargarRespuesta(res, errEl) {
+      var contentType = res.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) {
+        var data = await res.json();
+        errEl.textContent = 'Error: ' + (data.error || 'desconocido');
+        errEl.classList.remove('hidden');
+        return;
+      }
+      var blob = await res.blob();
+      var disposition = res.headers.get('Content-Disposition') || '';
+      var match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      var filename = match ? match[1].replace(/['"]/g, '') : 'manguitos.zip';
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      alert('✅ Descarga iniciada: ' + filename);
+      cerrar();
+    }
+
+    // ── Wiring de botones ───────────────────────────────────────────────
+    document.getElementById('btn-mg-guiado').addEventListener('click', function () {
+      flujo = 'guiado'; irAMetodoCorte();
     });
-  })();
+    document.getElementById('btn-mg-txt').addEventListener('click', function () {
+      mostrarVista('txttipo');
+    });
+    document.getElementById('btn-mg-txttipo-volver').addEventListener('click', function () {
+      mostrarVista('modo');
+    });
+    document.getElementById('btn-mg-txt-sw').addEventListener('click', function () {
+      flujo = 'txt_sw'; irAMetodoCorte();
+    });
+    document.getElementById('btn-mg-txt-excel').addEventListener('click', function () {
+      mostrarVista('excelform');
+    });
+
+    document.getElementById('btn-mg-metodo-volver').addEventListener('click', function () {
+      mostrarVista(flujo === 'guiado' ? 'modo' : 'txttipo');
+    });
+    document.getElementById('btn-mg-corte-input').addEventListener('click', mostrarInputCorte);
+    document.getElementById('btn-mg-corte-lista').addEventListener('click', mostrarListaCortes);
+    document.getElementById('btn-mg-input-volver').addEventListener('click', irAMetodoCorte);
+    document.getElementById('btn-mg-input-confirmar').addEventListener('click', confirmarCorteCodigo);
+    document.getElementById('btn-mg-lista-volver').addEventListener('click', irAMetodoCorte);
+    if (inputCorte) {
+      inputCorte.addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') confirmarCorteCodigo();
+      });
+    }
+
+    document.getElementById('btn-mg-sw-volver').addEventListener('click', irAMetodoCorte);
+    document.getElementById('btn-mg-sw-generar').addEventListener('click', generarTxtSw);
+    document.getElementById('btn-mg-excel-volver').addEventListener('click', function () {
+      mostrarVista('txttipo');
+    });
+    document.getElementById('btn-mg-excel-generar').addEventListener('click', generarTxtExcel);
+
+    // Botón cambiar del banner → reabrir wizard
+    var btnCambiar = document.getElementById('mg-corte-cambiar');
+    if (btnCambiar) btnCambiar.addEventListener('click', abrir);
+
+    // Arranque: cargar cortes y abrir modal
+    cargarCortes();
+    abrir();
+  }
 
 })();
