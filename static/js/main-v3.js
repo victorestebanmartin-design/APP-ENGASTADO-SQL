@@ -272,18 +272,16 @@ async function abrirModalPuesto() {
             const pct = total > 0 ? Math.round(completados / total * 100) : 0;
             const hecho = total > 0 && completados === total;
 
-            return `<div class="modal-puesto-item${hecho ? ' completado' : ''}" onclick="seleccionarPuestoDesdeModal(${i})">
-                <div class="modal-puesto-item-info">
-                    <div class="modal-puesto-item-nombre">${hecho ? '✅ ' : ''}${puesto.nombre}</div>
-                    ${puesto.descripcion ? `<div class="modal-puesto-item-desc">${puesto.descripcion}</div>` : ''}
-                    ${total > 0 ? `<div class="modal-puesto-item-prog">
-                        <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
-                        <span class="modal-prog-text">${completados}/${total} terminales</span>
-                    </div>` : ''}
-                </div>
-                <span class="modal-bono-item-arrow">▶</span>
+            return `<div class="modal-maquina-item${hecho ? ' completado' : ''}" onclick="seleccionarPuestoDesdeModal(${i})">
+                <div class="modal-maquina-item-nombre">${hecho ? '✅ ' : ''}${puesto.nombre}</div>
+                ${puesto.descripcion ? `<div class="modal-maquina-item-desc">${puesto.descripcion}</div>` : ''}
+                ${total > 0 ? `<div class="modal-puesto-item-prog">
+                    <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
+                    <span class="modal-prog-text">${completados}/${total}</span>
+                </div>` : ''}
             </div>`;
         }).join('');
+        lista.innerHTML = `<div class="modal-maquina-grid">${lista.innerHTML}</div>`;
 
     } catch {
         lista.innerHTML = '<p class="modal-bonos-vacio">Error al cargar puestos.</p>';
