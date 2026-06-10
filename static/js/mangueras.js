@@ -31,6 +31,11 @@
   var errorCorte   = document.getElementById('modal-corte-error');
   var listaCorteEl = document.getElementById('modal-cortes-lista-contenido');
 
+  // Banner corte actual
+  var corteBanner  = document.getElementById('mg-corte-banner');
+  var corteCodigoEl = document.getElementById('mg-corte-codigo');
+  var corteDescEl   = document.getElementById('mg-corte-desc');
+
   // ── Modal de selección de corte ──────────────────────────────────────
   function mostrarVistaCorte(vista) {
     ['metodo', 'input', 'lista'].forEach(function (v) {
@@ -114,7 +119,15 @@
     }
 
     cerrarModalCorte();
-    cargarMangueras(corte.archivo);
+    cargarMangueras(corte);
+  }
+
+  function actualizarBanner(corte) {
+    if (!corteBanner) return;
+    var desc = corte.descripcion || corte.proyecto || '';
+    corteCodigoEl.textContent = corte.codigo;
+    corteDescEl.textContent = desc;
+    corteBanner.classList.add('activo');
   }
 
   // ── Cargar lista de cortes registrados ───────────────────────────────
@@ -130,7 +143,8 @@
   }
 
   // ── Cargar mangueras del corte ───────────────────────────────────────
-  async function cargarMangueras(archivo) {
+  async function cargarMangueras(corte) {
+    var archivo = corte && corte.archivo ? corte.archivo : null;
     if (!archivo) { abrirModalCorte(); return; }
 
     btnCargar.disabled = true;
@@ -158,6 +172,7 @@
       }
 
       idx = 0;
+      actualizarBanner(corte);
       divVacio.style.display  = 'none';
       divActivo.style.display = 'block';
       renderManguera();
@@ -173,6 +188,10 @@
 
   // Botón cabecera → reabrir modal
   btnCargar.addEventListener('click', abrirModalCorte);
+
+  // Botón cambiar corte del banner
+  var btnCambiarCorte = document.getElementById('mg-corte-cambiar');
+  if (btnCambiarCorte) btnCambiarCorte.addEventListener('click', abrirModalCorte);
 
   // Wiring botones modal
   document.getElementById('btn-corte-input').addEventListener('click', mostrarInputCorte);

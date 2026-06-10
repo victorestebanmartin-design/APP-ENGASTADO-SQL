@@ -84,20 +84,63 @@
 
     /* Hint teclado */
     .hint-teclado { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; }
+
+    /* Top bar moderna */
+    .mg-topbar { background: linear-gradient(135deg, #0e7490 0%, #0891b2 100%);
+      box-shadow: 0 2px 10px rgba(8,145,178,0.25); }
+    .mg-topbar-inner { max-width: 1100px; margin: 0 auto; padding: 12px 20px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .mg-topbar-title { display: flex; align-items: center; gap: 10px;
+      color: #fff; font-size: 18px; font-weight: 800; letter-spacing: 0.3px; }
+    .mg-back-btn { display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(255,255,255,0.18); color: #fff; text-decoration: none;
+      padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+      transition: background 0.15s; }
+    .mg-back-btn:hover { background: rgba(255,255,255,0.3); }
+
+    /* Cabecera del corte actual */
+    .corte-banner { display: none; align-items: center; gap: 18px;
+      background: linear-gradient(135deg, #0c4a6e 0%, #075985 100%);
+      border-radius: 14px; padding: 18px 26px; margin-bottom: 22px;
+      box-shadow: 0 6px 20px rgba(12,74,110,0.3); }
+    .corte-banner.activo { display: flex; }
+    .corte-banner-icon { font-size: 34px; line-height: 1; }
+    .corte-banner-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .corte-banner-label { font-size: 11px; font-weight: 700; color: #7dd3fc;
+      text-transform: uppercase; letter-spacing: 1px; }
+    .corte-banner-codigo { font-size: 28px; font-weight: 900; color: #fff;
+      line-height: 1.1; letter-spacing: 0.5px; }
+    .corte-banner-desc { font-size: 14px; color: #bae6fd; margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .corte-banner-cambiar { background: rgba(255,255,255,0.15); color: #fff; border: none;
+      padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; transition: background 0.15s; }
+    .corte-banner-cambiar:hover { background: rgba(255,255,255,0.3); }
+    @media (max-width: 600px) {
+      .corte-banner { flex-wrap: wrap; padding: 16px 18px; }
+      .corte-banner-codigo { font-size: 22px; }
+    }
   </style>
 </head>
 <body>
-  <nav class="navbar">
-    <div class="nav-brand">
-      <a href="/" class="nav-logo">🏠 Inicio</a>
-      <span class="nav-separator">/</span>
-      <span class="nav-current">🛠️ Preparación de Mangueras</span>
+  <div class="mg-topbar">
+    <div class="mg-topbar-inner">
+      <div class="mg-topbar-title">🛠️ Preparación de Mangueras</div>
+      <a href="{{ url_for('main.modules') }}" class="mg-back-btn">← Volver a módulos</a>
     </div>
-  </nav>
+  </div>
 
   <div class="mangueras-container">
-    <div class="mangueras-header">
-      <h1>🛠️ Preparación de Mangueras</h1>
+
+    <!-- Cabecera del corte actual -->
+    <div id="mg-corte-banner" class="corte-banner">
+      <div class="corte-banner-icon">🔌</div>
+      <div class="corte-banner-info">
+        <span class="corte-banner-label">Corte de cable en preparación</span>
+        <span class="corte-banner-codigo" id="mg-corte-codigo">—</span>
+        <span class="corte-banner-desc" id="mg-corte-desc"></span>
+      </div>
+      <button type="button" id="mg-corte-cambiar" class="corte-banner-cambiar">🔄 Cambiar corte</button>
     </div>
 
     <div class="section-card">
@@ -199,6 +242,6 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=2"></script>
+  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=3"></script>
 </body>
 </html>
