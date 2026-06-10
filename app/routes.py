@@ -1953,7 +1953,13 @@ def api_terminales_disponibles():
 
 @bp.route('/api/excel/<path:archivo>/terminales', methods=['GET'])
 def api_excel_terminales(archivo):
-    """Obtener terminales únicos de un archivo Excel excluyendo los que terminan en *"""
+    """Obtener terminales que REALMENTE se engastan en un archivo Excel.
+
+    Usa la misma lógica que la vista de engastado (_crimps_por_terminal_archivo):
+    un terminal solo cuenta si tiene al menos un crimp real (lado sin '*'). Así el
+    detalle de la visualización coincide con la lista seleccionable y el peso
+    ponderado, sin incluir terminales que solo aparecen con asterisco (no se engastan).
+    """
     try:
         archivo = os.path.basename((archivo or '').strip())
         if not archivo:
@@ -1971,22 +1977,8 @@ def api_excel_terminales(archivo):
                 'error': f'Archivo no encontrado: {archivo}'
             }), 404
 
-        df = pd.read_excel(filepath, sheet_name=_detectar_hoja(filepath))
-
-        columnas_terminales = [
-            col for col in df.columns
-            if 'terminal' in str(col).lower()
-        ]
-
-        terminales_unicos = set()
-        for col in columnas_terminales:
-            valores = df[col].dropna().unique()
-            for valor in valores:
-                terminal = str(valor).strip()
-                if terminal and not terminal.endswith('*'):
-                    terminales_unicos.add(terminal)
-
-        terminales = sorted(list(terminales_unicos))
+        crimps = _crimps_por_terminal_archivo(archivo)
+        terminales = sorted(t for t, n in crimps.items() if n > 0)
 
         return jsonify({
             'success': True,

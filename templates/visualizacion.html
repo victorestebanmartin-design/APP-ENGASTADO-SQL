@@ -1029,12 +1029,20 @@
                 return 'completo';
             }
 
+            // Red de seguridad: si el terminal está marcado como 'completado' en su
+            // conjunto (estado guardado por terminarTerminal cuando se acaban TODOS sus
+            // carros), considerarlo completo aunque la numeración de carro no cuadre
+            // (el operario numera por idx+1 y puede no coincidir con carro_numero de BD).
+            const estado = String(info.estado || '').toLowerCase();
+            if (estado === 'completado' || estado === 'completo') {
+                return 'completo';
+            }
+
             const pendientes = info.carros_con_pendientes;
             if (pendientes && typeof pendientes === 'object' && Object.prototype.hasOwnProperty.call(pendientes, carroKey)) {
                 return 'bloqueado';
             }
 
-            const estado = String(info.estado || '').toLowerCase();
             if (estado && !['pendiente', 'no_iniciado', 'sin_iniciar', 'nuevo'].includes(estado)) {
                 return 'en-uso';
             }
