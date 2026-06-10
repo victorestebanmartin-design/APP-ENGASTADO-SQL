@@ -45,17 +45,12 @@ function mostrarCarros(carros) {
             </div>
             
             ${carro.ocupado ? `
-                <div class="carro-proyecto">
-                    <strong>${carro.proyecto_nombre}</strong>
-                </div>
-                
+                <div class="carro-proyecto">${carro.proyecto_nombre}</div>
                 <button class="btn-liberar" onclick="event.stopPropagation(); liberarCarro(${carro.numero})">
                     <i class="fas fa-times"></i> Liberar
                 </button>
             ` : `
-                <div class="carro-proyecto" style="color: #adb5bd;">
-                    <em>Click para asignar proyecto</em>
-                </div>
+                <div class="carro-proyecto"><em>Click para asignar</em></div>
             `}
         </div>
     `).join('');
@@ -217,10 +212,10 @@ async function abrirModalGenerarBono() {
     // Mostrar resumen de carros con diseño mejorado
     const listaCarros = document.getElementById('listaCarrosBono');
     listaCarros.innerHTML = carrosOcupados.map(carro => `
-        <div style="padding: 10px 12px; background: white; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #28a745; box-shadow: 0 2px 4px rgba(0,0,0,0.08); font-size: 0.9em;">
-            <i class="fas fa-shopping-cart" style="color: #28a745; margin-right: 6px; font-size: 0.9em;"></i>
-            <strong style="color: #0d6efd;">Carro ${carro.numero}:</strong> 
-            <span style="color: #495057;">${carro.proyecto_nombre}</span>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#243044;border:1px solid #334155;border-left:3px solid #3b82f6;border-radius:9px;margin-bottom:8px;">
+            <i class="fas fa-truck" style="color:#3b82f6;font-size:.8rem;"></i>
+            <span style="font-size:.82rem;font-weight:600;color:#93c5fd;font-family:'DM Mono',monospace;">Carro ${carro.numero}</span>
+            <span style="font-size:.78rem;color:#64748b;">${carro.proyecto_nombre}</span>
         </div>
     `).join('');
     
@@ -402,16 +397,12 @@ function mostrarModalBono(bono) {
     // Mostrar lista de carros
     const listaCarros = document.getElementById('bonoCarrosLista');
     listaCarros.innerHTML = bono.carros.map(carro => `
-        <div style="padding: 10px; background: white; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid #28a745;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="color: #0d6efd;">Carro ${carro.carro}</strong>
-                    <div style="color: #6c757d; font-size: 0.9em; margin-top: 3px;">${carro.proyecto_nombre}</div>
-                </div>
-                <div style="text-align: right; font-size: 0.85em; color: #6c757d;">
-                    ${carro.archivo_excel}
-                </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#243044;border:1px solid #334155;border-left:3px solid #22c55e;border-radius:9px;margin-bottom:8px;">
+            <div>
+                <div style="font-size:.82rem;font-weight:600;color:#4ade80;font-family:'DM Mono',monospace;"><i class='fas fa-truck' style='margin-right:5px;font-size:.75rem;'></i>Carro ${carro.carro}</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">${carro.proyecto_nombre}</div>
             </div>
+            <div style="font-size:.75rem;color:#475569;text-align:right;">${carro.archivo_excel}</div>
         </div>
     `).join('');
     
