@@ -3530,7 +3530,7 @@ async function mostrarPaqueteExpandido() {
             <div id="engaste-scroll-body" style="flex:1;overflow-y:auto;padding:20px 24px 16px;">
             <div style="text-align:center;margin-bottom:16px;">
                 ${numeroEtiqueta ? `
-                <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etqColor};color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
+                <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etq.bg};color:${_etq.text};padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
                     <span style="font-size:2.8em;font-weight:900;letter-spacing:2px;line-height:1;">${numeroEtiqueta}</span>
                     <span style="font-size:0.9em;font-weight:700;margin-top:4px;">${paquete.elemento}</span>
                 </div>` : `<div style="font-size:1.5em;font-weight:700;color:#212529;">${paquete.elemento}</div>`}
