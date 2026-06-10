@@ -77,7 +77,7 @@ def _es_error_nombre_bono_duplicado(error):
     return 'unique' in mensaje and 'bonos.nombre' in mensaje
 
 
-def error_interno(e, mensaje_usuario='Error interno del servidor', status=500):
+def error_interno(e, mensaje_usuario='Error interno del servidor', status=500, clave='message'):
     """
     Maneja un error sin filtrar detalles internos al cliente.
 
@@ -85,13 +85,15 @@ def error_interno(e, mensaje_usuario='Error interno del servidor', status=500):
     con ese ID, y devuelve un JSON genérico (sin str(e)) con la referencia.
     Por defecto responde 500; se puede pasar status=200 para endpoints cuyo
     JS no comprueba el código HTTP y trataría un 500 como fallo de red.
+    El parámetro clave permite usar otra clave JSON (p.ej. 'error') cuando el
+    consumidor lee el mensaje desde ahí en vez de 'message'.
     """
     import uuid
     error_id = uuid.uuid4().hex[:8]
     current_app.logger.exception(f"[{error_id}] {mensaje_usuario}: {e}")
     return jsonify({
         'success': False,
-        'message': f'{mensaje_usuario} (ref: {error_id})'
+        clave: f'{mensaje_usuario} (ref: {error_id})'
     }), status
 
 
@@ -369,7 +371,7 @@ def api_manguitos_generar_txt():
 
         return _respuesta_descarga_manguitos(ficheros, ref, edicion)
     except Exception as e:
-        return error_interno(e)
+        return error_interno(e, 'Error al generar TXT', clave='error')
 
 
 @bp.route('/api/manguitos/generar-txt-desde-excel', methods=['POST'])
@@ -439,7 +441,7 @@ def api_manguitos_generar_txt_desde_excel():
         return _respuesta_descarga_manguitos(ficheros, ref, edicion)
 
     except Exception as e:
-        return error_interno(e)
+        return error_interno(e, 'Error al generar TXT', clave='error')
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -4411,4 +4413,4 @@ def deploy_pull():
             'returncode': result.returncode
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e, 'Error al sincronizar con GitHub', clave='error')
