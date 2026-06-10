@@ -21,6 +21,7 @@ logs/
 data/progreso_bono_*.json
 data/engastado.db
 data/*.db
+data/engastado.db.backup_*
 
 # Basura del sistema operativo
 .DS_Store
