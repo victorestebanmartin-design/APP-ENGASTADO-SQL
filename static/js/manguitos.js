@@ -557,6 +557,9 @@
     });
     document.getElementById('btn-mg-txt-excel').addEventListener('click', function () {
       mostrarVista('excelform');
+      // Abrir directamente el explorador de archivos
+      var fileEl = document.getElementById('mg-excel-file');
+      if (fileEl) fileEl.click();
     });
 
     document.getElementById('btn-mg-metodo-volver').addEventListener('click', function () {
