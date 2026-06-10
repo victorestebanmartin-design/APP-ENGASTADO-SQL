@@ -3997,16 +3997,27 @@ def api_bonos_terminales_disponibles(nombre_bono):
             try:
                 # Cargar Excel
                 df = pd.read_excel(filepath, sheet_name=_detectar_hoja(filepath))
-                
-                # Extraer terminales de las columnas
-                for col in ['De Terminal', 'Para Terminal']:
-                    if col in df.columns:
-                        # Filtrar y limpiar
-                        terminales = df[col].dropna().astype(str).str.strip().str.upper()
-                        # Solo agregar si no es vacío, S/T, o nan
-                        for terminal in terminales:
-                            if terminal and terminal != 'S/T' and terminal != 'NAN':
-                                terminales_con_datos.add(terminal)
+
+                def _terminal_valido(val):
+                    t = str(val).strip().upper()
+                    return t and t != 'S/T' and t != 'NAN'
+
+                # Extraer terminales SOLO si realmente se engastan en ese lado.
+                # Si el elemento de ese lado termina en '*', el terminal NO se engasta
+                # ahí, por lo que NO debe ofrecerse como terminal seleccionable.
+                tiene_de   = 'De Terminal' in df.columns
+                tiene_para = 'Para Terminal' in df.columns
+                for _, fila in df.iterrows():
+                    if tiene_de:
+                        de_term = fila.get('De Terminal', '')
+                        de_no_poner = str(fila.get('De Elemento', '')).strip().endswith('*')
+                        if _terminal_valido(de_term) and not de_no_poner:
+                            terminales_con_datos.add(str(de_term).strip().upper())
+                    if tiene_para:
+                        para_term = fila.get('Para Terminal', '')
+                        para_no_poner = str(fila.get('Para Elemento', '')).strip().endswith('*')
+                        if _terminal_valido(para_term) and not para_no_poner:
+                            terminales_con_datos.add(str(para_term).strip().upper())
             
             except Exception as e:
                 print(f"Error procesando archivo {archivo}: {e}")
