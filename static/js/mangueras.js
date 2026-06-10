@@ -200,21 +200,29 @@
     var mg = mangueras[idx];
     if (!mg) return;
 
-    // Cabecera — cable + badge etiqueta
-    var badgeHtml = '';
-    if (mg.numero_etiqueta) {
-      var c = badgeColor(mg.cod_cable);
-      badgeHtml = ' <span id="mg-etq-badge" style="' +
-        'background:' + c.bg + ';color:' + c.text + ';' +
-        'font-size:14px;font-weight:800;padding:3px 10px;border-radius:12px;' +
-        'vertical-align:middle;margin-left:8px;">' +
-        '🏷 #' + mg.numero_etiqueta + '</span>';
+    // Cabecera — trío: marca · paquete · elemento
+    lblCable.textContent = mg.cable_marca || '—';
+
+    var badgeEl = document.getElementById('mg-paquete-badge');
+    if (badgeEl) {
+      if (mg.numero_etiqueta) {
+        var c = badgeColor(mg.cod_cable);
+        badgeEl.innerHTML = '<span class="mg-paquete-badge" style="background:' + c.bg +
+          ';color:' + c.text + ';">🏷 #' + mg.numero_etiqueta + '</span>';
+      } else {
+        badgeEl.innerHTML = '';
+      }
     }
-    lblCable.innerHTML = esc(mg.cable_marca || '—') + badgeHtml;
+
+    var elemEl = document.getElementById('mg-elemento');
+    if (elemEl) elemEl.textContent = mg.de_elemento || '';
+
     lblContador.textContent = (idx + 1) + ' / ' + mangueras.length;
 
-    // Info cable
-    divInfo.innerHTML = infoHtml(mg);
+    // Info cable (terminales) — ocultar si no hay nada
+    var infoHtmlStr = infoHtml(mg);
+    divInfo.innerHTML = infoHtmlStr;
+    divInfo.style.display = infoHtmlStr.trim() ? 'flex' : 'none';
 
     // Obs raw
     divObsRaw.textContent = mg.observaciones_raw || '';
@@ -229,16 +237,15 @@
 
   function infoHtml(mg) {
     var html = '';
-    if (mg.de_elemento) {
-      html += itemInfo('Elemento', mg.de_elemento);
-    }
-    if (mg.de_terminal && mg.de_terminal !== 'S/T') {
+    var deOk   = mg.de_terminal   && mg.de_terminal   !== 'S/T';
+    var paraOk = mg.para_terminal && mg.para_terminal !== 'S/T';
+    if (deOk) {
       html += itemInfo('De Terminal', mg.de_terminal);
     }
-    if (mg.de_terminal || mg.para_terminal) {
+    if (deOk && paraOk) {
       html += '<div class="info-arrow">→</div>';
     }
-    if (mg.para_terminal && mg.para_terminal !== 'S/T') {
+    if (paraOk) {
       html += itemInfo('Para Terminal', mg.para_terminal);
     }
     return html;
