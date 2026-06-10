@@ -27,6 +27,7 @@
 }
 
 .modal-operario-card {
+    position: relative;
     background: white;
     border-radius: 20px;
     padding: 44px 40px 36px;
