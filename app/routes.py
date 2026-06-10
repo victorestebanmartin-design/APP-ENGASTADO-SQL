@@ -77,12 +77,14 @@ def _es_error_nombre_bono_duplicado(error):
     return 'unique' in mensaje and 'bonos.nombre' in mensaje
 
 
-def error_interno(e, mensaje_usuario='Error interno del servidor'):
+def error_interno(e, mensaje_usuario='Error interno del servidor', status=500):
     """
-    Maneja un error 500 sin filtrar detalles internos al cliente.
+    Maneja un error sin filtrar detalles internos al cliente.
 
     Genera un ID corto de error, registra el traceback completo en el log
     con ese ID, y devuelve un JSON genérico (sin str(e)) con la referencia.
+    Por defecto responde 500; se puede pasar status=200 para endpoints cuyo
+    JS no comprueba el código HTTP y trataría un 500 como fallo de red.
     """
     import uuid
     error_id = uuid.uuid4().hex[:8]
@@ -90,7 +92,7 @@ def error_interno(e, mensaje_usuario='Error interno del servidor'):
     return jsonify({
         'success': False,
         'message': f'{mensaje_usuario} (ref: {error_id})'
-    }), 500
+    }), status
 
 
 # ==================== RUTAS PRINCIPALES ====================
@@ -232,7 +234,7 @@ def api_mangueras_datos():
 
         return jsonify({'success': True, 'mangueras': resultado})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/manguitos/datos', methods=['POST'])
@@ -283,7 +285,7 @@ def api_manguitos_datos():
 
         return jsonify({'success': True, 'elementos': resultado})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/manguitos/generar-txt', methods=['POST'])
@@ -367,7 +369,7 @@ def api_manguitos_generar_txt():
 
         return _respuesta_descarga_manguitos(ficheros, ref, edicion)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/manguitos/generar-txt-desde-excel', methods=['POST'])
@@ -437,9 +439,7 @@ def api_manguitos_generar_txt_desde_excel():
         return _respuesta_descarga_manguitos(ficheros, ref, edicion)
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)})
+        return error_interno(e)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -2499,13 +2499,7 @@ def datos_trabajo_v3():
         return jsonify(respuesta)
 
     except Exception as e:
-        import traceback
-        print(f"❌ Error en datos_trabajo_v3: {e}")
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al obtener datos: {str(e)}'
-        })
+        return error_interno(e, 'Error al obtener datos')
 
 
 # ==================== SESIONES DE TRABAJO (BLOQUEO CONCURRENTE) ====================
@@ -2976,12 +2970,9 @@ def api_etiquetas_grupos_json():
             'total': len(grupos)
         })
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al cargar etiquetas: {str(e)}'
-        })
+        # El JS comprueba response.ok antes de leer el JSON; un 500 lo
+        # trataría como fallo de red, por eso se mantiene el código 200.
+        return error_interno(e, 'Error al cargar etiquetas', status=200)
 
 
 @bp.route('/api/etiquetas/cargar_grupos', methods=['POST'])
@@ -3015,7 +3006,7 @@ def api_etiquetas_cargar_grupos():
             try:
                 total = _regenerar_etiquetas_archivo(archivo, excel_path)
             except Exception as e:
-                return jsonify({'success': False, 'message': f'Error al generar etiquetas: {str(e)}'})
+                return error_interno(e, 'Error al generar etiquetas')
             print(f"✅ {total} etiquetas generadas y guardadas")
             # Caer al bloque de lectura de BD (count > 0 ahora)
         
@@ -3077,12 +3068,7 @@ def api_etiquetas_cargar_grupos():
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al cargar grupos: {str(e)}'
-        })
+        return error_interno(e, 'Error al cargar grupos')
 
 
 @bp.route('/api/etiquetas/generar_html', methods=['POST'])
@@ -3525,12 +3511,9 @@ def api_etiquetas_grupos_bono(nombre_bono):
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al cargar etiquetas del bono: {str(e)}'
-        })
+        # El JS comprueba response.ok antes de leer el JSON; un 500 lo
+        # trataría como fallo de red, por eso se mantiene el código 200.
+        return error_interno(e, 'Error al cargar etiquetas del bono', status=200)
 
 
 @bp.route('/api/etiquetas/regenerar', methods=['POST'])
@@ -3888,12 +3871,7 @@ def api_etiquetas_buscar_por_numero():
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al buscar etiqueta: {str(e)}'
-        })
+        return error_interno(e, 'Error al buscar etiqueta')
 
 
 # ==================== API DE PROGRESO ====================
@@ -3919,10 +3897,7 @@ def api_bonos_progreso_get(nombre_bono):
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al cargar progreso: {str(e)}'
-        })
+        return error_interno(e, 'Error al cargar progreso')
 
 
 @bp.route('/api/bonos/<nombre_bono>/terminales-disponibles', methods=['GET'])
@@ -3991,9 +3966,7 @@ def api_bonos_terminales_disponibles(nombre_bono):
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<nombre_bono>/progreso', methods=['POST'])
@@ -4060,12 +4033,7 @@ def api_bonos_progreso_post(nombre_bono):
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al guardar progreso: {str(e)}'
-        })
+        return error_interno(e, 'Error al guardar progreso')
 
 @bp.route('/api/bonos/<nombre_bono>/progreso/parcial', methods=['POST'])
 def api_bonos_progreso_parcial(nombre_bono):
@@ -4140,9 +4108,7 @@ def api_bonos_progreso_parcial(nombre_bono):
         })
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<nombre_bono>/progreso/estado', methods=['POST'])
@@ -4185,7 +4151,7 @@ def api_bonos_progreso_estado(nombre_bono):
         return jsonify({'success': True, 'terminal': terminal, 'estado': estado})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<nombre_bono>/progreso-por-carro', methods=['GET'])
@@ -4209,7 +4175,7 @@ def api_bonos_progreso_por_carro(nombre_bono):
         return jsonify({'success': True, 'progreso_por_carro': por_carro})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e)
 
 
 def _crimps_por_terminal_archivo(archivo: str) -> dict:
@@ -4403,9 +4369,7 @@ def api_bonos_progreso_ponderado(nombre_bono):
         })
 
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e)
 
 
 # ==================== DEPLOY HOOK ====================
