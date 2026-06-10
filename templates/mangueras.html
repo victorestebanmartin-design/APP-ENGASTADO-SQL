@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Preparación de Mangueras - Sistema de Engastado</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=mangueras2">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v3.css') }}">
   <style>
     .mangueras-container { max-width: 1100px; margin: 0 auto; padding: 20px; }
     .mangueras-header { margin-bottom: 28px; }
@@ -101,16 +102,15 @@
 
     <div class="section-card">
       <h2>📋 Guiado de preparación</h2>
-      <p class="section-desc">Navega por las mangueras del Excel con instrucciones de pelado. Usa ← → o Enter / Espacio.</p>
+      <p class="section-desc">Navega por las mangueras del corte con instrucciones de pelado. Usa ← → o Enter / Espacio.</p>
 
       <div class="archivo-form">
-        <select id="mg-archivo"><option value="">Selecciona un archivo Excel...</option></select>
-        <button id="mg-cargar-btn">Cargar</button>
+        <button id="mg-cargar-btn">🔌 Cargar corte</button>
       </div>
 
       <div id="mg-vacio">
         <div class="cs-icon">🛠️</div>
-        <p>Carga un Excel para comenzar. Solo se muestran filas con instrucciones de pelado en la columna Observaciones.</p>
+        <p>Carga un corte para comenzar. Solo se muestran filas con instrucciones de pelado en la columna Observaciones.</p>
       </div>
 
       <div id="mg-activo" style="display:none">
@@ -138,7 +138,67 @@
     </div>
   </div>
 
+  <!-- Modal selección de corte -->
+  <div id="modal-corte" class="modal-operario-overlay">
+    <div class="modal-bono-card">
+      <a href="{{ url_for('main.modules') }}" class="btn-cerrar-modal" title="Volver a módulos">&times;</a>
+
+      <!-- Vista 1: elegir método -->
+      <div id="modal-corte-metodo">
+        <div class="modal-operario-header">
+          <div class="modal-operario-icon">🔌</div>
+          <h2>Cargar Corte de cable a trabajar</h2>
+          <p>Elige cómo quieres cargarlo</p>
+        </div>
+        <div class="modal-bono-opciones">
+          <button type="button" id="btn-corte-input" class="modal-bono-opcion">
+            <span class="opcion-icon">⌨️</span>
+            <span class="opcion-titulo">Introducir código</span>
+            <span class="opcion-desc">Escribe o escanea el código del corte</span>
+          </button>
+          <button type="button" id="btn-corte-lista" class="modal-bono-opcion">
+            <span class="opcion-icon">📋</span>
+            <span class="opcion-titulo">Cortes disponibles</span>
+            <span class="opcion-desc">Selecciona de la lista de cortes registrados</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Vista 2: introducir código -->
+      <div id="modal-corte-input" class="hidden">
+        <div class="modal-operario-header">
+          <div class="modal-operario-icon">⌨️</div>
+          <h2>Introducir Código de Corte</h2>
+        </div>
+        <div class="modal-operario-body">
+          <label for="modal-input-corte">Código de Corte</label>
+          <input type="text" id="modal-input-corte" placeholder="Escanea o escribe el código" autocomplete="off">
+          <div id="modal-corte-error" class="modal-operario-error hidden">Introduce un código de corte válido.</div>
+        </div>
+        <div class="modal-bono-footer">
+          <button type="button" id="btn-corte-volver1" class="btn-volver-modal">← Volver</button>
+          <button type="button" id="btn-corte-confirmar" class="btn-confirmar-operario btn-confirmar-flex">Cargar Corte</button>
+        </div>
+      </div>
+
+      <!-- Vista 3: lista de cortes disponibles -->
+      <div id="modal-corte-lista" class="hidden">
+        <div class="modal-operario-header">
+          <div class="modal-operario-icon">📋</div>
+          <h2>Cortes Disponibles</h2>
+        </div>
+        <div id="modal-cortes-lista-contenido" class="modal-bonos-scroll">
+          <p class="modal-bonos-cargando">Cargando cortes...</p>
+        </div>
+        <div class="modal-bono-footer">
+          <button type="button" id="btn-corte-volver2" class="btn-volver-modal">← Volver</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=1"></script>
+  <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=2"></script>
 </body>
 </html>

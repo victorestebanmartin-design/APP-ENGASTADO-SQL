@@ -11,9 +11,9 @@
 
   var mangueras = [];   // lista completa cargada
   var idx       = 0;   // índice actual
+  var cortes    = [];   // cortes registrados disponibles
 
   // ── Referencias DOM ──────────────────────────────────────────────────
-  var selArchivo  = document.getElementById('mg-archivo');
   var btnCargar   = document.getElementById('mg-cargar-btn');
   var divVacio    = document.getElementById('mg-vacio');
   var divActivo   = document.getElementById('mg-activo');
@@ -25,29 +25,113 @@
   var btnPrev     = document.getElementById('btn-mg-prev');
   var btnNext     = document.getElementById('btn-mg-next');
 
-  // ── Cargar lista de archivos Excel ───────────────────────────────────
-  async function cargarListaArchivos() {
-    selArchivo.innerHTML = '<option value="">Selecciona un archivo Excel...</option>';
-    try {
-      var resp = await fetch('/api/list_files');
-      var data = await resp.json();
-      if (data.success && data.files) {
-        data.files.forEach(function (f) {
-          var opt = document.createElement('option');
-          opt.value = f.nombre || f;
-          opt.textContent = f.nombre || f;
-          selArchivo.appendChild(opt);
-        });
-      }
-    } catch (e) {
-      console.error('Error cargando lista de archivos:', e);
+  // Modal corte
+  var modalCorte   = document.getElementById('modal-corte');
+  var inputCorte   = document.getElementById('modal-input-corte');
+  var errorCorte   = document.getElementById('modal-corte-error');
+  var listaCorteEl = document.getElementById('modal-cortes-lista-contenido');
+
+  // ── Modal de selección de corte ──────────────────────────────────────
+  function mostrarVistaCorte(vista) {
+    ['metodo', 'input', 'lista'].forEach(function (v) {
+      var el = document.getElementById('modal-corte-' + v);
+      if (el) el.classList.toggle('hidden', v !== vista);
+    });
+    if (vista === 'input') {
+      setTimeout(function () { if (inputCorte) inputCorte.focus(); }, 50);
     }
   }
 
-  // ── Cargar mangueras del Excel ────────────────────────────────────────
-  btnCargar.addEventListener('click', async function () {
-    var archivo = selArchivo.value;
-    if (!archivo) { alert('Selecciona un archivo Excel primero.'); return; }
+  function abrirModalCorte() {
+    mostrarVistaCorte('metodo');
+    if (modalCorte) modalCorte.classList.remove('hidden');
+  }
+
+  function cerrarModalCorte() {
+    if (modalCorte) modalCorte.classList.add('hidden');
+  }
+
+  function mostrarInputCorte() {
+    if (errorCorte) errorCorte.classList.add('hidden');
+    if (inputCorte) inputCorte.value = '';
+    mostrarVistaCorte('input');
+  }
+
+  function mostrarListaCortes() {
+    mostrarVistaCorte('lista');
+    listaCorteEl.innerHTML = '<p class="modal-bonos-cargando">Cargando cortes...</p>';
+
+    if (cortes.length === 0) {
+      listaCorteEl.innerHTML = '<p class="modal-bonos-vacio">No hay cortes registrados.</p>';
+      return;
+    }
+
+    listaCorteEl.innerHTML = cortes.map(function (c) {
+      var desc = c.descripcion || c.proyecto || '';
+      return '<div class="modal-bono-item" data-codigo="' + esc(c.codigo) + '">' +
+               '<div>' +
+                 '<div class="modal-bono-item-nombre">' + esc(c.codigo) + '</div>' +
+                 (desc ? '<div class="modal-bono-item-fecha">' + esc(desc) + '</div>' : '') +
+               '</div>' +
+               '<span class="modal-bono-item-arrow">▶</span>' +
+             '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call(
+      listaCorteEl.querySelectorAll('.modal-bono-item'),
+      function (item) {
+        item.addEventListener('click', function () {
+          seleccionarCorte(item.getAttribute('data-codigo'));
+        });
+      }
+    );
+  }
+
+  function confirmarCorteCodigo() {
+    var valor = inputCorte ? inputCorte.value.trim() : '';
+    if (!valor) {
+      if (errorCorte) errorCorte.classList.remove('hidden');
+      if (inputCorte) inputCorte.focus();
+      return;
+    }
+    seleccionarCorte(valor);
+  }
+
+  function seleccionarCorte(codigo) {
+    var cod = String(codigo || '').trim();
+    var corte = cortes.find(function (c) {
+      return String(c.codigo).toUpperCase() === cod.toUpperCase();
+    });
+
+    if (!corte) {
+      if (errorCorte) {
+        errorCorte.textContent = 'El código "' + cod + '" no está registrado.';
+        errorCorte.classList.remove('hidden');
+      }
+      mostrarVistaCorte('input');
+      if (inputCorte) { inputCorte.value = cod; inputCorte.focus(); }
+      return;
+    }
+
+    cerrarModalCorte();
+    cargarMangueras(corte.archivo);
+  }
+
+  // ── Cargar lista de cortes registrados ───────────────────────────────
+  async function cargarListaCortes() {
+    try {
+      var resp = await fetch('/api/codigos_cortes/listar');
+      var data = await resp.json();
+      cortes = (data.success && data.codigos) ? data.codigos : [];
+    } catch (e) {
+      console.error('Error cargando cortes:', e);
+      cortes = [];
+    }
+  }
+
+  // ── Cargar mangueras del corte ───────────────────────────────────────
+  async function cargarMangueras(archivo) {
+    if (!archivo) { abrirModalCorte(); return; }
 
     btnCargar.disabled = true;
     btnCargar.textContent = 'Cargando...';
@@ -62,12 +146,14 @@
 
       if (!data.success) {
         alert('Error: ' + (data.error || 'Error desconocido'));
+        abrirModalCorte();
         return;
       }
 
       mangueras = data.mangueras || [];
       if (mangueras.length === 0) {
-        alert('No se encontraron filas con instrucciones de pelado (<-) en este archivo.');
+        alert('No se encontraron filas con instrucciones de pelado (<-) en este corte.');
+        abrirModalCorte();
         return;
       }
 
@@ -78,11 +164,27 @@
 
     } catch (e) {
       alert('Error de conexión: ' + e.message);
+      abrirModalCorte();
     } finally {
       btnCargar.disabled = false;
-      btnCargar.textContent = 'Cargar';
+      btnCargar.textContent = '🔌 Cargar corte';
     }
-  });
+  }
+
+  // Botón cabecera → reabrir modal
+  btnCargar.addEventListener('click', abrirModalCorte);
+
+  // Wiring botones modal
+  document.getElementById('btn-corte-input').addEventListener('click', mostrarInputCorte);
+  document.getElementById('btn-corte-lista').addEventListener('click', mostrarListaCortes);
+  document.getElementById('btn-corte-volver1').addEventListener('click', function () { mostrarVistaCorte('metodo'); });
+  document.getElementById('btn-corte-volver2').addEventListener('click', function () { mostrarVistaCorte('metodo'); });
+  document.getElementById('btn-corte-confirmar').addEventListener('click', confirmarCorteCodigo);
+  if (inputCorte) {
+    inputCorte.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') confirmarCorteCodigo();
+    });
+  }
 
   // ── Renderizar manguera actual ────────────────────────────────────────
   function renderManguera() {
@@ -275,6 +377,7 @@
 
   // ── Init ─────────────────────────────────────────────────────────────
   if (typeof initCableColors === 'function') initCableColors();
-  cargarListaArchivos();
+  cargarListaCortes();
+  abrirModalCorte();
 
 })();
