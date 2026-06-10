@@ -11,6 +11,11 @@
     <style>
         .campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
         .campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
+        .report-tab { background: none; border: none; border-bottom: 3px solid transparent; color: #64748b; padding: 10px 18px; cursor: pointer; font-size: 0.95em; font-family: inherit; transition: color .15s, border-color .15s; }
+        .report-tab:hover { color: #f1f5f9; }
+        .report-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
+        .badge-op-activo { background: rgba(34,197,94,.15); color: #22c55e; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
+        .badge-op-inactivo { background: rgba(100,116,139,.15); color: #64748b; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
     </style>
 </head>
 <body>
@@ -29,6 +34,7 @@
                 <div class="admin-nav-label">Gestión</div>
                 <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
                 <button class="admin-nav-item" data-section="organizacion" onclick="adminNav('organizacion')"><span class="ico">🏢</span> Organización</button>
+                <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
                 <button class="admin-nav-item" data-section="impresora" onclick="adminNav('impresora')"><span class="ico">🖨️</span> Impresora</button>
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
 
@@ -140,6 +146,30 @@
                     </div>
                 </section>
 
+                <!-- ============ OPERARIOS ============ -->
+                <section id="sec-operarios" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Operarios</h1>
+                        <p>Gestiona la lista de operarios que acceden al módulo de engastado</p>
+                    </div>
+                    <div class="card">
+                        <h2>👷 Añadir Operario</h2>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <input type="text" id="op-nuevo-nombre" placeholder="Nombre del operario"
+                                style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
+                                onkeypress="if(event.key==='Enter')crearOperario()">
+                            <button onclick="crearOperario()" class="btn-primary" style="white-space:nowrap;">+ Añadir</button>
+                        </div>
+                        <div id="op-msg" style="margin-top:8px;font-size:0.88em;display:none;"></div>
+                    </div>
+                    <div class="card" style="margin-top:16px;">
+                        <h2>📋 Lista de Operarios</h2>
+                        <div id="op-lista-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- ============ IMPRESORA ============ -->
                 <section id="sec-impresora" class="admin-section">
                     <div class="admin-section-head">
@@ -247,72 +277,59 @@
                 <!-- ============ REPORT (TRAZABILIDAD) ============ -->
                 <section id="sec-report" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Report — Trazabilidad <span class="report-badge">En desarrollo</span></h1>
-                        <p>Registro de quién, cuándo y con qué se ha trabajado. Exportable a PDF para auditorías.</p>
+                        <h1>Report — Trazabilidad</h1>
+                        <p>Consulta quién engastó cada terminal, en qué bono y cuándo.</p>
                     </div>
 
-                    <!-- Toolbar de filtros (esqueleto) -->
-                    <div class="report-toolbar">
-                        <div class="report-field">
-                            <label>Desde</label>
-                            <input type="date" id="report-desde" disabled>
-                        </div>
-                        <div class="report-field">
-                            <label>Hasta</label>
-                            <input type="date" id="report-hasta" disabled>
-                        </div>
-                        <div class="report-field">
-                            <label>Operario / Máquina</label>
-                            <select id="report-operario" disabled>
-                                <option>— Todos —</option>
-                            </select>
-                        </div>
-                        <div class="report-field">
-                            <label>Bono</label>
-                            <input type="text" id="report-bono" placeholder="Todos" disabled>
-                        </div>
-                        <div class="report-toolbar-actions">
-                            <button class="btn-secondary" onclick="reportBuscar()">🔍 Buscar</button>
-                            <button class="btn-primary" onclick="reportGenerarPDF()">📄 Generar PDF</button>
+                    <!-- Tabs -->
+                    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:0;">
+                        <button class="report-tab active" data-tab="bono" onclick="reportTab('bono')">📦 Por Bono</button>
+                        <button class="report-tab" data-tab="terminal" onclick="reportTab('terminal')">🔌 Por Terminal</button>
+                        <button class="report-tab" data-tab="operario" onclick="reportTab('operario')">👷 Por Operario</button>
+                    </div>
+
+                    <!-- Tab: Por Bono -->
+                    <div id="report-tab-bono" class="report-tab-content">
+                        <div class="card">
+                            <h2>📦 Report por Bono</h2>
+                            <p class="instruccion">Selecciona un bono para ver qué operario engastó cada terminal y cuándo.</p>
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+                                <select id="report-sel-bono" style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
+                                    <option value="">— Seleccionar bono —</option>
+                                </select>
+                                <button onclick="reportBuscarBono()" class="btn-primary">🔍 Ver</button>
+                            </div>
+                            <div id="report-result-bono"></div>
                         </div>
                     </div>
 
-                    <!-- Estadísticas rápidas (esqueleto) -->
-                    <div class="report-stats">
-                        <div class="report-stat"><div class="num" id="report-stat-sesiones">—</div><div class="lbl">Sesiones</div></div>
-                        <div class="report-stat"><div class="num" id="report-stat-operarios">—</div><div class="lbl">Operarios</div></div>
-                        <div class="report-stat"><div class="num" id="report-stat-bonos">—</div><div class="lbl">Bonos</div></div>
-                        <div class="report-stat"><div class="num" id="report-stat-paquetes">—</div><div class="lbl">Paquetes</div></div>
+                    <!-- Tab: Por Terminal -->
+                    <div id="report-tab-terminal" class="report-tab-content" style="display:none;">
+                        <div class="card">
+                            <h2>🔌 Report por Terminal</h2>
+                            <p class="instruccion">Introduce el código de terminal para ver todos los bonos en los que fue engastado.</p>
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+                                <input type="text" id="report-input-terminal" placeholder="Ej: 641H10001"
+                                    style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
+                                    onkeypress="if(event.key==='Enter')reportBuscarTerminal()">
+                                <button onclick="reportBuscarTerminal()" class="btn-primary">🔍 Ver</button>
+                            </div>
+                            <div id="report-result-terminal"></div>
+                        </div>
                     </div>
 
-                    <!-- Tabla de trazabilidad (esqueleto) -->
-                    <div class="card">
-                        <h2>🧾 Registro de actividad</h2>
-                        <p class="instruccion">Quién · Cuándo · Qué — cada acción quedará registrada aquí.</p>
-                        <div class="tabla-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Quién</th>
-                                        <th>Máquina / Terminal</th>
-                                        <th>Cuándo (inicio)</th>
-                                        <th>Cuándo (fin)</th>
-                                        <th>Qué (bono / carro)</th>
-                                        <th>Archivo</th>
-                                        <th>Paquetes</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="report-tbody">
-                                    <tr>
-                                        <td colspan="7">
-                                            <div class="report-empty">
-                                                <div class="ico">📊</div>
-                                                <p>La trazabilidad se desarrollará en el siguiente paso.<br>Aquí se listará cada sesión de trabajo con su detalle completo.</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    <!-- Tab: Por Operario -->
+                    <div id="report-tab-operario" class="report-tab-content" style="display:none;">
+                        <div class="card">
+                            <h2>👷 Report por Operario</h2>
+                            <p class="instruccion">Selecciona un operario para ver todos los terminales que ha engastado.</p>
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+                                <select id="report-sel-operario" style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
+                                    <option value="">— Seleccionar operario —</option>
+                                </select>
+                                <button onclick="reportBuscarOperario()" class="btn-primary">🔍 Ver</button>
+                            </div>
+                            <div id="report-result-operario"></div>
                         </div>
                     </div>
                 </section>
@@ -439,6 +456,252 @@
     function reportGenerarPDF() {
         alert('La generación de PDF para auditorías se implementará en el siguiente paso.');
     }
+
+    // ──────────────────────────────────────────────────────────────
+    //  OPERARIOS — CRUD
+    // ──────────────────────────────────────────────────────────────
+    function cargarOperariosAdmin() {
+        fetch('/api/operarios')
+            .then(r => r.json())
+            .then(data => {
+                const cont = document.getElementById('op-lista-container');
+                if (!cont) return;
+                if (!data.operarios || data.operarios.length === 0) {
+                    cont.innerHTML = '<p class="instruccion">No hay operarios registrados. Añade uno arriba.</p>';
+                    return;
+                }
+                const filas = data.operarios.map(op => `
+                    <tr id="op-row-${op.id}">
+                        <td style="padding:10px 14px;">
+                            <span id="op-nombre-${op.id}" style="color:#f1f5f9;">${op.nombre}</span>
+                            <input type="text" id="op-edit-${op.id}" value="${op.nombre}"
+                                style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:180px;"
+                                onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
+                        </td>
+                        <td style="padding:10px 14px;">
+                            <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
+                        </td>
+                        <td style="padding:10px 14px;white-space:nowrap;">
+                            <span id="op-btns-${op.id}">
+                                <button onclick="editarOperario('${op.id}')" class="btn-accion-edit" title="Editar">✏️</button>
+                                ${op.activo
+                                    ? `<button onclick="desactivarOperario('${op.id}')" class="btn-accion-del" title="Desactivar" style="margin-left:6px;">🚫</button>`
+                                    : `<button onclick="activarOperario('${op.id}')" class="btn-accion-edit" title="Activar" style="margin-left:6px;">✅</button>`
+                                }
+                            </span>
+                            <span id="op-edit-btns-${op.id}" style="display:none;">
+                                <button onclick="guardarOperario('${op.id}')" class="btn-primary" style="padding:4px 12px;font-size:0.85em;">Guardar</button>
+                                <button onclick="cancelarEditarOperario('${op.id}')" class="btn-secondary" style="padding:4px 12px;font-size:0.85em;margin-left:6px;">Cancelar</button>
+                            </span>
+                        </td>
+                    </tr>`).join('');
+                cont.innerHTML = `
+                    <table style="width:100%;border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #334155;color:#64748b;font-size:0.85em;">
+                                <th style="padding:8px 14px;text-align:left;">Nombre</th>
+                                <th style="padding:8px 14px;text-align:left;">Estado</th>
+                                <th style="padding:8px 14px;text-align:left;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>${filas}</tbody>
+                    </table>`;
+                // Cargar también en select del report
+                const selOp = document.getElementById('report-sel-operario');
+                if (selOp) {
+                    selOp.innerHTML = '<option value="">— Todos los operarios —</option>';
+                    data.operarios.filter(o => o.activo).forEach(o => {
+                        selOp.innerHTML += `<option value="${o.nombre}">${o.nombre}</option>`;
+                    });
+                }
+            });
+    }
+
+    function crearOperario() {
+        const input = document.getElementById('op-nuevo-nombre');
+        const msg = document.getElementById('op-msg');
+        const nombre = (input.value || '').trim();
+        if (!nombre) { _opMsg('Introduce un nombre.', 'error'); return; }
+        fetch('/api/operarios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                input.value = '';
+                _opMsg('Operario añadido.', 'ok');
+                cargarOperariosAdmin();
+            } else {
+                _opMsg(data.error || 'Error al crear.', 'error');
+            }
+        });
+    }
+
+    function editarOperario(id) {
+        document.getElementById('op-nombre-' + id).style.display = 'none';
+        document.getElementById('op-edit-' + id).style.display = 'inline-block';
+        document.getElementById('op-btns-' + id).style.display = 'none';
+        document.getElementById('op-edit-btns-' + id).style.display = 'inline';
+        document.getElementById('op-edit-' + id).focus();
+    }
+
+    function cancelarEditarOperario(id) {
+        document.getElementById('op-nombre-' + id).style.display = 'inline';
+        document.getElementById('op-edit-' + id).style.display = 'none';
+        document.getElementById('op-btns-' + id).style.display = 'inline';
+        document.getElementById('op-edit-btns-' + id).style.display = 'none';
+    }
+
+    function guardarOperario(id) {
+        const nombre = (document.getElementById('op-edit-' + id).value || '').trim();
+        if (!nombre) return;
+        fetch(`/api/operarios/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre })
+        }).then(r => r.json()).then(data => {
+            if (data.success) { _opMsg('Guardado.', 'ok'); cargarOperariosAdmin(); }
+            else _opMsg(data.error || 'Error.', 'error');
+        });
+    }
+
+    function desactivarOperario(id) {
+        if (!confirm('¿Desactivar este operario?')) return;
+        fetch(`/api/operarios/${id}`, { method: 'DELETE' })
+            .then(r => r.json()).then(data => {
+                if (data.success) { _opMsg('Desactivado.', 'ok'); cargarOperariosAdmin(); }
+                else _opMsg(data.error || 'Error.', 'error');
+            });
+    }
+
+    function activarOperario(id) {
+        fetch(`/api/operarios/${id}/activar`, { method: 'POST' })
+            .then(r => r.json()).then(data => {
+                if (data.success) { _opMsg('Activado.', 'ok'); cargarOperariosAdmin(); }
+                else _opMsg(data.error || 'Error.', 'error');
+            });
+    }
+
+    function _opMsg(texto, tipo) {
+        const el = document.getElementById('op-msg');
+        if (!el) return;
+        el.textContent = texto;
+        el.style.display = 'block';
+        el.style.color = tipo === 'ok' ? '#22c55e' : '#ef4444';
+        setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  REPORT — TABS + FUNCIONES
+    // ──────────────────────────────────────────────────────────────
+    function reportTab(tab) {
+        document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.report-tab-content').forEach(d => d.style.display = 'none');
+        document.querySelector(`.report-tab[data-tab="${tab}"]`).classList.add('active');
+        document.getElementById('report-tab-' + tab).style.display = 'block';
+    }
+
+    function _reportTabla(cols, filas, emptyMsg) {
+        if (!filas.length) return `<p style="color:#64748b;margin-top:8px;">${emptyMsg}</p>`;
+        const th = cols.map(c => `<th style="padding:8px 14px;text-align:left;color:#64748b;font-size:0.82em;border-bottom:1px solid #334155;">${c}</th>`).join('');
+        const rows = filas.map(f => `<tr>${f.map(c => `<td style="padding:9px 14px;border-bottom:1px solid #1e293b;color:#f1f5f9;font-size:0.9em;">${c || '<span style="color:#475569">—</span>'}</td>`).join('')}</tr>`).join('');
+        return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function _fmtFecha(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            return d.toLocaleDateString('es-ES') + ' ' + d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
+        } catch(e) { return iso; }
+    }
+
+    function _estadoBadge(estado) {
+        const color = estado === 'completado' ? '#22c55e' : '#f59e0b';
+        return `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:12px;font-size:0.8em;">${estado || 'en_proceso'}</span>`;
+    }
+
+    function reportBuscarBono() {
+        const bono = document.getElementById('report-sel-bono').value;
+        if (!bono) { alert('Selecciona un bono.'); return; }
+        const cont = document.getElementById('report-result-bono');
+        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
+        fetch(`/api/report/progreso?bono=${encodeURIComponent(bono)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
+                const filas = data.registros.map(r => [
+                    `<code style="color:#93c5fd;font-size:0.92em;">${r.terminal}</code>`,
+                    r.operario || '<span style="color:#475569">Sin registrar</span>',
+                    _estadoBadge(r.estado),
+                    _fmtFecha(r.fecha_inicio),
+                    _fmtFecha(r.fecha_ultima_actualizacion),
+                    (r.carros_completados || []).join(', ') || '—'
+                ]);
+                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} terminal${data.total !== 1 ? 'es' : ''} en el bono <strong style="color:#f1f5f9;">${bono}</strong></p>` +
+                    _reportTabla(['Terminal','Operario','Estado','Fecha inicio','Última actualización','Carros completados'], filas, 'Sin datos para este bono.');
+            });
+    }
+
+    function reportBuscarTerminal() {
+        const terminal = (document.getElementById('report-input-terminal').value || '').trim().toUpperCase();
+        if (!terminal) { alert('Introduce un código de terminal.'); return; }
+        const cont = document.getElementById('report-result-terminal');
+        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
+        fetch(`/api/report/progreso?terminal=${encodeURIComponent(terminal)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
+                const filas = data.registros.map(r => [
+                    `<code style="color:#a78bfa;font-size:0.92em;">${r.bono}</code>`,
+                    r.operario || '<span style="color:#475569">Sin registrar</span>',
+                    _estadoBadge(r.estado),
+                    _fmtFecha(r.fecha_inicio),
+                    _fmtFecha(r.fecha_ultima_actualizacion)
+                ]);
+                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} registro${data.total !== 1 ? 's' : ''} para el terminal <strong style="color:#f1f5f9;">${terminal}</strong></p>` +
+                    _reportTabla(['Bono','Operario','Estado','Fecha inicio','Última actualización'], filas, 'Sin registros para este terminal.');
+            });
+    }
+
+    function reportBuscarOperario() {
+        const operario = document.getElementById('report-sel-operario').value;
+        if (!operario) { alert('Selecciona un operario.'); return; }
+        const cont = document.getElementById('report-result-operario');
+        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
+        fetch(`/api/report/progreso?operario=${encodeURIComponent(operario)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
+                const filas = data.registros.map(r => [
+                    `<code style="color:#93c5fd;font-size:0.92em;">${r.terminal}</code>`,
+                    `<code style="color:#a78bfa;font-size:0.92em;">${r.bono}</code>`,
+                    _estadoBadge(r.estado),
+                    _fmtFecha(r.fecha_inicio),
+                    _fmtFecha(r.fecha_ultima_actualizacion)
+                ]);
+                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} terminal${data.total !== 1 ? 'es' : ''} engastado${data.total !== 1 ? 's' : ''} por <strong style="color:#f1f5f9;">${operario}</strong></p>` +
+                    _reportTabla(['Terminal','Bono','Estado','Fecha inicio','Última actualización'], filas, 'Sin registros para este operario.');
+            });
+    }
+
+    function cargarSelectsBonos() {
+        fetch('/api/bonos')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('report-sel-bono');
+                if (!sel || !data.bonos) return;
+                sel.innerHTML = '<option value="">— Seleccionar bono —</option>';
+                data.bonos.forEach(b => {
+                    sel.innerHTML += `<option value="${b.nombre}">${b.nombre}</option>`;
+                });
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        cargarOperariosAdmin();
+        cargarSelectsBonos();
+    });
     </script>
 
     <script>

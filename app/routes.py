@@ -2165,6 +2165,157 @@ def api_cable_colores_sin_asignar():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== OPERARIOS ====================
+
+@bp.route('/api/operarios', methods=['GET'])
+def api_operarios_get():
+    """Listar operarios activos"""
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(
+                "SELECT id, nombre, activo, created_at FROM operarios ORDER BY nombre"
+            )).fetchall()
+        return jsonify({'success': True, 'operarios': [
+            {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3]}
+            for r in rows
+        ]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/operarios', methods=['POST'])
+def api_operarios_create():
+    """Crear nuevo operario"""
+    try:
+        import uuid
+        data = request.get_json() or {}
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+        op_id = str(uuid.uuid4())[:8]
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "INSERT INTO operarios (id, nombre) VALUES (:id, :nombre)"
+            ), {'id': op_id, 'nombre': nombre})
+            conn.commit()
+        return jsonify({'success': True, 'operario': {'id': op_id, 'nombre': nombre, 'activo': 1}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/operarios/<op_id>', methods=['PUT'])
+def api_operarios_update(op_id):
+    """Actualizar nombre de operario"""
+    try:
+        data = request.get_json() or {}
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE operarios SET nombre=:nombre WHERE id=:id"
+            ), {'nombre': nombre, 'id': op_id})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/operarios/<op_id>', methods=['DELETE'])
+def api_operarios_delete(op_id):
+    """Desactivar operario"""
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE operarios SET activo=0 WHERE id=:id"
+            ), {'id': op_id})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/operarios/<op_id>/activar', methods=['POST'])
+def api_operarios_activar(op_id):
+    """Reactivar operario desactivado"""
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE operarios SET activo=1 WHERE id=:id"
+            ), {'id': op_id})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== REPORTS / TRAZABILIDAD ====================
+
+@bp.route('/api/report/progreso', methods=['GET'])
+def api_report_progreso():
+    """
+    Agrega todos los JSON de progreso y devuelve trazabilidad completa.
+    Parámetros opcionales:
+      ?bono=<nombre>        → filtrar por bono
+      ?terminal=<codigo>    → filtrar por terminal
+      ?operario=<nombre>    → filtrar por operario
+    """
+    try:
+        filtro_bono = request.args.get('bono', '').strip() or None
+        filtro_terminal = request.args.get('terminal', '').strip().upper() or None
+        filtro_operario = request.args.get('operario', '').strip() or None
+
+        data_dir = current_app.config['DATA_DIR']
+        registros = []
+
+        for fname in sorted(os.listdir(data_dir)):
+            if not (fname.startswith('progreso_bono_') and fname.endswith('.json')):
+                continue
+            nombre_bono = fname[len('progreso_bono_'):-len('.json')]
+            if filtro_bono and nombre_bono != filtro_bono:
+                continue
+            fpath = os.path.join(data_dir, fname)
+            try:
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    progreso = json.load(f)
+            except Exception:
+                continue
+
+            for terminal, datos in progreso.items():
+                if filtro_terminal and terminal.upper() != filtro_terminal:
+                    continue
+                operario = datos.get('operario', '')
+                if filtro_operario and operario.lower() != filtro_operario.lower():
+                    continue
+                registros.append({
+                    'bono': nombre_bono,
+                    'terminal': terminal,
+                    'operario': operario,
+                    'estado': datos.get('estado', ''),
+                    'carros_completados': datos.get('carros_completados', []),
+                    'fecha_inicio': datos.get('fecha_inicio', ''),
+                    'fecha_ultima_actualizacion': datos.get('fecha_ultima_actualizacion', ''),
+                })
+
+        # Estadísticas
+        bonos_unicos = len(set(r['bono'] for r in registros))
+        terminales_unicos = len(set(r['terminal'] for r in registros))
+        operarios_unicos = len(set(r['operario'] for r in registros if r['operario']))
+
+        return jsonify({
+            'success': True,
+            'registros': registros,
+            'total': len(registros),
+            'bonos': bonos_unicos,
+            'terminales': terminales_unicos,
+            'operarios': operarios_unicos,
+        })
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ==================== SALUD DEL SISTEMA ====================
 
 @bp.route('/health')
@@ -3869,7 +4020,8 @@ def api_bonos_progreso_post(nombre_bono):
         terminal = data.get('terminal')
         carro = data.get('carro')
         terminales_proyecto = data.get('terminales_proyecto', [])
-        
+        operario = (data.get('operario') or '').strip()
+
         if not terminal or not (carro or isinstance(carro, int)):
             return jsonify({
                 'success': False,
@@ -3893,7 +4045,11 @@ def api_bonos_progreso_post(nombre_bono):
                 'fecha_inicio': datetime.now().isoformat(),
                 'fecha_ultima_actualizacion': datetime.now().isoformat()
             }
-        
+
+        # Guardar operario si se envió
+        if operario:
+            progreso[terminal]['operario'] = operario
+
         # Agregar carro a completados si no está ya
         if carro not in progreso[terminal]['carros_completados']:
             progreso[terminal]['carros_completados'].append(carro)
@@ -3936,6 +4092,7 @@ def api_bonos_progreso_parcial(nombre_bono):
         carro = data.get('carro')
         paquetes_saltados = data.get('paquetes_saltados', [])
         paquetes_hechos = data.get('paquetes_hechos', 0)
+        operario = (data.get('operario') or '').strip()
 
         if not terminal:
             return jsonify({'success': False, 'message': 'Se requiere terminal'})
@@ -3955,6 +4112,10 @@ def api_bonos_progreso_parcial(nombre_bono):
                 'fecha_inicio': datetime.now().isoformat(),
                 'fecha_ultima_actualizacion': datetime.now().isoformat()
             }
+
+        # Guardar operario si se envió
+        if operario:
+            progreso[terminal]['operario'] = operario
 
         # Guardar paquetes saltados por carro
         if 'paquetes_saltados_por_carro' not in progreso[terminal]:
@@ -4007,6 +4168,7 @@ def api_bonos_progreso_estado(nombre_bono):
         data = request.get_json()
         terminal = data.get('terminal')
         estado = data.get('estado')  # 'en_proceso' o 'completado'
+        operario = (data.get('operario') or '').strip()
 
         if not terminal or estado not in ('en_proceso', 'completado'):
             return jsonify({'success': False, 'message': 'Parámetros inválidos'})
@@ -4029,6 +4191,9 @@ def api_bonos_progreso_estado(nombre_bono):
         else:
             progreso[terminal]['estado'] = estado
             progreso[terminal]['fecha_ultima_actualizacion'] = datetime.now().isoformat()
+
+        if operario:
+            progreso[terminal]['operario'] = operario
 
         with open(progreso_path, 'w', encoding='utf-8') as f:
             json.dump(progreso, f, indent=2, ensure_ascii=False)

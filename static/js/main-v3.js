@@ -44,12 +44,24 @@ document.addEventListener('DOMContentLoaded', function() {
     if (operarioGuardado) {
         _activarOperario(operarioGuardado);
     } else {
+        // Cargar lista de operarios en el select
+        fetch('/api/operarios')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('input-operario');
+                if (sel && data.operarios) {
+                    data.operarios.filter(o => o.activo).forEach(o => {
+                        const opt = document.createElement('option');
+                        opt.value = o.nombre;
+                        opt.textContent = o.nombre;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {}); // silencioso si falla
         const inputOperario = document.getElementById('input-operario');
         if (inputOperario) {
             inputOperario.focus();
-            inputOperario.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') confirmarOperario();
-            });
         }
     }
 
@@ -3162,6 +3174,7 @@ async function cancelarModalPaquetes() {
                 body: JSON.stringify({
                     terminal: terminalActual,
                     carro: carro.carro,
+                    operario: operarioActual || '',
                     paquetes_hechos: paquetesRealmenteHechos,
                     paquetes_saltados: paquetesSaltados.map(p => ({ elemento: p.elemento, cod_cable: p.cod_cable, num_cables: p.num_cables })),
                     paquetes_pendientes: todosPendientes
@@ -3637,6 +3650,7 @@ async function paqueteCompletado() {
                 body: JSON.stringify({
                     terminal: terminalActual,
                     carro: carroActual.carro,
+                    operario: operarioActual || '',
                     paquetes_hechos: paqueteActualIndex,
                     paquetes_pendientes: paquetesSaltados.map(p => ({
                         elemento: p.elemento,
@@ -3656,6 +3670,7 @@ async function paqueteCompletado() {
                 body: JSON.stringify({
                     terminal: terminalActual,
                     carro: carroActual.carro,
+                    operario: operarioActual || '',
                     terminales_proyecto: [terminalActual]
                 })
             });
@@ -3699,7 +3714,7 @@ async function terminarTerminal() {
         await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminal: terminalActual, estado: 'completado' })
+            body: JSON.stringify({ terminal: terminalActual, estado: 'completado', operario: operarioActual || '' })
         });
     } catch (e) { /* ignorar si falla */ }
     

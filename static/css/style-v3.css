@@ -76,7 +76,8 @@
     font-size: 0.95em;
 }
 
-.modal-operario-body input {
+.modal-operario-body input,
+.modal-operario-body select {
     width: 100%;
     padding: 14px 16px;
     font-size: 1.05em;
@@ -86,9 +87,11 @@
     transition: border-color 0.2s, box-shadow 0.2s;
     box-sizing: border-box;
     color: #111827;
+    background: #fff;
 }
 
-.modal-operario-body input:focus {
+.modal-operario-body input:focus,
+.modal-operario-body select:focus {
     border-color: var(--primary-color, #2563eb);
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }

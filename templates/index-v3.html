@@ -18,9 +18,11 @@
                 <p>Identifícate para acceder</p>
             </div>
             <div class="modal-operario-body">
-                <label for="input-operario">Nombre o Nº de Operario</label>
-                <input type="text" id="input-operario" placeholder="Ej: Juan García o 1042" autocomplete="off">
-                <div id="modal-operario-error" class="modal-operario-error hidden">Debes introducir tu nombre o número de operario.</div>
+                <label for="input-operario">Operario</label>
+                <select id="input-operario">
+                    <option value="">— Seleccionar operario —</option>
+                </select>
+                <div id="modal-operario-error" class="modal-operario-error hidden">Selecciona tu operario de la lista.</div>
             </div>
             <div class="modal-operario-footer">
                 <button onclick="confirmarOperario()" class="btn-confirmar-operario">Entrar al módulo</button>
