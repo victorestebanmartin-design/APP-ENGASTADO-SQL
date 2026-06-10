@@ -4336,11 +4336,11 @@ def api_bonos_progreso_ponderado(nombre_bono):
             archivo = orden.get('archivo_excel')
             if not archivo:
                 continue
-            # Si carro_numero es NULL (bonos migrados o sin asignación), usar índice+1
-            carro = orden.get('carro_numero')
-            if carro is None:
-                carro = idx + 1
-            carro_key = str(carro)
+            # IMPORTANTE: el carro se numera por POSICIÓN (idx+1), igual que el
+            # frontend de engastado (carrosDelBono = ordenes.map((o, idx) => carro: idx+1)).
+            # No usar carro_numero de la BD: puede no coincidir con el orden posicional
+            # y provoca que carros_completados nunca cuadre con los pesos (progreso a 0).
+            carro_key = str(idx + 1)
 
             # Crimps por terminal con la MISMA lógica que ve el operario (De+Para, sin '*')
             if archivo not in _cache_crimps:
@@ -4372,10 +4372,15 @@ def api_bonos_progreso_ponderado(nombre_bono):
             prog_t = progreso.get(terminal, {})
             carros_completados = [str(c) for c in (prog_t.get('carros_completados') or [])]
             tiene_pendientes = bool(prog_t.get('carros_con_pendientes'))
+            estado_guardado = prog_t.get('estado')
 
             peso_completado_terminal = sum(
                 pesos_por_carro.get(carro_id, 0) for carro_id in carros_completados
             )
+            # Red de seguridad: si el operario marcó el terminal como 'completado',
+            # contar todo su peso aunque el mapeo de carros no cuadre perfectamente.
+            if estado_guardado == 'completado':
+                peso_completado_terminal = peso_total_terminal
 
             peso_total_bono += peso_total_terminal
             peso_completado_bono += peso_completado_terminal
@@ -4413,9 +4418,12 @@ def api_bonos_progreso_ponderado(nombre_bono):
             for terminal, pesos in pesos_terminal_carro.items():
                 prog_t = progreso.get(terminal, {})
                 ccs = [str(c) for c in (prog_t.get('carros_completados') or [])]
-                if carro_key in ccs:
+                # Cuenta el carro como hecho si está en carros_completados, o si el
+                # terminal entero está marcado como 'completado' (red de seguridad).
+                if carro_key in ccs or prog_t.get('estado') == 'completado':
                     peso_carro_completado += pesos.get(carro_key, 0)
-                    terminales_completados.append(terminal)
+                    if terminal not in terminales_completados:
+                        terminales_completados.append(terminal)
             carros_data[carro_key] = {
                 'peso_total': peso_carro_total,
                 'peso_completado': peso_carro_completado,
