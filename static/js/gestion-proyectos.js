@@ -879,7 +879,7 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
     const container = document.getElementById('listaOrdenesPendientes');
     
     if (ordenesPendientes.length === 0 && ordenesEnProceso.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 20px;">No hay órdenes pendientes con archivo Excel asociado</p>';
+        container.innerHTML = '<p class="proy-empty">No hay órdenes pendientes con archivo Excel asociado</p>';
         return;
     }
     
@@ -887,55 +887,39 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
     const todasOrdenes = [...ordenesPendientes, ...ordenesEnProceso];
     
     container.innerHTML = `
-        <table style="width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden;">
-            <thead style="background: #f1f5f9;">
+        <table class="tabla-bonos" style="margin-top:0;">
+            <thead>
                 <tr>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">#</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Orden</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Código Corte</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Archivo Excel</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Cantidad</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Fecha Liberación</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Estado</th>
-                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e2e8f0;">Prioridad</th>
+                    <th>#</th>
+                    <th>Orden</th>
+                    <th>Código Corte</th>
+                    <th>Archivo Excel</th>
+                    <th>Cantidad</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th>Prioridad</th>
                 </tr>
             </thead>
             <tbody>
                 ${todasOrdenes.map((orden, index) => `
-                    <tr style="border-bottom: 1px solid #e2e8f0; ${orden.estado === 'en_proceso' ? 'background: #f0fdf4;' : ''}">
-                        <td style="padding: 12px;">${index + 1}</td>
-                        <td style="padding: 12px;"><strong>${orden.numero}</strong></td>
-                        <td style="padding: 12px;">${orden.codigo_corte}</td>
-                        <td style="padding: 12px; font-size: 0.9em;">📄 ${orden.archivo_excel}</td>
-                        <td style="padding: 12px;">${orden.cantidad}</td>
-                        <td style="padding: 12px;">${orden.fecha_entrega}</td>
-                        <td style="padding: 12px;">
-                            <span style="
-                                padding: 4px 12px;
-                                border-radius: 12px;
-                                font-size: 0.85em;
-                                font-weight: 600;
-                                background: ${orden.estado === 'pendiente' ? '#e0e7ff' : '#dcfce7'};
-                                color: ${orden.estado === 'pendiente' ? '#3730a3' : '#166534'};
-                            ">
+                    <tr>
+                        <td style="color:var(--dim);">${index + 1}</td>
+                        <td><strong style="color:var(--text);">${orden.numero}</strong></td>
+                        <td style="font-family:'DM Mono',monospace;font-size:.78rem;">${orden.codigo_corte}</td>
+                        <td style="font-size:.78rem;color:var(--muted);">📄 ${orden.archivo_excel}</td>
+                        <td>${orden.cantidad}</td>
+                        <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:.78rem;">${orden.fecha_entrega}</td>
+                        <td>
+                            <span class="badge ${orden.estado === 'pendiente' ? 'badge-pendiente' : 'badge-activo'}">
                                 ${orden.estado === 'pendiente' ? '⏳ PENDIENTE' : '🚛 EN CARRO'}
                             </span>
                         </td>
-                        <td style="padding: 12px;">
-                            <span style="
-                                padding: 4px 12px;
-                                border-radius: 12px;
-                                font-size: 0.85em;
-                                font-weight: 600;
-                                background: ${orden.prioridad === 'urgente' ? '#fee2e2' : 
-                                           orden.prioridad === 'alta' ? '#fed7aa' : 
-                                           orden.prioridad === 'media' ? '#fef08a' : '#dbeafe'};
-                                color: ${orden.prioridad === 'urgente' ? '#dc2626' : 
-                                        orden.prioridad === 'alta' ? '#ea580c' : 
-                                        orden.prioridad === 'media' ? '#ca8a04' : '#2563eb'};
-                            ">
-                                ${orden.prioridad.toUpperCase()}
-                            </span>
+                        <td>
+                            <span class="badge ${
+                                orden.prioridad === 'urgente' ? 'badge-urgente' :
+                                orden.prioridad === 'alta'    ? 'badge-alta' :
+                                orden.prioridad === 'media'   ? 'badge-media' : 'badge-pendiente'
+                            }">${orden.prioridad.toUpperCase()}</span>
                         </td>
                     </tr>
                 `).join('')}

@@ -333,6 +333,9 @@ html, body {
 .badge-en_proceso                { background: rgba(245,158,11,.15); color: #fcd34d; }
 .badge-pendiente, .badge-secondary{ background: rgba(100,116,139,.15); color: var(--muted); }
 .badge-warning                   { background: rgba(245,158,11,.15); color: #fcd34d; }
+.badge-urgente                   { background: rgba(239,68,68,.15); color: #f87171; }
+.badge-alta                      { background: rgba(249,115,22,.15); color: #fb923c; }
+.badge-media                     { background: rgba(245,158,11,.15); color: #fcd34d; }
 
 /* ── TABLA BONOS / REPORTE ── */
 .tabla-bonos, .tabla-reporte {
