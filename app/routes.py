@@ -6,11 +6,13 @@ import io
 import zipfile as _zipfile
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 import os
 import json
 import re
 import subprocess
 import sys
+import traceback
 from datetime import datetime
 import pandas as pd
 
@@ -67,6 +69,12 @@ def allowed_file(filename):
     """Verificar si el archivo tiene una extensión permitida"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+
+
+def _es_error_nombre_bono_duplicado(error):
+    """Detectar si un IntegrityError proviene del UNIQUE de bonos.nombre"""
+    mensaje = str(getattr(error, 'orig', error)).lower()
+    return 'unique' in mensaje and 'bonos.nombre' in mensaje
 
 
 # ==================== RUTAS PRINCIPALES ====================
@@ -829,11 +837,13 @@ def api_crear_bono():
         data = request.get_json()
         
         bono_repo = BonoRepository(db)
-        bono_id = bono_repo.crear_bono(
-            nombre=data['nombre'],
-            ordenes_ids=data['ordenes_ids'],
-            descripcion=data.get('descripcion')
-        )
+        with db.engine.begin() as conn:
+            bono_id = bono_repo.crear_bono(
+                nombre=data['nombre'],
+                ordenes_ids=data['ordenes_ids'],
+                descripcion=data.get('descripcion'),
+                conn=conn
+            )
         
         bono = bono_repo.obtener_bono_con_ordenes(bono_id)
         
@@ -841,7 +851,19 @@ def api_crear_bono():
             'success': True,
             'bono': bono
         })
+    except IntegrityError as e:
+        if _es_error_nombre_bono_duplicado(e):
+            return jsonify({
+                'success': False,
+                'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
+            }), 409
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
     except Exception as e:
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
@@ -975,34 +997,30 @@ def api_generar_bono_desde_carros():
                 'archivo_excel': proyecto['archivo']
             })
         
-        # CREAR EL BONO EN LA BASE DE DATOS
+        # CREAR EL BONO + ACTUALIZAR ÓRDENES + LIBERAR CARROS DE FORMA ATÓMICA
+        # Todo dentro de un único engine.begin(): se commitea junto o se
+        # revierte junto si cualquier paso falla.
         descripcion = f"Bono con {len(proyectos_en_carros)} carros"
-        bono_id = bono_repo.crear_bono(
-            nombre=nombre_bono,
-            ordenes_ids=ordenes_ids,
-            descripcion=descripcion
-        )
-        
-        # Cambiar estado de las órdenes a 'en_bono' y guardar carro_numero
-        for idx, (numero_orden, carro_info) in enumerate(zip(ordenes_ids, carros_info)):
-            try:
-                orden_repo.cambiar_estado(numero_orden, 'en_bono')
-            except:
-                pass
-            # Guardar el carro_numero en la orden para que el dashboard ponderado funcione
-            try:
-                with db.engine.connect() as conn_upd:
-                    conn_upd.execute(
-                        text("UPDATE ordenes_produccion SET carro_numero=:carro WHERE numero=:numero AND bono_id=:bono_id"),
-                        {'carro': carro_info['carro'], 'numero': numero_orden, 'bono_id': bono_id}
-                    )
-                    conn_upd.commit()
-            except Exception as e_upd:
-                print(f"Warning: no se pudo guardar carro_numero para {numero_orden}: {e_upd}")
+        with db.engine.begin() as conn:
+            bono_id = bono_repo.crear_bono(
+                nombre=nombre_bono,
+                ordenes_ids=ordenes_ids,
+                descripcion=descripcion,
+                conn=conn
+            )
 
-        # Liberar los carros (establecer carro_asignado a NULL)
-        for proyecto in proyectos_en_carros:
-            proyecto_repo.liberar_carro(proyecto['id'])
+            # Cambiar estado de las órdenes a 'en_bono' y guardar carro_numero
+            for idx, (numero_orden, carro_info) in enumerate(zip(ordenes_ids, carros_info)):
+                orden_repo.cambiar_estado(numero_orden, 'en_bono', conn=conn)
+                # Guardar el carro_numero en la orden para que el dashboard ponderado funcione
+                conn.execute(
+                    text("UPDATE ordenes_produccion SET carro_numero=:carro WHERE numero=:numero AND bono_id=:bono_id"),
+                    {'carro': carro_info['carro'], 'numero': numero_orden, 'bono_id': bono_id}
+                )
+
+            # Liberar los carros (establecer carro_asignado a NULL)
+            for proyecto in proyectos_en_carros:
+                proyecto_repo.liberar_carro(proyecto['id'], conn=conn)
         
         # Construir respuesta con información del bono
         bono_generado = {
@@ -1017,7 +1035,19 @@ def api_generar_bono_desde_carros():
             'bono': bono_generado
         })
         
+    except IntegrityError as e:
+        if _es_error_nombre_bono_duplicado(e):
+            return jsonify({
+                'success': False,
+                'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
+            }), 409
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error al generar bono: {str(e)}'
+        }), 500
     except Exception as e:
+        traceback.print_exc()
         return jsonify({
             'success': False,
             'message': f'Error al generar bono: {str(e)}'

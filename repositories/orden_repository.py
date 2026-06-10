@@ -3,6 +3,7 @@ Repositorio de Órdenes de Producción
 """
 from typing import List, Dict, Optional
 from datetime import datetime
+from sqlalchemy import text
 from .base_repository import BaseRepository
 
 
@@ -112,13 +113,15 @@ class OrdenRepository(BaseRepository):
         rows = self.execute_update(query, params)
         return rows > 0
     
-    def asignar_a_bono_por_numero(self, numero_orden: str, bono_id: str) -> bool:
+    def asignar_a_bono_por_numero(self, numero_orden: str, bono_id: str, conn=None) -> bool:
         """
         Asignar orden a un bono usando el número de orden
         
         Args:
             numero_orden: Número de orden (ej: "60245848")
             bono_id: ID del bono
+            conn: Conexión/transacción existente (opcional). Si se pasa, la
+                  query se ejecuta sobre ella SIN commit ni conexión propia.
         
         Returns:
             True si se asignó correctamente
@@ -131,6 +134,9 @@ class OrdenRepository(BaseRepository):
             WHERE numero = :numero_orden
         """
         params = {'numero_orden': numero_orden, 'bono_id': bono_id}
+        if conn is not None:
+            result = conn.execute(text(query), params)
+            return result.rowcount > 0
         rows = self.execute_update(query, params)
         return rows > 0
     
@@ -157,7 +163,7 @@ class OrdenRepository(BaseRepository):
         rows = self.execute_update(query, {'orden_id': orden_id})
         return rows > 0
     
-    def cambiar_estado(self, orden_id: str, estado: str) -> bool:
+    def cambiar_estado(self, orden_id: str, estado: str, conn=None) -> bool:
         """Cambiar estado de una orden"""
         query = """
             UPDATE ordenes_produccion 
@@ -165,6 +171,9 @@ class OrdenRepository(BaseRepository):
             WHERE id = :orden_id
         """
         params = {'orden_id': orden_id, 'estado': estado}
+        if conn is not None:
+            result = conn.execute(text(query), params)
+            return result.rowcount > 0
         rows = self.execute_update(query, params)
         return rows > 0
     

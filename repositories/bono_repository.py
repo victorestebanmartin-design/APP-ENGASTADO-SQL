@@ -2,6 +2,7 @@
 Repositorio de Bonos y Carros
 """
 from typing import List, Dict, Optional
+from sqlalchemy import text
 from .base_repository import BaseRepository
 
 
@@ -9,7 +10,7 @@ class BonoRepository(BaseRepository):
     """Repositorio para gestión de bonos"""
     
     def crear_bono(self, nombre: str, ordenes_ids: List[str], 
-                   descripcion: Optional[str] = None) -> str:
+                   descripcion: Optional[str] = None, conn=None) -> str:
         """
         Crear nuevo bono con órdenes
         
@@ -17,6 +18,8 @@ class BonoRepository(BaseRepository):
             nombre: Nombre del bono
             ordenes_ids: Lista de IDs de órdenes a incluir
             descripcion: Descripción del bono (opcional)
+            conn: Conexión/transacción existente (opcional). Si se pasa, las
+                  queries se ejecutan sobre ella SIN commit ni conexión propia.
         
         Returns:
             ID del bono creado (UUID)
@@ -34,14 +37,17 @@ class BonoRepository(BaseRepository):
             'nombre': nombre,
             'descripcion': descripcion
         }
-        self.execute_insert(query_bono, params_bono)
+        if conn is not None:
+            conn.execute(text(query_bono), params_bono)
+        else:
+            self.execute_insert(query_bono, params_bono)
         
         # Asignar órdenes al bono
         from .orden_repository import OrdenRepository
         orden_repo = OrdenRepository(self.db)
         for numero_orden in ordenes_ids:
             # Usar asignar_a_bono_por_numero ya que ordenes_ids contiene números de orden
-            orden_repo.asignar_a_bono_por_numero(numero_orden, bono_id)
+            orden_repo.asignar_a_bono_por_numero(numero_orden, bono_id, conn=conn)
         
         return bono_id
     

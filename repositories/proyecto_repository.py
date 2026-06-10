@@ -2,6 +2,7 @@
 Repositorio de Proyectos
 """
 from typing import List, Dict, Optional
+from sqlalchemy import text
 from .base_repository import BaseRepository
 
 
@@ -83,14 +84,18 @@ class ProyectoRepository(BaseRepository):
         rows = self.execute_update(query, params)
         return rows > 0
     
-    def liberar_carro(self, proyecto_id: int) -> bool:
+    def liberar_carro(self, proyecto_id: int, conn=None) -> bool:
         """Liberar carro de un proyecto"""
         query = """
             UPDATE proyectos 
             SET carro_asignado = NULL
             WHERE id = :proyecto_id
         """
-        rows = self.execute_update(query, {'proyecto_id': proyecto_id})
+        params = {'proyecto_id': proyecto_id}
+        if conn is not None:
+            result = conn.execute(text(query), params)
+            return result.rowcount > 0
+        rows = self.execute_update(query, params)
         return rows > 0
     
     def actualizar_progreso(self, proyecto_id: int, progreso: float) -> bool:
