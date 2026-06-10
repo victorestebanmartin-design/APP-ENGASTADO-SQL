@@ -1,10 +1,14 @@
 """
 Inicialización de la aplicación Flask con SQLite
 """
-from flask import Flask
+from flask import Flask, jsonify
+from werkzeug.exceptions import HTTPException
 from config import Config
 import os
 import re
+import uuid
+import logging
+from logging.handlers import RotatingFileHandler
 import sqlite3
 
 
@@ -141,7 +145,14 @@ def create_app(config_class=Config):
                 template_folder=template_dir,
                 static_folder=static_dir)
     app.config.from_object(config_class)
-    
+
+    # Crear directorios necesarios (data, uploads, logs, ...)
+    if hasattr(config_class, 'init_app'):
+        config_class.init_app(app)
+
+    # Configurar logging hacia fichero con rotación
+    _configurar_logging(app)
+
     # Inicializar base de datos
     from repositories import init_db
     db = init_db(app)
@@ -157,5 +168,46 @@ def create_app(config_class=Config):
     # Registrar blueprints/rutas
     from app import routes
     routes.init_routes(app)
-    
+
+    # Handler global para excepciones no controladas
+    @app.errorhandler(Exception)
+    def _manejar_excepcion_no_controlada(e):
+        # Las HTTPException (404, 405, 400 abortados, ...) pasan sin tocar
+        if isinstance(e, HTTPException):
+            return e
+        error_id = uuid.uuid4().hex[:8]
+        app.logger.exception(f"[{error_id}] Excepción no controlada: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error interno del servidor (ref: {error_id})'
+        }), 500
+
     return app
+
+
+def _configurar_logging(app):
+    """Configura un RotatingFileHandler hacia Config.LOG_FILE."""
+    log_file = app.config.get('LOG_FILE')
+    log_level = getattr(logging, str(app.config.get('LOG_LEVEL', 'INFO')).upper(), logging.INFO)
+
+    if not log_file:
+        return
+
+    # Asegurar que el directorio de logs existe
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+    # Evitar añadir el handler más de una vez (p.ej. con el reloader)
+    ya_configurado = any(
+        isinstance(h, RotatingFileHandler) and getattr(h, 'baseFilename', None) == os.path.abspath(log_file)
+        for h in app.logger.handlers
+    )
+    if ya_configurado:
+        return
+
+    handler = RotatingFileHandler(log_file, maxBytes=2_000_000, backupCount=5, encoding='utf-8')
+    handler.setLevel(log_level)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(module)s: %(message)s'
+    ))
+    app.logger.addHandler(handler)
+    app.logger.setLevel(log_level)

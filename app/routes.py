@@ -77,6 +77,22 @@ def _es_error_nombre_bono_duplicado(error):
     return 'unique' in mensaje and 'bonos.nombre' in mensaje
 
 
+def error_interno(e, mensaje_usuario='Error interno del servidor'):
+    """
+    Maneja un error 500 sin filtrar detalles internos al cliente.
+
+    Genera un ID corto de error, registra el traceback completo en el log
+    con ese ID, y devuelve un JSON genérico (sin str(e)) con la referencia.
+    """
+    import uuid
+    error_id = uuid.uuid4().hex[:8]
+    current_app.logger.exception(f"[{error_id}] {mensaje_usuario}: {e}")
+    return jsonify({
+        'success': False,
+        'message': f'{mensaje_usuario} (ref: {error_id})'
+    }), 500
+
+
 # ==================== RUTAS PRINCIPALES ====================
 
 @bp.route('/')
@@ -450,10 +466,7 @@ def api_obtener_proyectos():
             'proyectos': proyectos
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/proyectos', methods=['POST'])
@@ -476,10 +489,7 @@ def api_crear_proyecto():
             'proyecto': proyecto
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/proyectos/<int:proyecto_id>/carro', methods=['PUT'])
@@ -509,10 +519,7 @@ def api_asignar_carro(proyecto_id):
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/proyectos/<int:proyecto_id>/estado', methods=['PUT'])
@@ -538,10 +545,7 @@ def api_cambiar_estado_proyecto(proyecto_id):
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # ==================== GESTIÓN DE ÓRDENES ====================
@@ -575,10 +579,7 @@ def api_obtener_ordenes():
             'ordenes': ordenes
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/ordenes', methods=['POST'])
@@ -621,10 +622,7 @@ def api_crear_orden():
             'archivo_encontrado': archivo_excel is not None
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/ordenes/eliminar/<orden_id>', methods=['DELETE'])
@@ -653,10 +651,7 @@ def api_eliminar_orden(orden_id):
                 'message': 'No se pudo eliminar la orden'
             }), 500
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/ordenes/actualizar/<orden_id>', methods=['PUT'])
@@ -697,10 +692,7 @@ def api_actualizar_orden(orden_id):
                 'message': 'No se pudo actualizar la orden'
             }), 500
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # Alias para compatibilidad con el frontend
@@ -722,10 +714,7 @@ def api_listar_ordenes_alias():
             'ordenes': ordenes
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # ==================== GESTIÓN DE BONOS ====================
@@ -744,10 +733,7 @@ def api_obtener_bonos():
             'bonos': bonos
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<nombre>', methods=['GET'])
@@ -799,10 +785,7 @@ def api_obtener_bono_por_nombre(nombre):
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<nombre>', methods=['DELETE'])
@@ -827,7 +810,7 @@ def api_eliminar_bono(nombre):
         return jsonify({'success': True, 'message': f'Bono {nombre} eliminado correctamente'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos', methods=['POST'])
@@ -858,16 +841,10 @@ def api_crear_bono():
                 'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
             }), 409
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
     except Exception as e:
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/<bono_id>/carro', methods=['PUT'])
@@ -893,10 +870,7 @@ def api_asignar_bono_carro(bono_id):
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/nombre-sugerido', methods=['GET'])
@@ -939,10 +913,7 @@ def api_obtener_nombre_sugerido_bono():
             'nombre': nombre_sugerido
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/bonos/generar', methods=['POST'])
@@ -986,7 +957,7 @@ def api_generar_bono_desde_carros():
             # Extraer número de orden del nombre del proyecto (formato: "60245848 - H0068722")
             try:
                 numero_orden = proyecto['nombre'].split(' - ')[0].strip()
-            except:
+            except Exception:
                 numero_orden = proyecto['nombre']
             
             ordenes_ids.append(numero_orden)
@@ -1042,16 +1013,10 @@ def api_generar_bono_desde_carros():
                 'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
             }), 409
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Error al generar bono: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al generar bono')
     except Exception as e:
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Error al generar bono: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al generar bono')
 
 
 # ==================== CARROS ====================
@@ -1087,10 +1052,7 @@ def api_obtener_carros():
             'carros': carros
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/carros/<int:carro_numero>', methods=['GET'])
@@ -1119,10 +1081,7 @@ def api_obtener_carro(carro_numero):
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/carros/asignar-orden', methods=['POST'])
@@ -1161,10 +1120,7 @@ def api_asignar_orden_a_carro():
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/carros/<int:numero_carro>/liberar', methods=['POST'])
@@ -1210,10 +1166,7 @@ def api_liberar_carro(numero_carro):
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/carros/asignar', methods=['POST'])
@@ -1245,10 +1198,7 @@ def api_asignar_proyecto_carro():
             }), 500
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # ==================== CÓDIGOS DE CORTES ====================
@@ -1265,10 +1215,7 @@ def api_obtener_codigos():
             'codigos': codigos
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/codigos/<codigo>', methods=['GET'])
@@ -1290,10 +1237,7 @@ def api_obtener_codigo(codigo):
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # ==================== GESTIÓN DE ARCHIVOS EXCEL ====================
@@ -1380,10 +1324,7 @@ def upload_file():
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al subir archivo: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al subir archivo')
 
 
 @bp.route('/api/list_files', methods=['GET'])
@@ -1419,10 +1360,7 @@ def list_files():
             'files': files
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al listar archivos: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al listar archivos')
 
 
 @bp.route('/api/add_corte', methods=['POST'])
@@ -1482,10 +1420,7 @@ def add_corte():
             }), 500
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al agregar corte: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al agregar corte')
 
 
 @bp.route('/api/list_cortes', methods=['GET'])
@@ -1511,10 +1446,7 @@ def list_cortes():
             'cortes': cortes
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al listar cortes: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al listar cortes')
 
 
 # Alias para compatibilidad con el frontend
@@ -1540,10 +1472,7 @@ def api_listar_codigos_alias():
             'codigos': codigos_formateados
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al listar códigos: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al listar códigos')
 
 
 @bp.route('/api/delete_corte', methods=['POST'])
@@ -1573,10 +1502,7 @@ def delete_corte():
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al eliminar corte: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al eliminar corte')
 
 
 @bp.route('/api/delete_file', methods=['POST'])
@@ -1615,10 +1541,7 @@ def delete_file():
         })
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al eliminar archivo: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al eliminar archivo')
 
 
 # ==================== PUESTOS Y MÁQUINAS ====================
@@ -1645,10 +1568,7 @@ def api_obtener_puestos():
             'puestos': puestos
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al obtener puestos: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al obtener puestos')
 
 
 @bp.route('/api/puestos', methods=['POST'])
@@ -1689,10 +1609,7 @@ def api_crear_puesto():
             }), 500
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al crear puesto: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al crear puesto')
 
 
 @bp.route('/api/puestos/<puesto_id>', methods=['PUT'])
@@ -1728,10 +1645,7 @@ def api_actualizar_puesto(puesto_id):
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al actualizar puesto: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al actualizar puesto')
 
 
 @bp.route('/api/puestos/<puesto_id>', methods=['DELETE'])
@@ -1752,10 +1666,7 @@ def api_eliminar_puesto(puesto_id):
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al eliminar puesto: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al eliminar puesto')
 
 
 @bp.route('/api/maquinas', methods=['GET'])
@@ -1774,10 +1685,7 @@ def api_obtener_maquinas():
             'maquinas': maquinas
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al obtener máquinas: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al obtener máquinas')
 
 
 @bp.route('/api/maquinas', methods=['POST'])
@@ -1830,10 +1738,7 @@ def api_crear_maquina():
             }), 500
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al crear máquina: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al crear máquina')
 
 
 @bp.route('/api/maquinas/<maquina_id>', methods=['PUT'])
@@ -1871,10 +1776,7 @@ def api_actualizar_maquina(maquina_id):
             }), 400
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al actualizar máquina: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al actualizar máquina')
 
 
 @bp.route('/api/maquinas/<maquina_id>', methods=['DELETE'])
@@ -1895,10 +1797,7 @@ def api_eliminar_maquina(maquina_id):
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al eliminar máquina: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al eliminar máquina')
 
 
 @bp.route('/api/terminales-disponibles', methods=['GET'])
@@ -1993,10 +1892,7 @@ def api_terminales_disponibles():
         return jsonify(respuesta)
         
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al obtener terminales: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al obtener terminales')
 
 
 @bp.route('/api/excel/<path:archivo>/terminales', methods=['GET'])
@@ -2035,10 +1931,7 @@ def api_excel_terminales(archivo):
         })
 
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 @bp.route('/api/asignar-terminal', methods=['POST'])
@@ -2079,10 +1972,7 @@ def api_asignar_terminal():
             }), 500
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al asignar terminal: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al asignar terminal')
 
 
 @bp.route('/api/desasignar-terminal', methods=['POST'])
@@ -2113,10 +2003,7 @@ def api_desasignar_terminal():
             }), 404
             
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al desasignar terminal: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al desasignar terminal')
 
 
 # ==================== PALETA DE COLORES DE CABLES ====================
@@ -2151,7 +2038,7 @@ def api_cable_colores_get():
             for r in rows
         ]})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/cable-colores', methods=['POST'])
@@ -2174,7 +2061,7 @@ def api_cable_colores_upsert():
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/cable-colores/<path:cod_cable>', methods=['DELETE'])
@@ -2186,7 +2073,7 @@ def api_cable_colores_delete(cod_cable):
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/cable-colores/sin-asignar', methods=['GET'])
@@ -2202,7 +2089,7 @@ def api_cable_colores_sin_asignar():
             """)).fetchall()
         return jsonify({'success': True, 'cables': [r[0] for r in rows]})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 # ==================== OPERARIOS ====================
@@ -2220,7 +2107,7 @@ def api_operarios_get():
             for r in rows
         ]})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/operarios', methods=['POST'])
@@ -2240,7 +2127,7 @@ def api_operarios_create():
             conn.commit()
         return jsonify({'success': True, 'operario': {'id': op_id, 'nombre': nombre, 'activo': 1}})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/operarios/<op_id>', methods=['PUT'])
@@ -2258,7 +2145,7 @@ def api_operarios_update(op_id):
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/operarios/<op_id>', methods=['DELETE'])
@@ -2272,7 +2159,7 @@ def api_operarios_delete(op_id):
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/operarios/<op_id>/activar', methods=['POST'])
@@ -2286,7 +2173,7 @@ def api_operarios_activar(op_id):
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 # ==================== REPORTS / TRAZABILIDAD ====================
@@ -2394,7 +2281,7 @@ def api_report_progreso():
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return error_interno(e)
 
 
 # ==================== SALUD DEL SISTEMA ====================
@@ -2641,7 +2528,7 @@ def api_liberar_sesion():
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/sesion/liberar-paquete', methods=['POST'])
@@ -2664,7 +2551,7 @@ def api_liberar_paquete_sesion():
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/sesion/actualizar-paquetes', methods=['PUT'])
@@ -2687,7 +2574,7 @@ def api_actualizar_paquetes_sesion():
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/sesion/verificar-pendientes', methods=['POST'])
@@ -2738,7 +2625,7 @@ def api_verificar_pendientes():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/sesion/sesiones-activas', methods=['GET'])
@@ -2789,7 +2676,7 @@ def api_sesiones_activas():
             })
         return jsonify({'success': True, 'sesiones': result, 'total': len(result)})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 
@@ -2801,7 +2688,7 @@ def api_liberar_sesion_admin(sesion_id):
         sesion_repo.liberar_sesion(sesion_id)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 @bp.route('/api/sesion/limpiar-sesiones-fantasma', methods=['POST'])
@@ -2814,7 +2701,7 @@ def api_limpiar_sesiones_fantasma():
         )
         return jsonify({'success': True, 'message': 'Todos los bloqueos liberados'})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return error_interno(e)
 
 
 def _encontrar_git():
@@ -3031,10 +2918,7 @@ def api_stats():
             }
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return error_interno(e)
 
 
 # ==================== API DE ETIQUETAS ====================
@@ -3239,10 +3123,7 @@ def generar_etiquetas_html():
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'message': f'Error al generar HTML: {str(e)}'
-        }), 500
+        return error_interno(e, 'Error al generar HTML')
 
 
 _COLOR_PALETA = ['#d97706','#2563eb','#059669','#7c3aed','#dc2626','#0891b2',
@@ -3675,7 +3556,7 @@ def api_etiquetas_regenerar():
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return jsonify({'success': False, 'message': f'Error al regenerar: {str(e)}'}), 500
+        return error_interno(e, 'Error al regenerar')
 
         # 1. Borrar entradas existentes
         with db.engine.connect() as conn:
@@ -3809,7 +3690,7 @@ def api_etiquetas_regenerar():
     except Exception as e:
         import traceback
         print(traceback.format_exc())
-        return jsonify({'success': False, 'message': f'Error al regenerar: {str(e)}'}), 500
+        return error_interno(e, 'Error al regenerar')
 
 
 def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
