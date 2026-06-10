@@ -4250,6 +4250,65 @@ def api_bonos_progreso_por_carro(nombre_bono):
         return jsonify({'success': False, 'message': str(e)})
 
 
+def _crimps_por_terminal_archivo(archivo: str) -> dict:
+    """
+    Calcula el nº de crimps (terminales a engastar) por terminal de un archivo Excel,
+    usando EXACTAMENTE la misma lógica que la vista de engastado
+    (excel_manager.agrupar_por_cable_elemento): cada lado sin '*' = 1 crimp; si el
+    terminal está en ambos lados de la fila sin '*' = 2 crimps. Los lados con '*'
+    (terminal no se engasta) o terminales vacíos/'S/T' no cuentan.
+
+    Devuelve {TERMINAL_UPPER: num_crimps}. Esto refleja el trabajo REAL del operario,
+    a diferencia del antiguo cálculo que solo miraba 'De Terminal' y descartaba los
+    grupos cuyo terminal estaba en el lado 'Para' (de_terminal vacío/S/T).
+    """
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+    mgr = ExcelManager(upload_folder)
+    if not mgr.cargar_excel_directo(archivo):
+        return {}
+    df = mgr.current_df
+    if df is None:
+        return {}
+
+    def _valido(t):
+        return t and t not in ('NAN', 'S/T', '')
+
+    cont = {}
+    for _, row in df.iterrows():
+        # Ignorar filas auxiliares (sin Cod. cable o sin Sección) — igual que el engastado
+        cod = str(row.get('Cod. cable', '')).strip()
+        if cod == '' or cod.lower() == 'nan':
+            continue
+        sec_raw = row.get('Sección', row.get('Seccion', ''))
+        sec = str(sec_raw).strip()
+        if sec == '' or sec.lower() == 'nan':
+            continue
+
+        de_t   = str(row.get('De Terminal', '')).strip().upper()
+        para_t = str(row.get('Para Terminal', '')).strip().upper()
+        de_np   = str(row.get('De Elemento', '')).strip().endswith('*')
+        para_np = str(row.get('Para Elemento', '')).strip().endswith('*')
+
+        tiene_o = _valido(de_t)
+        tiene_d = _valido(para_t)
+
+        if tiene_o and tiene_d and de_t == para_t:
+            # Terminal en ambos lados de la misma fila
+            if de_np and para_np:
+                pass
+            elif de_np or para_np:
+                cont[de_t] = cont.get(de_t, 0) + 1
+            else:
+                cont[de_t] = cont.get(de_t, 0) + 2
+        else:
+            if tiene_o and not de_np:
+                cont[de_t] = cont.get(de_t, 0) + 1
+            if tiene_d and not para_np:
+                cont[para_t] = cont.get(para_t, 0) + 1
+
+    return cont
+
+
 @bp.route('/api/bonos/<nombre_bono>/progreso-ponderado', methods=['GET'])
 def api_bonos_progreso_ponderado(nombre_bono):
     """
@@ -4271,6 +4330,7 @@ def api_bonos_progreso_ponderado(nombre_bono):
 
         # Construir pesos: {terminal: {str(carro_numero): peso_acumulado}}
         pesos_terminal_carro = {}
+        _cache_crimps = {}  # archivo -> {terminal: num_crimps}
 
         for idx, orden in enumerate(ordenes):
             archivo = orden.get('archivo_excel')
@@ -4282,30 +4342,17 @@ def api_bonos_progreso_ponderado(nombre_bono):
                 carro = idx + 1
             carro_key = str(carro)
 
-            query = """
-                SELECT de_terminal, SUM(num_terminales)
-                FROM etiquetas_elementos
-                WHERE archivo_excel = :archivo
-                  AND de_terminal IS NOT NULL
-                  AND de_terminal != ''
-                  AND UPPER(de_terminal) != 'S/T'
-                GROUP BY de_terminal
-            """
-            with db.engine.connect() as conn:
-                rows = conn.execute(text(query), {'archivo': archivo}).fetchall()
+            # Crimps por terminal con la MISMA lógica que ve el operario (De+Para, sin '*')
+            if archivo not in _cache_crimps:
+                _cache_crimps[archivo] = _crimps_por_terminal_archivo(archivo)
 
-            for row in rows:
-                t_raw = row[0]
-                if t_raw is None:
+            for terminal, peso in _cache_crimps[archivo].items():
+                if not terminal:
                     continue
-                terminal = str(t_raw).strip().upper()
-                if not terminal or terminal in ('NAN', 'S/T', ''):
-                    continue
-                peso = int(row[1] or 0)
                 if terminal not in pesos_terminal_carro:
                     pesos_terminal_carro[terminal] = {}
                 pesos_terminal_carro[terminal][carro_key] = (
-                    pesos_terminal_carro[terminal].get(carro_key, 0) + peso
+                    pesos_terminal_carro[terminal].get(carro_key, 0) + int(peso or 0)
                 )
 
         # Leer progreso guardado
