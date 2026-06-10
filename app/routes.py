@@ -168,6 +168,7 @@ def admin_logout():
 
 
 @bp.route('/gestion-puestos')
+@requiere_pin_admin
 def gestion_puestos():
     """Gestión de puestos y máquinas"""
     return render_template('gestion-puestos.html')
@@ -1623,6 +1624,7 @@ def api_obtener_puestos():
 
 
 @bp.route('/api/puestos', methods=['POST'])
+@requiere_pin_admin
 def api_crear_puesto():
     """Crear nuevo puesto"""
     try:
@@ -1664,6 +1666,7 @@ def api_crear_puesto():
 
 
 @bp.route('/api/puestos/<puesto_id>', methods=['PUT'])
+@requiere_pin_admin
 def api_actualizar_puesto(puesto_id):
     """Actualizar puesto existente"""
     try:
@@ -1700,6 +1703,7 @@ def api_actualizar_puesto(puesto_id):
 
 
 @bp.route('/api/puestos/<puesto_id>', methods=['DELETE'])
+@requiere_pin_admin
 def api_eliminar_puesto(puesto_id):
     """Eliminar puesto"""
     try:
