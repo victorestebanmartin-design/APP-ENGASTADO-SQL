@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual de Uso - COJOsw</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-2: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --line: #475569;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --link: #38bdf8;
+      --accent: linear-gradient(120deg, #0ea5e9 0%, #22c55e 100%);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 12% 8%, #1e293b 0%, #0f172a 40%, #020617 100%);
+      color: var(--text);
+      font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .toc {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+      padding: 18px;
+    }
+
+    .brand {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 14px;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      margin: 0 0 6px;
+      letter-spacing: 0.04em;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .search-box {
+      margin-bottom: 12px;
+    }
+
+    #manual-search {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #0b1220;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    #search-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 18px;
+    }
+
+    .toc nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .toc a {
+      display: block;
+      text-decoration: none;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #0b1220;
+      transition: background .15s ease, transform .15s ease;
+      font-size: 14px;
+    }
+
+    .toc a:hover { background: #162034; transform: translateX(2px); }
+
+    .main {
+      padding: 28px;
+      width: 100%;
+      max-width: 1200px;
+    }
+
+    header.hero {
+      background: linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%);
+      color: #0b1220;
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+
+    header.hero h2 {
+      margin: 0 0 6px;
+      font-size: 26px;
+    }
+
+    header.hero p {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    section {
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+
+    section h3 {
+      margin-top: 0;
+      font-size: 22px;
+      color: #e2e8f0;
+    }
+
+    h4 {
+      margin: 16px 0 8px;
+      color: #cbd5e1;
+      font-size: 17px;
+    }
+
+    ul, ol { margin: 10px 0 0 20px; }
+    li { margin: 5px 0; }
+
+    .kpi {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    .kpi div {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      margin-right: 6px;
+      border: 1px solid transparent;
+    }
+
+    .tag.ok { color: #bbf7d0; border-color: #166534; background: rgba(22, 101, 52, .35); }
+    .tag.warn { color: #fde68a; border-color: #92400e; background: rgba(146, 64, 14, .35); }
+    .tag.danger { color: #fecaca; border-color: #991b1b; background: rgba(153, 27, 27, .35); }
+
+    .note {
+      border-left: 4px solid #f59e0b;
+      padding: 10px 12px;
+      background: rgba(245, 158, 11, 0.12);
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .danger-box {
+      border-left: 4px solid var(--danger);
+      padding: 10px 12px;
+      background: rgba(239, 68, 68, 0.12);
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+
+    .manual-mark {
+      background: #fef08a;
+      color: #111827;
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+
+    footer {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .toc nav { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+      .main { padding: 16px; }
+    }
+
+    @media print {
+      body { background: #fff; color: #111; }
+      .layout { display: block; }
+      .toc { display: none; }
+      .main { max-width: none; padding: 0; }
+      section, header.hero {
+        background: #fff;
+        border: 1px solid #ddd;
+        color: #111;
+        break-inside: avoid;
+      }
+      a { color: #111; text-decoration: none; }
+      .manual-mark { background: #ff0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="toc">
+      <div class="brand">
+        <h1>COJOsw - Manual de Uso</h1>
+        <p>Crimping Operations - Jobs & Orders software</p>
+      </div>
+
+      <div class="search-box">
+        <input id="manual-search" type="search" placeholder="Buscar texto en el manual...">
+        <div id="search-meta"></div>
+      </div>
+
+      <nav>
+        <a href="#a-intro">A. Introducción rápida</a>
+        <a href="#b-operario">B. Operario: tu turno</a>
+        <a href="#c-modulos">C. Qué hace cada módulo</a>
+        <a href="#d-problemas">D. Problemas y soluciones</a>
+        <a href="#e-admin">E. Jefe de línea / admin</a>
+        <a href="#f-faq">F. Preguntas frecuentes</a>
+        <a href="#pendientes">Pendientes de confirmar con Víctor</a>
+      </nav>
+    </aside>
+
+    <main class="main" id="manual-content">
+      <header class="hero">
+        <h2>Manual de uso (operarios + jefe de línea)</h2>
+        <p>Documento único de consulta. Basado en comportamiento real del código de la aplicación.</p>
+      </header>
+
+      <section id="a-intro">
+        <h3>A. Introducción rápida</h3>
+        <p>La aplicación tiene una pantalla de módulos donde aparecen: Engastado, Preparación Mangueras, Manguitos, Administración, Producción (Bonos y Órdenes), Visualización, Etiquetas y Ayuda/Manual.</p>
+        <div class="kpi">
+          <div><strong>Versión mostrada en inicio:</strong> Version 3.0 Pro</div>
+          <div><strong>Marca:</strong> MERAK - Knorr-Bremse</div>
+          <div><strong>Nombre interno:</strong> COJOsw</div>
+        </div>
+        <p>El lector/pistola funciona como teclado: escribe el código y hace Enter sobre el campo activo.</p>
+      </section>
+
+      <section id="b-operario">
+        <h3>B. Operario: tu turno en 5 pasos</h3>
+        <h4>1) Identifícate</h4>
+        <ul>
+          <li>Al entrar a Engastado aparece el modal de operario.</li>
+          <li>Debes elegir una opción en "- Seleccionar operario -" y pulsar "Entrar al módulo".</li>
+          <li>Los operarios se cargan desde la lista de activos.</li>
+        </ul>
+
+        <h4>2) Carga un bono</h4>
+        <ul>
+          <li>Modal "Cargar Bono de Trabajo" con dos caminos: "Introducir código" o "Bonos disponibles".</li>
+          <li>Ejemplo de formato real de nombre sugerido por sistema: DDMMYYYY_N.</li>
+          <li>Si el bono no existe o está mal escrito, no podrás avanzar.</li>
+        </ul>
+
+        <h4>3) Selecciona puesto, máquina y terminal</h4>
+        <ul>
+          <li>Primero "Puesto de Trabajo", luego máquina y después terminal.</li>
+          <li>En terminal verás estados:
+            <span class="tag ok">Listo / completado</span>
+            <span class="tag warn">En curso / en espera</span>
+            <span class="tag danger">Pendiente</span>
+          </li>
+          <li>Puedes retroceder con los botones "Cambiar ..." de cada modal.</li>
+        </ul>
+
+        <h4>4) Elige carro y paquetes</h4>
+        <ul>
+          <li>En carro verás pendientes y completados.</li>
+          <li>En paquetes puedes marcar "No lo tengo - se saltará".</li>
+          <li>Si un paquete está siendo usado por otro puesto, sale bloqueado con candado y "En uso".</li>
+          <li>Enter confirma la selección de paquetes.</li>
+        </ul>
+
+        <h4>5) Engasta y finaliza</h4>
+        <ul>
+          <li>Pantalla de engaste muestra carro, terminal, paquete actual, etiqueta y lado del cable.</li>
+          <li>Botones disponibles: Anterior, Saltar, Bajar, Siguiente, Siguiente grupo, Finalizar carro.</li>
+          <li>Si quedan paquetes marcados como no disponibles, se guarda progreso parcial (carro con pendientes).</li>
+          <li>Al completar terminal, se actualiza estado y se libera la sesión del paquete.</li>
+          <li>Al cerrar o recargar la página se intenta liberar la sesión automáticamente.</li>
+        </ul>
+      </section>
+
+      <section id="c-modulos">
+        <h3>C. Qué hace cada módulo</h3>
+
+        <h4>Engastado</h4>
+        <p>Flujo principal de producción con selección guiada (operario, bono, puesto, máquina, terminal, carro, paquetes, engaste).</p>
+
+        <h4>Producción</h4>
+        <ul>
+          <li><strong>Bonos:</strong> gestión de proyectos y carros, generación de bono de trabajo y gestión de bonos/reportes.</li>
+          <li><strong>Órdenes:</strong> popup "Órdenes de Producción" con procesado de código, registro manual y vista de órdenes.</li>
+        </ul>
+
+        <h4>Visualización</h4>
+        <p>Panel de avance por bono. Se refresca automáticamente cada 5000 ms.</p>
+
+        <h4>Dashboard de Progreso del Bono</h4>
+        <p>Vista de detalle ponderado por terminal y estados (completado, en curso, pendiente). Refresco automático cada 5000 ms.</p>
+
+        <h4>Etiquetas</h4>
+        <ul>
+          <li>Título: "Generador de Etiquetas".</li>
+          <li>Botones: "Cargar Grupos", "Vista Previa", "Imprimir Etiquetas".</li>
+          <li>Formato visible: 21mm x 38mm, 13 columnas x 5 filas.</li>
+        </ul>
+
+        <h4>Manguitos</h4>
+        <ul>
+          <li>Dos modos: "Guiado de colocación" y "Generar TXT".</li>
+          <li>TXT: opciones de ordenación, referencia por defecto PC_CAB_BADEN y edición por defecto ed_04.</li>
+        </ul>
+
+        <h4>Preparación de Mangueras</h4>
+        <p>Carga de corte y guiado lado De/Para con observaciones de pelado y malla.</p>
+
+        <h4>Administración</h4>
+        <p>Panel de configuración con secciones de archivos, organización, operarios, impresora, color de cable, report, sistema y zona de peligro.</p>
+      </section>
+
+      <section id="d-problemas">
+        <h3>D. Problemas habituales y soluciones rápidas</h3>
+
+        <h4>Error interno del servidor (ref: xxxxxxxx)</h4>
+        <ul>
+          <li>Qué significa: hubo un error no esperado y el sistema generó una referencia corta.</li>
+          <li>Qué hacer: anotar o fotografiar el código ref y avisar al coordinador/jefe de línea.</li>
+          <li>No reintentar en bucle la misma acción sin informar.</li>
+        </ul>
+
+        <h4>No carga una pantalla</h4>
+        <ul>
+          <li>Revisar conexión de red/cable.</li>
+          <li>Volver a módulos e intentar abrir otra vez.</li>
+          <li>Si persiste, registrar hora y pantalla exacta para soporte.</li>
+        </ul>
+
+        <h4>La pistola no escanea</h4>
+        <ul>
+          <li>Comprobar conexión USB.</li>
+          <li>Comprobar que esté en modo teclado (keyboard wedge).</li>
+          <li>Hacer prueba en un campo de texto: debe escribir y enviar Enter.</li>
+        </ul>
+
+        <h4>Mensajes de validación frecuentes</h4>
+        <ul>
+          <li>"PIN incorrecto" en acceso admin.</li>
+          <li>"Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo."</li>
+          <li>Mensajes de selección obligatoria en modales (operario, bono, etc.).</li>
+        </ul>
+      </section>
+
+      <section id="e-admin">
+        <h3>E. Jefe de línea / Administración</h3>
+        <ul>
+          <li>El panel admin está protegido por PIN cuando la protección está activa.</li>
+          <li>La sesión admin válida dura 8 horas por defecto.</li>
+          <li>En error de PIN aparece "PIN incorrecto" y hay retardo de seguridad en fallo.</li>
+          <li>Hay botón de cierre de sesión admin.</li>
+        </ul>
+
+        <div class="danger-box">
+          <strong>Zona de peligro:</strong> la acción "RESETEAR TODO EL SISTEMA" borra archivos Excel y códigos de barras. Es irreversible y no hay papelera.
+        </div>
+
+        <h4>Secciones del panel</h4>
+        <ul>
+          <li>Archivos: subir Excel, asociar código, cortes registrados, archivos disponibles.</li>
+          <li>Organización: gestión de puestos y máquinas.</li>
+          <li>Operarios: alta y lista.</li>
+          <li>Impresora: estado, prueba y etiquetas simuladas.</li>
+          <li>Color de cable.</li>
+          <li>Report: trazabilidad por bono, terminal y operario.</li>
+          <li>Sistema: actualización GitHub y bloqueos de paquetes.</li>
+        </ul>
+      </section>
+
+      <section id="f-faq">
+        <h3>F. Preguntas frecuentes</h3>
+        <ol>
+          <li><strong>¿Debo identificarme cada vez que entro a Engastado?</strong> Sí, el modal de operario se pide al entrar.</li>
+          <li><strong>¿Puedo cargar un bono escribiéndolo?</strong> Sí, por código o por lista de bonos disponibles.</li>
+          <li><strong>¿Qué formato tienen los nombres sugeridos de bono?</strong> DDMMYYYY_N.</li>
+          <li><strong>¿Qué hago si no tengo un paquete?</strong> Marcar "No lo tengo - se saltará" y continuar.</li>
+          <li><strong>¿Qué pasa si otro puesto usa un paquete?</strong> Aparece bloqueado como "En uso" y no se puede tomar.</li>
+          <li><strong>¿El progreso se guarda si dejo pendientes?</strong> Sí, se guarda parcial del carro con pendientes.</li>
+          <li><strong>¿Visualización se actualiza sola?</strong> Sí, cada 5000 ms.</li>
+          <li><strong>¿Cuánto dura la sesión de admin?</strong> 8 horas por defecto.</li>
+          <li><strong>¿Puedo revertir un reseteo total?</strong> No, es una operación destructiva.</li>
+          <li><strong>¿Qué envío a soporte cuando falla algo?</strong> Pantalla, acción realizada, hora y referencia de error (ref).</li>
+        </ol>
+      </section>
+
+      <section id="pendientes">
+        <h3>PENDIENTES DE CONFIRMAR CON VÍCTOR</h3>
+        <ul>
+          <li>URL exacta que deben escribir los operarios en navegador dentro de planta para abrir la app.</li>
+          <li>Alcance operativo real de "Ver Órdenes" en el módulo de Órdenes (detalles de uso esperados por proceso).</li>
+          <li>Procedimiento final en planta para impresora Zebra GK420T (uso real vs simulación).</li>
+          <li>Criterio operativo de prioridad/estados en algunos listados (si existe norma interna adicional no reflejada en UI).</li>
+        </ul>
+        <div class="note">
+          Esta sección recoge solo puntos no verificables al 100% con el código actual. No se mezclan con instrucciones operativas cerradas.
+        </div>
+      </section>
+
+      <footer>
+        Manual de uso COJOsw - Versión {{ MANUAL_VERSION }} - Fecha {{ MANUAL_FECHA }}
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const input = document.getElementById('manual-search');
+      const meta = document.getElementById('search-meta');
+      const root = document.getElementById('manual-content');
+      const sections = Array.from(root.querySelectorAll('section'));
+
+      function clearMarks(node) {
+        node.querySelectorAll('mark.manual-mark').forEach((m) => {
+          const text = document.createTextNode(m.textContent);
+          m.replaceWith(text);
+        });
+      }
+
+      function highlightText(container, query) {
+        const q = query.toLowerCase();
+        let matches = 0;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        const texts = [];
+        let current;
+
+        while ((current = walker.nextNode())) {
+          if (!current.nodeValue || !current.nodeValue.trim()) continue;
+          if (current.parentElement && current.parentElement.closest('script, style')) continue;
+          texts.push(current);
+        }
+
+        texts.forEach((textNode) => {
+          const raw = textNode.nodeValue;
+          const lower = raw.toLowerCase();
+          const first = lower.indexOf(q);
+          if (first === -1) return;
+
+          const fragment = document.createDocumentFragment();
+          let cursor = 0;
+          let idx = first;
+
+          while (idx !== -1) {
+            const before = raw.slice(cursor, idx);
+            if (before) fragment.appendChild(document.createTextNode(before));
+
+            const found = raw.slice(idx, idx + query.length);
+            const mark = document.createElement('mark');
+            mark.className = 'manual-mark';
+            mark.textContent = found;
+            fragment.appendChild(mark);
+            matches += 1;
+
+            cursor = idx + query.length;
+            idx = lower.indexOf(q, cursor);
+          }
+
+          const after = raw.slice(cursor);
+          if (after) fragment.appendChild(document.createTextNode(after));
+
+          textNode.parentNode.replaceChild(fragment, textNode);
+        });
+
+        return matches;
+      }
+
+      function runSearch() {
+        const query = input.value.trim();
+
+        sections.forEach((s) => {
+          clearMarks(s);
+          s.style.display = '';
+        });
+
+        if (!query) {
+          meta.textContent = 'Escribe para filtrar y resaltar coincidencias.';
+          return;
+        }
+
+        let globalMatches = 0;
+        let visible = 0;
+
+        sections.forEach((section) => {
+          const found = highlightText(section, query);
+          globalMatches += found;
+          if (found > 0) {
+            visible += 1;
+          } else {
+            section.style.display = 'none';
+          }
+        });
+
+        if (globalMatches === 0) {
+          meta.textContent = 'Sin resultados para "' + query + '".';
+        } else {
+          meta.textContent = globalMatches + ' coincidencia(s) en ' + visible + ' sección(es).';
+        }
+      }
+
+      input.addEventListener('input', runSearch);
+      meta.textContent = 'Escribe para filtrar y resaltar coincidencias.';
+    })();
+  </script>
+</body>
+</html>

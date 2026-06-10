@@ -88,7 +88,7 @@
       grid-column: 1 / -1;
       grid-row: 2;
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 12px;
     }
 
@@ -191,6 +191,23 @@
     .mod-etiquetas  { --grad: linear-gradient(145deg, #f59e0b 0%, #b45309 100%); --btn-color: #b45309; }
     .mod-manguitos  { --grad: linear-gradient(145deg, #38bdf8 0%, #0284c7 100%); --btn-color: #0284c7; }
     .mod-mangueras  { --grad: linear-gradient(145deg, #64748b 0%, #1e293b 100%); --btn-color: #1e293b; }
+    .mod-ayuda      { --grad: linear-gradient(145deg, #14b8a6 0%, #0f766e 100%); --btn-color: #0f766e; }
+
+    /* ── Enlace discreto de ayuda en la cabecera ── */
+    .modules-header-help {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: #5eead4;
+      letter-spacing: .08em;
+      text-decoration: none;
+      border: 1px solid #134e4a;
+      border-radius: 6px;
+      padding: 5px 14px;
+      margin-right: 10px;
+      transition: all 0.15s;
+    }
+    .modules-header-help:hover { background: #134e4a; color: #ccfbf1; }
+    .modules-header-right { display: flex; align-items: center; }
 
     /* ── Popup producción ── */
     .prod-overlay {
@@ -257,7 +274,10 @@
     <div class="modules-header">
       <a href="{{ url_for('main.home') }}" class="modules-header-logo">COJO<span class="sw">sw</span></a>
       <span class="modules-header-title">MÓDULOS DEL SISTEMA</span>
-      <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
+      <div class="modules-header-right">
+        <a href="{{ url_for('main.manual') }}" class="modules-header-help" target="_blank">❓ AYUDA</a>
+        <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
+      </div>
     </div>
 
     <div class="modules-grid">
@@ -323,6 +343,15 @@
           <div class="mod-title">Etiquetas</div>
           <div class="mod-desc">Genera etiquetas para cortes. Formato A4 65 uds.</div>
           <div class="mod-btn">Etiquetar</div>
+        </a>
+
+        <!-- Ayuda / Manual -->
+        <a href="{{ url_for('main.manual') }}" class="mod-card mod-ayuda" target="_blank">
+          <div class="mod-badge">Documentación</div>
+          <div class="mod-icon">📖</div>
+          <div class="mod-title">Ayuda / Manual</div>
+          <div class="mod-desc">Guía de uso de la aplicación para operarios y jefe de línea.</div>
+          <div class="mod-btn">Abrir Manual</div>
         </a>
 
       </div><!-- /modules-row-bottom -->

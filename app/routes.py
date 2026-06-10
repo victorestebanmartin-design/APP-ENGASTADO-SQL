@@ -121,6 +121,21 @@ def modules():
     return render_template('modules.html')
 
 
+# Versión y fecha del manual de uso (fáciles de actualizar aquí)
+MANUAL_VERSION = 'v1.0'
+MANUAL_FECHA = 'junio 2026'
+
+
+@bp.route('/manual')
+def manual():
+    """Manual de uso de la aplicación (documentación, sin PIN)."""
+    return render_template(
+        'manual.html',
+        MANUAL_VERSION=MANUAL_VERSION,
+        MANUAL_FECHA=MANUAL_FECHA,
+    )
+
+
 @bp.route('/v3')
 def index_v3():
     """Vista principal V3 - Sistema de bonos"""
