@@ -89,6 +89,18 @@ def _apply_migrations(db_path):
         cur.execute("ALTER TABLE cable_colores ADD COLUMN color_texto TEXT")
         conn.commit()
 
+    # Migración: tabla operarios (identificación controlada)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operarios (
+            id TEXT PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            activo INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_operarios_activo ON operarios(activo)")
+    conn.commit()
+
     conn.close()
 
 
