@@ -123,9 +123,16 @@
 
     lblNombre.textContent  = elem.elemento;
     if (lblPaquete) {
-      lblPaquete.innerHTML = elem.numero_etiqueta
-        ? '<span class="elem-paquete-badge">🏷 #' + elem.numero_etiqueta + '</span>'
-        : '';
+      if (elem.numero_etiqueta) {
+        var codCable = (elem.manguitos[0] && elem.manguitos[0].cod_cable) || '';
+        var c = (typeof getCodCableColor === 'function')
+          ? getCodCableColor(codCable)
+          : { bg: '#fef3c7', text: '#78350f' };
+        lblPaquete.innerHTML = '<span class="elem-paquete-badge" style="background:' + c.bg +
+          ';color:' + c.text + ';">🏷 #' + elem.numero_etiqueta + '</span>';
+      } else {
+        lblPaquete.innerHTML = '';
+      }
     }
     lblContador.textContent = 'Elemento ' + (idxElem + 1) + ' de ' + elementosFiltrados.length
                             + ' · ' + elem.manguitos.length + ' manguito' + (elem.manguitos.length !== 1 ? 's' : '');
@@ -334,6 +341,7 @@
   // ── Init ─────────────────────────────────────────────────────────────
   // Referencia para reabrir el modal desde el flujo de guiado
   var abrirModalMg = function () {};
+  if (typeof initCableColors === 'function') initCableColors();
   initModalMg();
 
   function esc(s) {
