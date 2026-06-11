@@ -331,9 +331,26 @@ def api_manguitos_datos():
                 for mg in elem.get('manguitos', []):
                     cod = (mg.get('cod_cable') or '').strip().upper()
                     mg['numero_etiqueta'] = num_map_full.get((cod, elem['elemento'])) or num_map_elem.get(elem['elemento'])
-                # numero_etiqueta del grupo = primer manguito (para el título)
-                mgs = elem.get('manguitos', [])
-                elem['numero_etiqueta'] = mgs[0]['numero_etiqueta'] if mgs else None
+
+            # Reagrupar por etiqueta (paquete): cada paquete corresponde a un único
+            # cable/etiqueta. Agrupar por 'De Elemento' mezclaba manguitos de etiquetas
+            # distintas que comparten el mismo elemento de destino.
+            grupos = {}
+            orden  = []
+            for elem in resultado:
+                for mg in elem.get('manguitos', []):
+                    label = mg.get('numero_etiqueta')
+                    key   = label if label else ('__sin_etq__', elem['elemento'])
+                    if key not in grupos:
+                        grupos[key] = {
+                            'elemento':        elem['elemento'],
+                            'manguitos':       [],
+                            'numero_etiqueta': label,
+                        }
+                        orden.append(key)
+                    grupos[key]['manguitos'].append(mg)
+            resultado = [grupos[k] for k in orden]
+
             # Ordenar elementos por numero_etiqueta ascendente
             def _etq_sort(e):
                 v = e.get('numero_etiqueta')
