@@ -88,13 +88,13 @@
 
     /* Fila completa: info + manguito */
     .manguito-row { display: flex; align-items: stretch; gap: 6px; }
-    .manguito-info { flex: 0 0 180px; display: flex; flex-direction: column; align-items: center;
+    .manguito-info { flex: 0 0 210px; display: flex; flex-direction: column; align-items: center;
       justify-content: center; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px;
-      padding: 2px 5px; text-align: center; gap: 3px; }
-    .manguito-info .info-cable { font-size: 11px; font-weight: 800; color: #111827; line-height: 1.2;
+      padding: 2px 5px; text-align: center; gap: 4px; }
+    .manguito-info .info-cable { font-size: 14px; font-weight: 800; color: #111827; line-height: 1.2;
       word-break: break-all; }
-    .manguito-info .info-sec   { font-size: 10px; font-weight: 600; color: #6b7280; line-height: 1; }
-    .manguito-info .info-lon   { font-size: 14px; font-weight: 900; color: #1e40af; line-height: 1; }
+    .manguito-info .info-sec   { font-size: 12px; font-weight: 600; color: #6b7280; line-height: 1; }
+    .manguito-info .info-lon   { font-size: 17px; font-weight: 900; color: #1e40af; line-height: 1; }
 
     /* Par de manguito */
     .par-manguito { flex: 1; display: flex; border-radius: 3px; overflow: hidden;
@@ -340,6 +340,6 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=7"></script>
+  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=8"></script>
 </body>
 </html>

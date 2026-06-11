@@ -31,7 +31,7 @@
     '649D10000': 'naranja',  'H0115316':  'naranja'
   };
 
-  var POR_PAGINA = 8;
+  var POR_PAGINA = 6;
 
   var elementos          = [];
   var elementosFiltrados = [];
@@ -158,9 +158,10 @@
 
   function crearParManguito(m) {
     var color = CODIGOS[m.de_manguito] || 'unknown';
-    var alto  = ALTOS[m.de_manguito] || 48;
-    var fsIzq   = alto < 38 ? '13px' : alto < 56 ? '17px' : alto < 90 ? '21px' : '24px';
-    var fsLinea = alto < 38 ?  '9px' : alto < 56 ? '11px' : '12px';
+    var ESCALA = 1.4;   // ampliar para mejor lectura
+    var alto  = Math.round((ALTOS[m.de_manguito] || 48) * ESCALA);
+    var fsIzq   = alto < 50 ? '17px' : alto < 78 ? '23px' : alto < 120 ? '28px' : '32px';
+    var fsLinea = alto < 50 ? '12px' : alto < 78 ? '14px' : '16px';
 
     // Fila contenedora
     var row = document.createElement('div');
