@@ -291,6 +291,10 @@ class ExcelManager:
                 pass
             return '' if v is None else str(v).strip()
 
+        def _sin_asterisco(v):
+            # El '*' marca terminales que no se engastan; no aplica en manguitos
+            return _safe(v).rstrip('*').rstrip()
+
         def _col(names):
             for n in names:
                 if n in df.columns:
@@ -324,9 +328,9 @@ class ExcelManager:
 
             # Valor para pantalla y TXT: columna original si existe, si no la renombrada (sin fallback)
             if col_de_elemento_orig:
-                de_elemento_display = _safe(row[col_de_elemento_orig])
+                de_elemento_display = _sin_asterisco(row[col_de_elemento_orig])
             else:
-                de_elemento_display = _safe(row[col_de_elemento]) if col_de_elemento else ''
+                de_elemento_display = _sin_asterisco(row[col_de_elemento]) if col_de_elemento else ''
 
             # Longitud numérica
             _lon_raw = row[col_longitud] if col_longitud else None
@@ -340,7 +344,7 @@ class ExcelManager:
                 'de_manguito':   de_manguito,
                 'de_elemento':   de_elemento_display,
                 'de_punto':      _safe(row[col_de_punto])      if col_de_punto   else '',
-                'para_elemento': _safe(row[col_para_elem])     if col_para_elem  else '',
+                'para_elemento': _sin_asterisco(row[col_para_elem])     if col_para_elem  else '',
                 'para_punto':    _safe(row[col_para_punto])    if col_para_punto else '',
                 'cod_cable':     _safe(row[col_cod_cable])     if col_cod_cable  else '',
                 'longitud':      _lon,
