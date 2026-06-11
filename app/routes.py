@@ -122,7 +122,7 @@ def modules():
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
-MANUAL_VERSION = 'v1.0'
+MANUAL_VERSION = 'v1.1'
 MANUAL_FECHA = 'junio 2026'
 
 

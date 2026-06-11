@@ -38,7 +38,6 @@
                 <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
                 <button class="admin-nav-item" data-section="organizacion" onclick="adminNav('organizacion')"><span class="ico">🏢</span> Organización</button>
                 <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
-                <button class="admin-nav-item" data-section="impresora" onclick="adminNav('impresora')"><span class="ico">🖨️</span> Impresora</button>
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
 
                 <div class="admin-nav-label">Auditoría</div>
@@ -46,7 +45,6 @@
 
                 <div class="admin-nav-label">Sistema</div>
                 <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">🔄</span> Sistema</button>
-                <button class="admin-nav-item danger" data-section="peligro" onclick="adminNav('peligro')"><span class="ico">⚠️</span> Zona de peligro</button>
             </nav>
 
             <!-- Content -->
@@ -173,35 +171,7 @@
                     </div>
                 </section>
 
-                <!-- ============ IMPRESORA ============ -->
-                <section id="sec-impresora" class="admin-section">
-                    <div class="admin-section-head">
-                        <h1>Impresora Zebra</h1>
-                        <p>Monitoreo y control de la impresora de etiquetas GK420T</p>
-                    </div>
-                    <div class="card">
-                        <h2>🖨️ Control de Impresora Zebra GK420T</h2>
-                        <p class="instruccion">Monitoreo y control de la impresora de etiquetas</p>
-                        <div class="printer-controls">
-                            <button onclick="verificarEstadoImpresora()" class="btn-secondary">🔍 Verificar Estado</button>
-                            <button onclick="imprimirPrueba()" class="btn-primary">🧪 Imprimir Prueba</button>
-                            <button onclick="listarEtiquetasSimuladas()" class="btn-secondary">📋 Ver Etiquetas Simuladas</button>
-                        </div>
-                        <div id="printer-status" class="printer-status-container" style="margin-top: 20px;">
-                            <p class="text-muted">Haz clic en "Verificar Estado" para ver información de la impresora</p>
-                        </div>
-                        <div id="printer-simulated" class="printer-simulated-container" style="margin-top: 20px; display: none;">
-                            <h3>Etiquetas Simuladas</h3>
-                            <div id="simulated-list"></div>
-                            <button onclick="limpiarEtiquetasSimuladas()" class="btn-danger" style="margin-top: 10px;">🗑️ Limpiar Todas</button>
-                        </div>
-                        <div id="printer-pending" class="printer-pending-container" style="margin-top: 20px; display: none;">
-                            <h3>Etiquetas Pendientes</h3>
-                            <div id="pending-list"></div>
-                            <button onclick="reintentarPendientes()" class="btn-primary" style="margin-top: 10px;">🔄 Reintentar Todas</button>
-                        </div>
-                    </div>
-                </section>
+
 
                 <!-- ============ COLORES ============ -->
                 <section id="sec-colores" class="admin-section">
@@ -361,18 +331,7 @@
                     </div>
                 </section>
 
-                <!-- ============ ZONA DE PELIGRO ============ -->
-                <section id="sec-peligro" class="admin-section">
-                    <div class="admin-section-head">
-                        <h1>Zona de peligro</h1>
-                        <p>Acciones irreversibles. Procede con precaución.</p>
-                    </div>
-                    <div class="card">
-                        <h2>⚠️ Resetear Sistema</h2>
-                        <p class="instruccion"><strong>Esta acción eliminará TODOS los archivos Excel y TODOS los códigos de barras registrados. No se puede deshacer.</strong></p>
-                        <button onclick="resetearSistema()" class="btn-danger">🗑️ RESETEAR TODO EL SISTEMA</button>
-                    </div>
-                </section>
+
 
             </main>
         </div>
