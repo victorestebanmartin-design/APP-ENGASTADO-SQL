@@ -114,6 +114,25 @@
     .mg-naranja  { background: #FF8C00; }
     .mg-unknown  { background: #e5e7eb; border: 1px solid #ccc; }
 
+    /* Buscador de marca */
+    .mg-buscador-row { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    .mg-buscador { display: flex; align-items: center; gap: 6px; background: #fff;
+      border: 2px solid #cbd5e1; border-radius: 999px; padding: 6px 14px; min-width: 240px;
+      transition: border-color 0.15s; }
+    .mg-buscador:focus-within { border-color: #1e3a1e; }
+    .mg-buscador-icon { font-size: 15px; opacity: 0.6; }
+    .mg-buscador input { flex: 1; border: none; outline: none; font-size: 15px; font-weight: 700;
+      color: #1f2937; background: transparent; }
+    .mg-buscador-clear { border: none; background: transparent; color: #9ca3af; font-size: 22px;
+      line-height: 1; cursor: pointer; padding: 0 2px; display: none; }
+    .mg-buscador-clear:hover { color: #ef4444; }
+    .mg-buscador.has-text .mg-buscador-clear { display: inline-block; }
+    .mg-buscar-result { display: none; font-size: 13px; color: #6b7280; margin-bottom: 10px;
+      text-align: right; }
+    .mg-buscar-result.no-hit { color: #ef4444; }
+    .manguito-row.mg-resaltado .par-manguito { outline: 4px solid #1e3a1e;
+      outline-offset: 2px; box-shadow: 0 0 0 3px rgba(30,58,30,0.25), 0 4px 14px rgba(0,0,0,0.4); }
+
     /* Selector de ristra */
     .ristra-selector { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
     .ristra-btn { padding: 6px 14px; border: 2px solid #e5e7eb; border-radius: 20px; background: #f9fafb;
@@ -165,6 +184,14 @@
       <div class="section-card">
         <div id="guiado-activo" style="display:none">
           <div id="ristra-selector" class="ristra-selector" style="display:none"></div>
+          <div class="mg-buscador-row">
+            <div class="mg-buscador">
+              <span class="mg-buscador-icon">🔍</span>
+              <input type="text" id="mg-buscar-marca" placeholder="Buscar marca…" autocomplete="off">
+              <button type="button" id="mg-buscar-clear" class="mg-buscador-clear" title="Limpiar">&times;</button>
+            </div>
+          </div>
+          <div id="mg-buscar-result" class="mg-buscar-result"></div>
           <div class="nav-elemento">
             <button class="nav-btn" id="btn-elem-prev">← Anterior</button>
             <div class="elem-nav-center">
@@ -340,6 +367,6 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=8"></script>
+  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=9"></script>
 </body>
 </html>

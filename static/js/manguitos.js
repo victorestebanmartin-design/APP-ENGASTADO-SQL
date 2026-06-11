@@ -52,6 +52,12 @@
   var btnNext           = document.getElementById('btn-elem-next');
   var divRistraSelector = document.getElementById('ristra-selector');
 
+  // Buscador de marca
+  var inputBuscar   = document.getElementById('mg-buscar-marca');
+  var btnBuscarClr  = document.getElementById('mg-buscar-clear');
+  var divBuscarRes  = document.getElementById('mg-buscar-result');
+  var marcaResaltada = null;
+
   // Banner corte actual
   var corteBanner   = document.getElementById('mg-corte-banner');
   var corteCodigoEl = document.getElementById('mg-corte-codigo');
@@ -65,6 +71,84 @@
     btn.classList.add('active');
     aplicarFiltroRistra(btn.dataset.codigo || null);
   });
+
+  // ── Buscador de marca ────────────────────────────────────────────────
+  function buscarMarca() {
+    var q = (inputBuscar.value || '').trim().toUpperCase();
+    if (inputBuscar.parentElement) inputBuscar.parentElement.classList.toggle('has-text', !!q);
+
+    if (!q) {
+      marcaResaltada = null;
+      divBuscarRes.style.display = 'none';
+      if (elementosFiltrados.length) renderElemento();
+      return;
+    }
+
+    // Buscar en TODOS los elementos (quitar filtro de ristra activo)
+    if (codigoActivo) {
+      var btnTodos = divRistraSelector.querySelector('.ristra-btn');
+      if (btnTodos) {
+        divRistraSelector.querySelectorAll('.ristra-btn').forEach(function (b) { b.classList.remove('active'); });
+        btnTodos.classList.add('active');
+      }
+      aplicarFiltroRistra(null);
+    }
+
+    // Localizar primer manguito cuya marca coincida (exacta, luego parcial)
+    var hit = _buscarEn(function (mk) { return mk === q; })
+           || _buscarEn(function (mk) { return mk.indexOf(q) !== -1; });
+
+    if (!hit) {
+      marcaResaltada = null;
+      divBuscarRes.textContent = 'Sin resultados para «' + inputBuscar.value.trim() + '»';
+      divBuscarRes.className = 'mg-buscar-result no-hit';
+      divBuscarRes.style.display = 'block';
+      return;
+    }
+
+    idxElem = hit.idxElem;
+    pagina  = hit.pagina;
+    marcaResaltada = hit.marca;
+    renderElemento();
+
+    var elem = elementosFiltrados[idxElem];
+    var paqTxt = elem.numero_etiqueta ? ' · paquete #' + elem.numero_etiqueta : '';
+    divBuscarRes.textContent = 'Marca ' + hit.marca + ' → ' + elem.elemento + paqTxt;
+    divBuscarRes.className = 'mg-buscar-result';
+    divBuscarRes.style.display = 'block';
+
+    setTimeout(function () {
+      var el = tira.querySelector('.mg-resaltado');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  }
+
+  function _buscarEn(test) {
+    for (var i = 0; i < elementosFiltrados.length; i++) {
+      var mgs = elementosFiltrados[i].manguitos;
+      for (var j = 0; j < mgs.length; j++) {
+        var mk = String(mgs[j].de_marca || '').trim().toUpperCase();
+        if (mk && test(mk)) {
+          return { idxElem: i, pagina: Math.floor(j / POR_PAGINA), marca: mk };
+        }
+      }
+    }
+    return null;
+  }
+
+  if (inputBuscar) {
+    inputBuscar.addEventListener('input', buscarMarca);
+    inputBuscar.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); buscarMarca(); }
+    });
+  }
+  if (btnBuscarClr) {
+    btnBuscarClr.addEventListener('click', function () {
+      inputBuscar.value = '';
+      buscarMarca();
+      inputBuscar.focus();
+    });
+  }
 
   // ── Cargar manguitos del Excel del corte ─────────────────────────────
   async function cargarGuiado(corte) {
@@ -143,7 +227,11 @@
     // Dibujar pares en la tira
     tira.innerHTML = '';
     slice.forEach(function (m) {
-      tira.appendChild(crearParManguito(m));
+      var row = crearParManguito(m);
+      if (marcaResaltada && String(m.de_marca || '').toUpperCase() === marcaResaltada) {
+        row.classList.add('mg-resaltado');
+      }
+      tira.appendChild(row);
     });
 
     // Paginación
