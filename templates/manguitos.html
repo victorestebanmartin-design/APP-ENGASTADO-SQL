@@ -61,13 +61,26 @@
 
     /* Nav elemento */
     .nav-elemento { display: flex; align-items: center; justify-content: space-between;
-      background: #1e3a1e; color: #fff; border-radius: 10px; padding: 14px 20px; margin-bottom: 20px; }
-    .elem-nombre { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; text-align: center; }
-    .elem-contador { font-size: 12px; opacity: 0.7; text-align: center; margin-top: 2px; }
-    .nav-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 8px 18px;
-      border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+      background: #1e3a1e; color: #fff; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; gap: 16px; }
+    .elem-nav-center { flex: 1; display: flex; flex-direction: column; align-items: center; }
+    .elem-nav-trio { display: grid; grid-template-columns: auto 1fr; align-items: center;
+      width: 100%; gap: 18px; }
+    .elem-nav-paquete { justify-self: end; }
+    .elem-nav-paquete .elem-paquete-badge { display: inline-flex; align-items: center; gap: 6px;
+      font-size: 28px; font-weight: 900; padding: 8px 20px; border-radius: 16px; line-height: 1;
+      background: #fef3c7; color: #78350f; }
+    .elem-nombre { font-size: 28px; font-weight: 900; letter-spacing: 0.5px; text-align: left;
+      justify-self: start; color: #bbf7d0; }
+    .elem-contador { font-size: 13px; opacity: 0.75; text-align: center; margin-top: 8px; }
+    .nav-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 12px 22px;
+      border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 700; transition: background 0.15s; white-space: nowrap; }
     .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); }
     .nav-btn:disabled { opacity: 0.25; cursor: default; }
+    @media (max-width: 700px) {
+      .elem-nombre { font-size: 22px; }
+      .elem-nav-paquete .elem-paquete-badge { font-size: 22px; padding: 6px 16px; }
+      .nav-btn { padding: 10px 14px; font-size: 13px; }
+    }
 
     /* Tira portadora */
     .tira-portadora { background: #2a5a2a; border-radius: 12px; padding: 14px 20px;
@@ -154,8 +167,11 @@
           <div id="ristra-selector" class="ristra-selector" style="display:none"></div>
           <div class="nav-elemento">
             <button class="nav-btn" id="btn-elem-prev">← Anterior</button>
-            <div>
-              <div class="elem-nombre" id="elem-nombre">—</div>
+            <div class="elem-nav-center">
+              <div class="elem-nav-trio">
+                <span class="elem-nav-paquete" id="elem-paquete-badge"></span>
+                <span class="elem-nombre" id="elem-nombre">—</span>
+              </div>
               <div class="elem-contador" id="elem-contador"></div>
             </div>
             <button class="nav-btn" id="btn-elem-next">Siguiente →</button>
@@ -324,6 +340,6 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=5"></script>
+  <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=6"></script>
 </body>
 </html>

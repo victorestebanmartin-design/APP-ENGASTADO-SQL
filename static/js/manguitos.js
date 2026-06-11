@@ -43,6 +43,7 @@
   var divActivo     = document.getElementById('guiado-activo');
   var tira          = document.getElementById('tira-manguitos');
   var lblNombre     = document.getElementById('elem-nombre');
+  var lblPaquete    = document.getElementById('elem-paquete-badge');
   var lblContador   = document.getElementById('elem-contador');
   var lblPagActual  = document.getElementById('pag-actual');
   var lblPagTotal   = document.getElementById('pag-total');
@@ -120,8 +121,12 @@
     var inicio    = pagina * POR_PAGINA;
     var slice     = elem.manguitos.slice(inicio, inicio + POR_PAGINA);
 
-    var numEtiqueta = elem.numero_etiqueta ? ' [#' + elem.numero_etiqueta + ']' : '';
-    lblNombre.textContent  = elem.elemento + numEtiqueta;
+    lblNombre.textContent  = elem.elemento;
+    if (lblPaquete) {
+      lblPaquete.innerHTML = elem.numero_etiqueta
+        ? '<span class="elem-paquete-badge">🏷 #' + elem.numero_etiqueta + '</span>'
+        : '';
+    }
     lblContador.textContent = 'Elemento ' + (idxElem + 1) + ' de ' + elementosFiltrados.length
                             + ' · ' + elem.manguitos.length + ' manguito' + (elem.manguitos.length !== 1 ? 's' : '');
 
