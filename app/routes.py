@@ -381,37 +381,41 @@ def api_manguitos_generar_txt():
         em = ExcelManager(upload_folder)
         elementos = em.get_manguitos(archivo)
 
-        # Obtener numero_etiqueta formateado por elemento desde BD
-        num_map = {}
+        # Obtener numero_etiqueta formateado por (cod_cable, elemento) desde BD
+        num_map_full = {}   # (cod_cable.upper(), elemento) -> label
+        num_map_elem = {}   # elemento -> label (fallback)
         try:
             with db.engine.connect() as conn:
                 rows = conn.execute(text(
-                    """SELECT elemento, numero_etiqueta, sub_numero
+                    """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
                        FROM etiquetas_elementos
                        WHERE archivo_excel = :arch AND es_grupo_padre = 0"""
                 ), {'arch': archivo}).fetchall()
             for r in rows:
-                elem_name, num_etq, sub_num = r[0], r[1], r[2]
-                if elem_name not in num_map:
-                    if sub_num and int(sub_num) > 0:
-                        num_map[elem_name] = f"{num_etq}.{str(int(sub_num)).zfill(2)}"
-                    else:
-                        num_map[elem_name] = str(num_etq)
+                elem_name, num_etq, sub_num, cod = r[0], r[1], r[2], (r[3] or '').strip().upper()
+                if sub_num and int(sub_num) > 0:
+                    label = f"{num_etq}.{str(int(sub_num)).zfill(2)}"
+                else:
+                    label = str(num_etq)
+                num_map_full[(cod, elem_name)] = label
+                if elem_name not in num_map_elem:
+                    num_map_elem[elem_name] = label
         except Exception:
             pass
 
-        # Aplanar: lista de manguitos con su numero de etiqueta para ordenar
+        # Aplanar: lista de manguitos con su numero de etiqueta (por cable) para ordenar
         lista_plana = []
         for elem in elementos:
-            num_str = num_map.get(elem['elemento'])
-            try:
-                num_float = float(num_str) if num_str else float('inf')
-            except (ValueError, TypeError):
-                num_float = float('inf')
             for m in elem['manguitos']:
+                cod = (m.get('cod_cable') or '').strip().upper()
+                num_str = num_map_full.get((cod, elem['elemento'])) or num_map_elem.get(elem['elemento'])
+                try:
+                    num_float = float(num_str) if num_str else float('inf')
+                except (ValueError, TypeError):
+                    num_float = float('inf')
                 lista_plana.append((num_float, m))
 
-        # Ordenar por numero de etiqueta (sort estable preserva orden Excel dentro del mismo elemento)
+        # Ordenar por numero de etiqueta (sort estable preserva orden Excel dentro del mismo paquete)
         lista_plana.sort(key=lambda x: x[0])
 
         # Agrupar por codigo de manguito preservando orden de aparición
