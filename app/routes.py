@@ -2886,7 +2886,7 @@ def api_comprobar_actualizaciones():
     Comprueba si hay commits nuevos en GitHub comparando con el HEAD local.
     """
     try:
-        base_dir = current_app.root_path.replace('\\app', '').replace('/app', '')
+        base_dir = os.path.dirname(current_app.root_path)
         git_exe = _encontrar_git()
         if not git_exe:
             return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
@@ -2947,7 +2947,7 @@ def api_actualizar_sistema():
     El servidor debe reiniciarse manualmente para aplicar cambios de Python.
     """
     try:
-        base_dir = current_app.root_path.replace('\\app', '').replace('/app', '')
+        base_dir = os.path.dirname(current_app.root_path)
         git_exe = _encontrar_git()
         if not git_exe:
             return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
@@ -3681,140 +3681,6 @@ def api_etiquetas_regenerar():
         print(traceback.format_exc())
         return error_interno(e, 'Error al regenerar')
 
-        # 1. Borrar entradas existentes
-        with db.engine.connect() as conn:
-            deleted = conn.execute(
-                text("DELETE FROM etiquetas_elementos WHERE archivo_excel = :a"), {'a': archivo}
-            ).rowcount
-            conn.commit()
-
-        print(f"🗑️  Etiquetas eliminadas para {archivo}: {deleted} filas")
-
-        # 2. Regenerar: reusar la lógica de cargar_grupos (que auto-genera cuando count=0)
-        # Llamamos internamente a la misma función
-        from flask import current_app as _app
-        excel_path = os.path.join(_app.config['UPLOAD_FOLDER'], archivo)
-        if not os.path.exists(excel_path):
-            return jsonify({'success': False, 'message': f'Archivo no encontrado: {archivo}'}), 404
-
-        df = pd.read_excel(excel_path, sheet_name=_detectar_hoja(excel_path))
-
-        grupos_generados = []
-        numero_etiqueta = 1
-        codigo_corte = archivo.replace('.xlsx', '').replace('.xls', '')
-
-        if 'Cod. cable' not in df.columns or 'De Elemento Etiquetas' not in df.columns:
-            return jsonify({'success': False, 'message': 'El archivo no tiene las columnas requeridas'}), 400
-
-        agrupados = df.groupby(['Cod. cable', 'De Elemento Etiquetas']).first().reset_index()
-
-        SERIE_PAT_R = re.compile(r'\((\w+)\)$')
-        series_dict_r = {}
-        individuales_r = []
-
-        for _, row in agrupados.iterrows():
-            cod_cable = str(row['Cod. cable'])
-            elemento = str(row['De Elemento Etiquetas']).strip()
-            m = SERIE_PAT_R.search(elemento)
-            if m:
-                series_dict_r.setdefault(m.group(1), []).append((cod_cable, elemento, row))
-            else:
-                individuales_r.append((cod_cable, elemento, row))
-
-        serie_bases_r = set()
-        for miembros_r in series_dict_r.values():
-            for cb, el, _ in miembros_r:
-                base = SERIE_PAT_R.sub('', el).strip()
-                serie_bases_r.add((cb, base))
-        # NOTA: NO se eliminan individuales cuyo base exista en series (TB1 != TB1(S206))
-
-        def _get_cols_r(row_data):
-            desc = str(row_data.get('Descripción Cable', row_data.get('Descripción', '')))
-            sec  = str(row_data.get('Sección', row_data.get('Seccion', '')))
-            try:
-                lon = float(row_data.get('Longitud', 0) or 0)
-            except (ValueError, TypeError):
-                lon = 0.0
-            det = str(row_data.get('De Terminal', ''))
-            return desc, sec, lon, det
-
-        # Series SXX
-        for serie_code, miembros in series_dict_r.items():
-            total_cables = total_terminales = 0
-            primer_det = primer_desc = primer_sec = ''
-            for cod_cable, elemento, row_data in miembros:
-                mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-                nc = int(len(df[mask]))
-                total_cables += nc
-                total_terminales += nc
-                desc, sec, _, det = _get_cols_r(row_data)
-                if not primer_det:  primer_det  = det
-                if not primer_desc: primer_desc = desc
-                if not primer_sec:  primer_sec  = sec
-
-            grupos_generados.append({
-                'numero_etiqueta': numero_etiqueta, 'sub_numero': 0, 'es_grupo_padre': 1,
-                'grupo_serie': serie_code, 'cod_cable': 'GRUPO_SERIE', 'elemento': serie_code,
-                'descripcion': f'Grupo serie {serie_code}', 'seccion': primer_sec,
-                'longitud': 0.0, 'de_terminal': primer_det, 'num_cables': total_cables,
-                'num_terminales': total_terminales, 'archivo': archivo, 'codigo_corte': codigo_corte
-            })
-            for sub_idx, (cod_cable, elemento, row_data) in enumerate(miembros, 1):
-                mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-                nc = int(len(df[mask]))
-                desc, sec, lon, det = _get_cols_r(row_data)
-                grupos_generados.append({
-                    'numero_etiqueta': numero_etiqueta, 'sub_numero': sub_idx, 'es_grupo_padre': 0,
-                    'grupo_serie': serie_code, 'cod_cable': cod_cable, 'elemento': elemento,
-                    'descripcion': desc, 'seccion': sec, 'longitud': lon, 'de_terminal': det,
-                    'num_cables': nc, 'num_terminales': nc, 'archivo': archivo, 'codigo_corte': codigo_corte
-                })
-            numero_etiqueta += 1
-
-        # Individuales
-        for cod_cable, elemento, row_data in individuales_r:
-            mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-            nc = int(len(df[mask]))
-            desc, sec, lon, det = _get_cols_r(row_data)
-            grupos_generados.append({
-                'numero_etiqueta': numero_etiqueta, 'sub_numero': 0, 'es_grupo_padre': 0,
-                'grupo_serie': None, 'cod_cable': cod_cable, 'elemento': elemento,
-                'descripcion': desc, 'seccion': sec, 'longitud': lon, 'de_terminal': det,
-                'num_cables': nc, 'num_terminales': nc, 'archivo': archivo, 'codigo_corte': codigo_corte
-            })
-            numero_etiqueta += 1
-
-        # Guardar
-        query_ins = """
-            INSERT INTO etiquetas_elementos
-            (archivo_excel, codigo_corte, numero_etiqueta, sub_numero, es_grupo_padre,
-             grupo_serie, cod_cable, elemento, descripcion, seccion, longitud,
-             de_terminal, num_cables, num_terminales)
-            VALUES (:archivo, :codigo_corte, :numero, :sub_numero, :es_grupo_padre,
-                    :grupo_serie, :cod_cable, :elemento, :descripcion, :seccion, :longitud,
-                    :de_terminal, :num_cables, :num_terminales)
-        """
-        with db.engine.connect() as conn:
-            for g in grupos_generados:
-                conn.execute(text(query_ins), {
-                    'archivo': g['archivo'], 'codigo_corte': g['codigo_corte'],
-                    'numero': g['numero_etiqueta'], 'sub_numero': g['sub_numero'],
-                    'es_grupo_padre': g['es_grupo_padre'], 'grupo_serie': g['grupo_serie'],
-                    'cod_cable': g['cod_cable'], 'elemento': g['elemento'],
-                    'descripcion': g['descripcion'], 'seccion': g['seccion'],
-                    'longitud': g['longitud'], 'de_terminal': g['de_terminal'],
-                    'num_cables': g['num_cables'], 'num_terminales': g['num_terminales']
-                })
-            conn.commit()
-
-        print(f"✅ {len(grupos_generados)} etiquetas regeneradas para {archivo}")
-        return jsonify({'success': True, 'total': len(grupos_generados), 'archivo': archivo})
-
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return error_interno(e, 'Error al regenerar')
-
 
 def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     """
@@ -3822,7 +3688,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     Devuelve el número de etiquetas generadas.
     """
     if not os.path.exists(excel_path):
-        raise FileNotFoundError(f'Archivo no encontrado: {excel_path}')
+        raise FileNotFoundError(f'Archivo no encontrado: {archivo}')
 
     # 1. Borrar las existentes
     with db.engine.connect() as conn:
