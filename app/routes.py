@@ -81,6 +81,19 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
 
+def _ruta_upload_segura(nombre_archivo):
+    """Ruta absoluta del archivo dentro de UPLOAD_FOLDER, o None si el
+    nombre está vacío o intenta salirse de la carpeta (path traversal)."""
+    nombre_archivo = (nombre_archivo or '').strip()
+    if not nombre_archivo:
+        return None
+    base = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(base, nombre_archivo))
+    if os.path.commonpath([ruta, base]) != base:
+        return None
+    return ruta
+
+
 def _es_error_nombre_bono_duplicado(error):
     """Detectar si un IntegrityError proviene del UNIQUE de bonos.nombre"""
     mensaje = str(getattr(error, 'orig', error)).lower()
@@ -149,6 +162,12 @@ def admin():
     return render_template('admin.html', pin_activo=proteccion_activa())
 
 
+# Anti fuerza bruta del PIN: intentos fallidos por IP (en memoria, por proceso)
+_PIN_INTENTOS = {}  # ip -> (num_fallos, bloqueado_hasta_timestamp)
+_PIN_MAX_INTENTOS = 5
+_PIN_BLOQUEO_SEG = 15 * 60
+
+
 @bp.route('/admin/pin', methods=['GET', 'POST'])
 def admin_pin():
     """Pantalla de introducción del PIN de administración."""
@@ -161,14 +180,30 @@ def admin_pin():
 
     error = None
     if request.method == 'POST':
+        ip = request.remote_addr or 'desconocida'
+        fallos, bloqueado_hasta = _PIN_INTENTOS.get(ip, (0, 0.0))
+
+        if time.time() < bloqueado_hasta:
+            minutos = int((bloqueado_hasta - time.time()) // 60) + 1
+            error = f'Demasiados intentos fallidos. Espera {minutos} min.'
+            return render_template('admin-pin.html', error=error)
+
         pin = (request.form.get('pin') or '').strip()
         hash_introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
         hash_correcto = current_app.config.get('ADMIN_PIN_HASH', '')
         # Comparación en tiempo constante para no filtrar info por timing
         if pin and hmac.compare_digest(hash_introducido, hash_correcto):
+            _PIN_INTENTOS.pop(ip, None)
             marcar_sesion_admin()
             return redirect(url_for('main.admin'))
-        # Fallo: freno anti fuerza bruta + mensaje genérico
+
+        # Fallo: contar intento y bloquear la IP si supera el máximo
+        fallos += 1
+        if fallos >= _PIN_MAX_INTENTOS:
+            _PIN_INTENTOS[ip] = (0, time.time() + _PIN_BLOQUEO_SEG)
+            current_app.logger.warning(f'PIN admin: IP {ip} bloqueada {_PIN_BLOQUEO_SEG // 60} min tras {fallos} fallos')
+        else:
+            _PIN_INTENTOS[ip] = (fallos, 0.0)
         time.sleep(1)
         error = 'PIN incorrecto'
 
@@ -1466,9 +1501,9 @@ def add_corte():
                 'message': 'Código de barras y archivo son obligatorios'
             }), 400
 
-        # Verificar que el archivo existe
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], archivo)
-        if not os.path.exists(filepath):
+        # Verificar que el archivo existe (y que el nombre no se sale de la carpeta)
+        filepath = _ruta_upload_segura(archivo)
+        if not filepath or not os.path.exists(filepath):
             return jsonify({
                 'success': False,
                 'message': f'El archivo "{archivo}" no existe'
@@ -1605,10 +1640,15 @@ def delete_file():
                 'success': False,
                 'message': 'Nombre de archivo vacío'
             }), 400
-        
+
         # Eliminar archivo físico
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-        
+        filepath = _ruta_upload_segura(filename)
+        if not filepath:
+            return jsonify({
+                'success': False,
+                'message': 'Nombre de archivo no válido'
+            }), 400
+
         if not os.path.exists(filepath):
             return jsonify({
                 'success': False,
@@ -2840,6 +2880,7 @@ def _encontrar_git():
 
 
 @bp.route('/api/comprobar_actualizaciones', methods=['GET'])
+@requiere_pin_admin
 def api_comprobar_actualizaciones():
     """
     Comprueba si hay commits nuevos en GitHub comparando con el HEAD local.
@@ -2899,6 +2940,7 @@ def api_comprobar_actualizaciones():
 
 
 @bp.route('/api/actualizar_sistema', methods=['POST'])
+@requiere_pin_admin
 def api_actualizar_sistema():
     """
     Ejecuta git pull origin main y actualiza dependencias si requirements.txt cambió.
@@ -3095,8 +3137,8 @@ def api_etiquetas_cargar_grupos():
         # Si no existen, generarlas automáticamente usando la misma lógica que /api/etiquetas/regenerar
         if count == 0:
             print(f"📦 Generando etiquetas para {archivo}...")
-            excel_path = os.path.join(current_app.config['UPLOAD_FOLDER'], archivo)
-            if not os.path.exists(excel_path):
+            excel_path = _ruta_upload_segura(archivo)
+            if not excel_path or not os.path.exists(excel_path):
                 return jsonify({'success': False, 'message': f'Archivo no encontrado: {archivo}'})
             try:
                 total = _regenerar_etiquetas_archivo(archivo, excel_path)
@@ -3624,7 +3666,9 @@ def api_etiquetas_regenerar():
         if not archivo:
             return jsonify({'success': False, 'message': 'Falta nombre de archivo'}), 400
 
-        excel_path = os.path.join(current_app.config['UPLOAD_FOLDER'], archivo)
+        excel_path = _ruta_upload_segura(archivo)
+        if not excel_path:
+            return jsonify({'success': False, 'message': 'Nombre de archivo no válido'}), 400
         total = _regenerar_etiquetas_archivo(archivo, excel_path)
         return jsonify({'success': True, 'total': total, 'archivo': archivo})
 
