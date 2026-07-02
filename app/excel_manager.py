@@ -20,7 +20,16 @@ class ExcelManager:
         self.upload_folder = upload_folder
         self.current_df = None
         self.current_filename = None
-    
+
+    def _ruta_segura(self, filename: str) -> Optional[str]:
+        """Ruta absoluta dentro de upload_folder, o None si el nombre
+        intenta salirse de la carpeta (path traversal)."""
+        base = os.path.abspath(self.upload_folder)
+        ruta = os.path.abspath(os.path.join(base, filename or ''))
+        if os.path.commonpath([ruta, base]) != base:
+            return None
+        return ruta
+
     def cargar_excel_directo(self, filename: str, sheet_name: str = 'Format') -> bool:
         """
         Cargar archivo Excel directamente desde la carpeta de uploads
@@ -32,10 +41,10 @@ class ExcelManager:
         Returns:
             True si se cargó correctamente, False en caso contrario
         """
-        filepath = os.path.join(self.upload_folder, filename)
-        
-        if not os.path.exists(filepath):
-            print(f"❌ Archivo no encontrado: {filepath}")
+        filepath = self._ruta_segura(filename)
+
+        if not filepath or not os.path.exists(filepath):
+            print(f"❌ Archivo no encontrado: {filename}")
             return False
         
         try:
@@ -274,9 +283,9 @@ class ExcelManager:
             Lista de dicts: [{ 'elemento': str, 'manguitos': [{de_marca, de_manguito,
                                de_punto, para_elemento, para_punto}] }]
         """
-        filepath = os.path.join(self.upload_folder, filename)
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f'Archivo no encontrado: {filepath}')
+        filepath = self._ruta_segura(filename)
+        if not filepath or not os.path.exists(filepath):
+            raise FileNotFoundError(f'Archivo no encontrado: {filename}')
 
         # Detectar hoja correcta
         xl = pd.ExcelFile(filepath)
@@ -432,9 +441,9 @@ def _get_mangueras(self, filename: str) -> list:
     Lee las filas del Excel donde Observaciones empieza por '<-' o '->'
     y devuelve lista con instrucciones de pelado parseadas.
     """
-    filepath = os.path.join(self.upload_folder, filename)
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f'Archivo no encontrado: {filepath}')
+    filepath = self._ruta_segura(filename)
+    if not filepath or not os.path.exists(filepath):
+        raise FileNotFoundError(f'Archivo no encontrado: {filename}')
 
     xl = pd.ExcelFile(filepath)
     hoja = 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
