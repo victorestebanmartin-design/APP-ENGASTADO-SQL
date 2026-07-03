@@ -35,10 +35,8 @@ six==1.16.0
 tzdata==2024.2
 colorama==0.4.6
 
-# Para desarrollo y testing
-# pytest==8.3.4
-# pytest-flask==1.3.0
-# python-dotenv==1.0.1
+# Para desarrollo y testing: pip install -r requirements-dev.txt
+# (incluye pytest; los tests están en tests/ y se lanzan con: pytest)
 
 # NOTAS DE INSTALACIÓN:
 # 1. SQLite viene incluido con Python (no requiere instalación externa)

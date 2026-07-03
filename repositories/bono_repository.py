@@ -232,10 +232,11 @@ class CarroRepository(BaseRepository):
         return self.execute_select(query, {'carro_numero': carro_numero})
     
     def obtener_bonos_en_carro(self, carro_numero: int) -> List[Dict]:
-        """Obtener bonos asignados a un carro"""
+        """Obtener bonos asignados a un carro (relación en carros.bono_id)"""
         query = """
-            SELECT * FROM bonos
-            WHERE carro_numero = :carro_numero AND estado = 'activo'
-            ORDER BY fecha_creacion DESC
+            SELECT b.* FROM bonos b
+            JOIN carros c ON c.bono_id = b.id
+            WHERE c.numero = :carro_numero AND b.estado = 'activo'
+            ORDER BY b.fecha_creacion DESC
         """
         return self.execute_select(query, {'carro_numero': carro_numero})
