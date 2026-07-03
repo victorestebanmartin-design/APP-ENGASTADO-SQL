@@ -55,8 +55,8 @@ def modules():
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
-MANUAL_VERSION = 'v1.1'
-MANUAL_FECHA = 'junio 2026'
+MANUAL_VERSION = 'v1.2'
+MANUAL_FECHA = 'julio 2026'
 
 
 @bp.route('/manual')
