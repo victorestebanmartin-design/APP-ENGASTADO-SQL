@@ -189,10 +189,21 @@
                 box-shadow: none;
                 border-radius: 0;
                 margin: 0;
-                padding: 12mm 14mm;
+                padding: 8mm 12mm;
                 page-break-after: always;
+                page-break-inside: avoid;
+                font-size: 11px;
             }
             .folio:last-child { page-break-after: auto; }
+            .folio-header { padding-bottom: 8px; margin-bottom: 10px; }
+            .folio-header .titulo { font-size: 1.15em; }
+            .carro-badge .num { font-size: 1.2em; padding: 4px 12px; }
+            .meta { padding: 8px 12px; margin-bottom: 10px; gap: 3px 24px; font-size: 0.92em; }
+            table { font-size: 0.92em; }
+            thead th { padding: 5px 10px; }
+            tbody td { padding: 4px 10px; }
+            .firma { margin-top: 14px; gap: 40px; }
+            .folio-footer { margin-top: 10px; padding-top: 8px; }
             @page { size: A4; margin: 0; }
         }
     </style>
