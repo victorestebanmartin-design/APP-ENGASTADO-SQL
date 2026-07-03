@@ -515,7 +515,7 @@ def api_desasignar_terminal():
 
 # ==================== IMÁGENES DE TERMINALES ====================
 
-MAX_IMAGEN_BYTES = 80_000   # ~60 KB en base64 ≈ 80 KB de texto
+MAX_IMAGEN_BYTES = 420_000  # ~300 KB binario ≈ 420 KB en base64
 
 @bp.route('/api/terminal-imagen/<codigo>', methods=['PUT'])
 def api_subir_imagen_terminal(codigo):
@@ -531,7 +531,7 @@ def api_subir_imagen_terminal(codigo):
             return jsonify({'success': False, 'message': 'Formato inválido (se espera data URL)'}), 400
 
         if len(imagen_data.encode('utf-8')) > MAX_IMAGEN_BYTES:
-            return jsonify({'success': False, 'message': 'Imagen demasiado grande (máx ~60 KB)'}), 400
+            return jsonify({'success': False, 'message': 'Imagen demasiado grande (máx ~300 KB)'}), 400
 
         db.session.execute(text("""
             INSERT INTO terminales_imagenes (terminal_codigo, imagen_data, updated_at)

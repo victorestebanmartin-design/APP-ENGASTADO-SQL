@@ -776,11 +776,11 @@ function imgOnFileSelected(input) {
     reader.onload = function(e) {
         const img = new Image();
         img.onload = function() {
-            // Resize a max 96×96 con Canvas, JPEG 70 %
-            const MAX = 96;
+            // Resize manteniendo proporción, lado máximo 600 px, JPEG 85 %
+            const MAX = 600;
             let w = img.width, h = img.height;
-            if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-            else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+            if (w >= h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+            else         { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
 
             const canvas = document.createElement('canvas');
             canvas.width  = w;
@@ -788,11 +788,11 @@ function imgOnFileSelected(input) {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
 
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.70);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             const kb = Math.round(dataUrl.length * 0.75 / 1024);
 
-            if (kb > 65) {
-                alert(`La imagen comprimida pesa ${kb} KB (máx 60 KB).\nPor favor usa una imagen más pequeña.`);
+            if (kb > 300) {
+                alert(`La imagen comprimida pesa ${kb} KB (máx 300 KB).\nPor favor usa una imagen más pequeña.`);
                 return;
             }
 
