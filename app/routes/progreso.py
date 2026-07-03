@@ -26,7 +26,7 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager
+from app.excel_manager import ExcelManager, leer_excel_cacheado
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -99,7 +99,7 @@ def api_bonos_terminales_disponibles(nombre_bono):
             
             try:
                 # Cargar Excel
-                df = pd.read_excel(filepath, sheet_name=_detectar_hoja(filepath))
+                df = leer_excel_cacheado(filepath)
 
                 def _terminal_valido(val):
                     t = str(val).strip().upper()

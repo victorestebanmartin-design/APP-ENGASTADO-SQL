@@ -27,6 +27,14 @@ def test_health_reporta_bd_conectada(client):
     assert d['status'] == 'ok'
 
 
+def test_seed_inicial_cargado_desde_json(client):
+    """Los datos de seed_inicial.json (puestos, máquinas) se cargan en BD nueva."""
+    puestos = client.get('/api/puestos').get_json()['puestos']
+    assert len(puestos) >= 5
+    maquinas = client.get('/api/maquinas').get_json()['maquinas']
+    assert len(maquinas) >= 20
+
+
 def test_carros_iniciales_seis_libres(client):
     carros = client.get('/api/carros').get_json()['carros']
     assert len(carros) == 6

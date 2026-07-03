@@ -26,7 +26,7 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager
+from app.excel_manager import ExcelManager, leer_excel_cacheado
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -688,7 +688,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     print(f"🗑️  Etiquetas eliminadas para {archivo}: {deleted} filas")
 
     # 2. Leer Excel y regenerar
-    df = pd.read_excel(excel_path, sheet_name=_detectar_hoja(excel_path))
+    df = leer_excel_cacheado(excel_path)
 
     if 'Cod. cable' not in df.columns or 'De Elemento Etiquetas' not in df.columns:
         raise ValueError('El archivo no tiene las columnas requeridas (Cod. cable, De Elemento Etiquetas)')

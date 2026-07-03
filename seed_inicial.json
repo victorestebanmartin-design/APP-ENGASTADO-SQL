@@ -1,0 +1,488 @@
+{
+  "_descripcion": "Datos iniciales de la instalación. Solo se insertan si no existen (INSERT OR IGNORE): los cambios hechos desde el panel de administración no se pisan. Editar aquí solo para instalaciones nuevas.",
+  "carros": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "cable_colores": [
+    {
+      "cod_cable": "640361",
+      "color_hex": "#0f766e"
+    },
+    {
+      "cod_cable": "640362",
+      "color_hex": "#b45309"
+    },
+    {
+      "cod_cable": "640C10006A",
+      "color_hex": "#4d7c0f"
+    },
+    {
+      "cod_cable": "640C10008A",
+      "color_hex": "#7c3aed"
+    },
+    {
+      "cod_cable": "640C10014",
+      "color_hex": "#be185d"
+    },
+    {
+      "cod_cable": "640C10021A",
+      "color_hex": "#4f46e5"
+    },
+    {
+      "cod_cable": "640C10022A",
+      "color_hex": "#0891b2"
+    },
+    {
+      "cod_cable": "640C10023",
+      "color_hex": "#dc2626"
+    },
+    {
+      "cod_cable": "640C10024A",
+      "color_hex": "#65a30d"
+    },
+    {
+      "cod_cable": "640C10025A",
+      "color_hex": "#059669"
+    },
+    {
+      "cod_cable": "640C10040A",
+      "color_hex": "#0e7490"
+    },
+    {
+      "cod_cable": "640C10041",
+      "color_hex": "#db2777"
+    },
+    {
+      "cod_cable": "640D10002",
+      "color_hex": "#2563eb"
+    },
+    {
+      "cod_cable": "640D10009A",
+      "color_hex": "#1d4ed8"
+    },
+    {
+      "cod_cable": "640D10017",
+      "color_hex": "#d97706"
+    },
+    {
+      "cod_cable": "640D10023",
+      "color_hex": "#b91c1c"
+    },
+    {
+      "cod_cable": "640D10029A",
+      "color_hex": "#047857"
+    },
+    {
+      "cod_cable": "640D20000",
+      "color_hex": "#6d28d9"
+    },
+    {
+      "cod_cable": "GRUPO_SERIE",
+      "color_hex": "#f59e0b"
+    },
+    {
+      "cod_cable": "H0211195",
+      "color_hex": "#831843"
+    }
+  ],
+  "puestos": [
+    {
+      "id": "puesto_001",
+      "nombre": "TERMINALES AMP",
+      "descripcion": "Terminales AMP FORRADOS"
+    },
+    {
+      "id": "puesto_002",
+      "nombre": "PINES RACK",
+      "descripcion": "Puesto secundario línea de producción 2"
+    },
+    {
+      "id": "puesto_3",
+      "nombre": "PUNTERAS",
+      "descripcion": ""
+    },
+    {
+      "id": "puesto_4",
+      "nombre": "MANUAL",
+      "descripcion": ""
+    },
+    {
+      "id": "puesto_005",
+      "nombre": "MECATRACION",
+      "descripcion": ""
+    }
+  ],
+  "maquinas": [
+    {
+      "id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "puesto_id": "puesto_001",
+      "nombre": "AMP ROJA",
+      "modelo": "AMP (47386) (TERMINALES ROJOS)"
+    },
+    {
+      "id": "0560d7b0-bd18-49cb-9671-edda662adbae",
+      "puesto_id": "puesto_001",
+      "nombre": "AMP AZUL",
+      "modelo": "KOMAX Alpha 455"
+    },
+    {
+      "id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "puesto_id": "puesto_001",
+      "nombre": "AMP AMARILLOS",
+      "modelo": ""
+    },
+    {
+      "id": "10823d83-f9ee-4645-ae00-6dfec2ec91c4",
+      "puesto_id": "puesto_002",
+      "nombre": "Harting 1mm",
+      "modelo": "Pines 1mm"
+    },
+    {
+      "id": "50be0819-3273-4379-bdf3-fcde7d769fc3",
+      "puesto_id": "puesto_002",
+      "nombre": "Harting 0,5mm",
+      "modelo": "Pines 0,5mm"
+    },
+    {
+      "id": "d748360d-af71-4e06-8896-9465b5c76b87",
+      "puesto_id": "puesto_3",
+      "nombre": "PUNTERAS",
+      "modelo": ""
+    },
+    {
+      "id": "a4d166c9-8b53-4d7c-9992-44f031544786",
+      "puesto_id": "puesto_3",
+      "nombre": "WEIDMULLEER PZ10",
+      "modelo": ""
+    },
+    {
+      "id": "e7fc8ea4-c3d9-48cc-abed-9297da959c80",
+      "puesto_id": "puesto_4",
+      "nombre": "DMC AZUL SH463",
+      "modelo": ""
+    },
+    {
+      "id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "puesto_id": "puesto_4",
+      "nombre": "TAMBOR VERDE E",
+      "modelo": ""
+    },
+    {
+      "id": "53411894-adea-4aa5-aa5e-1c554d8f6213",
+      "puesto_id": "puesto_4",
+      "nombre": "TAMBOR ROJO",
+      "modelo": ""
+    },
+    {
+      "id": "243866c8-31fa-4eac-b888-3ccd43378c82",
+      "puesto_id": "puesto_4",
+      "nombre": "AMP SIMABLOCK",
+      "modelo": ""
+    },
+    {
+      "id": "7bcff112-ee20-4345-b29f-102f7dc5faa2",
+      "puesto_id": "puesto_4",
+      "nombre": "DMC AZUL TH163",
+      "modelo": ""
+    },
+    {
+      "id": "81651463-341f-46c1-9c1a-26232d87babb",
+      "puesto_id": "puesto_4",
+      "nombre": "HARTING AZUL",
+      "modelo": ""
+    },
+    {
+      "id": "34ca90f9-0a1f-427e-9045-c9a8f4362649",
+      "puesto_id": "puesto_4",
+      "nombre": "POWER SIGNAL",
+      "modelo": ""
+    },
+    {
+      "id": "47dd5926-0caf-4737-9cf9-8e1224e3259f",
+      "puesto_id": "puesto_4",
+      "nombre": "TAMBOR VERDE C",
+      "modelo": ""
+    },
+    {
+      "id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "puesto_id": "puesto_4",
+      "nombre": "TAMBOR VERDE D",
+      "modelo": ""
+    },
+    {
+      "id": "maq_017",
+      "puesto_id": "puesto_005",
+      "nombre": "TH1",
+      "modelo": "ROJA"
+    },
+    {
+      "id": "maq_018",
+      "puesto_id": "puesto_005",
+      "nombre": "TH2",
+      "modelo": "AZUL"
+    },
+    {
+      "id": "maq_019",
+      "puesto_id": "puesto_005",
+      "nombre": "TH3",
+      "modelo": "AMARILLA"
+    },
+    {
+      "id": "maq_020",
+      "puesto_id": "puesto_005",
+      "nombre": "TH3-2",
+      "modelo": "AMARILLA AISLANTE GRUESO"
+    }
+  ],
+  "maquinas_terminales": [
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640204"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640243"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640210"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640230"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640243A"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "641H002"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "641H039"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "641H056"
+    },
+    {
+      "maquina_id": "965d3fd8-a303-43e9-8697-73c7c69af473",
+      "terminal_codigo": "640260"
+    },
+    {
+      "maquina_id": "0560d7b0-bd18-49cb-9671-edda662adbae",
+      "terminal_codigo": "640205"
+    },
+    {
+      "maquina_id": "0560d7b0-bd18-49cb-9671-edda662adbae",
+      "terminal_codigo": "640211"
+    },
+    {
+      "maquina_id": "0560d7b0-bd18-49cb-9671-edda662adbae",
+      "terminal_codigo": "640261"
+    },
+    {
+      "maquina_id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "terminal_codigo": "640245"
+    },
+    {
+      "maquina_id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "terminal_codigo": "640206"
+    },
+    {
+      "maquina_id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "terminal_codigo": "640209"
+    },
+    {
+      "maquina_id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "terminal_codigo": "640212"
+    },
+    {
+      "maquina_id": "5ebe085f-3839-4a71-96de-d0f5dd626ba0",
+      "terminal_codigo": "641H057"
+    },
+    {
+      "maquina_id": "10823d83-f9ee-4645-ae00-6dfec2ec91c4",
+      "terminal_codigo": "641M155"
+    },
+    {
+      "maquina_id": "50be0819-3273-4379-bdf3-fcde7d769fc3",
+      "terminal_codigo": "641M10100"
+    },
+    {
+      "maquina_id": "d748360d-af71-4e06-8896-9465b5c76b87",
+      "terminal_codigo": "641H10055"
+    },
+    {
+      "maquina_id": "d748360d-af71-4e06-8896-9465b5c76b87",
+      "terminal_codigo": "641H10057"
+    },
+    {
+      "maquina_id": "d748360d-af71-4e06-8896-9465b5c76b87",
+      "terminal_codigo": "641H10058"
+    },
+    {
+      "maquina_id": "d748360d-af71-4e06-8896-9465b5c76b87",
+      "terminal_codigo": "641H10056"
+    },
+    {
+      "maquina_id": "a4d166c9-8b53-4d7c-9992-44f031544786",
+      "terminal_codigo": "H0337649"
+    },
+    {
+      "maquina_id": "e7fc8ea4-c3d9-48cc-abed-9297da959c80",
+      "terminal_codigo": "641M10293"
+    },
+    {
+      "maquina_id": "e7fc8ea4-c3d9-48cc-abed-9297da959c80",
+      "terminal_codigo": "641M10295"
+    },
+    {
+      "maquina_id": "e7fc8ea4-c3d9-48cc-abed-9297da959c80",
+      "terminal_codigo": "641M10292"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M600"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M082"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M644"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M026"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M027"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M645"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M532"
+    },
+    {
+      "maquina_id": "1de662fd-4d78-4921-a490-266cfc283fb3",
+      "terminal_codigo": "641M029"
+    },
+    {
+      "maquina_id": "53411894-adea-4aa5-aa5e-1c554d8f6213",
+      "terminal_codigo": "641M937"
+    },
+    {
+      "maquina_id": "53411894-adea-4aa5-aa5e-1c554d8f6213",
+      "terminal_codigo": "641M936"
+    },
+    {
+      "maquina_id": "243866c8-31fa-4eac-b888-3ccd43378c82",
+      "terminal_codigo": "640304D"
+    },
+    {
+      "maquina_id": "243866c8-31fa-4eac-b888-3ccd43378c82",
+      "terminal_codigo": "640305"
+    },
+    {
+      "maquina_id": "7bcff112-ee20-4345-b29f-102f7dc5faa2",
+      "terminal_codigo": "641M10196"
+    },
+    {
+      "maquina_id": "81651463-341f-46c1-9c1a-26232d87babb",
+      "terminal_codigo": "641M10091"
+    },
+    {
+      "maquina_id": "81651463-341f-46c1-9c1a-26232d87babb",
+      "terminal_codigo": "641M239"
+    },
+    {
+      "maquina_id": "34ca90f9-0a1f-427e-9045-c9a8f4362649",
+      "terminal_codigo": "641M10045"
+    },
+    {
+      "maquina_id": "47dd5926-0caf-4737-9cf9-8e1224e3259f",
+      "terminal_codigo": "641M613"
+    },
+    {
+      "maquina_id": "47dd5926-0caf-4737-9cf9-8e1224e3259f",
+      "terminal_codigo": "641M594"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M10078"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M577"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M466"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M531"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M574"
+    },
+    {
+      "maquina_id": "db1dae58-eaf1-4768-9b74-7bda5088c24e",
+      "terminal_codigo": "641M576"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10001"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10003"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10006"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10009"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10039"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10043"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10047"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10048"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10069"
+    },
+    {
+      "maquina_id": "maq_017",
+      "terminal_codigo": "641H10014"
+    }
+  ]
+}
