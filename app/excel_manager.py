@@ -4,7 +4,44 @@ Gestor de archivos Excel para análisis de terminales y cables
 import pandas as pd
 import os
 import re
+import threading
 from typing import List, Dict, Optional
+
+# ─── Caché de DataFrames por archivo ──────────────────────────────────────────
+# Parsear un Excel cuesta cientos de ms y se repetía en cada petición de cada
+# operario. La caché se invalida sola cuando el fichero cambia en disco (mtime).
+_EXCEL_CACHE = {}  # ruta_abs -> (mtime, hoja_usada, DataFrame)
+_EXCEL_CACHE_LOCK = threading.Lock()
+_EXCEL_CACHE_MAX = 16
+
+
+def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.DataFrame:
+    """DataFrame del Excel, cacheado por (ruta, mtime).
+
+    Usa 'hoja_preferida' si existe en el archivo, sino la primera hoja.
+    El DataFrame devuelto es COMPARTIDO entre peticiones: los consumidores
+    no deben mutarlo (hacer .copy() antes de modificar).
+
+    Lanza OSError si el fichero no existe.
+    """
+    ruta = os.path.abspath(filepath)
+    mtime = os.path.getmtime(ruta)
+
+    with _EXCEL_CACHE_LOCK:
+        entrada = _EXCEL_CACHE.get(ruta)
+        if entrada and entrada[0] == mtime:
+            return entrada[2]
+
+    xl = pd.ExcelFile(ruta)
+    hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
+    df = pd.read_excel(xl, sheet_name=hoja)
+
+    with _EXCEL_CACHE_LOCK:
+        if len(_EXCEL_CACHE) >= _EXCEL_CACHE_MAX:
+            # Descartar la entrada más antigua (orden de inserción de dict)
+            _EXCEL_CACHE.pop(next(iter(_EXCEL_CACHE)))
+        _EXCEL_CACHE[ruta] = (mtime, hoja, df)
+    return df
 
 
 class ExcelManager:
@@ -48,13 +85,8 @@ class ExcelManager:
             return False
         
         try:
-            # Detectar hoja: usar 'Format' si existe, sino la primera disponible
-            hoja = 'Format' if sheet_name == 'Format' else sheet_name
-            xl = pd.ExcelFile(filepath)
-            if hoja not in xl.sheet_names:
-                hoja = xl.sheet_names[0]
-            df = pd.read_excel(filepath, sheet_name=hoja)
-            
+            df = leer_excel_cacheado(filepath, hoja_preferida=sheet_name)
+
             # Verificar que tenga columnas básicas
             required_cols = ['Cod. cable', 'De Terminal', 'Para Terminal']
             missing = [col for col in required_cols if col not in df.columns]
@@ -287,10 +319,7 @@ class ExcelManager:
         if not filepath or not os.path.exists(filepath):
             raise FileNotFoundError(f'Archivo no encontrado: {filename}')
 
-        # Detectar hoja correcta
-        xl = pd.ExcelFile(filepath)
-        hoja = 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
-        df = pd.read_excel(filepath, sheet_name=hoja)
+        df = leer_excel_cacheado(filepath)
 
         def _safe(v):
             try:
@@ -445,9 +474,7 @@ def _get_mangueras(self, filename: str) -> list:
     if not filepath or not os.path.exists(filepath):
         raise FileNotFoundError(f'Archivo no encontrado: {filename}')
 
-    xl = pd.ExcelFile(filepath)
-    hoja = 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
-    df = pd.read_excel(filepath, sheet_name=hoja)
+    df = leer_excel_cacheado(filepath)
 
     def _safe(v):
         try:

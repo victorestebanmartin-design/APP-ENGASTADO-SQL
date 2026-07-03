@@ -123,6 +123,26 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_terminal ON sesiones_trabajo(terminal_codigo)")
     conn.commit()
 
+    # Migración: tabla terminales_imagenes (iconos/fotos de cada terminal)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS terminales_imagenes (
+            terminal_codigo TEXT PRIMARY KEY,
+            imagen_data     TEXT NOT NULL,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
+    # Migración: tabla terminales_gavetas (ubicación física del terminal)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS terminales_gavetas (
+            terminal_codigo TEXT PRIMARY KEY,
+            gaveta          TEXT NOT NULL,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     conn.close()
 
 

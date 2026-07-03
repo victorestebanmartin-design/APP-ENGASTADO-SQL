@@ -26,7 +26,7 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager
+from app.excel_manager import ExcelManager, leer_excel_cacheado
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -320,7 +320,7 @@ def api_terminales_disponibles():
             
             if os.path.exists(filepath):
                 try:
-                    df = pd.read_excel(filepath, sheet_name=_detectar_hoja(filepath))
+                    df = leer_excel_cacheado(filepath)
                     
                     # Buscar columnas de terminales (pueden ser 'Terminal', 'De Terminal', 'Para Terminal')
                     columnas_terminales = []
@@ -361,14 +361,28 @@ def api_terminales_disponibles():
                     'maquina_nombre': maquina['nombre'],
                     'puesto_nombre': maquina.get('puesto_nombre', '')
                 }
-        
+
+        # Cargar imágenes de terminales
+        rows = db.session.execute(
+            text("SELECT terminal_codigo, imagen_data FROM terminales_imagenes")
+        ).fetchall()
+        imagenes_map = {r[0]: r[1] for r in rows}
+
+        # Cargar gavetas de terminales
+        rows_gav = db.session.execute(
+            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")
+        ).fetchall()
+        gavetas_map = {r[0]: r[1] for r in rows_gav}
+
         # Preparar respuesta con estado de cada terminal
         terminales_con_estado = []
         for terminal in sorted(list(terminales_sistema)):
             estado = {
                 'terminal': terminal,
                 'asignado': terminal in terminales_asignados,
-                'asignacion': terminales_asignados.get(terminal, None)
+                'asignacion': terminales_asignados.get(terminal, None),
+                'imagen_data': imagenes_map.get(terminal),
+                'gaveta': gavetas_map.get(terminal)
             }
             terminales_con_estado.append(estado)
         
@@ -504,3 +518,106 @@ def api_desasignar_terminal():
             
     except Exception as e:
         return error_interno(e, 'Error al desasignar terminal')
+
+
+# ==================== IMÁGENES DE TERMINALES ====================
+
+MAX_IMAGEN_BYTES = 420_000  # ~300 KB binario ≈ 420 KB en base64
+
+@bp.route('/api/terminal-imagen/<codigo>', methods=['GET'])
+def api_obtener_imagen_terminal(codigo):
+    """Obtener la imagen de un terminal (data URL base64)."""
+    try:
+        row = db.session.execute(
+            text("SELECT imagen_data FROM terminales_imagenes WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        ).fetchone()
+        return jsonify({'success': True, 'imagen_data': row[0] if row else None})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener imagen de terminal')
+
+
+@bp.route('/api/terminal-imagen/<codigo>', methods=['PUT'])
+def api_subir_imagen_terminal(codigo):
+    """Guardar o actualizar la imagen (base64) de un terminal."""
+    try:
+        data = request.get_json(silent=True) or {}
+        imagen_data = (data.get('imagen_data') or '').strip()
+
+        if not imagen_data:
+            return jsonify({'success': False, 'message': 'No se recibió imagen'}), 400
+
+        if not imagen_data.startswith('data:image/'):
+            return jsonify({'success': False, 'message': 'Formato inválido (se espera data URL)'}), 400
+
+        if len(imagen_data.encode('utf-8')) > MAX_IMAGEN_BYTES:
+            return jsonify({'success': False, 'message': 'Imagen demasiado grande (máx ~300 KB)'}), 400
+
+        db.session.execute(text("""
+            INSERT INTO terminales_imagenes (terminal_codigo, imagen_data, updated_at)
+            VALUES (:codigo, :img, datetime('now'))
+            ON CONFLICT(terminal_codigo) DO UPDATE
+                SET imagen_data = excluded.imagen_data,
+                    updated_at  = excluded.updated_at
+        """), {'codigo': codigo, 'img': imagen_data})
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Imagen guardada'})
+
+    except Exception as e:
+        return error_interno(e, 'Error al guardar imagen de terminal')
+
+
+@bp.route('/api/terminal-imagen/<codigo>', methods=['DELETE'])
+def api_eliminar_imagen_terminal(codigo):
+    """Eliminar la imagen de un terminal."""
+    try:
+        db.session.execute(
+            text("DELETE FROM terminales_imagenes WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        )
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar imagen de terminal')
+
+
+# ==================== GAVETAS DE TERMINALES ====================
+
+@bp.route('/api/terminal-gaveta/<codigo>', methods=['PUT'])
+def api_guardar_gaveta_terminal(codigo):
+    """Guardar o actualizar la gaveta de un terminal."""
+    try:
+        data  = request.get_json(silent=True) or {}
+        gaveta = (data.get('gaveta') or '').strip()[:80]   # máx 80 caracteres
+
+        if not gaveta:
+            return jsonify({'success': False, 'message': 'La gaveta no puede estar vacía'}), 400
+
+        db.session.execute(text("""
+            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, updated_at)
+            VALUES (:codigo, :gaveta, datetime('now'))
+            ON CONFLICT(terminal_codigo) DO UPDATE
+                SET gaveta     = excluded.gaveta,
+                    updated_at = excluded.updated_at
+        """), {'codigo': codigo, 'gaveta': gaveta})
+        db.session.commit()
+
+        return jsonify({'success': True, 'gaveta': gaveta})
+
+    except Exception as e:
+        return error_interno(e, 'Error al guardar gaveta de terminal')
+
+
+@bp.route('/api/terminal-gaveta/<codigo>', methods=['DELETE'])
+def api_eliminar_gaveta_terminal(codigo):
+    """Eliminar la gaveta de un terminal."""
+    try:
+        db.session.execute(
+            text("DELETE FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        )
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar gaveta de terminal')

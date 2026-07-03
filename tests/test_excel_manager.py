@@ -189,3 +189,32 @@ class TestCargaExcel:
     def test_archivo_inexistente_devuelve_false(self):
         em = ExcelManager('/tmp')
         assert em.cargar_excel_directo('no_existe.xlsx') is False
+
+
+class TestCacheExcel:
+    def test_segunda_lectura_sale_de_cache(self, tmp_path):
+        from app.excel_manager import leer_excel_cacheado
+        ruta = str(tmp_path / 'cacheado.xlsx')
+        pd.DataFrame({'A': [1, 2]}).to_excel(ruta, sheet_name='Format', index=False)
+
+        df1 = leer_excel_cacheado(ruta)
+        df2 = leer_excel_cacheado(ruta)
+        assert df1 is df2  # mismo objeto: no se reparsea
+
+    def test_cache_se_invalida_cuando_cambia_el_archivo(self, tmp_path):
+        import os
+        from app.excel_manager import leer_excel_cacheado
+        ruta = str(tmp_path / 'cambiante.xlsx')
+        pd.DataFrame({'A': [1]}).to_excel(ruta, sheet_name='Format', index=False)
+        df1 = leer_excel_cacheado(ruta)
+        assert len(df1) == 1
+
+        # Reescribir con más filas y forzar mtime distinto (la resolución
+        # del reloj podría dejar el mismo mtime si pasa en el mismo instante)
+        pd.DataFrame({'A': [1, 2, 3]}).to_excel(ruta, sheet_name='Format', index=False)
+        st = os.stat(ruta)
+        os.utime(ruta, (st.st_atime, st.st_mtime + 10))
+
+        df2 = leer_excel_cacheado(ruta)
+        assert len(df2) == 3
+        assert df2 is not df1

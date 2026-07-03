@@ -56,10 +56,10 @@
         .stat-status.activo  { background: rgba(59,130,246,.12); color: #93c5fd; }
         .stat-status.inactivo { background: rgba(100,116,139,.18); color: var(--text-muted); }
 
-        /* ── Terminales ── minimalista ── */
+        /* ── Terminales ── vista lista ── */
         .asignacion-rapida {
             background: var(--panel-2); border: 1px solid var(--border);
-            border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+            border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         }
         .asignacion-rapida h4 { margin: 0; font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
@@ -69,32 +69,102 @@
             color: var(--text); padding: 7px 12px; font-size: 0.85rem; outline: none; flex: 1; min-width: 180px;
         }
         .asignacion-controles select:focus { border-color: var(--accent); }
-        .terminales-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px,1fr)); gap: 6px; }
-        /* Sobreescribir los estilos de style.css que añaden fondo verde/amarillo */
-        .terminal-card {
-            background: var(--panel-2) !important;
-            border: 1px solid var(--border-soft) !important;
-            border-radius: 8px !important; padding: 10px 12px !important;
-            transition: border-color .12s !important;
-            transform: none !important; box-shadow: none !important;
+
+        /* Lista de terminales */
+        .terminales-list { display: flex; flex-direction: column; gap: 0; }
+
+        /* Cabecera de grupo (por puesto) */
+        .tl-group { margin-bottom: 4px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-soft); }
+        .tl-group-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 14px;
+            background: var(--panel-3);
+            cursor: pointer; user-select: none;
+            transition: background .14s;
         }
-        .terminal-card.sin-asignar { cursor: pointer; border-left: 2px solid rgba(245,158,11,.4) !important; }
-        .terminal-card.asignado   { border-left: 2px solid rgba(34,197,94,.45) !important; }
-        .terminal-card.sin-asignar:hover { border-color: rgba(245,158,11,.7) !important; }
-        .terminal-card.seleccionado {
-            border-color: var(--accent) !important;
-            background: rgba(59,130,246,.08) !important;
-            box-shadow: 0 0 0 1px rgba(59,130,246,.3) !important;
+        .tl-group-header:hover { background: var(--panel-2); }
+        .tl-group-stripe {
+            width: 3px; height: 16px; border-radius: 2px; flex-shrink: 0;
         }
-        .terminal-header { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
-        .terminal-nombre { font-family: 'DM Mono', monospace; font-size: 0.82rem; font-weight: 600; flex: 1; color: var(--text); }
-        /* Info de asignación: sin caja verde */
-        .terminal-info { font-size: 0.73rem; color: var(--text-dim); }
-        .asignacion-actual { background: none !important; padding: 0 !important; color: var(--text-dim) !important; }
-        .maquina-info { color: rgba(74,222,128,.8) !important; font-weight: 500 !important; font-family: 'DM Mono', monospace; }
-        .estado-pendiente { color: rgba(245,158,11,.6); font-size: 0.72rem; }
-        .terminal-actions { display: flex; gap: 4px; align-items: center; }
-        /* Botón desasignar chic */
+        .tl-group-stripe.asignado   { background: rgba(34,197,94,.7); }
+        .tl-group-stripe.sin-asignar { background: rgba(245,158,11,.7); }
+        .tl-group-name {
+            font-family: 'Bebas Neue', sans-serif; letter-spacing: .08em;
+            font-size: 13px; color: var(--text); flex: 1;
+        }
+        .tl-group-count {
+            font-family: 'DM Mono', monospace; font-size: 11px;
+            padding: 2px 9px; border-radius: 20px;
+            background: rgba(255,255,255,.05); color: var(--text-muted);
+        }
+        .tl-group-arrow { font-size: 10px; color: var(--text-dim); transition: transform .2s; }
+        .tl-group.collapsed .tl-group-arrow { transform: rotate(-90deg); }
+        .tl-group.collapsed .tl-rows { display: none; }
+
+        /* Filas de terminal */
+        .tl-rows { display: flex; flex-direction: column; }
+        .terminal-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 14px 8px 12px;
+            background: var(--panel-2);
+            border-top: 1px solid var(--border-soft);
+            transition: background .1s;
+            position: relative;
+        }
+        .terminal-row:hover { background: var(--panel-3); }
+        .terminal-row.sin-asignar { cursor: pointer; }
+        .terminal-row.seleccionado {
+            background: rgba(59,130,246,.1) !important;
+        }
+        .terminal-row.seleccionado::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 3px; background: var(--accent); border-radius: 0;
+        }
+
+        /* Checkbox visual */
+        .tr-check {
+            width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0;
+            border: 1.5px solid var(--border); background: transparent;
+            transition: all .12s;
+        }
+        .terminal-row.seleccionado .tr-check {
+            background: var(--accent); border-color: var(--accent);
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 12 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='1,5 4,8 11,1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: center; background-size: 10px;
+        }
+        .terminal-row.asignado .tr-check { display: none; }
+        .tr-check-spacer { width: 16px; flex-shrink: 0; }
+
+        /* Indicador de estado (línea izquierda) */
+        .tr-dot {
+            width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+        }
+        .tr-dot.asignado   { background: rgba(34,197,94,.7); }
+        .tr-dot.sin-asignar { background: rgba(245,158,11,.5); }
+
+        /* Código terminal */
+        .tr-code {
+            font-family: 'DM Mono', monospace; font-size: 0.82rem;
+            font-weight: 600; color: var(--text); width: 120px; flex-shrink: 0;
+        }
+
+        /* Asignación */
+        .tr-assign {
+            flex: 1; font-size: 0.78rem; color: var(--text-dim);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tr-assign.asignado { color: rgba(74,222,128,.75); }
+        .tr-assign.sin-asignar { color: rgba(245,158,11,.55); font-style: italic; }
+
+        /* Badge de estado */
+        .tr-badge {
+            font-size: 0.68rem; font-weight: 600; letter-spacing: .04em;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+        }
+        .tr-badge.asignado   { background: rgba(34,197,94,.12); color: rgba(74,222,128,.9); border: 1px solid rgba(34,197,94,.2); }
+        .tr-badge.sin-asignar { background: rgba(245,158,11,.1); color: rgba(253,186,116,.9); border: 1px solid rgba(245,158,11,.2); }
+
+        /* Botón desvincular */
         .btn-desvincular {
             display: inline-flex; align-items: center; justify-content: center;
             width: 22px; height: 22px; border-radius: 50%;
@@ -103,6 +173,78 @@
             transition: all .15s; line-height: 1; flex-shrink: 0;
         }
         .btn-desvincular:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.6); color: #f87171; }
+
+        /* Compat. legado (no se usan en la nueva vista pero pueden quedar refs) */
+        .terminales-grid { display: none; }
+        .terminal-card { display: none; }
+
+        /* ── Imagen de terminal ── */
+        .tr-img {
+            width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0;
+            object-fit: cover; border: 1px solid rgba(255,255,255,.08);
+            background: #2a3a52;
+        }
+        .tr-img-placeholder {
+            width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0;
+            background: rgba(255,255,255,.04); border: 1px dashed rgba(255,255,255,.1);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; cursor: pointer; transition: all .15s; color: var(--text-dim);
+        }
+        .tr-img-placeholder:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.07); }
+        .tr-img-wrap { position: relative; flex-shrink: 0; cursor: pointer; }
+        .tr-img-wrap img { display: block; }
+        .tr-img-wrap:hover::after {
+            content: '✎'; position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,.55); border-radius: 6px;
+            font-size: 13px; color: #fff;
+        }
+
+        /* Modal imagen terminal — fuera de .admin-app igual que los otros modales */
+        #modal-img-terminal .p-modal-box { width: min(480px, 95vw); }
+        #modal-img-terminal .p-modal-header { background: #1e3a5f; }
+        .img-preview-box {
+            width: 100%; aspect-ratio: 1/1; max-height: 340px; border-radius: 12px;
+            border: 2px dashed #334155; background: #131e2e;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 14px; overflow: hidden; cursor: pointer;
+            transition: border-color .15s;
+        }
+        .img-preview-box:hover { border-color: #3b82f6; }
+        .img-preview-box img { width: 100%; height: 100%; object-fit: contain; }
+        .img-preview-box .img-preview-empty { color: #64748b; font-size: 3.5rem; }
+        .img-upload-hint { text-align: center; font-size: 0.75rem; color: #64748b; margin-bottom: 14px; }
+        .img-upload-hint span { color: #94a3b8; }
+        .img-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .img-btn-upload { background: #2a3a52; border: 1px solid #334155; color: #f1f5f9; border-radius: 8px; padding: 7px 16px; font-size: 0.82rem; cursor: pointer; transition: background .14s; }
+        .img-btn-upload:hover { background: #334155; }
+        .img-btn-save   { background: #3b82f6; border: 1px solid #3b82f6; color: #fff; border-radius: 8px; padding: 7px 16px; font-size: 0.82rem; cursor: pointer; transition: background .14s; }
+        .img-btn-save:hover { background: #2563eb; }
+        .img-btn-delete { background: transparent; border: 1px solid rgba(239,68,68,.4); color: rgba(239,68,68,.8); border-radius: 8px; padding: 7px 14px; font-size: 0.82rem; cursor: pointer; transition: all .14s; }
+        .img-btn-delete:hover { background: rgba(239,68,68,.1); border-color: #ef4444; color: #f87171; }
+
+        /* ── Gaveta (ubicación física) ── */
+        .tr-gaveta {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.72rem; font-family: 'DM Mono', monospace;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+            flex-shrink: 0; cursor: pointer; transition: all .14s;
+            border: 1px solid rgba(139,92,246,.3); color: rgba(167,139,250,.85);
+            background: rgba(139,92,246,.08);
+            max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tr-gaveta:hover { border-color: rgba(139,92,246,.7); background: rgba(139,92,246,.15); }
+        .tr-gaveta.empty {
+            border: 1px dashed rgba(255,255,255,.12); color: rgba(255,255,255,.2);
+            background: transparent;
+        }
+        .tr-gaveta.empty:hover { border-color: rgba(139,92,246,.5); color: rgba(167,139,250,.7); }
+        .tr-gaveta-input {
+            font-family: 'DM Mono', monospace; font-size: 0.72rem;
+            background: #1e293b; border: 1px solid #7c3aed;
+            border-radius: 20px; color: #f1f5f9; padding: 2px 8px;
+            outline: none; width: 110px; flex-shrink: 0;
+        }
 
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
@@ -120,27 +262,62 @@
         .btn.btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
         .btn.btn-danger:hover { background: var(--danger); color: #fff; }
 
-        /* Inputs formularios modal (el admin-app scope no alcanza aquí) */
+        /* Overrides para botones dentro de modales (fuera del scope .admin-app) */
+        .p-modal .btn { background: #2a3a52; border-color: #334155; color: #f1f5f9; }
+        .p-modal .btn.btn-primary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+        .p-modal .btn.btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+        .p-modal .btn.btn-secondary { background: #2a3a52; border-color: #334155; color: #94a3b8; }
+        .p-modal .btn.btn-secondary:hover { background: #334155; color: #f1f5f9; }
+
+        /* Inputs formularios modal — colores explícitos (fuera de .admin-app) */
         .p-form-group { margin-bottom: 16px; }
-        .p-form-group label { display: block; margin-bottom: 5px; font-size: 0.82rem; color: var(--text-muted); }
+        .p-form-group label { display: block; margin-bottom: 5px; font-size: 0.82rem; color: #94a3b8; }
         .p-form-group input, .p-form-group select, .p-form-group textarea {
-            width: 100%; background: var(--panel-3); border: 1px solid var(--border);
-            border-radius: 8px; color: var(--text); padding: 9px 12px; font-size: 0.9rem;
+            width: 100%; background: #2a3a52; border: 1px solid #334155;
+            border-radius: 8px; color: #f1f5f9; padding: 9px 12px; font-size: 0.9rem;
             font-family: inherit; outline: none; transition: border-color .15s;
         }
-        .p-form-group input:focus, .p-form-group select:focus, .p-form-group textarea:focus { border-color: var(--accent); }
+        .p-form-group input::placeholder, .p-form-group textarea::placeholder { color: #64748b; }
+        .p-form-group input:focus, .p-form-group select:focus, .p-form-group textarea:focus { border-color: #3b82f6; }
         .p-form-group textarea { resize: vertical; min-height: 70px; }
 
-        /* Modal */
-        .p-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 300; align-items: center; justify-content: center; }
+        /* Modal — variables definidas localmente porque los modales están fuera de .admin-app */
+        .p-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.75);
+            z-index: 300; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
         .p-modal.active { display: flex; }
-        .p-modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(460px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
-        .p-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .p-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text); }
-        .p-modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px; }
-        .p-modal-close:hover { color: var(--text); }
-        .p-modal-body { padding: 20px; }
-        .p-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); }
+        .p-modal-box {
+            background: #1e293b;
+            border: 1px solid #3b82f6;
+            border-radius: 14px;
+            width: min(460px, 95vw); max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(59,130,246,.2);
+        }
+        .p-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            background: #243044;
+            border-radius: 14px 14px 0 0;
+        }
+        .p-modal-header h3 { margin: 0; font-size: 1rem; color: #f1f5f9; font-weight: 600; letter-spacing: .02em; }
+        .p-modal-close {
+            background: none; border: none; color: #94a3b8;
+            font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px;
+            transition: color .15s;
+        }
+        .p-modal-close:hover { color: #f1f5f9; }
+        .p-modal-body { padding: 20px; background: #1e293b; }
+        .p-modal-footer {
+            display: flex; justify-content: flex-end; gap: 10px;
+            padding: 14px 20px;
+            border-top: 1px solid #334155;
+            background: #243044;
+            border-radius: 0 0 14px 14px;
+        }
 
         /* Filtros sección terminales */
         .terminales-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
@@ -292,6 +469,31 @@
         <div class="p-modal-footer">
             <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
             <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MODAL: Imagen de terminal ══════════════════════════════════ -->
+<div id="modal-img-terminal" class="p-modal">
+    <div class="p-modal-box">
+        <div class="p-modal-header">
+            <h3 id="modal-img-titulo">Imagen del Terminal</h3>
+            <button class="p-modal-close" onclick="cerrarModal('modal-img-terminal')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div class="img-preview-box" id="img-preview-box" onclick="document.getElementById('img-file-input').click()">
+                <span class="img-preview-empty">📷</span>
+            </div>
+            <p class="img-upload-hint">
+                Clic en la imagen para cambiarla<br>
+                <span>Máx. ~300 KB · se redimensiona automáticamente a 600 px (lado mayor)</span>
+            </p>
+            <input type="file" id="img-file-input" accept="image/*" style="display:none" onchange="imgOnFileSelected(this)">
+            <div class="img-actions">
+                <button class="img-btn-upload" onclick="document.getElementById('img-file-input').click()">📁 Seleccionar</button>
+                <button class="img-btn-save" onclick="imgGuardar()" id="img-btn-save" disabled>💾 Guardar</button>
+                <button class="img-btn-delete" id="img-btn-delete" onclick="imgEliminar()" style="display:none">🗑 Quitar</button>
+            </div>
         </div>
     </div>
 </div>

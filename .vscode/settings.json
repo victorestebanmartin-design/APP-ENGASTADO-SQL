@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python deploy\\.py \"fix: modal puestos transparente - colores explícitos \\(vars CSS fuera de \\.admin-app scope\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

@@ -473,23 +473,22 @@ async function cargarAsignaciones() {
 }
 
 /**
- * Mostrar lista de asignaciones
+ * Mostrar lista de asignaciones — vista lista agrupada por puesto
  */
 function mostrarAsignaciones(dataTerminales, maquinas) {
     // Actualizar estadísticas
     document.getElementById('total-terminales').textContent = `${dataTerminales.total} terminales`;
     document.getElementById('sin-asignar').textContent = `${dataTerminales.sin_asignar} sin asignar`;
-    
-    // Mostrar alerta si hay terminales sin asignar
+
     const alertElement = document.getElementById('sin-asignar');
     if (dataTerminales.sin_asignar > 0) {
         alertElement.classList.add('alert');
     } else {
         alertElement.classList.remove('alert');
     }
-    
+
     const container = document.getElementById('lista-asignaciones');
-    
+
     if (dataTerminales.terminales.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -500,12 +499,82 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
         `;
         return;
     }
-    
-    // Crear selector de máquinas para asignación rápida
-    const selectorMaquinas = maquinas.map(m => 
-        `<option value="${m.id}">${m.puesto_nombre} - ${m.nombre}</option>`
+
+    // Selector de máquinas para asignación rápida
+    const selectorMaquinas = maquinas.map(m =>
+        `<option value="${m.id}">${m.puesto_nombre} — ${m.nombre}</option>`
     ).join('');
-    
+
+    // Agrupar terminales: asignados por puesto, después sin asignar
+    const grupos = {};
+    const sinAsignarList = [];
+
+    dataTerminales.terminales.forEach(t => {
+        if (t.asignado) {
+            const key = t.asignacion.puesto_nombre;
+            if (!grupos[key]) grupos[key] = [];
+            grupos[key].push(t);
+        } else {
+            sinAsignarList.push(t);
+        }
+    });
+
+    // Generar HTML de grupos asignados
+    const gruposHTML = Object.entries(grupos).map(([puestoNombre, lista]) => `
+        <div class="tl-group" data-grupo="${puestoNombre}">
+            <div class="tl-group-header" onclick="toggleGrupo(this.parentElement)">
+                <span class="tl-group-stripe asignado"></span>
+                <span class="tl-group-name">${puestoNombre}</span>
+                <span class="tl-group-count">${lista.length} terminal${lista.length !== 1 ? 'es' : ''}</span>
+                <span class="tl-group-arrow">▼</span>
+            </div>
+            <div class="tl-rows">
+                ${lista.map(t => `
+                    <div class="terminal-row asignado"
+                         data-terminal="${t.terminal}"
+                         data-estado="asignados">
+                        <span class="tr-check-spacer"></span>
+                        ${imgThumb(t)}
+                        <span class="tr-dot asignado"></span>
+                        <span class="tr-code">${t.terminal}</span>
+                        <span class="tr-assign asignado">${t.asignacion.puesto_nombre} · ${t.asignacion.maquina_nombre}</span>
+                        ${gavetaChip(t)}
+                        <span class="tr-badge asignado">Asignado</span>
+                        <button class="btn-desvincular" onclick="desasignarTerminal('${t.terminal}')" title="Desasignar">✕</button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    // Grupo sin asignar
+    const sinAsignarHTML = sinAsignarList.length > 0 ? `
+        <div class="tl-group" data-grupo="sin-asignar">
+            <div class="tl-group-header" onclick="toggleGrupo(this.parentElement)">
+                <span class="tl-group-stripe sin-asignar"></span>
+                <span class="tl-group-name">SIN ASIGNAR</span>
+                <span class="tl-group-count">${sinAsignarList.length} terminal${sinAsignarList.length !== 1 ? 'es' : ''}</span>
+                <span class="tl-group-arrow">▼</span>
+            </div>
+            <div class="tl-rows">
+                ${sinAsignarList.map(t => `
+                    <div class="terminal-row sin-asignar"
+                         data-terminal="${t.terminal}"
+                         data-estado="sin-asignar"
+                         onclick="toggleSeleccionTerminal(this)">
+                        <span class="tr-check"></span>
+                        ${imgThumb(t)}
+                        <span class="tr-dot sin-asignar"></span>
+                        <span class="tr-code">${t.terminal}</span>
+                        <span class="tr-assign sin-asignar">sin asignar</span>
+                        ${gavetaChip(t)}
+                        <span class="tr-badge sin-asignar">Pendiente</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
     container.innerHTML = `
         <div class="asignacion-rapida">
             <h4>Asignación Rápida</h4>
@@ -519,34 +588,12 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                 </button>
             </div>
         </div>
-        
-        <div class="terminales-grid" id="terminales-grid">
-            ${dataTerminales.terminales.map(terminal => `
-                <div class="terminal-card ${terminal.asignado ? 'asignado' : 'sin-asignar'}" 
-                     data-terminal="${terminal.terminal}" 
-                     data-estado="${terminal.asignado ? 'asignado' : 'sin-asignar'}"
-                     ${!terminal.asignado ? `onclick="toggleSeleccionTerminal(this)"` : ''}>
-                    <div class="terminal-header">
-                        <span class="terminal-nombre">${terminal.terminal}</span>
-                        <div class="terminal-actions">
-                            ${terminal.asignado ? 
-                                `<button class="btn-desvincular" onclick="event.stopPropagation();desasignarTerminal('${terminal.terminal}')" title="Desasignar">✕</button>` : 
-                                ''
-                            }
-                        </div>
-                    </div>
-                    <div class="terminal-info">
-                        ${terminal.asignado ? 
-                            `<span class="maquina-info">${terminal.asignacion.puesto_nombre} · ${terminal.asignacion.maquina_nombre}</span>` :
-                            `<span class="estado-pendiente">sin asignar</span>`
-                        }
-                    </div>
-                </div>
-            `).join('')}
+        <div class="terminales-list" id="terminales-grid">
+            ${gruposHTML}
+            ${sinAsignarHTML}
         </div>
     `;
-    
-    // Aplicar filtros iniciales
+
     aplicarFiltros();
 }
 
@@ -555,27 +602,47 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
  */
 function aplicarFiltros() {
     const filtroEstado = document.getElementById('filtro-estado').value;
-    const busqueda = document.getElementById('buscar-terminal').value.toLowerCase();
-    const terminales = document.querySelectorAll('.terminal-card');
-    
-    terminales.forEach(terminal => {
-        const nombreTerminal = terminal.querySelector('.terminal-nombre').textContent.toLowerCase();
-        const estadoTerminal = terminal.dataset.estado;
-        
-        let mostrar = true;
-        
-        // Filtro por estado
-        if (filtroEstado !== 'todos' && estadoTerminal !== filtroEstado.replace('-', '-')) {
-            mostrar = false;
-        }
-        
-        // Filtro por búsqueda
-        if (busqueda && !nombreTerminal.includes(busqueda)) {
-            mostrar = false;
-        }
-        
-        terminal.style.display = mostrar ? 'block' : 'none';
+    const busqueda = document.getElementById('buscar-terminal').value.toLowerCase().trim();
+
+    // Mostrar/ocultar grupos según filtro de estado
+    document.querySelectorAll('.tl-group').forEach(grupo => {
+        const essinAsignar = grupo.dataset.grupo === 'sin-asignar';
+        let mostrarGrupo = true;
+
+        if (filtroEstado === 'asignados' && essinAsignar) mostrarGrupo = false;
+        if (filtroEstado === 'sin-asignar' && !essinAsignar) mostrarGrupo = false;
+
+        grupo.style.display = mostrarGrupo ? '' : 'none';
     });
+
+    // Filtrar filas individuales por búsqueda
+    document.querySelectorAll('.terminal-row').forEach(row => {
+        const codigo = row.dataset.terminal ? row.dataset.terminal.toLowerCase() : '';
+        const estadoRow = row.dataset.estado;
+        let visible = true;
+
+        if (filtroEstado === 'asignados' && estadoRow === 'sin-asignar') visible = false;
+        if (filtroEstado === 'sin-asignar' && estadoRow !== 'sin-asignar') visible = false;
+        if (busqueda && !codigo.includes(busqueda)) visible = false;
+
+        row.style.display = visible ? '' : 'none';
+    });
+
+    // Ocultar grupos que tienen todas sus filas ocultas (por búsqueda)
+    if (busqueda) {
+        document.querySelectorAll('.tl-group').forEach(grupo => {
+            const filas = grupo.querySelectorAll('.terminal-row');
+            const hayVisibles = Array.from(filas).some(r => r.style.display !== 'none');
+            grupo.style.display = hayVisibles ? '' : 'none';
+        });
+    }
+}
+
+/**
+ * Colapsar/expandir un grupo
+ */
+function toggleGrupo(grupoEl) {
+    grupoEl.classList.toggle('collapsed');
 }
 
 /**
@@ -588,7 +655,7 @@ async function asignarSeleccionados() {
         return;
     }
     
-    const seleccionadas = document.querySelectorAll('.terminal-card.seleccionado');
+    const seleccionadas = document.querySelectorAll('.terminal-row.seleccionado');
     if (seleccionadas.length === 0) {
         alert('Pulsa sobre las tarjetas de terminal que quieras asignar');
         return;
@@ -648,13 +715,227 @@ async function desasignarTerminal(terminal) {
  * Mostrar asignación rápida para un terminal específico
  */
 function mostrarAsignacionRapida(terminal) {
-    const card = document.querySelector(`.terminal-card[data-terminal="${terminal}"]`);
-    if (card) toggleSeleccionTerminal(card);
-    document.getElementById('maquina-destino').focus();
+    const row = document.querySelector(`.terminal-row[data-terminal="${terminal}"]`);
+    if (row) toggleSeleccionTerminal(row);
+    const dest = document.getElementById('maquina-destino');
+    if (dest) dest.focus();
 }
 
-function toggleSeleccionTerminal(card) {
-    card.classList.toggle('seleccionado');
+function toggleSeleccionTerminal(row) {
+    row.classList.toggle('seleccionado');
+}
+
+// ================================
+// IMÁGENES DE TERMINALES
+// ================================
+
+/** Genera el HTML del thumbnail o placeholder para una fila */
+function imgThumb(t) {
+    const cod = t.terminal;
+    if (t.imagen_data) {
+        return `<span class="tr-img-wrap" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Ver/editar imagen">
+                    <img class="tr-img" src="${t.imagen_data}" alt="${cod}">
+                </span>`;
+    }
+    return `<span class="tr-img-placeholder" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Añadir imagen">📷</span>`;
+}
+
+/** Genera el chip de gaveta para una fila */
+function gavetaChip(t) {
+    const cod = t.terminal;
+    if (t.gaveta) {
+        return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Gaveta: ${t.gaveta} — clic para editar">📦 ${t.gaveta}</span>`;
+    }
+    return `<span class="tr-gaveta empty" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta">📦 gaveta</span>`;
+}
+
+let _imgTerminalActual = null;   // código del terminal en edición
+let _imgNuevoDataUrl   = null;   // data URL pendiente de guardar
+
+/** Abre el modal de imagen para un terminal */
+function abrirModalImagen(codigo) {
+    _imgTerminalActual = codigo;
+    _imgNuevoDataUrl   = null;
+
+    document.getElementById('modal-img-titulo').textContent = `Imagen · ${codigo}`;
+    document.getElementById('img-file-input').value = '';
+    document.getElementById('img-btn-save').disabled = true;
+
+    // Buscar imagen actual en el DOM (thumbnail ya renderizado)
+    const row = document.querySelector(`.terminal-row[data-terminal="${codigo}"]`);
+    const imgEl = row ? row.querySelector('.tr-img') : null;
+    const box   = document.getElementById('img-preview-box');
+    const btnDel = document.getElementById('img-btn-delete');
+
+    if (imgEl) {
+        box.innerHTML = `<img src="${imgEl.src}" alt="${codigo}">`;
+        btnDel.style.display = '';
+    } else {
+        box.innerHTML = `<span class="img-preview-empty">📷</span>`;
+        btnDel.style.display = 'none';
+    }
+
+    document.getElementById('modal-img-terminal').classList.add('active');
+}
+
+/** Cuando el usuario selecciona un archivo */
+function imgOnFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            // Resize manteniendo proporción, lado máximo 600 px, JPEG 85 %
+            const MAX = 600;
+            let w = img.width, h = img.height;
+            if (w >= h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+            else         { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+
+            const canvas = document.createElement('canvas');
+            canvas.width  = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            const kb = Math.round(dataUrl.length * 0.75 / 1024);
+
+            if (kb > 300) {
+                alert(`La imagen comprimida pesa ${kb} KB (máx 300 KB).\nPor favor usa una imagen más pequeña.`);
+                return;
+            }
+
+            _imgNuevoDataUrl = dataUrl;
+            document.getElementById('img-preview-box').innerHTML = `<img src="${dataUrl}" alt="preview">`;
+            document.getElementById('img-btn-save').disabled = false;
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+/** Guarda la imagen en la API */
+async function imgGuardar() {
+    if (!_imgNuevoDataUrl || !_imgTerminalActual) return;
+    try {
+        const resp = await fetch(`/api/terminal-imagen/${encodeURIComponent(_imgTerminalActual)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imagen_data: _imgNuevoDataUrl })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            cerrarModal('modal-img-terminal');
+            cargarAsignaciones();   // refresca para mostrar el nuevo thumbnail
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al guardar la imagen');
+    }
+}
+
+/** Elimina la imagen del terminal */
+async function imgEliminar() {
+    if (!_imgTerminalActual) return;
+    if (!confirm(`¿Eliminar la imagen del terminal ${_imgTerminalActual}?`)) return;
+    try {
+        const resp = await fetch(`/api/terminal-imagen/${encodeURIComponent(_imgTerminalActual)}`, {
+            method: 'DELETE'
+        });
+        const data = await resp.json();
+        if (data.success) {
+            cerrarModal('modal-img-terminal');
+            cargarAsignaciones();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al eliminar la imagen');
+    }
+}
+
+// ================================
+// GAVETAS DE TERMINALES
+// ================================
+
+/**
+ * Activa el modo edición inline del chip de gaveta
+ */
+function editarGaveta(codigo, chipEl) {
+    // Evitar doble apertura
+    if (chipEl.querySelector('input')) return;
+
+    const valorActual = chipEl.dataset.gaveta || '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tr-gaveta-input';
+    input.value = valorActual;
+    input.placeholder = 'Ej: A-12 ó Bandeja 3';
+    input.maxLength = 80;
+
+    chipEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const confirmar = () => {
+        const nuevo = input.value.trim();
+        guardarGaveta(codigo, nuevo, input);
+    };
+
+    input.addEventListener('blur',    confirmar);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { e.preventDefault(); confirmar(); }
+        if (e.key === 'Escape') {
+            // Restaurar chip sin guardar
+            input.replaceWith(_crearChipGaveta(codigo, valorActual));
+        }
+    });
+}
+
+/** Crea un chip de gaveta a partir de código y valor */
+function _crearChipGaveta(codigo, gaveta) {
+    const span = document.createElement('span');
+    if (gaveta) {
+        span.className = 'tr-gaveta';
+        span.dataset.gaveta = gaveta;
+        span.title = `Gaveta: ${gaveta} — clic para editar`;
+        span.textContent = `📦 ${gaveta}`;
+    } else {
+        span.className = 'tr-gaveta empty';
+        span.title = 'Asignar gaveta';
+        span.textContent = '📦 gaveta';
+    }
+    span.addEventListener('click', e => { e.stopPropagation(); editarGaveta(codigo, span); });
+    return span;
+}
+
+/** Llama a la API y actualiza el chip en el DOM */
+async function guardarGaveta(codigo, gaveta, inputEl) {
+    try {
+        let resp, data;
+        if (gaveta) {
+            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gaveta })
+            });
+        } else {
+            // Vacío = eliminar
+            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
+                method: 'DELETE'
+            });
+        }
+        data = await resp.json();
+        if (!data.success) { alert('Error: ' + data.message); }
+    } catch (e) {
+        console.error('Error al guardar gaveta', e);
+    } finally {
+        // Siempre restaurar el chip (con el valor nuevo o sin él)
+        inputEl.replaceWith(_crearChipGaveta(codigo, gaveta));
+    }
 }
 
 // ================================
