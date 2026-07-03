@@ -64,35 +64,25 @@ class BonoRepository(BaseRepository):
         return resultados[0] if resultados else None
     
     def obtener_bono_con_ordenes(self, bono_id: str) -> Optional[Dict]:
-        """Obtener bono con sus órdenes (usando vista)"""
-        query = "SELECT * FROM vw_bonos_con_carros WHERE bono_id = :bono_id"
-        resultados = self.execute_select(query, {'bono_id': bono_id})
-        
-        if not resultados:
+        """Obtener bono con sus órdenes y carros asignados"""
+        bono = self.obtener_bono(bono_id)
+        if not bono:
             return None
-        
-        # Agrupar órdenes
-        bono_info = {
-            'id': resultados[0]['bono_id'],
-            'nombre': resultados[0]['bono_nombre'],
-            'estado': resultados[0]['bono_estado'],
-            'carro_numero': resultados[0]['carro_numero'],
-            'fecha_creacion': resultados[0]['bono_fecha_creacion'],
-            'ordenes': []
-        }
-        
-        for row in resultados:
-            if row['orden_id']:
-                bono_info['ordenes'].append({
-                    'id': row['orden_id'],
-                    'codigo_corte': row['orden_codigo_corte'],
-                    'numero': row['orden_numero'],
-                    'descripcion': row['orden_descripcion'],
-                    'cantidad': row['orden_cantidad'],
-                    'estado': row['orden_estado']
-                })
-        
-        return bono_info
+
+        bono['ordenes'] = self.execute_select("""
+            SELECT id, codigo_corte, numero, descripcion, cantidad, estado, carro_numero
+            FROM ordenes_produccion
+            WHERE bono_id = :bono_id
+        """, {'bono_id': bono_id})
+
+        carros = self.execute_select(
+            "SELECT numero FROM carros WHERE bono_id = :bono_id ORDER BY numero",
+            {'bono_id': bono_id}
+        )
+        bono['carros_asignados'] = [c['numero'] for c in carros]
+        bono['carro_numero'] = carros[0]['numero'] if carros else None
+
+        return bono
     
     def obtener_todos_bonos(self, estado: Optional[str] = None) -> List[Dict]:
         """
@@ -122,10 +112,12 @@ class BonoRepository(BaseRepository):
         Returns:
             True si se asignó correctamente
         """
+        # La relación bono-carro vive en carros.bono_id (bonos no tiene carro_numero)
         query = """
-            UPDATE bonos 
-            SET carro_numero = :carro_numero
-            WHERE id = :bono_id
+            UPDATE carros
+            SET bono_id = :bono_id,
+                estado = 'en_proceso'
+            WHERE numero = :carro_numero
         """
         params = {'bono_id': bono_id, 'carro_numero': carro_numero}
         rows = self.execute_update(query, params)
@@ -145,9 +137,9 @@ class BonoRepository(BaseRepository):
     def completar_bono(self, bono_id: str) -> bool:
         """Marcar bono como completado"""
         query = """
-            UPDATE bonos 
+            UPDATE bonos
             SET estado = 'completado',
-                fecha_completado = datetime('now')
+                updated_at = datetime('now')
             WHERE id = :bono_id
         """
         rows = self.execute_update(query, {'bono_id': bono_id})
