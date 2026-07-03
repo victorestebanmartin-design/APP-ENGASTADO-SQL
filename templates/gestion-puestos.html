@@ -120,27 +120,62 @@
         .btn.btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
         .btn.btn-danger:hover { background: var(--danger); color: #fff; }
 
-        /* Inputs formularios modal (el admin-app scope no alcanza aquí) */
+        /* Overrides para botones dentro de modales (fuera del scope .admin-app) */
+        .p-modal .btn { background: #2a3a52; border-color: #334155; color: #f1f5f9; }
+        .p-modal .btn.btn-primary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+        .p-modal .btn.btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+        .p-modal .btn.btn-secondary { background: #2a3a52; border-color: #334155; color: #94a3b8; }
+        .p-modal .btn.btn-secondary:hover { background: #334155; color: #f1f5f9; }
+
+        /* Inputs formularios modal — colores explícitos (fuera de .admin-app) */
         .p-form-group { margin-bottom: 16px; }
-        .p-form-group label { display: block; margin-bottom: 5px; font-size: 0.82rem; color: var(--text-muted); }
+        .p-form-group label { display: block; margin-bottom: 5px; font-size: 0.82rem; color: #94a3b8; }
         .p-form-group input, .p-form-group select, .p-form-group textarea {
-            width: 100%; background: var(--panel-3); border: 1px solid var(--border);
-            border-radius: 8px; color: var(--text); padding: 9px 12px; font-size: 0.9rem;
+            width: 100%; background: #2a3a52; border: 1px solid #334155;
+            border-radius: 8px; color: #f1f5f9; padding: 9px 12px; font-size: 0.9rem;
             font-family: inherit; outline: none; transition: border-color .15s;
         }
-        .p-form-group input:focus, .p-form-group select:focus, .p-form-group textarea:focus { border-color: var(--accent); }
+        .p-form-group input::placeholder, .p-form-group textarea::placeholder { color: #64748b; }
+        .p-form-group input:focus, .p-form-group select:focus, .p-form-group textarea:focus { border-color: #3b82f6; }
         .p-form-group textarea { resize: vertical; min-height: 70px; }
 
-        /* Modal */
-        .p-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 300; align-items: center; justify-content: center; }
+        /* Modal — variables definidas localmente porque los modales están fuera de .admin-app */
+        .p-modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.75);
+            z-index: 300; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
         .p-modal.active { display: flex; }
-        .p-modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(460px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
-        .p-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .p-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text); }
-        .p-modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px; }
-        .p-modal-close:hover { color: var(--text); }
-        .p-modal-body { padding: 20px; }
-        .p-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); }
+        .p-modal-box {
+            background: #1e293b;
+            border: 1px solid #3b82f6;
+            border-radius: 14px;
+            width: min(460px, 95vw); max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(59,130,246,.2);
+        }
+        .p-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid #334155;
+            background: #243044;
+            border-radius: 14px 14px 0 0;
+        }
+        .p-modal-header h3 { margin: 0; font-size: 1rem; color: #f1f5f9; font-weight: 600; letter-spacing: .02em; }
+        .p-modal-close {
+            background: none; border: none; color: #94a3b8;
+            font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px;
+            transition: color .15s;
+        }
+        .p-modal-close:hover { color: #f1f5f9; }
+        .p-modal-body { padding: 20px; background: #1e293b; }
+        .p-modal-footer {
+            display: flex; justify-content: flex-end; gap: 10px;
+            padding: 14px 20px;
+            border-top: 1px solid #334155;
+            background: #243044;
+            border-radius: 0 0 14px 14px;
+        }
 
         /* Filtros sección terminales */
         .terminales-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
