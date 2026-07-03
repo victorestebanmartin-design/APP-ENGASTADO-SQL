@@ -565,7 +565,7 @@ async function cargarListaBonos() {
                 const fecha = bono.fecha_creacion
                     ? new Date(bono.fecha_creacion).toLocaleDateString('es-ES', {day:'2-digit', month:'2-digit', year:'2-digit'})
                     : '—';
-                const estado = bono.estado || 'activo';
+                const estado = bono.finalizado ? 'finalizado' : (bono.estado || 'activo');
                 html += `
                     <tr>
                         <td><strong>${bono.nombre}</strong></td>
