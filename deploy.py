@@ -142,8 +142,8 @@ def pa_git_pull(domain, deploy_secret, username, token):
     pa_home = os.environ.get("PA_HOME", f"/home/Viktor85")
     project = f"{pa_home}/APP-ENGASTADO-SQL"
     files_to_sync = [
-        ("app/routes.py",           f"{project}/app/routes.py"),
         ("app/__init__.py",         f"{project}/app/__init__.py"),
+        ("app/excel_manager.py",    f"{project}/app/excel_manager.py"),
         ("repositories/__init__.py",f"{project}/repositories/__init__.py"),
         ("deploy.py",               f"{project}/deploy.py"),
         ("schema_sqlite.sql",       f"{project}/schema_sqlite.sql"),
@@ -152,6 +152,12 @@ def pa_git_pull(domain, deploy_secret, username, token):
         ("static/js/admin.js",             f"{project}/static/js/admin.js"),
     ]
     base = os.path.dirname(__file__)
+    # Módulos de rutas (app/routes/*.py), añadidos dinámicamente
+    ruta_modulos = os.path.join(base, "app", "routes")
+    if os.path.isdir(ruta_modulos):
+        for fn in sorted(os.listdir(ruta_modulos)):
+            if fn.endswith(".py"):
+                files_to_sync.append((f"app/routes/{fn}", f"{project}/app/routes/{fn}"))
     ok = 0
     for local_rel, remote in files_to_sync:
         local = os.path.join(base, local_rel.replace("/", os.sep))

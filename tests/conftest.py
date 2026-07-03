@@ -61,8 +61,8 @@ def app(tmp_path):
     aplicacion = create_app(TestConfig)
 
     # El contador anti fuerza bruta del PIN es global: limpiarlo entre tests
-    from app import routes
-    routes._PIN_INTENTOS.clear()
+    from app.routes import paginas
+    paginas._PIN_INTENTOS.clear()
 
     yield aplicacion
 
