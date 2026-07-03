@@ -30,7 +30,7 @@ def load_env():
                 key, _, value = line.partition("=")
                 os.environ.setdefault(key.strip(), value.strip())
 
-GIT = r"C:\Users\estebanv\AppData\Local\GitHubDesktop\app-3.5.8\resources\app\git\cmd\git.exe"
+GIT = r"C:\Users\estebanv\AppData\Local\GitHubDesktop\app-3.5.11\resources\app\git\cmd\git.exe"
 
 def run(cmd, check=True):
     cmd = cmd.replace("git ", f'"{GIT}" ', 1) if cmd.startswith("git ") else cmd
