@@ -544,6 +544,7 @@ function mostrarPaqueteConCables(terminal, grupo, numeroGrupo, totalGrupos) {
                     <div style="flex:1;">
                         <h2 style="margin:0;">⚡ TERMINAL: ${terminal}</h2>
                         <div class="progreso-paquete">Paquete ${numeroGrupo} de ${totalGrupos}</div>
+                        ${terminalGavetaActual ? `<div style="margin-top:4px;display:inline-block;background:#e7f1ff;color:#0d6efd;padding:2px 10px;border-radius:10px;font-size:0.85em;font-weight:bold;">📍 Ubicación: ${terminalGavetaActual}</div>` : ''}
                     </div>
                 </div>
             </div>

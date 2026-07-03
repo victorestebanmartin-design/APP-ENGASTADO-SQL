@@ -25,6 +25,7 @@ let carrosDelBono = []; // Todos los carros del bono
 let carroActualIndex = 0; // Índice del carro actual en proceso
 let terminalActual = null; // Terminal en el que estamos trabajando
 let terminalImagenActual = null; // Foto del terminal activo (data URL, null si no hay)
+let terminalGavetaActual = null; // Gaveta/ubicación física del terminal activo (null si no hay)
 let terminalesCompletados = []; // Lista de terminales ya completados
 let terminalesEnProceso = []; // Lista de terminales con paquetes pendientes retomables (azul)
 let terminalesEnEspera = []; // Lista de terminales cuyos pendientes son TODOS por bloqueo de otro puesto (naranja)

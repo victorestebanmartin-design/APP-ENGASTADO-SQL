@@ -584,6 +584,19 @@ def api_eliminar_imagen_terminal(codigo):
 
 # ==================== GAVETAS DE TERMINALES ====================
 
+@bp.route('/api/terminal-gaveta/<codigo>', methods=['GET'])
+def api_obtener_gaveta_terminal(codigo):
+    """Obtener la gaveta (ubicación física) de un terminal."""
+    try:
+        row = db.session.execute(
+            text("SELECT gaveta FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        ).fetchone()
+        return jsonify({'success': True, 'gaveta': row[0] if row else None})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener gaveta de terminal')
+
+
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['PUT'])
 def api_guardar_gaveta_terminal(codigo):
     """Guardar o actualizar la gaveta de un terminal."""

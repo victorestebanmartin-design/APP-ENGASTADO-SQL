@@ -502,6 +502,16 @@ async function seleccionarTerminalTrabajo(terminal) {
         }
     } catch (e) { /* ignorar, no es crítico */ }
 
+    // Cargar gaveta/ubicación física del terminal si existe
+    terminalGavetaActual = null;
+    try {
+        const gavResp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(terminal)}`);
+        const gavJson = await gavResp.json();
+        if (gavJson.success && gavJson.gaveta) {
+            terminalGavetaActual = gavJson.gaveta;
+        }
+    } catch (e) { /* ignorar, no es crítico */ }
+
     // Marcar terminal como 'en_proceso' en el backend de inmediato
     try {
         await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {

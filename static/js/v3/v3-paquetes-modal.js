@@ -171,7 +171,7 @@ async function mostrarModalPaquetes(carro) {
             <div style="display:flex;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
                 ${terminalImagenActual ? `
                 <img src="${terminalImagenActual}" onclick="ampliarImagenTerminal(event)" title="Pulsa para ampliar" style="width:52px;height:52px;object-fit:contain;border-radius:8px;border:2px solid rgba(255,255,255,0.6);background:white;cursor:zoom-in;flex-shrink:0;" alt="Terminal ${terminalActual}">` : ''}
-                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.78em;opacity:0.9;">Terminal</div></div>
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.78em;opacity:0.9;">Terminal</div>${terminalGavetaActual ? `<div style="margin-top:3px;display:inline-block;background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:10px;font-size:0.8em;font-weight:bold;">📍 ${terminalGavetaActual}</div>` : ''}</div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${total}</div><div style="font-size:0.78em;opacity:0.9;">Paquetes total</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalCables}</div><div style="font-size:0.78em;opacity:0.9;">Cables</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalTerminales}</div><div style="font-size:0.78em;opacity:0.9;">Terminales</div></div>
