@@ -88,10 +88,15 @@ class MaquinaRepository(BaseRepository):
         return self.execute_select(query, {'puesto_id': puesto_id})
     
     def actualizar_maquina(self, id: str, nombre: Optional[str] = None,
-                          modelo: Optional[str] = None, descripcion: Optional[str] = None) -> bool:
+                          modelo: Optional[str] = None, descripcion: Optional[str] = None,
+                          puesto_id: Optional[str] = None) -> bool:
         """Actualizar información de una máquina"""
         updates = []
         params = {'id': id}
+        
+        if puesto_id is not None:
+            updates.append("puesto_id = :puesto_id")
+            params['puesto_id'] = puesto_id
         
         if nombre is not None:
             updates.append("nombre = :nombre")

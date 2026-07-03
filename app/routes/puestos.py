@@ -261,8 +261,9 @@ def api_actualizar_maquina(maquina_id):
         nombre = data.get('nombre')
         modelo = data.get('modelo')
         descripcion = data.get('descripcion')
+        puesto_id = data.get('puesto_id')
         
-        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion):
+        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id):
             maquina_actualizada = maquina_repo.obtener_maquina(maquina_id)
             maquina_actualizada['terminales_asignados'] = maquina_repo.obtener_terminales_asignados(maquina_id)
             return jsonify({
