@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}?v=2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
     <style>
         /* ── Layout: reutilizamos .admin-app tal cual ── */
         /* Sólo añadimos lo específico de esta página */
@@ -131,6 +131,17 @@
         .p-form-group input:focus, .p-form-group select:focus, .p-form-group textarea:focus { border-color: var(--accent); }
         .p-form-group textarea { resize: vertical; min-height: 70px; }
 
+        /* Modal */
+        .p-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 300; align-items: center; justify-content: center; }
+        .p-modal.active { display: flex; }
+        .p-modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(460px, 95vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+        .p-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .p-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text); }
+        .p-modal-close { background: none; border: none; color: var(--text-muted); font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 0 4px; }
+        .p-modal-close:hover { color: var(--text); }
+        .p-modal-body { padding: 20px; }
+        .p-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); }
+
         /* Filtros sección terminales */
         .terminales-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
         .terminales-filtros label { font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
@@ -227,63 +238,62 @@
 
         </main>
     </div>
+</div>
 
-    <!-- ══ MODAL: Nuevo/Editar Puesto ══════════════════════════════ -->
-    <div id="modal-puesto" class="p-modal">
-        <div class="p-modal-box">
-            <div class="p-modal-header">
-                <h3 id="modal-puesto-titulo">Nuevo Puesto</h3>
-                <button class="p-modal-close" onclick="document.getElementById('modal-puesto').classList.remove('active')">&times;</button>
+<!-- ══ MODAL: Nuevo/Editar Puesto ══════════════════════════════ -->
+<div id="modal-puesto" class="p-modal">
+    <div class="p-modal-box">
+        <div class="p-modal-header">
+            <h3 id="modal-puesto-titulo">Nuevo Puesto</h3>
+            <button class="p-modal-close" onclick="document.getElementById('modal-puesto').classList.remove('active')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div class="p-form-group">
+                <label for="puesto-nombre">Nombre del Puesto *</label>
+                <input type="text" id="puesto-nombre" placeholder="Ej: TERMINALES AMP">
             </div>
-            <div class="p-modal-body">
-                <div class="p-form-group">
-                    <label for="puesto-nombre">Nombre del Puesto *</label>
-                    <input type="text" id="puesto-nombre" placeholder="Ej: TERMINALES AMP">
-                </div>
-                <div class="p-form-group">
-                    <label for="puesto-descripcion">Descripción</label>
-                    <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
-                </div>
-            </div>
-            <div class="p-modal-footer">
-                <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
-                <button class="btn btn-primary" onclick="guardarPuesto()">💾 Guardar</button>
+            <div class="p-form-group">
+                <label for="puesto-descripcion">Descripción</label>
+                <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
             </div>
         </div>
-    </div>
-
-    <!-- ══ MODAL: Nueva/Editar Máquina ══════════════════════════════ -->
-    <div id="modal-maquina" class="p-modal">
-        <div class="p-modal-box">
-            <div class="p-modal-header">
-                <h3 id="modal-maquina-titulo">Nueva Máquina</h3>
-                <button class="p-modal-close" onclick="document.getElementById('modal-maquina').classList.remove('active')">&times;</button>
-            </div>
-            <div class="p-modal-body">
-                <div class="p-form-group">
-                    <label for="maquina-puesto">Puesto de Trabajo *</label>
-                    <select id="maquina-puesto"><option value="">Selecciona un puesto...</option></select>
-                </div>
-                <div class="p-form-group">
-                    <label for="maquina-nombre">Nombre de la Máquina *</label>
-                    <input type="text" id="maquina-nombre" placeholder="Ej: AMP ROJA">
-                </div>
-                <div class="p-form-group">
-                    <label for="maquina-modelo">Modelo</label>
-                    <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 455">
-                </div>
-                <div class="p-form-group">
-                    <label for="maquina-descripcion">Descripción</label>
-                    <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
-                </div>
-            </div>
-            <div class="p-modal-footer">
-                <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
-                <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
-            </div>
+        <div class="p-modal-footer">
+            <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
+            <button class="btn btn-primary" onclick="guardarPuesto()">💾 Guardar</button>
         </div>
     </div>
+</div>
 
+<!-- ══ MODAL: Nueva/Editar Máquina ══════════════════════════════ -->
+<div id="modal-maquina" class="p-modal">
+    <div class="p-modal-box">
+        <div class="p-modal-header">
+            <h3 id="modal-maquina-titulo">Nueva Máquina</h3>
+            <button class="p-modal-close" onclick="document.getElementById('modal-maquina').classList.remove('active')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div class="p-form-group">
+                <label for="maquina-puesto">Puesto de Trabajo *</label>
+                <select id="maquina-puesto"><option value="">Selecciona un puesto...</option></select>
+            </div>
+            <div class="p-form-group">
+                <label for="maquina-nombre">Nombre de la Máquina *</label>
+                <input type="text" id="maquina-nombre" placeholder="Ej: AMP ROJA">
+            </div>
+            <div class="p-form-group">
+                <label for="maquina-modelo">Modelo</label>
+                <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 455">
+            </div>
+            <div class="p-form-group">
+                <label for="maquina-descripcion">Descripción</label>
+                <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
+            </div>
+        </div>
+        <div class="p-modal-footer">
+            <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
+            <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
+        </div>
+    </div>
 </div>
 
 <script>
