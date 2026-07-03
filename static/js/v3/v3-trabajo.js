@@ -540,7 +540,7 @@ function mostrarPaqueteConCables(terminal, grupo, numeroGrupo, totalGrupos) {
         <div class="caja-expandida-v2">
             <div class="header-paquete">
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                    ${terminalImagenActual ? `<img src="${terminalImagenActual}" style="width:56px;height:56px;object-fit:contain;border-radius:8px;border:2px solid #dee2e6;background:#fff;flex-shrink:0;" alt="${terminal}">` : ''}
+                    ${terminalImagenActual ? `<img src="${terminalImagenActual}" onclick="ampliarImagenTerminal(event)" title="Pulsa para ampliar" style="width:56px;height:56px;object-fit:contain;border-radius:8px;border:2px solid #dee2e6;background:#fff;flex-shrink:0;cursor:zoom-in;" alt="${terminal}">` : ''}
                     <div style="flex:1;">
                         <h2 style="margin:0;">⚡ TERMINAL: ${terminal}</h2>
                         <div class="progreso-paquete">Paquete ${numeroGrupo} de ${totalGrupos}</div>

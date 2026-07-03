@@ -168,22 +168,15 @@ async function mostrarModalPaquetes(carro) {
 
     modal.innerHTML = `
         <div style="background:white;border-radius:15px;padding:18px 20px;max-width:700px;width:95%;max-height:95vh;overflow-y:auto;">
-            <div style="display:flex;gap:10px;margin-bottom:${terminalImagenActual ? '8px' : '12px'};background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
+                ${terminalImagenActual ? `
+                <img src="${terminalImagenActual}" onclick="ampliarImagenTerminal(event)" title="Pulsa para ampliar" style="width:52px;height:52px;object-fit:contain;border-radius:8px;border:2px solid rgba(255,255,255,0.6);background:white;cursor:zoom-in;flex-shrink:0;" alt="Terminal ${terminalActual}">` : ''}
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.78em;opacity:0.9;">Terminal</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${total}</div><div style="font-size:0.78em;opacity:0.9;">Paquetes total</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalCables}</div><div style="font-size:0.78em;opacity:0.9;">Cables</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalTerminales}</div><div style="font-size:0.78em;opacity:0.9;">Terminales</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">Carro ${carro.carro}</div><div style="font-size:0.78em;opacity:0.9;">${carro.proyecto_nombre || ''}</div></div>
             </div>
-
-            ${terminalImagenActual ? `
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:#f8f9fa;border-radius:10px;border:1px solid #dee2e6;">
-                <img src="${terminalImagenActual}" style="width:60px;height:60px;object-fit:contain;border-radius:8px;border:1px solid #dee2e6;background:white;" alt="Terminal ${terminalActual}">
-                <div>
-                    <div style="font-weight:bold;font-size:0.9em;color:#495057;">📸 <strong>${terminalActual}</strong></div>
-                    <div style="font-size:0.75em;color:#6c757d;">${totalTerminales} terminales · ${totalCables} cables en ${total} paquete${total!==1?'s':''}</div>
-                </div>
-            </div>` : ''}
 
             ${total > PAQUETES_POR_PAGINA ? `
             <div style="display:flex;align-items:center;justify-content:space-between;background:#e7f1ff;border-radius:8px;padding:10px 16px;margin-bottom:16px;">
@@ -448,6 +441,40 @@ function cerrarModalPaquetes() {
     const modal = document.getElementById('modal-paquetes');
     if (modal) modal.remove();
     // Solo cierra el modal, el flujo continua con confirmarPaquetesYComenzar
+}
+
+/**
+ * Ampliar la foto del terminal en un lightbox (para verlo bien ante dudas)
+ */
+function ampliarImagenTerminal(event) {
+    if (event) event.stopPropagation();
+    if (!terminalImagenActual) return;
+
+    const anterior = document.getElementById('modal-imagen-terminal');
+    if (anterior) anterior.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'modal-imagen-terminal';
+    overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:11000;cursor:zoom-out;padding:20px;box-sizing:border-box;`;
+    overlay.innerHTML = `
+        <div style="color:white;font-size:1.3em;font-weight:bold;margin-bottom:12px;">📸 ${terminalActual}</div>
+        <img src="${terminalImagenActual}" style="max-width:90%;max-height:78vh;object-fit:contain;border-radius:12px;background:white;box-shadow:0 8px 40px rgba(0,0,0,0.5);" alt="Terminal ${terminalActual}">
+        <div style="color:rgba(255,255,255,0.8);font-size:0.9em;margin-top:14px;">Pulsa en cualquier sitio o <strong>Esc</strong> para cerrar</div>
+    `;
+    overlay.addEventListener('click', cerrarImagenTerminal);
+    document.body.appendChild(overlay);
+
+    window._imgTerminalEscHandler = (e) => { if (e.key === 'Escape') cerrarImagenTerminal(); };
+    document.addEventListener('keydown', window._imgTerminalEscHandler);
+}
+
+function cerrarImagenTerminal() {
+    const overlay = document.getElementById('modal-imagen-terminal');
+    if (overlay) overlay.remove();
+    if (window._imgTerminalEscHandler) {
+        document.removeEventListener('keydown', window._imgTerminalEscHandler);
+        window._imgTerminalEscHandler = null;
+    }
 }
 
 async function cancelarModalPaquetes() {
