@@ -361,14 +361,21 @@ def api_terminales_disponibles():
                     'maquina_nombre': maquina['nombre'],
                     'puesto_nombre': maquina.get('puesto_nombre', '')
                 }
-        
+
+        # Cargar imágenes de terminales
+        rows = db.session.execute(
+            text("SELECT terminal_codigo, imagen_data FROM terminales_imagenes")
+        ).fetchall()
+        imagenes_map = {r[0]: r[1] for r in rows}
+
         # Preparar respuesta con estado de cada terminal
         terminales_con_estado = []
         for terminal in sorted(list(terminales_sistema)):
             estado = {
                 'terminal': terminal,
                 'asignado': terminal in terminales_asignados,
-                'asignacion': terminales_asignados.get(terminal, None)
+                'asignacion': terminales_asignados.get(terminal, None),
+                'imagen_data': imagenes_map.get(terminal)
             }
             terminales_con_estado.append(estado)
         
@@ -504,3 +511,52 @@ def api_desasignar_terminal():
             
     except Exception as e:
         return error_interno(e, 'Error al desasignar terminal')
+
+
+# ==================== IMÁGENES DE TERMINALES ====================
+
+MAX_IMAGEN_BYTES = 80_000   # ~60 KB en base64 ≈ 80 KB de texto
+
+@bp.route('/api/terminal-imagen/<codigo>', methods=['PUT'])
+def api_subir_imagen_terminal(codigo):
+    """Guardar o actualizar la imagen (base64) de un terminal."""
+    try:
+        data = request.get_json(silent=True) or {}
+        imagen_data = (data.get('imagen_data') or '').strip()
+
+        if not imagen_data:
+            return jsonify({'success': False, 'message': 'No se recibió imagen'}), 400
+
+        if not imagen_data.startswith('data:image/'):
+            return jsonify({'success': False, 'message': 'Formato inválido (se espera data URL)'}), 400
+
+        if len(imagen_data.encode('utf-8')) > MAX_IMAGEN_BYTES:
+            return jsonify({'success': False, 'message': 'Imagen demasiado grande (máx ~60 KB)'}), 400
+
+        db.session.execute(text("""
+            INSERT INTO terminales_imagenes (terminal_codigo, imagen_data, updated_at)
+            VALUES (:codigo, :img, datetime('now'))
+            ON CONFLICT(terminal_codigo) DO UPDATE
+                SET imagen_data = excluded.imagen_data,
+                    updated_at  = excluded.updated_at
+        """), {'codigo': codigo, 'img': imagen_data})
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Imagen guardada'})
+
+    except Exception as e:
+        return error_interno(e, 'Error al guardar imagen de terminal')
+
+
+@bp.route('/api/terminal-imagen/<codigo>', methods=['DELETE'])
+def api_eliminar_imagen_terminal(codigo):
+    """Eliminar la imagen de un terminal."""
+    try:
+        db.session.execute(
+            text("DELETE FROM terminales_imagenes WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        )
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar imagen de terminal')

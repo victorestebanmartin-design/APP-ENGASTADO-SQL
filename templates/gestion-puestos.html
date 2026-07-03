@@ -177,15 +177,50 @@
         /* Compat. legado (no se usan en la nueva vista pero pueden quedar refs) */
         .terminales-grid { display: none; }
         .terminal-card { display: none; }
-        /* Botón desasignar chic */
-        .btn-desvincular {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 22px; height: 22px; border-radius: 50%;
-            background: transparent; border: 1px solid rgba(239,68,68,.25);
-            color: rgba(239,68,68,.5); font-size: 11px; cursor: pointer;
-            transition: all .15s; line-height: 1; flex-shrink: 0;
+
+        /* ── Imagen de terminal ── */
+        .tr-img {
+            width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0;
+            object-fit: cover; border: 1px solid rgba(255,255,255,.08);
+            background: #2a3a52;
         }
-        .btn-desvincular:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.6); color: #f87171; }
+        .tr-img-placeholder {
+            width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0;
+            background: rgba(255,255,255,.04); border: 1px dashed rgba(255,255,255,.1);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; cursor: pointer; transition: all .15s; color: var(--text-dim);
+        }
+        .tr-img-placeholder:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.07); }
+        .tr-img-wrap { position: relative; flex-shrink: 0; cursor: pointer; }
+        .tr-img-wrap img { display: block; }
+        .tr-img-wrap:hover::after {
+            content: '✎'; position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,.55); border-radius: 6px;
+            font-size: 13px; color: #fff;
+        }
+
+        /* Modal imagen terminal — fuera de .admin-app igual que los otros modales */
+        #modal-img-terminal .p-modal-header { background: #1e3a5f; }
+        .img-preview-box {
+            width: 120px; height: 120px; border-radius: 10px;
+            border: 2px dashed #334155; background: #243044;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 16px; overflow: hidden; cursor: pointer;
+            transition: border-color .15s;
+        }
+        .img-preview-box:hover { border-color: #3b82f6; }
+        .img-preview-box img { width: 100%; height: 100%; object-fit: cover; }
+        .img-preview-box .img-preview-empty { color: #64748b; font-size: 2rem; }
+        .img-upload-hint { text-align: center; font-size: 0.75rem; color: #64748b; margin-bottom: 14px; }
+        .img-upload-hint span { color: #94a3b8; }
+        .img-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .img-btn-upload { background: #2a3a52; border: 1px solid #334155; color: #f1f5f9; border-radius: 8px; padding: 7px 16px; font-size: 0.82rem; cursor: pointer; transition: background .14s; }
+        .img-btn-upload:hover { background: #334155; }
+        .img-btn-save   { background: #3b82f6; border: 1px solid #3b82f6; color: #fff; border-radius: 8px; padding: 7px 16px; font-size: 0.82rem; cursor: pointer; transition: background .14s; }
+        .img-btn-save:hover { background: #2563eb; }
+        .img-btn-delete { background: transparent; border: 1px solid rgba(239,68,68,.4); color: rgba(239,68,68,.8); border-radius: 8px; padding: 7px 14px; font-size: 0.82rem; cursor: pointer; transition: all .14s; }
+        .img-btn-delete:hover { background: rgba(239,68,68,.1); border-color: #ef4444; color: #f87171; }
 
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
@@ -410,6 +445,31 @@
         <div class="p-modal-footer">
             <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
             <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MODAL: Imagen de terminal ══════════════════════════════════ -->
+<div id="modal-img-terminal" class="p-modal">
+    <div class="p-modal-box" style="width:min(360px,95vw);">
+        <div class="p-modal-header">
+            <h3 id="modal-img-titulo">Imagen del Terminal</h3>
+            <button class="p-modal-close" onclick="cerrarModal('modal-img-terminal')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div class="img-preview-box" id="img-preview-box" onclick="document.getElementById('img-file-input').click()">
+                <span class="img-preview-empty">📷</span>
+            </div>
+            <p class="img-upload-hint">
+                Clic en la imagen para cambiarla<br>
+                <span>Máx. ~60 KB · se redimensiona automáticamente a 96×96 px</span>
+            </p>
+            <input type="file" id="img-file-input" accept="image/*" style="display:none" onchange="imgOnFileSelected(this)">
+            <div class="img-actions">
+                <button class="img-btn-upload" onclick="document.getElementById('img-file-input').click()">📁 Seleccionar</button>
+                <button class="img-btn-save" onclick="imgGuardar()" id="img-btn-save" disabled>💾 Guardar</button>
+                <button class="img-btn-delete" id="img-btn-delete" onclick="imgEliminar()" style="display:none">🗑 Quitar</button>
+            </div>
         </div>
     </div>
 </div>

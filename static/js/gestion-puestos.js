@@ -534,6 +534,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                          data-terminal="${t.terminal}"
                          data-estado="asignados">
                         <span class="tr-check-spacer"></span>
+                        ${imgThumb(t)}
                         <span class="tr-dot asignado"></span>
                         <span class="tr-code">${t.terminal}</span>
                         <span class="tr-assign asignado">${t.asignacion.puesto_nombre} · ${t.asignacion.maquina_nombre}</span>
@@ -561,6 +562,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                          data-estado="sin-asignar"
                          onclick="toggleSeleccionTerminal(this)">
                         <span class="tr-check"></span>
+                        ${imgThumb(t)}
                         <span class="tr-dot sin-asignar"></span>
                         <span class="tr-code">${t.terminal}</span>
                         <span class="tr-assign sin-asignar">sin asignar</span>
@@ -719,6 +721,129 @@ function mostrarAsignacionRapida(terminal) {
 
 function toggleSeleccionTerminal(row) {
     row.classList.toggle('seleccionado');
+}
+
+// ================================
+// IMÁGENES DE TERMINALES
+// ================================
+
+/** Genera el HTML del thumbnail o placeholder para una fila */
+function imgThumb(t) {
+    const cod = t.terminal;
+    if (t.imagen_data) {
+        return `<span class="tr-img-wrap" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Ver/editar imagen">
+                    <img class="tr-img" src="${t.imagen_data}" alt="${cod}">
+                </span>`;
+    }
+    return `<span class="tr-img-placeholder" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Añadir imagen">📷</span>`;
+}
+
+let _imgTerminalActual = null;   // código del terminal en edición
+let _imgNuevoDataUrl   = null;   // data URL pendiente de guardar
+
+/** Abre el modal de imagen para un terminal */
+function abrirModalImagen(codigo) {
+    _imgTerminalActual = codigo;
+    _imgNuevoDataUrl   = null;
+
+    document.getElementById('modal-img-titulo').textContent = `Imagen · ${codigo}`;
+    document.getElementById('img-file-input').value = '';
+    document.getElementById('img-btn-save').disabled = true;
+
+    // Buscar imagen actual en el DOM (thumbnail ya renderizado)
+    const row = document.querySelector(`.terminal-row[data-terminal="${codigo}"]`);
+    const imgEl = row ? row.querySelector('.tr-img') : null;
+    const box   = document.getElementById('img-preview-box');
+    const btnDel = document.getElementById('img-btn-delete');
+
+    if (imgEl) {
+        box.innerHTML = `<img src="${imgEl.src}" alt="${codigo}">`;
+        btnDel.style.display = '';
+    } else {
+        box.innerHTML = `<span class="img-preview-empty">📷</span>`;
+        btnDel.style.display = 'none';
+    }
+
+    document.getElementById('modal-img-terminal').classList.add('active');
+}
+
+/** Cuando el usuario selecciona un archivo */
+function imgOnFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            // Resize a max 96×96 con Canvas, JPEG 70 %
+            const MAX = 96;
+            let w = img.width, h = img.height;
+            if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+            else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+
+            const canvas = document.createElement('canvas');
+            canvas.width  = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.70);
+            const kb = Math.round(dataUrl.length * 0.75 / 1024);
+
+            if (kb > 65) {
+                alert(`La imagen comprimida pesa ${kb} KB (máx 60 KB).\nPor favor usa una imagen más pequeña.`);
+                return;
+            }
+
+            _imgNuevoDataUrl = dataUrl;
+            document.getElementById('img-preview-box').innerHTML = `<img src="${dataUrl}" alt="preview">`;
+            document.getElementById('img-btn-save').disabled = false;
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+/** Guarda la imagen en la API */
+async function imgGuardar() {
+    if (!_imgNuevoDataUrl || !_imgTerminalActual) return;
+    try {
+        const resp = await fetch(`/api/terminal-imagen/${encodeURIComponent(_imgTerminalActual)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imagen_data: _imgNuevoDataUrl })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            cerrarModal('modal-img-terminal');
+            cargarAsignaciones();   // refresca para mostrar el nuevo thumbnail
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al guardar la imagen');
+    }
+}
+
+/** Elimina la imagen del terminal */
+async function imgEliminar() {
+    if (!_imgTerminalActual) return;
+    if (!confirm(`¿Eliminar la imagen del terminal ${_imgTerminalActual}?`)) return;
+    try {
+        const resp = await fetch(`/api/terminal-imagen/${encodeURIComponent(_imgTerminalActual)}`, {
+            method: 'DELETE'
+        });
+        const data = await resp.json();
+        if (data.success) {
+            cerrarModal('modal-img-terminal');
+            cargarAsignaciones();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al eliminar la imagen');
+    }
 }
 
 // ================================
