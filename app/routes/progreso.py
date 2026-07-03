@@ -111,6 +111,18 @@ def api_bonos_terminales_disponibles(nombre_bono):
                 tiene_de   = 'De Terminal' in df.columns
                 tiene_para = 'Para Terminal' in df.columns
                 for _, fila in df.iterrows():
+                    # Ignorar filas auxiliares (sin Cod. cable o sin Sección) — mismo
+                    # criterio que el engaste (agrupar_por_cable_elemento) y el conteo
+                    # de crimps. Un terminal cuyas filas no tienen Cod. cable/Sección no
+                    # genera ningún paquete, así que NO debe ofrecerse como seleccionable.
+                    cod = str(fila.get('Cod. cable', '')).strip()
+                    if cod == '' or cod.lower() == 'nan':
+                        continue
+                    sec_raw = fila.get('Sección', fila.get('Seccion', ''))
+                    sec = str(sec_raw).strip()
+                    if sec == '' or sec.lower() == 'nan':
+                        continue
+
                     if tiene_de:
                         de_term = fila.get('De Terminal', '')
                         de_no_poner = str(fila.get('De Elemento', '')).strip().endswith('*')
