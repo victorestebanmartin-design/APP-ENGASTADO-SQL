@@ -271,6 +271,7 @@
                                     <option value="">— Seleccionar bono —</option>
                                 </select>
                                 <button onclick="reportBuscarBono()" class="btn-primary">🔍 Ver</button>
+                                <button onclick="reportGenerarPDFCarros()" class="btn-secondary" title="Genera una hoja report por carro para adjuntar al bono">🖨️ Report PDF por carro</button>
                             </div>
                             <div id="report-result-bono"></div>
                         </div>
@@ -417,6 +418,13 @@
     }
     function reportGenerarPDF() {
         alert('La generación de PDF para auditorías se implementará en el siguiente paso.');
+    }
+
+    // Genera la hoja report por carro (un folio por carro) para el bono seleccionado.
+    function reportGenerarPDFCarros() {
+        const bono = document.getElementById('report-sel-bono').value;
+        if (!bono) { alert('Selecciona un bono primero.'); return; }
+        window.open(`/report/bono/${encodeURIComponent(bono)}/carros`, '_blank');
     }
 
     // ──────────────────────────────────────────────────────────────

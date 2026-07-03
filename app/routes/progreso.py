@@ -230,6 +230,15 @@ def api_bonos_progreso_post(nombre_bono):
         if carro not in progreso[terminal]['carros_completados']:
             progreso[terminal]['carros_completados'].append(carro)
 
+        # Registrar fecha/operario exactos de finalización de ESTE carro
+        # (para el report de trazabilidad por carro). Idempotente por carro_key.
+        registro = progreso[terminal].get('carros_registro', {})
+        registro[str(carro)] = {
+            'operario': operario or progreso[terminal].get('operario', ''),
+            'fecha': _ahora_iso()
+        }
+        progreso[terminal]['carros_registro'] = registro
+
         # Limpiar de carros_con_pendientes si estaba anotado ahí
         carros_pend = progreso[terminal].get('carros_con_pendientes', {})
         carros_pend.pop(str(carro), None)
@@ -310,6 +319,14 @@ def api_bonos_progreso_parcial(nombre_bono):
                 progreso[terminal]['carros_con_pendientes'].pop(carro_key, None)
             if carro is not None and carro not in progreso[terminal]['carros_completados']:
                 progreso[terminal]['carros_completados'].append(carro)
+            # Registrar fecha/operario exactos de finalización de este carro
+            if carro is not None:
+                registro = progreso[terminal].get('carros_registro', {})
+                registro[carro_key] = {
+                    'operario': operario or progreso[terminal].get('operario', ''),
+                    'fecha': _ahora_iso()
+                }
+                progreso[terminal]['carros_registro'] = registro
 
         progreso[terminal]['paquetes_saltados_por_carro'][carro_key] = {
             'paquetes_hechos': paquetes_hechos,

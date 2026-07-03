@@ -147,3 +147,111 @@ def api_report_progreso():
         import traceback
         print(traceback.format_exc())
         return error_interno(e)
+
+
+def _fmt_fecha_es(iso):
+    """Formatea un ISO datetime a 'dd/mm/aaaa' y 'HH:MM'. Devuelve ('', '') si vacío."""
+    if not iso:
+        return ('', '')
+    try:
+        d = datetime.fromisoformat(str(iso))
+        return (d.strftime('%d/%m/%Y'), d.strftime('%H:%M'))
+    except Exception:
+        # Fallback: intentar recortar 'YYYY-MM-DDTHH:MM'
+        s = str(iso)
+        fecha = s[:10] if len(s) >= 10 else s
+        hora = s[11:16] if len(s) >= 16 else ''
+        return (fecha, hora)
+
+
+@bp.route('/report/bono/<nombre_bono>/carros', methods=['GET'])
+def report_carros_bono(nombre_bono):
+    """
+    Vista imprimible (Guardar como PDF) del report de trazabilidad por carro.
+    Genera un folio por carro con los terminales engastados, operario y fecha/hora.
+    """
+    try:
+        bono_repo = BonoRepository(db)
+        orden_repo = OrdenRepository(db)
+
+        bono = bono_repo.obtener_bono_por_nombre(nombre_bono)
+        if not bono:
+            return f"Bono '{nombre_bono}' no encontrado", 404
+
+        ordenes = orden_repo.obtener_ordenes_por_bono(bono['id'])
+
+        # Leer progreso guardado
+        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso = {}
+        if os.path.exists(progreso_path):
+            try:
+                with open(progreso_path, 'r', encoding='utf-8') as f:
+                    progreso = json.load(f)
+            except Exception:
+                progreso = {}
+
+        _cache_crimps = {}
+        carros = []
+
+        for idx, orden in enumerate(ordenes):
+            archivo = orden.get('archivo_excel')
+            if not archivo:
+                continue
+            # Numeración por posición (idx+1), coherente con carros_completados
+            carro_key = str(idx + 1)
+
+            if archivo not in _cache_crimps:
+                _cache_crimps[archivo] = _crimps_por_terminal_archivo(archivo)
+            crimps = _cache_crimps[archivo]
+
+            filas = []
+            terminales_completados = 0
+            for terminal in sorted(crimps.keys()):
+                n_crimps = crimps.get(terminal) or 0
+                if not terminal or n_crimps <= 0:
+                    continue
+                prog_t = progreso.get(terminal, {})
+                ccs = [str(c) for c in (prog_t.get('carros_completados') or [])]
+                completado = (carro_key in ccs) or (prog_t.get('estado') == 'completado')
+
+                # Datos de registro por carro (fecha/operario exactos si existen)
+                registro = (prog_t.get('carros_registro') or {}).get(carro_key, {})
+                fecha_iso = registro.get('fecha') or prog_t.get('fecha_ultima_actualizacion', '')
+                operario = registro.get('operario') or prog_t.get('operario', '')
+                fecha, hora = _fmt_fecha_es(fecha_iso) if completado else ('', '')
+
+                if completado:
+                    terminales_completados += 1
+
+                filas.append({
+                    'terminal': terminal,
+                    'crimps': int(n_crimps),
+                    'operario': operario if completado else '',
+                    'fecha': fecha,
+                    'hora': hora,
+                    'completado': completado,
+                })
+
+            carros.append({
+                'numero': idx + 1,
+                'proyecto': orden.get('numero', '') or '',
+                'archivo': archivo,
+                'filas': filas,
+                'total_terminales': len(filas),
+                'completados': terminales_completados,
+            })
+
+        gen_fecha, gen_hora = _fmt_fecha_es(_ahora_iso())
+
+        return render_template(
+            'report-carros.html',
+            bono=bono,
+            carros=carros,
+            total_carros=len(carros),
+            generado_fecha=gen_fecha,
+            generado_hora=gen_hora,
+        )
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        return error_interno(e)

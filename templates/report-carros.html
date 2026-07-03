@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report por Carro — {{ bono.nombre }}</title>
+    <style>
+        :root {
+            --azul: #1e40af;
+            --azul-claro: #dbeafe;
+            --gris: #475569;
+            --gris-claro: #f1f5f9;
+            --borde: #cbd5e1;
+            --verde: #16a34a;
+            --ambar: #b45309;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #e2e8f0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: #0f172a;
+        }
+
+        /* Barra de acciones (no se imprime) */
+        .toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #0f172a;
+            color: #fff;
+            padding: 12px 20px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,.2);
+        }
+        .toolbar strong { font-size: 1.05em; }
+        .toolbar .acciones { display: flex; gap: 10px; }
+        .toolbar button {
+            padding: 9px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-print { background: #2563eb; color: #fff; }
+        .btn-print:hover { background: #1d4ed8; }
+        .btn-close { background: #334155; color: #fff; }
+        .btn-close:hover { background: #475569; }
+
+        .wrap {
+            max-width: 900px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+
+        /* Cada folio = una página A4 */
+        .folio {
+            background: #fff;
+            border: 1px solid var(--borde);
+            border-radius: 6px;
+            padding: 28px 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 14px rgba(0,0,0,.08);
+        }
+
+        .folio-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px solid var(--azul);
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+        }
+        .folio-header .titulo {
+            font-size: 1.35em;
+            font-weight: 700;
+            color: var(--azul);
+            margin: 0;
+            letter-spacing: .5px;
+        }
+        .folio-header .subtitulo {
+            font-size: 0.85em;
+            color: var(--gris);
+            margin: 4px 0 0;
+        }
+        .carro-badge {
+            text-align: right;
+        }
+        .carro-badge .num {
+            display: inline-block;
+            background: var(--azul);
+            color: #fff;
+            font-size: 1.5em;
+            font-weight: 700;
+            padding: 6px 18px;
+            border-radius: 8px;
+        }
+        .carro-badge .de {
+            display: block;
+            font-size: 0.8em;
+            color: var(--gris);
+            margin-top: 4px;
+        }
+
+        .meta {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px 24px;
+            background: var(--gris-claro);
+            border: 1px solid var(--borde);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            font-size: 0.9em;
+        }
+        .meta div { display: flex; gap: 8px; }
+        .meta .k { color: var(--gris); font-weight: 600; min-width: 92px; }
+        .meta .v { color: #0f172a; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        thead th {
+            background: var(--azul);
+            color: #fff;
+            text-align: left;
+            padding: 9px 12px;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+        }
+        tbody td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        tbody tr:nth-child(even) { background: #f8fafc; }
+        .term { font-family: "Consolas", monospace; font-weight: 600; }
+        .estado-ok { color: var(--verde); font-weight: 600; }
+        .estado-pend { color: var(--ambar); font-weight: 600; }
+        .center { text-align: center; }
+
+        .folio-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid var(--borde);
+            font-size: 0.78em;
+            color: var(--gris);
+        }
+        .firma {
+            margin-top: 26px;
+            display: flex;
+            gap: 48px;
+        }
+        .firma .linea {
+            flex: 1;
+            border-top: 1px solid #94a3b8;
+            padding-top: 5px;
+            font-size: 0.8em;
+            color: var(--gris);
+            text-align: center;
+        }
+
+        .sin-carros {
+            background: #fff;
+            border-radius: 6px;
+            padding: 40px;
+            text-align: center;
+            color: var(--gris);
+        }
+
+        @media print {
+            body { background: #fff; }
+            .toolbar { display: none; }
+            .wrap { max-width: none; margin: 0; padding: 0; }
+            .folio {
+                border: none;
+                box-shadow: none;
+                border-radius: 0;
+                margin: 0;
+                padding: 12mm 14mm;
+                page-break-after: always;
+            }
+            .folio:last-child { page-break-after: auto; }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <strong>Report por Carro — {{ bono.nombre }}</strong>
+        <div class="acciones">
+            <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+            <button class="btn-close" onclick="window.close()">✕ Cerrar</button>
+        </div>
+    </div>
+
+    <div class="wrap">
+        {% if not carros %}
+        <div class="sin-carros">
+            <h2>Sin carros</h2>
+            <p>Este bono no tiene órdenes con archivo asociado.</p>
+        </div>
+        {% endif %}
+
+        {% for carro in carros %}
+        <div class="folio">
+            <div class="folio-header">
+                <div>
+                    <h1 class="titulo">HOJA REPORT DE ENGASTADO</h1>
+                    <p class="subtitulo">Trazabilidad por carro — Bono {{ bono.nombre }}</p>
+                </div>
+                <div class="carro-badge">
+                    <span class="num">CARRO {{ carro.numero }}</span>
+                    <span class="de">de {{ total_carros }}</span>
+                </div>
+            </div>
+
+            <div class="meta">
+                <div><span class="k">Bono:</span><span class="v">{{ bono.nombre }}</span></div>
+                <div><span class="k">Proyecto:</span><span class="v">{{ carro.proyecto or '—' }}</span></div>
+                <div><span class="k">Archivo:</span><span class="v">{{ carro.archivo }}</span></div>
+                <div><span class="k">Terminales:</span><span class="v">{{ carro.completados }} de {{ carro.total_terminales }} engastados</span></div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30%;">Terminal</th>
+                        <th class="center" style="width:12%;">Crimps</th>
+                        <th style="width:24%;">Operario</th>
+                        <th class="center" style="width:16%;">Fecha</th>
+                        <th class="center" style="width:10%;">Hora</th>
+                        <th class="center" style="width:8%;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fila in carro.filas %}
+                    <tr>
+                        <td class="term">{{ fila.terminal }}</td>
+                        <td class="center">{{ fila.crimps }}</td>
+                        <td>{{ fila.operario or '—' }}</td>
+                        <td class="center">{{ fila.fecha or '—' }}</td>
+                        <td class="center">{{ fila.hora or '—' }}</td>
+                        <td class="center">
+                            {% if fila.completado %}
+                            <span class="estado-ok">✓</span>
+                            {% else %}
+                            <span class="estado-pend">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not carro.filas %}
+                    <tr><td colspan="6" class="center" style="color:#94a3b8;padding:18px;">Este carro no tiene terminales engastables.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+
+            <div class="firma">
+                <div class="linea">Verificado por</div>
+                <div class="linea">Fecha</div>
+            </div>
+
+            <div class="folio-footer">
+                <span>APP Engastado · Report generado el {{ generado_fecha }} a las {{ generado_hora }}</span>
+                <span>Carro {{ carro.numero }} / {{ total_carros }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
