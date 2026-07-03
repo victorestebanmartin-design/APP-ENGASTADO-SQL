@@ -368,6 +368,12 @@ def api_terminales_disponibles():
         ).fetchall()
         imagenes_map = {r[0]: r[1] for r in rows}
 
+        # Cargar gavetas de terminales
+        rows_gav = db.session.execute(
+            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")
+        ).fetchall()
+        gavetas_map = {r[0]: r[1] for r in rows_gav}
+
         # Preparar respuesta con estado de cada terminal
         terminales_con_estado = []
         for terminal in sorted(list(terminales_sistema)):
@@ -375,7 +381,8 @@ def api_terminales_disponibles():
                 'terminal': terminal,
                 'asignado': terminal in terminales_asignados,
                 'asignacion': terminales_asignados.get(terminal, None),
-                'imagen_data': imagenes_map.get(terminal)
+                'imagen_data': imagenes_map.get(terminal),
+                'gaveta': gavetas_map.get(terminal)
             }
             terminales_con_estado.append(estado)
         
@@ -560,3 +567,44 @@ def api_eliminar_imagen_terminal(codigo):
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e, 'Error al eliminar imagen de terminal')
+
+
+# ==================== GAVETAS DE TERMINALES ====================
+
+@bp.route('/api/terminal-gaveta/<codigo>', methods=['PUT'])
+def api_guardar_gaveta_terminal(codigo):
+    """Guardar o actualizar la gaveta de un terminal."""
+    try:
+        data  = request.get_json(silent=True) or {}
+        gaveta = (data.get('gaveta') or '').strip()[:80]   # máx 80 caracteres
+
+        if not gaveta:
+            return jsonify({'success': False, 'message': 'La gaveta no puede estar vacía'}), 400
+
+        db.session.execute(text("""
+            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, updated_at)
+            VALUES (:codigo, :gaveta, datetime('now'))
+            ON CONFLICT(terminal_codigo) DO UPDATE
+                SET gaveta     = excluded.gaveta,
+                    updated_at = excluded.updated_at
+        """), {'codigo': codigo, 'gaveta': gaveta})
+        db.session.commit()
+
+        return jsonify({'success': True, 'gaveta': gaveta})
+
+    except Exception as e:
+        return error_interno(e, 'Error al guardar gaveta de terminal')
+
+
+@bp.route('/api/terminal-gaveta/<codigo>', methods=['DELETE'])
+def api_eliminar_gaveta_terminal(codigo):
+    """Eliminar la gaveta de un terminal."""
+    try:
+        db.session.execute(
+            text("DELETE FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        )
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar gaveta de terminal')

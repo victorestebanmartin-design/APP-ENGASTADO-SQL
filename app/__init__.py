@@ -133,6 +133,16 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: tabla terminales_gavetas (ubicación física del terminal)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS terminales_gavetas (
+            terminal_codigo TEXT PRIMARY KEY,
+            gaveta          TEXT NOT NULL,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     conn.close()
 
 

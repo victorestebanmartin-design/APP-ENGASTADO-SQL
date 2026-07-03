@@ -538,6 +538,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                         <span class="tr-dot asignado"></span>
                         <span class="tr-code">${t.terminal}</span>
                         <span class="tr-assign asignado">${t.asignacion.puesto_nombre} · ${t.asignacion.maquina_nombre}</span>
+                        ${gavetaChip(t)}
                         <span class="tr-badge asignado">Asignado</span>
                         <button class="btn-desvincular" onclick="desasignarTerminal('${t.terminal}')" title="Desasignar">✕</button>
                     </div>
@@ -566,6 +567,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                         <span class="tr-dot sin-asignar"></span>
                         <span class="tr-code">${t.terminal}</span>
                         <span class="tr-assign sin-asignar">sin asignar</span>
+                        ${gavetaChip(t)}
                         <span class="tr-badge sin-asignar">Pendiente</span>
                     </div>
                 `).join('')}
@@ -738,6 +740,15 @@ function imgThumb(t) {
     return `<span class="tr-img-placeholder" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Añadir imagen">📷</span>`;
 }
 
+/** Genera el chip de gaveta para una fila */
+function gavetaChip(t) {
+    const cod = t.terminal;
+    if (t.gaveta) {
+        return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Gaveta: ${t.gaveta} — clic para editar">📦 ${t.gaveta}</span>`;
+    }
+    return `<span class="tr-gaveta empty" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta">📦 gaveta</span>`;
+}
+
 let _imgTerminalActual = null;   // código del terminal en edición
 let _imgNuevoDataUrl   = null;   // data URL pendiente de guardar
 
@@ -843,6 +854,87 @@ async function imgEliminar() {
         }
     } catch (e) {
         alert('Error de conexión al eliminar la imagen');
+    }
+}
+
+// ================================
+// GAVETAS DE TERMINALES
+// ================================
+
+/**
+ * Activa el modo edición inline del chip de gaveta
+ */
+function editarGaveta(codigo, chipEl) {
+    // Evitar doble apertura
+    if (chipEl.querySelector('input')) return;
+
+    const valorActual = chipEl.dataset.gaveta || '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tr-gaveta-input';
+    input.value = valorActual;
+    input.placeholder = 'Ej: A-12 ó Bandeja 3';
+    input.maxLength = 80;
+
+    chipEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const confirmar = () => {
+        const nuevo = input.value.trim();
+        guardarGaveta(codigo, nuevo, input);
+    };
+
+    input.addEventListener('blur',    confirmar);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { e.preventDefault(); confirmar(); }
+        if (e.key === 'Escape') {
+            // Restaurar chip sin guardar
+            input.replaceWith(_crearChipGaveta(codigo, valorActual));
+        }
+    });
+}
+
+/** Crea un chip de gaveta a partir de código y valor */
+function _crearChipGaveta(codigo, gaveta) {
+    const span = document.createElement('span');
+    if (gaveta) {
+        span.className = 'tr-gaveta';
+        span.dataset.gaveta = gaveta;
+        span.title = `Gaveta: ${gaveta} — clic para editar`;
+        span.textContent = `📦 ${gaveta}`;
+    } else {
+        span.className = 'tr-gaveta empty';
+        span.title = 'Asignar gaveta';
+        span.textContent = '📦 gaveta';
+    }
+    span.addEventListener('click', e => { e.stopPropagation(); editarGaveta(codigo, span); });
+    return span;
+}
+
+/** Llama a la API y actualiza el chip en el DOM */
+async function guardarGaveta(codigo, gaveta, inputEl) {
+    try {
+        let resp, data;
+        if (gaveta) {
+            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gaveta })
+            });
+        } else {
+            // Vacío = eliminar
+            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
+                method: 'DELETE'
+            });
+        }
+        data = await resp.json();
+        if (!data.success) { alert('Error: ' + data.message); }
+    } catch (e) {
+        console.error('Error al guardar gaveta', e);
+    } finally {
+        // Siempre restaurar el chip (con el valor nuevo o sin él)
+        inputEl.replaceWith(_crearChipGaveta(codigo, gaveta));
     }
 }
 

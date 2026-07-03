@@ -223,6 +223,29 @@
         .img-btn-delete { background: transparent; border: 1px solid rgba(239,68,68,.4); color: rgba(239,68,68,.8); border-radius: 8px; padding: 7px 14px; font-size: 0.82rem; cursor: pointer; transition: all .14s; }
         .img-btn-delete:hover { background: rgba(239,68,68,.1); border-color: #ef4444; color: #f87171; }
 
+        /* ── Gaveta (ubicación física) ── */
+        .tr-gaveta {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.72rem; font-family: 'DM Mono', monospace;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+            flex-shrink: 0; cursor: pointer; transition: all .14s;
+            border: 1px solid rgba(139,92,246,.3); color: rgba(167,139,250,.85);
+            background: rgba(139,92,246,.08);
+            max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tr-gaveta:hover { border-color: rgba(139,92,246,.7); background: rgba(139,92,246,.15); }
+        .tr-gaveta.empty {
+            border: 1px dashed rgba(255,255,255,.12); color: rgba(255,255,255,.2);
+            background: transparent;
+        }
+        .tr-gaveta.empty:hover { border-color: rgba(139,92,246,.5); color: rgba(167,139,250,.7); }
+        .tr-gaveta-input {
+            font-family: 'DM Mono', monospace; font-size: 0.72rem;
+            background: #1e293b; border: 1px solid #7c3aed;
+            border-radius: 20px; color: #f1f5f9; padding: 2px 8px;
+            outline: none; width: 110px; flex-shrink: 0;
+        }
+
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
         .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
