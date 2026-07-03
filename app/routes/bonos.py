@@ -46,10 +46,16 @@ from app.routes.base import (
 def api_obtener_bonos():
     """Obtener listado de bonos"""
     try:
+        from app.routes.progreso import _bono_finalizado
+
         bono_repo = BonoRepository(db)
         estado = request.args.get('estado')
         
         bonos = bono_repo.obtener_todos_bonos(estado)
+
+        # Marcar cada bono como finalizado si todos sus terminales están completados
+        for bono in bonos:
+            bono['finalizado'] = _bono_finalizado(bono.get('nombre'))
         
         return jsonify({
             'success': True,

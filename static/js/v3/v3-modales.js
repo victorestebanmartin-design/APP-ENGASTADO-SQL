@@ -78,7 +78,7 @@ async function mostrarListaBonosModal() {
     try {
         const response = await fetch('/api/bonos');
         const data = await response.json();
-        const bonos = data.success ? data.bonos.filter(b => b.estado === 'activo') : [];
+        const bonos = data.success ? data.bonos.filter(b => b.estado === 'activo' && !b.finalizado) : [];
 
         if (bonos.length === 0) {
             contenido.innerHTML = '<p class="modal-bonos-vacio">No hay bonos activos disponibles.</p>';

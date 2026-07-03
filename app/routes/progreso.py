@@ -66,78 +66,119 @@ def api_bonos_progreso_get(nombre_bono):
         return error_interno(e, 'Error al cargar progreso')
 
 
+def _terminales_disponibles_bono(nombre_bono):
+    """Devuelve el conjunto (set) de terminales que tienen datos en los archivos
+    del bono. Lógica compartida por el endpoint de terminales-disponibles y por
+    el cálculo de si un bono está finalizado. Devuelve None si el bono no existe."""
+    bono_repo = BonoRepository(db)
+    bono = bono_repo.obtener_bono_por_nombre(nombre_bono)
+
+    if not bono:
+        return None
+
+    orden_repo = OrdenRepository(db)
+    ordenes = orden_repo.obtener_ordenes_por_bono(bono['id'])
+
+    terminales_con_datos = set()
+    upload_folder = current_app.config['UPLOAD_FOLDER']
+
+    # Para cada orden, obtener el archivo y extraer terminales
+    archivos_procesados = set()
+    for orden in ordenes:
+        archivo = orden.get('archivo_excel')
+        if not archivo or archivo in archivos_procesados:
+            continue
+
+        archivos_procesados.add(archivo)
+        filepath = os.path.join(upload_folder, archivo)
+
+        if not os.path.exists(filepath):
+            continue
+
+        try:
+            # Cargar Excel
+            df = leer_excel_cacheado(filepath)
+
+            def _terminal_valido(val):
+                t = str(val).strip().upper()
+                return t and t != 'S/T' and t != 'NAN'
+
+            # Extraer terminales SOLO si realmente se engastan en ese lado.
+            # Si el elemento de ese lado termina en '*', el terminal NO se engasta
+            # ahí, por lo que NO debe ofrecerse como terminal seleccionable.
+            tiene_de   = 'De Terminal' in df.columns
+            tiene_para = 'Para Terminal' in df.columns
+            for _, fila in df.iterrows():
+                # Ignorar filas auxiliares (sin Cod. cable o sin Sección) — mismo
+                # criterio que el engaste (agrupar_por_cable_elemento) y el conteo
+                # de crimps. Un terminal cuyas filas no tienen Cod. cable/Sección no
+                # genera ningún paquete, así que NO debe ofrecerse como seleccionable.
+                cod = str(fila.get('Cod. cable', '')).strip()
+                if cod == '' or cod.lower() == 'nan':
+                    continue
+                sec_raw = fila.get('Sección', fila.get('Seccion', ''))
+                sec = str(sec_raw).strip()
+                if sec == '' or sec.lower() == 'nan':
+                    continue
+
+                if tiene_de:
+                    de_term = fila.get('De Terminal', '')
+                    de_no_poner = str(fila.get('De Elemento', '')).strip().endswith('*')
+                    if _terminal_valido(de_term) and not de_no_poner:
+                        terminales_con_datos.add(str(de_term).strip().upper())
+                if tiene_para:
+                    para_term = fila.get('Para Terminal', '')
+                    para_no_poner = str(fila.get('Para Elemento', '')).strip().endswith('*')
+                    if _terminal_valido(para_term) and not para_no_poner:
+                        terminales_con_datos.add(str(para_term).strip().upper())
+
+        except Exception as e:
+            print(f"Error procesando archivo {archivo}: {e}")
+            continue
+
+    return terminales_con_datos
+
+
+def _bono_finalizado(nombre_bono, terminales=None):
+    """Determina si un bono está finalizado: tiene al menos un terminal con datos
+    y TODOS sus terminales disponibles están marcados como 'completado' en el
+    progreso guardado. Devuelve False si el bono no tiene terminales o no hay
+    progreso."""
+    try:
+        if terminales is None:
+            terminales = _terminales_disponibles_bono(nombre_bono)
+
+        if not terminales:
+            return False
+
+        progreso_path = os.path.join(
+            current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json'
+        )
+        if not os.path.exists(progreso_path):
+            return False
+
+        with open(progreso_path, 'r', encoding='utf-8') as f:
+            progreso = json.load(f)
+
+        for terminal in terminales:
+            info = progreso.get(terminal)
+            if not info or info.get('estado') != 'completado':
+                return False
+
+        return True
+    except Exception:
+        return False
+
+
 @bp.route('/api/bonos/<nombre_bono>/terminales-disponibles', methods=['GET'])
 def api_bonos_terminales_disponibles(nombre_bono):
     """Obtener terminales que tienen datos en los archivos del bono"""
     try:
-        # Obtener bono
-        bono_repo = BonoRepository(db)
-        bono = bono_repo.obtener_bono_por_nombre(nombre_bono)
-        
-        if not bono:
+        terminales_con_datos = _terminales_disponibles_bono(nombre_bono)
+
+        if terminales_con_datos is None:
             return jsonify({'success': False, 'message': 'Bono no encontrado'})
-        
-        # Obtener órdenes del bono
-        orden_repo = OrdenRepository(db)
-        ordenes = orden_repo.obtener_ordenes_por_bono(bono['id'])
-        
-        terminales_con_datos = set()
-        upload_folder = current_app.config['UPLOAD_FOLDER']
-        
-        # Para cada orden, obtener el archivo y extraer terminales
-        archivos_procesados = set()
-        for orden in ordenes:
-            archivo = orden.get('archivo_excel')
-            if not archivo or archivo in archivos_procesados:
-                continue
-            
-            archivos_procesados.add(archivo)
-            filepath = os.path.join(upload_folder, archivo)
-            
-            if not os.path.exists(filepath):
-                continue
-            
-            try:
-                # Cargar Excel
-                df = leer_excel_cacheado(filepath)
 
-                def _terminal_valido(val):
-                    t = str(val).strip().upper()
-                    return t and t != 'S/T' and t != 'NAN'
-
-                # Extraer terminales SOLO si realmente se engastan en ese lado.
-                # Si el elemento de ese lado termina en '*', el terminal NO se engasta
-                # ahí, por lo que NO debe ofrecerse como terminal seleccionable.
-                tiene_de   = 'De Terminal' in df.columns
-                tiene_para = 'Para Terminal' in df.columns
-                for _, fila in df.iterrows():
-                    # Ignorar filas auxiliares (sin Cod. cable o sin Sección) — mismo
-                    # criterio que el engaste (agrupar_por_cable_elemento) y el conteo
-                    # de crimps. Un terminal cuyas filas no tienen Cod. cable/Sección no
-                    # genera ningún paquete, así que NO debe ofrecerse como seleccionable.
-                    cod = str(fila.get('Cod. cable', '')).strip()
-                    if cod == '' or cod.lower() == 'nan':
-                        continue
-                    sec_raw = fila.get('Sección', fila.get('Seccion', ''))
-                    sec = str(sec_raw).strip()
-                    if sec == '' or sec.lower() == 'nan':
-                        continue
-
-                    if tiene_de:
-                        de_term = fila.get('De Terminal', '')
-                        de_no_poner = str(fila.get('De Elemento', '')).strip().endswith('*')
-                        if _terminal_valido(de_term) and not de_no_poner:
-                            terminales_con_datos.add(str(de_term).strip().upper())
-                    if tiene_para:
-                        para_term = fila.get('Para Terminal', '')
-                        para_no_poner = str(fila.get('Para Elemento', '')).strip().endswith('*')
-                        if _terminal_valido(para_term) and not para_no_poner:
-                            terminales_con_datos.add(str(para_term).strip().upper())
-            
-            except Exception as e:
-                print(f"Error procesando archivo {archivo}: {e}")
-                continue
-        
         return jsonify({
             'success': True,
             'terminales': sorted(list(terminales_con_datos))
