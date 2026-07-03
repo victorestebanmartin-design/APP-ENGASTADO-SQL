@@ -657,7 +657,18 @@ async function comprobarActualizaciones() {
         const data = await response.json();
         
         if (data.success) {
-            if (data.hay_actualizaciones) {
+            if (data.hay_cambios_locales) {
+                statusDiv.className = 'mensaje warning';
+                const listaArchivos = data.archivos_modificados_localmente && data.archivos_modificados_localmente.length > 0
+                    ? `<ul style="margin:6px 0 0 18px;font-size:0.88em;">${data.archivos_modificados_localmente.map(f => `<li>${f}</li>`).join('')}</ul>`
+                    : '';
+                statusDiv.innerHTML = `
+                    <strong>⚠️ Hay cambios locales sin commitear en PythonAnywhere</strong><br>
+                    El panel de Git puede decir "al día", pero el árbol de archivos no coincide con el commit actual.<br>
+                    <code>${data.commit_local}</code> es la referencia local que ve Git.
+                    ${listaArchivos}
+                `;
+            } else if (data.hay_actualizaciones) {
                 statusDiv.className = 'mensaje warning';
                 const listaCommits = data.commits_pendientes && data.commits_pendientes.length > 0
                     ? `<ul style="margin:6px 0 0 18px;font-size:0.88em;">${data.commits_pendientes.map(c => `<li>${c}</li>`).join('')}</ul>`

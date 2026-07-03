@@ -134,6 +134,11 @@ def api_comprobar_actualizaciones():
             return jsonify({'success': False, 'message': 'No es un repositorio git o git no está instalado'})
         commit_local = r_local.stdout.strip()
 
+        # Detectar cambios locales sin commitear: esto pasa si se han subido archivos
+        # directamente a PythonAnywhere sin pasar por un commit/push git.
+        r_estado = git(['status', '--porcelain'])
+        cambios_locales = [l[3:].strip() for l in r_estado.stdout.splitlines() if l.strip()] if r_estado.returncode == 0 else []
+
         # Fetch silencioso para actualizar refs remotas
         git(['fetch', 'origin', 'main', '--quiet'])
 
@@ -141,7 +146,7 @@ def api_comprobar_actualizaciones():
         r_remoto = git(['rev-parse', '--short', 'origin/main'])
         commit_remoto = r_remoto.stdout.strip() if r_remoto.returncode == 0 else None
 
-        hay_actualizaciones = (commit_remoto and commit_remoto != commit_local)
+        hay_actualizaciones = bool((commit_remoto and commit_remoto != commit_local) or cambios_locales)
 
         # Mensaje del último commit remoto
         r_msg = git(['log', 'origin/main', '-1', '--format=%s (%cr)'])
@@ -154,11 +159,14 @@ def api_comprobar_actualizaciones():
         return jsonify({
             'success': True,
             'hay_actualizaciones': hay_actualizaciones,
+            'hay_cambios_locales': bool(cambios_locales),
             'commit_local': commit_local,
             'commit_remoto': commit_remoto or commit_local,
             'mensaje_ultimo_commit': mensaje_ultimo,
             'commits_pendientes': commits_pendientes,
-            'num_commits_pendientes': len(commits_pendientes)
+            'num_commits_pendientes': len(commits_pendientes),
+            'archivos_modificados_localmente': cambios_locales[:20],
+            'num_archivos_modificados_localmente': len(cambios_locales)
         })
 
     except FileNotFoundError:
@@ -191,9 +199,19 @@ def api_actualizar_sistema():
 
         # Verificar que hay cambios antes de pull
         r_fetch = git(['fetch', 'origin', 'main', '--quiet'])
+        r_estado = git(['status', '--porcelain'])
+        cambios_locales = [l[3:].strip() for l in r_estado.stdout.splitlines() if l.strip()] if r_estado.returncode == 0 else []
         r_diff = git(['diff', '--quiet', 'HEAD', 'origin/main'])
-        if r_diff.returncode == 0:
+        if r_diff.returncode == 0 and not cambios_locales:
             return jsonify({'success': True, 'actualizado': False, 'message': 'Ya tienes la versión más reciente.'})
+
+        if cambios_locales and r_diff.returncode == 0:
+            return jsonify({
+                'success': False,
+                'message': 'El árbol de trabajo local tiene cambios sin commitear en PythonAnywhere. No se puede confirmar que esté al día hasta sincronizar esos cambios.',
+                'archivos_modificados_localmente': cambios_locales[:20],
+                'num_archivos_modificados_localmente': len(cambios_locales)
+            })
 
         # Comprobar si requirements.txt va a cambiar
         r_req = git(['diff', 'HEAD', 'origin/main', '--name-only'])
