@@ -227,62 +227,63 @@
 
         </main>
     </div>
-</div>
 
-<!-- ══ MODAL: Nuevo/Editar Puesto ══════════════════════════════ -->
-<div id="modal-puesto" class="p-modal">
-    <div class="p-modal-box">
-        <div class="p-modal-header">
-            <h3 id="modal-puesto-titulo">Nuevo Puesto</h3>
-            <button class="p-modal-close" onclick="document.getElementById('modal-puesto').classList.remove('active')">&times;</button>
-        </div>
-        <div class="p-modal-body">
-            <div class="p-form-group">
-                <label for="puesto-nombre">Nombre del Puesto *</label>
-                <input type="text" id="puesto-nombre" placeholder="Ej: TERMINALES AMP">
+    <!-- ══ MODAL: Nuevo/Editar Puesto ══════════════════════════════ -->
+    <div id="modal-puesto" class="p-modal">
+        <div class="p-modal-box">
+            <div class="p-modal-header">
+                <h3 id="modal-puesto-titulo">Nuevo Puesto</h3>
+                <button class="p-modal-close" onclick="document.getElementById('modal-puesto').classList.remove('active')">&times;</button>
             </div>
-            <div class="p-form-group">
-                <label for="puesto-descripcion">Descripción</label>
-                <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
+            <div class="p-modal-body">
+                <div class="p-form-group">
+                    <label for="puesto-nombre">Nombre del Puesto *</label>
+                    <input type="text" id="puesto-nombre" placeholder="Ej: TERMINALES AMP">
+                </div>
+                <div class="p-form-group">
+                    <label for="puesto-descripcion">Descripción</label>
+                    <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
+                </div>
             </div>
-        </div>
-        <div class="p-modal-footer">
-            <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
-            <button class="btn btn-primary" onclick="guardarPuesto()">💾 Guardar</button>
+            <div class="p-modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarPuesto()">💾 Guardar</button>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- ══ MODAL: Nueva/Editar Máquina ══════════════════════════════ -->
-<div id="modal-maquina" class="p-modal">
-    <div class="p-modal-box">
-        <div class="p-modal-header">
-            <h3 id="modal-maquina-titulo">Nueva Máquina</h3>
-            <button class="p-modal-close" onclick="document.getElementById('modal-maquina').classList.remove('active')">&times;</button>
-        </div>
-        <div class="p-modal-body">
-            <div class="p-form-group">
-                <label for="maquina-puesto">Puesto de Trabajo *</label>
-                <select id="maquina-puesto"><option value="">Selecciona un puesto...</option></select>
+    <!-- ══ MODAL: Nueva/Editar Máquina ══════════════════════════════ -->
+    <div id="modal-maquina" class="p-modal">
+        <div class="p-modal-box">
+            <div class="p-modal-header">
+                <h3 id="modal-maquina-titulo">Nueva Máquina</h3>
+                <button class="p-modal-close" onclick="document.getElementById('modal-maquina').classList.remove('active')">&times;</button>
             </div>
-            <div class="p-form-group">
-                <label for="maquina-nombre">Nombre de la Máquina *</label>
-                <input type="text" id="maquina-nombre" placeholder="Ej: AMP ROJA">
+            <div class="p-modal-body">
+                <div class="p-form-group">
+                    <label for="maquina-puesto">Puesto de Trabajo *</label>
+                    <select id="maquina-puesto"><option value="">Selecciona un puesto...</option></select>
+                </div>
+                <div class="p-form-group">
+                    <label for="maquina-nombre">Nombre de la Máquina *</label>
+                    <input type="text" id="maquina-nombre" placeholder="Ej: AMP ROJA">
+                </div>
+                <div class="p-form-group">
+                    <label for="maquina-modelo">Modelo</label>
+                    <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 455">
+                </div>
+                <div class="p-form-group">
+                    <label for="maquina-descripcion">Descripción</label>
+                    <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
+                </div>
             </div>
-            <div class="p-form-group">
-                <label for="maquina-modelo">Modelo</label>
-                <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 455">
+            <div class="p-modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
+                <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
             </div>
-            <div class="p-form-group">
-                <label for="maquina-descripcion">Descripción</label>
-                <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
-            </div>
-        </div>
-        <div class="p-modal-footer">
-            <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
-            <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
         </div>
     </div>
+
 </div>
 
 <script>
