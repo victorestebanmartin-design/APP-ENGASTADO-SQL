@@ -524,6 +524,19 @@ def api_desasignar_terminal():
 
 MAX_IMAGEN_BYTES = 420_000  # ~300 KB binario ≈ 420 KB en base64
 
+@bp.route('/api/terminal-imagen/<codigo>', methods=['GET'])
+def api_obtener_imagen_terminal(codigo):
+    """Obtener la imagen de un terminal (data URL base64)."""
+    try:
+        row = db.session.execute(
+            text("SELECT imagen_data FROM terminales_imagenes WHERE terminal_codigo = :codigo"),
+            {'codigo': codigo}
+        ).fetchone()
+        return jsonify({'success': True, 'imagen_data': row[0] if row else None})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener imagen de terminal')
+
+
 @bp.route('/api/terminal-imagen/<codigo>', methods=['PUT'])
 def api_subir_imagen_terminal(codigo):
     """Guardar o actualizar la imagen (base64) de un terminal."""

@@ -20,6 +20,7 @@ let terminalesAsignados = [];
 let carrosDelBono = []; // Todos los carros del bono
 let carroActualIndex = 0; // Índice del carro actual en proceso
 let terminalActual = null; // Terminal en el que estamos trabajando
+let terminalImagenActual = null; // Foto del terminal activo (data URL, null si no hay)
 let terminalesCompletados = []; // Lista de terminales ya completados
 let terminalesEnProceso = []; // Lista de terminales con paquetes pendientes retomables (azul)
 let terminalesEnEspera = []; // Lista de terminales cuyos pendientes son TODOS por bloqueo de otro puesto (naranja)
@@ -1153,7 +1154,17 @@ async function cambiarMaquina() {
  */
 async function seleccionarTerminalTrabajo(terminal) {
     terminalActual = terminal;
-    
+
+    // Cargar imagen del terminal si existe (se muestra en modales de trabajo)
+    terminalImagenActual = null;
+    try {
+        const imgResp = await fetch(`/api/terminal-imagen/${encodeURIComponent(terminal)}`);
+        const imgJson = await imgResp.json();
+        if (imgJson.success && imgJson.imagen_data) {
+            terminalImagenActual = imgJson.imagen_data;
+        }
+    } catch (e) { /* ignorar, no es crítico */ }
+
     // Marcar terminal como 'en_proceso' en el backend de inmediato
     try {
         await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {
@@ -1816,8 +1827,13 @@ function mostrarPaqueteConCables(terminal, grupo, numeroGrupo, totalGrupos) {
     areaTrabajoV2.innerHTML = `
         <div class="caja-expandida-v2">
             <div class="header-paquete">
-                <h2>⚡ TERMINAL: ${terminal}</h2>
-                <div class="progreso-paquete">Paquete ${numeroGrupo} de ${totalGrupos}</div>
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    ${terminalImagenActual ? `<img src="${terminalImagenActual}" style="width:56px;height:56px;object-fit:contain;border-radius:8px;border:2px solid #dee2e6;background:#fff;flex-shrink:0;" alt="${terminal}">` : ''}
+                    <div style="flex:1;">
+                        <h2 style="margin:0;">⚡ TERMINAL: ${terminal}</h2>
+                        <div class="progreso-paquete">Paquete ${numeroGrupo} de ${totalGrupos}</div>
+                    </div>
+                </div>
             </div>
             
             <div class="info-paquete">
@@ -2865,12 +2881,22 @@ async function mostrarModalPaquetes(carro) {
 
     modal.innerHTML = `
         <div style="background:white;border-radius:15px;padding:18px 20px;max-width:700px;width:95%;max-height:95vh;overflow-y:auto;">
-            <div style="display:flex;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:10px;margin-bottom:${terminalImagenActual ? '8px' : '12px'};background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:10px 14px;border-radius:10px;color:white;align-items:center;flex-wrap:wrap;">
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${terminalActual}</div><div style="font-size:0.78em;opacity:0.9;">Terminal</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${total}</div><div style="font-size:0.78em;opacity:0.9;">Paquetes total</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalCables}</div><div style="font-size:0.78em;opacity:0.9;">Cables</div></div>
+                <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalTerminales}</div><div style="font-size:0.78em;opacity:0.9;">Terminales</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">Carro ${carro.carro}</div><div style="font-size:0.78em;opacity:0.9;">${carro.proyecto_nombre || ''}</div></div>
             </div>
+
+            ${terminalImagenActual ? `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 12px;background:#f8f9fa;border-radius:10px;border:1px solid #dee2e6;">
+                <img src="${terminalImagenActual}" style="width:60px;height:60px;object-fit:contain;border-radius:8px;border:1px solid #dee2e6;background:white;" alt="Terminal ${terminalActual}">
+                <div>
+                    <div style="font-weight:bold;font-size:0.9em;color:#495057;">📸 <strong>${terminalActual}</strong></div>
+                    <div style="font-size:0.75em;color:#6c757d;">${totalTerminales} terminales · ${totalCables} cables en ${total} paquete${total!==1?'s':''}</div>
+                </div>
+            </div>` : ''}
 
             ${total > PAQUETES_POR_PAGINA ? `
             <div style="display:flex;align-items:center;justify-content:space-between;background:#e7f1ff;border-radius:8px;padding:10px 16px;margin-bottom:16px;">
@@ -2892,9 +2918,15 @@ async function mostrarModalPaquetes(carro) {
                             <div style="color:#adb5bd;font-size:0.82em;">En uso: ${paquete.bloqueado_por || 'otro puesto'}</div>
                         </div>
                     </div>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-                        <div style="font-size:1.4em;font-weight:bold;color:#adb5bd;">${paquete.num_cables}</div>
-                        <div style="font-size:0.82em;color:#adb5bd;">cables</div>
+                    <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                            <div style="font-size:1.4em;font-weight:bold;color:#adb5bd;">${paquete.num_cables}</div>
+                            <div style="font-size:0.82em;color:#adb5bd;">cables</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                            <div style="font-size:1.4em;font-weight:bold;color:#adb5bd;">${paquete.num_terminales || 0}</div>
+                            <div style="font-size:0.82em;color:#adb5bd;">term.</div>
+                        </div>
                     </div>
                 </div>` : `
                 <div id="pkg-row-${inicio+i}" onclick="toggleSkipModal(${inicio+i})" title="Pulsa para marcar como no disponible" style="background:#f8f9fa;border-left:4px solid ${_c?_c.bg:'#0d6efd'};border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:opacity 0.2s;">
@@ -2909,9 +2941,15 @@ async function mostrarModalPaquetes(carro) {
                             <div id="pkg-no-${inicio+i}" style="display:none;color:#dc3545;font-size:0.75em;font-weight:600;margin-top:1px;">✕ No lo tengo — se saltará</div>
                         </div>
                     </div>
-                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-                        <div style="font-size:1.2em;font-weight:bold;color:#0d6efd;">${paquete.num_cables}</div>
-                        <div style="font-size:0.78em;color:#6c757d;">cables</div>
+                    <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                            <div style="font-size:1.2em;font-weight:bold;color:#0d6efd;">${paquete.num_cables}</div>
+                            <div style="font-size:0.78em;color:#6c757d;">cables</div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                            <div style="font-size:1.2em;font-weight:bold;color:#e67e22;">${paquete.num_terminales || 0}</div>
+                            <div style="font-size:0.78em;color:#6c757d;">term.</div>
+                        </div>
                     </div>
                 </div>`; }).join('')}
             </div>
