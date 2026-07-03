@@ -473,23 +473,22 @@ async function cargarAsignaciones() {
 }
 
 /**
- * Mostrar lista de asignaciones
+ * Mostrar lista de asignaciones — vista lista agrupada por puesto
  */
 function mostrarAsignaciones(dataTerminales, maquinas) {
     // Actualizar estadísticas
     document.getElementById('total-terminales').textContent = `${dataTerminales.total} terminales`;
     document.getElementById('sin-asignar').textContent = `${dataTerminales.sin_asignar} sin asignar`;
-    
-    // Mostrar alerta si hay terminales sin asignar
+
     const alertElement = document.getElementById('sin-asignar');
     if (dataTerminales.sin_asignar > 0) {
         alertElement.classList.add('alert');
     } else {
         alertElement.classList.remove('alert');
     }
-    
+
     const container = document.getElementById('lista-asignaciones');
-    
+
     if (dataTerminales.terminales.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -500,12 +499,78 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
         `;
         return;
     }
-    
-    // Crear selector de máquinas para asignación rápida
-    const selectorMaquinas = maquinas.map(m => 
-        `<option value="${m.id}">${m.puesto_nombre} - ${m.nombre}</option>`
+
+    // Selector de máquinas para asignación rápida
+    const selectorMaquinas = maquinas.map(m =>
+        `<option value="${m.id}">${m.puesto_nombre} — ${m.nombre}</option>`
     ).join('');
-    
+
+    // Agrupar terminales: asignados por puesto, después sin asignar
+    const grupos = {};
+    const sinAsignarList = [];
+
+    dataTerminales.terminales.forEach(t => {
+        if (t.asignado) {
+            const key = t.asignacion.puesto_nombre;
+            if (!grupos[key]) grupos[key] = [];
+            grupos[key].push(t);
+        } else {
+            sinAsignarList.push(t);
+        }
+    });
+
+    // Generar HTML de grupos asignados
+    const gruposHTML = Object.entries(grupos).map(([puestoNombre, lista]) => `
+        <div class="tl-group" data-grupo="${puestoNombre}">
+            <div class="tl-group-header" onclick="toggleGrupo(this.parentElement)">
+                <span class="tl-group-stripe asignado"></span>
+                <span class="tl-group-name">${puestoNombre}</span>
+                <span class="tl-group-count">${lista.length} terminal${lista.length !== 1 ? 'es' : ''}</span>
+                <span class="tl-group-arrow">▼</span>
+            </div>
+            <div class="tl-rows">
+                ${lista.map(t => `
+                    <div class="terminal-row asignado"
+                         data-terminal="${t.terminal}"
+                         data-estado="asignados">
+                        <span class="tr-check-spacer"></span>
+                        <span class="tr-dot asignado"></span>
+                        <span class="tr-code">${t.terminal}</span>
+                        <span class="tr-assign asignado">${t.asignacion.puesto_nombre} · ${t.asignacion.maquina_nombre}</span>
+                        <span class="tr-badge asignado">Asignado</span>
+                        <button class="btn-desvincular" onclick="desasignarTerminal('${t.terminal}')" title="Desasignar">✕</button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+
+    // Grupo sin asignar
+    const sinAsignarHTML = sinAsignarList.length > 0 ? `
+        <div class="tl-group" data-grupo="sin-asignar">
+            <div class="tl-group-header" onclick="toggleGrupo(this.parentElement)">
+                <span class="tl-group-stripe sin-asignar"></span>
+                <span class="tl-group-name">SIN ASIGNAR</span>
+                <span class="tl-group-count">${sinAsignarList.length} terminal${sinAsignarList.length !== 1 ? 'es' : ''}</span>
+                <span class="tl-group-arrow">▼</span>
+            </div>
+            <div class="tl-rows">
+                ${sinAsignarList.map(t => `
+                    <div class="terminal-row sin-asignar"
+                         data-terminal="${t.terminal}"
+                         data-estado="sin-asignar"
+                         onclick="toggleSeleccionTerminal(this)">
+                        <span class="tr-check"></span>
+                        <span class="tr-dot sin-asignar"></span>
+                        <span class="tr-code">${t.terminal}</span>
+                        <span class="tr-assign sin-asignar">sin asignar</span>
+                        <span class="tr-badge sin-asignar">Pendiente</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
     container.innerHTML = `
         <div class="asignacion-rapida">
             <h4>Asignación Rápida</h4>
@@ -519,34 +584,12 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                 </button>
             </div>
         </div>
-        
-        <div class="terminales-grid" id="terminales-grid">
-            ${dataTerminales.terminales.map(terminal => `
-                <div class="terminal-card ${terminal.asignado ? 'asignado' : 'sin-asignar'}" 
-                     data-terminal="${terminal.terminal}" 
-                     data-estado="${terminal.asignado ? 'asignado' : 'sin-asignar'}"
-                     ${!terminal.asignado ? `onclick="toggleSeleccionTerminal(this)"` : ''}>
-                    <div class="terminal-header">
-                        <span class="terminal-nombre">${terminal.terminal}</span>
-                        <div class="terminal-actions">
-                            ${terminal.asignado ? 
-                                `<button class="btn-desvincular" onclick="event.stopPropagation();desasignarTerminal('${terminal.terminal}')" title="Desasignar">✕</button>` : 
-                                ''
-                            }
-                        </div>
-                    </div>
-                    <div class="terminal-info">
-                        ${terminal.asignado ? 
-                            `<span class="maquina-info">${terminal.asignacion.puesto_nombre} · ${terminal.asignacion.maquina_nombre}</span>` :
-                            `<span class="estado-pendiente">sin asignar</span>`
-                        }
-                    </div>
-                </div>
-            `).join('')}
+        <div class="terminales-list" id="terminales-grid">
+            ${gruposHTML}
+            ${sinAsignarHTML}
         </div>
     `;
-    
-    // Aplicar filtros iniciales
+
     aplicarFiltros();
 }
 
@@ -555,27 +598,47 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
  */
 function aplicarFiltros() {
     const filtroEstado = document.getElementById('filtro-estado').value;
-    const busqueda = document.getElementById('buscar-terminal').value.toLowerCase();
-    const terminales = document.querySelectorAll('.terminal-card');
-    
-    terminales.forEach(terminal => {
-        const nombreTerminal = terminal.querySelector('.terminal-nombre').textContent.toLowerCase();
-        const estadoTerminal = terminal.dataset.estado;
-        
-        let mostrar = true;
-        
-        // Filtro por estado
-        if (filtroEstado !== 'todos' && estadoTerminal !== filtroEstado.replace('-', '-')) {
-            mostrar = false;
-        }
-        
-        // Filtro por búsqueda
-        if (busqueda && !nombreTerminal.includes(busqueda)) {
-            mostrar = false;
-        }
-        
-        terminal.style.display = mostrar ? 'block' : 'none';
+    const busqueda = document.getElementById('buscar-terminal').value.toLowerCase().trim();
+
+    // Mostrar/ocultar grupos según filtro de estado
+    document.querySelectorAll('.tl-group').forEach(grupo => {
+        const essinAsignar = grupo.dataset.grupo === 'sin-asignar';
+        let mostrarGrupo = true;
+
+        if (filtroEstado === 'asignados' && essinAsignar) mostrarGrupo = false;
+        if (filtroEstado === 'sin-asignar' && !essinAsignar) mostrarGrupo = false;
+
+        grupo.style.display = mostrarGrupo ? '' : 'none';
     });
+
+    // Filtrar filas individuales por búsqueda
+    document.querySelectorAll('.terminal-row').forEach(row => {
+        const codigo = row.dataset.terminal ? row.dataset.terminal.toLowerCase() : '';
+        const estadoRow = row.dataset.estado;
+        let visible = true;
+
+        if (filtroEstado === 'asignados' && estadoRow === 'sin-asignar') visible = false;
+        if (filtroEstado === 'sin-asignar' && estadoRow !== 'sin-asignar') visible = false;
+        if (busqueda && !codigo.includes(busqueda)) visible = false;
+
+        row.style.display = visible ? '' : 'none';
+    });
+
+    // Ocultar grupos que tienen todas sus filas ocultas (por búsqueda)
+    if (busqueda) {
+        document.querySelectorAll('.tl-group').forEach(grupo => {
+            const filas = grupo.querySelectorAll('.terminal-row');
+            const hayVisibles = Array.from(filas).some(r => r.style.display !== 'none');
+            grupo.style.display = hayVisibles ? '' : 'none';
+        });
+    }
+}
+
+/**
+ * Colapsar/expandir un grupo
+ */
+function toggleGrupo(grupoEl) {
+    grupoEl.classList.toggle('collapsed');
 }
 
 /**
@@ -588,7 +651,7 @@ async function asignarSeleccionados() {
         return;
     }
     
-    const seleccionadas = document.querySelectorAll('.terminal-card.seleccionado');
+    const seleccionadas = document.querySelectorAll('.terminal-row.seleccionado');
     if (seleccionadas.length === 0) {
         alert('Pulsa sobre las tarjetas de terminal que quieras asignar');
         return;
@@ -648,13 +711,14 @@ async function desasignarTerminal(terminal) {
  * Mostrar asignación rápida para un terminal específico
  */
 function mostrarAsignacionRapida(terminal) {
-    const card = document.querySelector(`.terminal-card[data-terminal="${terminal}"]`);
-    if (card) toggleSeleccionTerminal(card);
-    document.getElementById('maquina-destino').focus();
+    const row = document.querySelector(`.terminal-row[data-terminal="${terminal}"]`);
+    if (row) toggleSeleccionTerminal(row);
+    const dest = document.getElementById('maquina-destino');
+    if (dest) dest.focus();
 }
 
-function toggleSeleccionTerminal(card) {
-    card.classList.toggle('seleccionado');
+function toggleSeleccionTerminal(row) {
+    row.classList.toggle('seleccionado');
 }
 
 // ================================

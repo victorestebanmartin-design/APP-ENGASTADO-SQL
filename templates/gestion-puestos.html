@@ -56,10 +56,10 @@
         .stat-status.activo  { background: rgba(59,130,246,.12); color: #93c5fd; }
         .stat-status.inactivo { background: rgba(100,116,139,.18); color: var(--text-muted); }
 
-        /* ── Terminales ── minimalista ── */
+        /* ── Terminales ── vista lista ── */
         .asignacion-rapida {
             background: var(--panel-2); border: 1px solid var(--border);
-            border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+            border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
         }
         .asignacion-rapida h4 { margin: 0; font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
@@ -69,31 +69,114 @@
             color: var(--text); padding: 7px 12px; font-size: 0.85rem; outline: none; flex: 1; min-width: 180px;
         }
         .asignacion-controles select:focus { border-color: var(--accent); }
-        .terminales-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px,1fr)); gap: 6px; }
-        /* Sobreescribir los estilos de style.css que añaden fondo verde/amarillo */
-        .terminal-card {
-            background: var(--panel-2) !important;
-            border: 1px solid var(--border-soft) !important;
-            border-radius: 8px !important; padding: 10px 12px !important;
-            transition: border-color .12s !important;
-            transform: none !important; box-shadow: none !important;
+
+        /* Lista de terminales */
+        .terminales-list { display: flex; flex-direction: column; gap: 0; }
+
+        /* Cabecera de grupo (por puesto) */
+        .tl-group { margin-bottom: 4px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-soft); }
+        .tl-group-header {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 14px;
+            background: var(--panel-3);
+            cursor: pointer; user-select: none;
+            transition: background .14s;
         }
-        .terminal-card.sin-asignar { cursor: pointer; border-left: 2px solid rgba(245,158,11,.4) !important; }
-        .terminal-card.asignado   { border-left: 2px solid rgba(34,197,94,.45) !important; }
-        .terminal-card.sin-asignar:hover { border-color: rgba(245,158,11,.7) !important; }
-        .terminal-card.seleccionado {
-            border-color: var(--accent) !important;
-            background: rgba(59,130,246,.08) !important;
-            box-shadow: 0 0 0 1px rgba(59,130,246,.3) !important;
+        .tl-group-header:hover { background: var(--panel-2); }
+        .tl-group-stripe {
+            width: 3px; height: 16px; border-radius: 2px; flex-shrink: 0;
         }
-        .terminal-header { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
-        .terminal-nombre { font-family: 'DM Mono', monospace; font-size: 0.82rem; font-weight: 600; flex: 1; color: var(--text); }
-        /* Info de asignación: sin caja verde */
-        .terminal-info { font-size: 0.73rem; color: var(--text-dim); }
-        .asignacion-actual { background: none !important; padding: 0 !important; color: var(--text-dim) !important; }
-        .maquina-info { color: rgba(74,222,128,.8) !important; font-weight: 500 !important; font-family: 'DM Mono', monospace; }
-        .estado-pendiente { color: rgba(245,158,11,.6); font-size: 0.72rem; }
-        .terminal-actions { display: flex; gap: 4px; align-items: center; }
+        .tl-group-stripe.asignado   { background: rgba(34,197,94,.7); }
+        .tl-group-stripe.sin-asignar { background: rgba(245,158,11,.7); }
+        .tl-group-name {
+            font-family: 'Bebas Neue', sans-serif; letter-spacing: .08em;
+            font-size: 13px; color: var(--text); flex: 1;
+        }
+        .tl-group-count {
+            font-family: 'DM Mono', monospace; font-size: 11px;
+            padding: 2px 9px; border-radius: 20px;
+            background: rgba(255,255,255,.05); color: var(--text-muted);
+        }
+        .tl-group-arrow { font-size: 10px; color: var(--text-dim); transition: transform .2s; }
+        .tl-group.collapsed .tl-group-arrow { transform: rotate(-90deg); }
+        .tl-group.collapsed .tl-rows { display: none; }
+
+        /* Filas de terminal */
+        .tl-rows { display: flex; flex-direction: column; }
+        .terminal-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 14px 8px 12px;
+            background: var(--panel-2);
+            border-top: 1px solid var(--border-soft);
+            transition: background .1s;
+            position: relative;
+        }
+        .terminal-row:hover { background: var(--panel-3); }
+        .terminal-row.sin-asignar { cursor: pointer; }
+        .terminal-row.seleccionado {
+            background: rgba(59,130,246,.1) !important;
+        }
+        .terminal-row.seleccionado::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 3px; background: var(--accent); border-radius: 0;
+        }
+
+        /* Checkbox visual */
+        .tr-check {
+            width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0;
+            border: 1.5px solid var(--border); background: transparent;
+            transition: all .12s;
+        }
+        .terminal-row.seleccionado .tr-check {
+            background: var(--accent); border-color: var(--accent);
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 12 10' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='1,5 4,8 11,1' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: center; background-size: 10px;
+        }
+        .terminal-row.asignado .tr-check { display: none; }
+        .tr-check-spacer { width: 16px; flex-shrink: 0; }
+
+        /* Indicador de estado (línea izquierda) */
+        .tr-dot {
+            width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+        }
+        .tr-dot.asignado   { background: rgba(34,197,94,.7); }
+        .tr-dot.sin-asignar { background: rgba(245,158,11,.5); }
+
+        /* Código terminal */
+        .tr-code {
+            font-family: 'DM Mono', monospace; font-size: 0.82rem;
+            font-weight: 600; color: var(--text); width: 120px; flex-shrink: 0;
+        }
+
+        /* Asignación */
+        .tr-assign {
+            flex: 1; font-size: 0.78rem; color: var(--text-dim);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tr-assign.asignado { color: rgba(74,222,128,.75); }
+        .tr-assign.sin-asignar { color: rgba(245,158,11,.55); font-style: italic; }
+
+        /* Badge de estado */
+        .tr-badge {
+            font-size: 0.68rem; font-weight: 600; letter-spacing: .04em;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+        }
+        .tr-badge.asignado   { background: rgba(34,197,94,.12); color: rgba(74,222,128,.9); border: 1px solid rgba(34,197,94,.2); }
+        .tr-badge.sin-asignar { background: rgba(245,158,11,.1); color: rgba(253,186,116,.9); border: 1px solid rgba(245,158,11,.2); }
+
+        /* Botón desvincular */
+        .btn-desvincular {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 50%;
+            background: transparent; border: 1px solid rgba(239,68,68,.25);
+            color: rgba(239,68,68,.5); font-size: 11px; cursor: pointer;
+            transition: all .15s; line-height: 1; flex-shrink: 0;
+        }
+        .btn-desvincular:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.6); color: #f87171; }
+
+        /* Compat. legado (no se usan en la nueva vista pero pueden quedar refs) */
+        .terminales-grid { display: none; }
+        .terminal-card { display: none; }
         /* Botón desasignar chic */
         .btn-desvincular {
             display: inline-flex; align-items: center; justify-content: center;
