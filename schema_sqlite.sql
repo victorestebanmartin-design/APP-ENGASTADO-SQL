@@ -220,6 +220,34 @@ CREATE INDEX idx_maquina_terminal ON maquinas_terminales(maquina_id, terminal_co
 CREATE INDEX idx_terminal_codigo ON maquinas_terminales(terminal_codigo);
 
 -- =====================================================
+-- TABLA: cable_colores (paleta de colores por código de cable)
+-- Los valores iniciales se cargan desde seed_inicial.json
+-- =====================================================
+CREATE TABLE IF NOT EXISTS cable_colores (
+    cod_cable TEXT PRIMARY KEY,
+    color_hex TEXT NOT NULL,
+    color_texto TEXT
+);
+
+-- =====================================================
+-- TABLA: terminales_imagenes (foto/icono de cada terminal)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS terminales_imagenes (
+    terminal_codigo TEXT PRIMARY KEY,
+    imagen_data     TEXT NOT NULL,        -- data URL base64
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================
+-- TABLA: terminales_gavetas (ubicación física del terminal)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS terminales_gavetas (
+    terminal_codigo TEXT PRIMARY KEY,
+    gaveta          TEXT NOT NULL,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================
 -- TABLA: terminales_desactivados
 -- =====================================================
 DROP TABLE IF EXISTS terminales_desactivados;
