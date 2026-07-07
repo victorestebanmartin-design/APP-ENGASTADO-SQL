@@ -189,6 +189,7 @@ def api_obtener_maquinas():
 
 
 @bp.route('/api/maquinas', methods=['POST'])
+@requiere_pin_admin
 def api_crear_maquina():
     """Crear nueva máquina"""
     try:
@@ -242,6 +243,7 @@ def api_crear_maquina():
 
 
 @bp.route('/api/maquinas/<maquina_id>', methods=['PUT'])
+@requiere_pin_admin
 def api_actualizar_maquina(maquina_id):
     """Actualizar máquina existente"""
     try:
@@ -281,6 +283,7 @@ def api_actualizar_maquina(maquina_id):
 
 
 @bp.route('/api/maquinas/<maquina_id>', methods=['DELETE'])
+@requiere_pin_admin
 def api_eliminar_maquina(maquina_id):
     """Eliminar máquina"""
     try:
@@ -450,6 +453,7 @@ def api_excel_terminales(archivo):
 
 
 @bp.route('/api/asignar-terminal', methods=['POST'])
+@requiere_pin_admin
 def api_asignar_terminal():
     """Asignar un terminal a una máquina"""
     try:
@@ -491,6 +495,7 @@ def api_asignar_terminal():
 
 
 @bp.route('/api/desasignar-terminal', methods=['POST'])
+@requiere_pin_admin
 def api_desasignar_terminal():
     """Desasignar un terminal de su máquina actual"""
     try:
@@ -539,6 +544,7 @@ def api_obtener_imagen_terminal(codigo):
 
 
 @bp.route('/api/terminal-imagen/<codigo>', methods=['PUT'])
+@requiere_pin_admin
 def api_subir_imagen_terminal(codigo):
     """Guardar o actualizar la imagen (base64) de un terminal."""
     try:
@@ -570,6 +576,7 @@ def api_subir_imagen_terminal(codigo):
 
 
 @bp.route('/api/terminal-imagen/<codigo>', methods=['DELETE'])
+@requiere_pin_admin
 def api_eliminar_imagen_terminal(codigo):
     """Eliminar la imagen de un terminal."""
     try:
@@ -599,6 +606,7 @@ def api_obtener_gaveta_terminal(codigo):
 
 
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['PUT'])
+@requiere_pin_admin
 def api_guardar_gaveta_terminal(codigo):
     """Guardar o actualizar la gaveta de un terminal."""
     try:
@@ -624,6 +632,7 @@ def api_guardar_gaveta_terminal(codigo):
 
 
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['DELETE'])
+@requiere_pin_admin
 def api_eliminar_gaveta_terminal(codigo):
     """Eliminar la gaveta de un terminal."""
     try:
