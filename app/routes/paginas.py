@@ -42,6 +42,15 @@ from app.routes.base import (
 
 # ==================== RUTAS PRINCIPALES ====================
 
+@bp.route('/favicon.ico')
+def favicon():
+    """Icono de pestaña del navegador (evita el 404 de /favicon.ico)."""
+    return send_file(
+        os.path.join(current_app.static_folder, 'img', 'reloj_100.png'),
+        mimetype='image/png',
+    )
+
+
 @bp.route('/')
 def home():
     """Página de inicio"""

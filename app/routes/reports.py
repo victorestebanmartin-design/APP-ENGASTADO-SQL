@@ -35,6 +35,7 @@ from app.auth import (
     cerrar_sesion_admin,
 )
 from app.routes.base import (
+    _ruta_progreso_bono,
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
@@ -181,7 +182,7 @@ def report_carros_bono(nombre_bono):
         ordenes = orden_repo.obtener_ordenes_por_bono(bono['id'])
 
         # Leer progreso guardado
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         progreso = {}
         if os.path.exists(progreso_path):
             try:

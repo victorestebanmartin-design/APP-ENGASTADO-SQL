@@ -35,6 +35,7 @@ from app.auth import (
     cerrar_sesion_admin,
 )
 from app.routes.base import (
+    _ruta_progreso_bono,
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
@@ -132,7 +133,7 @@ def api_eliminar_bono(nombre):
 
         # Borrar fichero de progreso si existe
         import os
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre}.json')
+        progreso_path = _ruta_progreso_bono(nombre)
         if os.path.exists(progreso_path):
             os.remove(progreso_path)
 
