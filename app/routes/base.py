@@ -79,6 +79,19 @@ def _ruta_upload_segura(nombre_archivo):
     return ruta
 
 
+def _ruta_progreso_bono(nombre_bono):
+    """Ruta del JSON de progreso de un bono, garantizada dentro de DATA_DIR.
+
+    Neutraliza cualquier intento de path traversal en el nombre del bono:
+    os.path.basename descarta separadores y '..', de modo que la ruta nunca
+    se sale de la carpeta de datos. Siempre devuelve una ruta válida (no None),
+    para que los llamadores no necesiten un guard extra.
+    """
+    base = os.path.abspath(current_app.config['DATA_DIR'])
+    seguro = os.path.basename(f'progreso_bono_{nombre_bono or ""}.json')
+    return os.path.join(base, seguro)
+
+
 def _es_error_nombre_bono_duplicado(error):
     """Detectar si un IntegrityError proviene del UNIQUE de bonos.nombre"""
     mensaje = str(getattr(error, 'orig', error)).lower()

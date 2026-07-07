@@ -35,6 +35,7 @@ from app.auth import (
     cerrar_sesion_admin,
 )
 from app.routes.base import (
+    _ruta_progreso_bono,
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
@@ -46,7 +47,7 @@ from app.routes.base import (
 def api_bonos_progreso_get(nombre_bono):
     """Obtener progreso guardado de un bono"""
     try:
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         
         if not os.path.exists(progreso_path):
             return jsonify({
@@ -151,9 +152,7 @@ def _bono_finalizado(nombre_bono, terminales=None):
         if not terminales:
             return False
 
-        progreso_path = os.path.join(
-            current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json'
-        )
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         if not os.path.exists(progreso_path):
             return False
 
@@ -205,7 +204,7 @@ def api_bonos_progreso_post(nombre_bono):
             })
         
         # Cargar progreso existente
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         
         if os.path.exists(progreso_path):
             with open(progreso_path, 'r', encoding='utf-8') as f:
@@ -277,7 +276,7 @@ def api_bonos_progreso_parcial(nombre_bono):
         if not terminal:
             return jsonify({'success': False, 'message': 'Se requiere terminal'})
 
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
 
         if os.path.exists(progreso_path):
             with open(progreso_path, 'r', encoding='utf-8') as f:
@@ -359,7 +358,7 @@ def api_bonos_progreso_estado(nombre_bono):
         if not terminal or estado not in ('en_proceso', 'completado'):
             return jsonify({'success': False, 'message': 'Parámetros inválidos'})
 
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
 
         if os.path.exists(progreso_path):
             with open(progreso_path, 'r', encoding='utf-8') as f:
@@ -394,7 +393,7 @@ def api_bonos_progreso_estado(nombre_bono):
 def api_bonos_progreso_por_carro(nombre_bono):
     """Progreso agrupado por carro: {carro_id: {terminales_completados: [...]}}"""
     try:
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         progreso = {}
         if os.path.exists(progreso_path):
             with open(progreso_path, 'r', encoding='utf-8') as f:
@@ -520,7 +519,7 @@ def api_bonos_progreso_ponderado(nombre_bono):
                 )
 
         # Leer progreso guardado
-        progreso_path = os.path.join(current_app.config['DATA_DIR'], f'progreso_bono_{nombre_bono}.json')
+        progreso_path = _ruta_progreso_bono(nombre_bono)
         progreso = {}
         if os.path.exists(progreso_path):
             with open(progreso_path, 'r', encoding='utf-8') as f:

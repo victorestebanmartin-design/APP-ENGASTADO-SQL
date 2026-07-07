@@ -27,6 +27,23 @@ def test_health_reporta_bd_conectada(client):
     assert d['status'] == 'ok'
 
 
+def test_favicon_responde(client):
+    r = client.get('/favicon.ico')
+    assert r.status_code == 200
+    assert r.mimetype == 'image/png'
+
+
+def test_ruta_progreso_neutraliza_traversal(app):
+    """El helper de ruta de progreso nunca sale de DATA_DIR."""
+    import os
+    from app.routes.base import _ruta_progreso_bono
+    with app.test_request_context():
+        base = os.path.abspath(app.config['DATA_DIR'])
+        for nombre in ['normal_1', '../../etc/passwd', '..\\..\\x', 'a/b/c']:
+            ruta = _ruta_progreso_bono(nombre)
+            assert os.path.abspath(os.path.dirname(ruta)) == base, nombre
+
+
 def test_seed_inicial_cargado_desde_json(client):
     """Los datos de seed_inicial.json (puestos, máquinas) se cargan en BD nueva."""
     puestos = client.get('/api/puestos').get_json()['puestos']
