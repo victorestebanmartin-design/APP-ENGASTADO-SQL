@@ -1,15 +1,17 @@
-# Technical Report — Automatic Crimping System (Sistema de Engastado)
+# Technical Report — COJO SW
 
+**Application:** COJO SW — *Crimping Operations, Jobs & Orders Software* (Automated Crimping System)
+**Organisation:** MERAK · Knorr-Bremse
 **Audience:** IT Department
 **Author:** Víctor Esteban Martín
 **Date:** July 2026
-**Application version:** 2.0 (SQLite)
+**Application version:** 3.0 Pro
 
 ---
 
 ## 1. What is the application?
 
-It is an **internal web application** for end-to-end management of the **cable crimping (engastado) process** in production. It covers the plant's full work cycle:
+**COJO SW** is an **internal web application** for end-to-end management of the **cable crimping process** in production. Its name sums up what it does: **C**rimping (automated terminal crimping process), **O**perations (real-time shop floor management), **J**obs (work orders and production batches), **O**rders (full traceability and tracking) and **SW** (software — local web application). It covers the plant's full work cycle:
 
 1. **Loading the cable lists** (cutting Excel files) from the administration panel.
 2. **Label generation** for cable elements (die-cut A4 format and Zebra ZPL printer).
@@ -121,6 +123,7 @@ Temporary test environments were used during development to validate the applica
 
 | Aspect | Value |
 |---|---|
+| Name | COJO SW v3.0 Pro |
 | Type | Internal web application (intranet) |
 | Server | 1 Windows 10 x64 PC with Python 3.13 |
 | Clients | Web browser, no installation |

@@ -1,15 +1,17 @@
-# Informe Técnico — Sistema de Engastado Automático
+# Informe Técnico — COJO SW
 
+**Aplicación:** COJO SW — *Crimping Operations, Jobs & Orders Software* (Sistema de Engastado Automático)
+**Organización:** MERAK · Knorr-Bremse
 **Destinatario:** Departamento de IT
 **Autor:** Víctor Esteban Martín
 **Fecha:** Julio 2026
-**Versión de la aplicación:** 2.0 (SQLite)
+**Versión de la aplicación:** 3.0 Pro
 
 ---
 
 ## 1. ¿Qué es la aplicación?
 
-Es una **aplicación web interna** para la gestión integral del proceso de **engastado de cables** en producción. Cubre todo el ciclo de trabajo de la planta:
+**COJO SW** es una **aplicación web interna** para la gestión integral del proceso de **engastado de cables** en producción. Su nombre resume sus funciones: **C**rimping (engastado automático de terminales), **O**perations (gestión de planta en tiempo real), **J**obs (bonos y lotes de producción), **O**rders (trazabilidad y seguimiento completos) y **SW** (software — aplicación web local). Cubre todo el ciclo de trabajo de la planta:
 
 1. **Carga del listado de cables** (archivos Excel de corte) desde el panel de administración.
 2. **Generación de etiquetas** identificativas para los elementos de cable (formato A4 troquelado e impresora Zebra ZPL).
@@ -121,6 +123,7 @@ Durante el desarrollo se han usado entornos de prueba temporales para validar la
 
 | Aspecto | Valor |
 |---|---|
+| Nombre | COJO SW v3.0 Pro |
 | Tipo | Aplicación web interna (intranet) |
 | Servidor | 1 PC Windows 10 x64 con Python 3.13 |
 | Clientes | Navegador web, sin instalación |
