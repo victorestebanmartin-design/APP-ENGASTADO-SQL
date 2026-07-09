@@ -501,9 +501,9 @@ def _parse_pelado(obs_str):
         if part.startswith('<-'):
             side = 'de'
             inst_str = part[2:].strip()
-        elif part.endswith('->'):
+        elif '->' in part:
             side = 'para'
-            inst_str = part[:-2].strip()
+            inst_str = part[:part.index('->')].strip()
         else:
             continue
         result[side] = _parse_instrucciones(inst_str)
