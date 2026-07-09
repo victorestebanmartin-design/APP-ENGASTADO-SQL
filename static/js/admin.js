@@ -19,7 +19,113 @@ document.addEventListener('DOMContentLoaded', function() {
     if (asociarForm) {
         asociarForm.addEventListener('submit', asociarCorte);
     }
+
+    const selectArchivo = document.getElementById('select-archivo');
+    if (selectArchivo) {
+        selectArchivo.addEventListener('change', function() {
+            aplicarSugerenciasAsociacion(this.value);
+        });
+    }
 });
+
+function _marcarCampoSugerido(inputId, labelId, activo, texto = '✔ sugerido') {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    if (activo) input.classList.add('campo-autorellenado');
+    else input.classList.remove('campo-autorellenado');
+
+    if (labelId) {
+        const lbl = document.getElementById(labelId);
+        if (lbl) lbl.textContent = activo ? texto : '';
+    }
+}
+
+function _parsearNombreArchivoExcel(filename) {
+    if (!filename || typeof filename !== 'string') return null;
+
+    const base = filename.replace(/\.[^.]+$/, '').trim();
+    if (!base) return null;
+
+    const tokens = base.split('_').map(t => t.trim()).filter(Boolean);
+    if (tokens.length === 0) return null;
+
+    const normalizar = (t) => t.toUpperCase();
+    const esCodigo = (t) => /^H\d{5,}$/i.test(t);
+    const esEdicion = (t) => /^ED\d+$/i.test(t);
+
+    let tokensSinEd = tokens.slice();
+    if (tokensSinEd.length > 1 && esEdicion(tokensSinEd[tokensSinEd.length - 1])) {
+        tokensSinEd = tokensSinEd.slice(0, -1);
+    }
+
+    const idxCodigos = tokensSinEd
+        .map((t, i) => esCodigo(t) ? i : -1)
+        .filter(i => i !== -1);
+
+    const idxCodigoBarras = idxCodigos.length >= 2
+        ? idxCodigos[1]
+        : (idxCodigos.length === 1 ? idxCodigos[0] : -1);
+
+    const codigoBarras = idxCodigoBarras >= 0
+        ? normalizar(tokensSinEd[idxCodigoBarras])
+        : '';
+
+    let proyectoTokens = [];
+    if (idxCodigoBarras >= 0 && idxCodigoBarras < tokensSinEd.length - 1) {
+        proyectoTokens = tokensSinEd.slice(idxCodigoBarras + 1).filter(t => !esCodigo(t));
+    }
+    if (proyectoTokens.length === 0) {
+        proyectoTokens = tokensSinEd.filter((t, i) => !esCodigo(t) && i > 0);
+    }
+
+    const proyecto = proyectoTokens.map(normalizar).join('_');
+
+    let descripcion = '';
+    if (idxCodigos.length > 0 && proyecto) {
+        descripcion = `${normalizar(tokensSinEd[idxCodigos[0]])}_${proyecto}`;
+    } else if (tokensSinEd.length > 0) {
+        descripcion = normalizar(tokensSinEd.join('_'));
+    }
+
+    return {
+        codigoBarras,
+        descripcion,
+        proyecto
+    };
+}
+
+function aplicarSugerenciasAsociacion(filename) {
+    const sugerencias = _parsearNombreArchivoExcel(filename);
+    if (!sugerencias) return;
+
+    const inputCodigo = document.getElementById('codigo-barras');
+    const inputDesc = document.getElementById('descripcion');
+    const inputProyecto = document.getElementById('proyecto');
+
+    if (inputCodigo && sugerencias.codigoBarras) {
+        inputCodigo.value = sugerencias.codigoBarras;
+        _marcarCampoSugerido('codigo-barras', 'lbl-codigo', true);
+    } else {
+        _marcarCampoSugerido('codigo-barras', 'lbl-codigo', false);
+    }
+
+    if (inputDesc && sugerencias.descripcion) {
+        inputDesc.value = sugerencias.descripcion;
+        _marcarCampoSugerido('descripcion', 'lbl-desc', true);
+    } else {
+        _marcarCampoSugerido('descripcion', 'lbl-desc', false);
+    }
+
+    if (inputProyecto && sugerencias.proyecto) {
+        inputProyecto.value = sugerencias.proyecto;
+        _marcarCampoSugerido('proyecto', 'lbl-proyecto', true);
+    } else {
+        _marcarCampoSugerido('proyecto', 'lbl-proyecto', false);
+    }
+
+    _marcarCampoSugerido('select-archivo', 'lbl-archivo', true);
+}
 
 /**
  * Subir archivo Excel
@@ -59,24 +165,25 @@ async function subirArchivo(e) {
                 // Recargar archivos y luego auto-seleccionar
                 await cargarArchivos();
                 const selArchivo = document.getElementById('select-archivo');
-                if (selArchivo) selArchivo.value = data.filename;
+                if (selArchivo) {
+                    selArchivo.value = data.filename;
+                    aplicarSugerenciasAsociacion(data.filename);
+                }
 
                 // Rellenar código de barras y descripción
                 const inputCodigo = document.getElementById('codigo-barras');
                 const inputDesc   = document.getElementById('descripcion');
                 if (inputCodigo) {
                     inputCodigo.value = data.codigo;
-                    inputCodigo.setAttribute('readonly', true);
                     inputCodigo.classList.add('campo-autorellenado');
                     const lbl = document.getElementById('lbl-codigo');
-                    if (lbl) lbl.textContent = '✔ auto';
+                    if (lbl) lbl.textContent = '✔ auto hoja';
                 }
                 if (inputDesc) {
                     inputDesc.value = data.hoja_codigo;
-                    inputDesc.setAttribute('readonly', true);
                     inputDesc.classList.add('campo-autorellenado');
                     const lbl = document.getElementById('lbl-desc');
-                    if (lbl) lbl.textContent = '✔ auto';
+                    if (lbl) lbl.textContent = '✔ auto hoja';
                 }
                 const lblArchivo = document.getElementById('lbl-archivo');
                 if (lblArchivo) lblArchivo.textContent = '✔ auto';
@@ -84,10 +191,7 @@ async function subirArchivo(e) {
                 // Enfocar el campo proyecto para que el usuario solo escriba ese
                 const inputProyecto = document.getElementById('proyecto');
                 if (inputProyecto) {
-                    inputProyecto.removeAttribute('readonly');
                     inputProyecto.focus();
-                    // Hacer el proyecto obligatorio cuando hay auto-relleno
-                    inputProyecto.setAttribute('required', true);
                 }
 
                 // Scroll hasta el formulario de asociación
@@ -97,6 +201,11 @@ async function subirArchivo(e) {
             } else {
                 // No se encontró hoja con patrón — recargar y dejar al usuario rellenar
                 await cargarArchivos();
+                const selArchivo = document.getElementById('select-archivo');
+                if (selArchivo) {
+                    selArchivo.value = data.filename;
+                    aplicarSugerenciasAsociacion(data.filename);
+                }
             }
 
             mostrarMensaje('upload-mensaje', msg, 'success');
@@ -159,7 +268,7 @@ async function asociarCorte(e, forzar) {
             });
             document.getElementById('select-archivo').value = '';
             document.getElementById('proyecto').removeAttribute('required');
-            ['lbl-codigo', 'lbl-desc', 'lbl-archivo'].forEach(id => {
+            ['lbl-codigo', 'lbl-desc', 'lbl-archivo', 'lbl-proyecto'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = '';
             });
