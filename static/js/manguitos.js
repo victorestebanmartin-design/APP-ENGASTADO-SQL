@@ -56,7 +56,10 @@
   var inputBuscar   = document.getElementById('mg-buscar-marca');
   var btnBuscarClr  = document.getElementById('mg-buscar-clear');
   var divBuscarRes  = document.getElementById('mg-buscar-result');
-  var marcaResaltada = null;
+  var busquedaActual = '';
+  var coincidenciasBusqueda = [];
+  var indiceCoincidencia = -1;
+  var coincidenciaActiva = null;
 
   // Banner corte actual
   var corteBanner   = document.getElementById('mg-corte-banner');
@@ -73,12 +76,15 @@
   });
 
   // ── Buscador de marca ────────────────────────────────────────────────
-  function buscarMarca() {
+  function buscarMarca(avanzarCoincidencia) {
     var q = (inputBuscar.value || '').trim().toUpperCase();
     if (inputBuscar.parentElement) inputBuscar.parentElement.classList.toggle('has-text', !!q);
 
     if (!q) {
-      marcaResaltada = null;
+      busquedaActual = '';
+      coincidenciasBusqueda = [];
+      indiceCoincidencia = -1;
+      coincidenciaActiva = null;
       divBuscarRes.style.display = 'none';
       if (elementosFiltrados.length) renderElemento();
       return;
@@ -94,26 +100,38 @@
       aplicarFiltroRistra(null);
     }
 
-    // Localizar primer manguito cuya marca coincida (exacta, luego parcial)
-    var hit = _buscarEn(function (mk) { return mk === q; })
-           || _buscarEn(function (mk) { return mk.indexOf(q) !== -1; });
+    if (q !== busquedaActual) {
+      busquedaActual = q;
+      coincidenciasBusqueda = _buscarCoincidencias(q);
+      indiceCoincidencia = -1;
+    }
 
-    if (!hit) {
-      marcaResaltada = null;
+    if (!coincidenciasBusqueda.length) {
+      coincidenciaActiva = null;
       divBuscarRes.textContent = 'Sin resultados para «' + inputBuscar.value.trim() + '»';
       divBuscarRes.className = 'mg-buscar-result no-hit';
       divBuscarRes.style.display = 'block';
       return;
     }
 
+    if (avanzarCoincidencia && indiceCoincidencia >= 0) {
+      indiceCoincidencia = (indiceCoincidencia + 1) % coincidenciasBusqueda.length;
+    } else {
+      indiceCoincidencia = 0;
+    }
+
+    var hit = coincidenciasBusqueda[indiceCoincidencia];
+    coincidenciaActiva = { idxElem: hit.idxElem, idxManguito: hit.idxManguito };
+
     idxElem = hit.idxElem;
     pagina  = hit.pagina;
-    marcaResaltada = hit.marca;
     renderElemento();
 
     var elem = elementosFiltrados[idxElem];
     var paqTxt = elem.numero_etiqueta ? ' · paquete #' + elem.numero_etiqueta : '';
-    divBuscarRes.textContent = 'Marca ' + hit.marca + ' → ' + elem.elemento + paqTxt;
+    var tipoTxt = hit.modo === 'cod_cable' ? 'Cable' : 'Marca';
+    divBuscarRes.textContent = tipoTxt + ' ' + hit.valor + ' → ' + elem.elemento + paqTxt
+      + ' (' + (indiceCoincidencia + 1) + '/' + coincidenciasBusqueda.length + ')';
     divBuscarRes.className = 'mg-buscar-result';
     divBuscarRes.style.display = 'block';
 
@@ -123,29 +141,43 @@
     }, 50);
   }
 
-  function _buscarEn(test) {
+  function _buscarCoincidencias(q) {
+    var exactos = [];
+    var parciales = [];
     for (var i = 0; i < elementosFiltrados.length; i++) {
       var mgs = elementosFiltrados[i].manguitos;
       for (var j = 0; j < mgs.length; j++) {
         var mk = String(mgs[j].de_marca || '').trim().toUpperCase();
-        if (mk && test(mk)) {
-          return { idxElem: i, pagina: Math.floor(j / POR_PAGINA), marca: mk };
+        var cod = String(mgs[j].cod_cable || '').trim().toUpperCase();
+        if (mk) {
+          if (mk === q) {
+            exactos.push({ idxElem: i, idxManguito: j, pagina: Math.floor(j / POR_PAGINA), valor: mk, modo: 'de_marca' });
+          } else if (mk.indexOf(q) !== -1) {
+            parciales.push({ idxElem: i, idxManguito: j, pagina: Math.floor(j / POR_PAGINA), valor: mk, modo: 'de_marca' });
+          }
+        }
+        if (cod) {
+          if (cod === q) {
+            exactos.push({ idxElem: i, idxManguito: j, pagina: Math.floor(j / POR_PAGINA), valor: cod, modo: 'cod_cable' });
+          } else if (cod.indexOf(q) !== -1) {
+            parciales.push({ idxElem: i, idxManguito: j, pagina: Math.floor(j / POR_PAGINA), valor: cod, modo: 'cod_cable' });
+          }
         }
       }
     }
-    return null;
+    return exactos.length ? exactos : parciales;
   }
 
   if (inputBuscar) {
-    inputBuscar.addEventListener('input', buscarMarca);
+    inputBuscar.addEventListener('input', function () { buscarMarca(false); });
     inputBuscar.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); buscarMarca(); }
+      if (e.key === 'Enter') { e.preventDefault(); buscarMarca(true); }
     });
   }
   if (btnBuscarClr) {
     btnBuscarClr.addEventListener('click', function () {
       inputBuscar.value = '';
-      buscarMarca();
+      buscarMarca(false);
       inputBuscar.focus();
     });
   }
@@ -226,9 +258,10 @@
 
     // Dibujar pares en la tira
     tira.innerHTML = '';
-    slice.forEach(function (m) {
+    slice.forEach(function (m, idxSlice) {
       var row = crearParManguito(m);
-      if (marcaResaltada && String(m.de_marca || '').toUpperCase() === marcaResaltada) {
+      var idxGlobal = inicio + idxSlice;
+      if (coincidenciaActiva && coincidenciaActiva.idxElem === idxElem && coincidenciaActiva.idxManguito === idxGlobal) {
         row.classList.add('mg-resaltado');
       }
       tira.appendChild(row);
@@ -274,6 +307,9 @@
     if (m.longitud !== null && m.longitud !== undefined) {
       var lonVal = parseFloat(m.longitud);
       lonEtqParts.push((Math.round(lonVal * 1000) / 1000).toString().replace('.', ',') + ' m');
+      if (!isNaN(lonVal) && Math.abs(lonVal) < 0.0005 && m.activo_manguera) {
+        lonEtqParts.push('Activo (' + m.activo_manguera + ')');
+      }
     }
     if (lonEtqParts.length > 0) {
       var lSpan = document.createElement('span');

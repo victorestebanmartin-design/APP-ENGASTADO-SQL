@@ -400,6 +400,7 @@ class ExcelManager:
         col_cod_cable        = _col(['Cod. cable'])
         col_longitud         = _col(['Longitud'])
         col_seccion          = _col(['Sección', 'Seccion'])
+        col_observaciones    = _col(['Observaciones'])
 
         if not col_de_manguito:
             raise ValueError("Columna 'De Manguito' no encontrada en el Excel")
@@ -428,6 +429,13 @@ class ExcelManager:
             except Exception:
                 _lon = None
 
+            activo_manguera = None
+            if _lon is not None and abs(_lon) < 1e-9 and col_observaciones:
+                obs = _safe(row[col_observaciones])
+                m_act = re.search(r'\(\s*(\d+)\s*\)', obs)
+                if m_act:
+                    activo_manguera = m_act.group(1)
+
             manguito = {
                 'de_marca':      _safe(row[col_de_marca])      if col_de_marca   else '',
                 'de_manguito':   de_manguito,
@@ -438,6 +446,7 @@ class ExcelManager:
                 'cod_cable':     _safe(row[col_cod_cable])     if col_cod_cable  else '',
                 'longitud':      _lon,
                 'seccion':       _safe(row[col_seccion])        if col_seccion    else '',
+                'activo_manguera': activo_manguera,
             }
 
             if de_elemento not in elementos:
