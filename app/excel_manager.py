@@ -555,7 +555,7 @@ def _get_mangueras(self, filename: str) -> list:
     resultado = []
     for _, row in df.iterrows():
         obs = _safe(row[col_obs])
-        if not obs.startswith('<-') and not obs.startswith('->'):
+        if '<-' not in obs and '->' not in obs:
             continue
 
         cm_raw = _safe(row[col_cable_marca]) if col_cable_marca else ''
