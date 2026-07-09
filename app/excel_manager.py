@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import re
 import threading
+import unicodedata
 from typing import List, Dict, Optional
 
 # ─── Caché de DataFrames por archivo ──────────────────────────────────────────
@@ -13,6 +14,55 @@ from typing import List, Dict, Optional
 _EXCEL_CACHE = {}  # ruta_abs -> (mtime, hoja_usada, DataFrame)
 _EXCEL_CACHE_LOCK = threading.Lock()
 _EXCEL_CACHE_MAX = 16
+
+_ALIASES_COLUMNAS_EXCEL = {
+    'cod cable': 'Cod. cable',
+    'de terminal': 'De Terminal',
+    'para terminal': 'Para Terminal',
+    'de elemento etiquetas': 'De Elemento Etiquetas',
+    'seccion': 'Sección',
+    'descripcion cable': 'Descripción Cable',
+    'descripcion': 'Descripción',
+}
+
+
+def _normalizar_texto_columna(nombre: object) -> str:
+    """Normaliza nombres de columnas para comparación tolerante."""
+    if nombre is None:
+        return ''
+    texto = str(nombre).replace('\u00a0', ' ').strip().lower()
+    texto = unicodedata.normalize('NFKD', texto)
+    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = re.sub(r'[._/\\-]+', ' ', texto)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return texto
+
+
+def normalizar_nombres_columnas(df: pd.DataFrame) -> pd.DataFrame:
+    """Renombra columnas conocidas a un formato canonico esperado por la app.
+
+    Soporta variaciones comunes en mayusculas/minusculas, acentos, puntos,
+    guiones y espacios repetidos.
+    """
+    renombres = {}
+    columnas_actuales = set(df.columns)
+    canonicas_presentes = {c for c in columnas_actuales if c in _ALIASES_COLUMNAS_EXCEL.values()}
+
+    for col in df.columns:
+        normalizada = _normalizar_texto_columna(col)
+        canonica = _ALIASES_COLUMNAS_EXCEL.get(normalizada)
+        if not canonica:
+            continue
+        # Si la canónica ya existe, no sobreescribir ni crear duplicados.
+        if canonica in canonicas_presentes and col != canonica:
+            continue
+        if col != canonica:
+            renombres[col] = canonica
+            canonicas_presentes.add(canonica)
+
+    if not renombres:
+        return df
+    return df.rename(columns=renombres)
 
 
 def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.DataFrame:
@@ -35,6 +85,7 @@ def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.Dat
     xl = pd.ExcelFile(ruta)
     hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
     df = pd.read_excel(xl, sheet_name=hoja)
+    df = normalizar_nombres_columnas(df)
 
     with _EXCEL_CACHE_LOCK:
         if len(_EXCEL_CACHE) >= _EXCEL_CACHE_MAX:

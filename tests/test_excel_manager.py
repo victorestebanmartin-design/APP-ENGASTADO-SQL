@@ -9,7 +9,12 @@ Reglas de agrupación (agrupar_por_cable_elemento):
 import pandas as pd
 import pytest
 
-from app.excel_manager import ExcelManager, _parse_instrucciones, _parse_pelado
+from app.excel_manager import (
+    ExcelManager,
+    _parse_instrucciones,
+    _parse_pelado,
+    normalizar_nombres_columnas,
+)
 
 
 def _fila(**kwargs):
@@ -218,3 +223,24 @@ class TestCacheExcel:
         df2 = leer_excel_cacheado(ruta)
         assert len(df2) == 3
         assert df2 is not df1
+
+
+class TestNormalizacionCabeceras:
+    def test_normaliza_columnas_requeridas_con_variaciones(self):
+        df = pd.DataFrame(
+            {
+                ' cod cable ': ['C1'],
+                'de terminal': ['T1'],
+                'PARA  TERMINAL': ['T2'],
+                'De Elemento etiquetas': ['E1'],
+                'SECCION': ['0.5'],
+            }
+        )
+
+        out = normalizar_nombres_columnas(df)
+
+        assert 'Cod. cable' in out.columns
+        assert 'De Terminal' in out.columns
+        assert 'Para Terminal' in out.columns
+        assert 'De Elemento Etiquetas' in out.columns
+        assert 'Sección' in out.columns
