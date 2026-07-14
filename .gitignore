@@ -29,6 +29,9 @@ data/engastado.db.backup_*
 data/cortes/
 data/etiquetas_simuladas/
 
+# Configuración local de VS Code
+*.code-workspace
+
 # Basura del sistema operativo
 .DS_Store
 Thumbs.db
