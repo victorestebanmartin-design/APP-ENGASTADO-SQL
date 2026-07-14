@@ -69,7 +69,9 @@ def health():
 def _encontrar_git():
     """
     Busca el ejecutable de git en el PATH y en las rutas de instalación
-    habituales de Windows (Git for Windows, GitHub Desktop, etc.).
+    habituales de Windows (Git for Windows, GitHub Desktop, etc.) y de
+    Linux (PythonAnywhere y similares, donde el proceso web puede correr
+    con un PATH mínimo que no incluye /usr/bin).
     Devuelve la ruta completa al ejecutable o None si no se encuentra.
     """
     import shutil
@@ -80,8 +82,10 @@ def _encontrar_git():
     if git_path:
         return git_path
 
-    # 2. Rutas de instalación estándar de Git for Windows
+    # 2. Rutas estándar: Linux (PythonAnywhere) y Git for Windows
     rutas_fijas = [
+        '/usr/bin/git',
+        '/usr/local/bin/git',
         r'C:\Program Files\Git\cmd\git.exe',
         r'C:\Program Files\Git\bin\git.exe',
         r'C:\Program Files (x86)\Git\cmd\git.exe',
@@ -123,7 +127,7 @@ def api_comprobar_actualizaciones():
         base_dir = os.path.dirname(current_app.root_path)
         git_exe = _encontrar_git()
         if not git_exe:
-            return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
+            return jsonify({'success': False, 'message': 'No se encontró Git en el servidor. En Windows, instálalo desde https://git-scm.com/download/win y reinicia la app.'})
 
         def git(args):
             return subprocess.run(
@@ -166,11 +170,41 @@ def api_comprobar_actualizaciones():
         })
 
     except FileNotFoundError:
-        return jsonify({'success': False, 'message': 'Git no está instalado. Instálalo desde https://git-scm.com/download/win'})
+        return jsonify({'success': False, 'message': 'No se encontró Git en el servidor. En Windows, instálalo desde https://git-scm.com/download/win y reinicia la app.'})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout al conectar con GitHub. Comprueba la conexión.'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
+
+def _programar_reinicio():
+    """Programa la recarga de la app tras el 'git pull', según el entorno.
+
+    - PythonAnywhere: tocar el fichero WSGI de /var/www recarga la web app
+      (el mecanismo oficial de reload de PA).
+    - Instalación local (run.bat): salir con código 42, que run.bat detecta
+      para relanzar el servidor.
+    En ambos casos se espera 2s para que Flask envíe la respuesta primero.
+    """
+    import glob
+    import threading
+
+    wsgi_files = sorted(glob.glob('/var/www/*_wsgi.py'))
+    if wsgi_files:
+        def _tocar():
+            time.sleep(2)
+            for ruta in wsgi_files:
+                try:
+                    os.utime(ruta, None)
+                except OSError:
+                    pass
+        threading.Thread(target=_tocar, daemon=True).start()
+        return
+
+    def _salir():
+        time.sleep(2)
+        os._exit(42)
+    threading.Thread(target=_salir, daemon=True).start()
 
 
 @bp.route('/api/actualizar_sistema', methods=['POST'])
@@ -184,7 +218,7 @@ def api_actualizar_sistema():
         base_dir = os.path.dirname(current_app.root_path)
         git_exe = _encontrar_git()
         if not git_exe:
-            return jsonify({'success': False, 'message': 'Git no está instalado. Descárgalo desde https://git-scm.com/download/win'})
+            return jsonify({'success': False, 'message': 'No se encontró Git en el servidor. En Windows, instálalo desde https://git-scm.com/download/win y reinicia la app.'})
 
         def git(args):
             return subprocess.run(
@@ -212,26 +246,28 @@ def api_actualizar_sistema():
         # Actualizar dependencias si es necesario
         pip_output = ''
         if req_cambia:
+            requirements = os.path.join(base_dir, 'requirements.txt')
             pip_exe = os.path.join(base_dir, 'venv', 'Scripts', 'pip.exe')
             if not os.path.exists(pip_exe):
                 pip_exe = os.path.join(base_dir, 'venv', 'bin', 'pip')
-            r_pip = subprocess.run(
-                [pip_exe, 'install', '-r', os.path.join(base_dir, 'requirements.txt'), '-q'],
-                capture_output=True, text=True, timeout=120
-            )
+            if os.path.exists(pip_exe):
+                cmd_pip = [pip_exe, 'install', '-r', requirements, '-q']
+            else:
+                # Sin carpeta venv/ en el proyecto (p.ej. PythonAnywhere):
+                # pip del intérprete actual; '--user' solo fuera de un
+                # virtualenv, donde no está permitido
+                en_venv = sys.prefix != getattr(sys, 'base_prefix', sys.prefix)
+                extra = [] if en_venv else ['--user']
+                cmd_pip = [sys.executable, '-m', 'pip', 'install', *extra, '-r', requirements, '-q']
+            r_pip = subprocess.run(cmd_pip, capture_output=True, text=True, timeout=300)
             pip_output = ' | Dependencias actualizadas.' if r_pip.returncode == 0 else ' | ⚠️ Error al actualizar dependencias.'
 
         # Commit nuevo tras el pull
         r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
         commit_nuevo = r_new.stdout.strip()
 
-        # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero
-        import threading
-        def _reiniciar():
-            import time, os
-            time.sleep(2)
-            os._exit(42)  # Código 42 → run.bat lo detecta y relanza el servidor
-        threading.Thread(target=_reiniciar, daemon=True).start()
+        # Programar la recarga (WSGI en PythonAnywhere, exit 42 con run.bat)
+        _programar_reinicio()
 
         return jsonify({
             'success': True,
@@ -242,7 +278,7 @@ def api_actualizar_sistema():
         })
 
     except FileNotFoundError:
-        return jsonify({'success': False, 'message': 'Git no está instalado. Instálalo desde https://git-scm.com/download/win'})
+        return jsonify({'success': False, 'message': 'No se encontró Git en el servidor. En Windows, instálalo desde https://git-scm.com/download/win y reinicia la app.'})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout durante la actualización.'})
     except Exception as e:

@@ -53,8 +53,6 @@ def pa_request(method, url, token, data=None):
         body = urlencode(data).encode("utf-8")
     req = Request(url, data=body, headers=headers, method=method)
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     try:
         with urlopen(req, timeout=60, context=ctx) as resp:
             status = resp.status
@@ -102,8 +100,6 @@ def pa_upload_file(username, token, remote_path, local_path):
     }
     req = Request(url, data=body, headers=headers, method="POST")
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     try:
         with urlopen(req, timeout=60, context=ctx) as resp:
             return resp.status
@@ -121,8 +117,6 @@ def pa_git_pull(domain, deploy_secret, username, token):
     headers = {"X-Deploy-Token": deploy_secret, "Content-Type": "application/x-www-form-urlencoded"}
     req = Request(url, data=b"", headers=headers, method="POST")
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     try:
         with urlopen(req, timeout=30, context=ctx) as resp:
             raw = resp.read().decode("utf-8").strip()
@@ -193,8 +187,6 @@ def pa_backup_db(username, token):
     remote_db = f"{pa_home}/APP-ENGASTADO-SQL/data/engastado.db"
     url = f"https://www.pythonanywhere.com/api/v0/user/{username}/files/path{remote_db}"
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     req = Request(url, headers={"Authorization": f"Token {token}"})
     try:
         with urlopen(req, context=ctx, timeout=60) as resp:
