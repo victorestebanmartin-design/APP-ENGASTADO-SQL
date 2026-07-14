@@ -23,6 +23,12 @@ data/engastado.db
 data/*.db
 data/engastado.db.backup_*
 
+# Datos reales de producción: nunca al repo (es público)
+# - Excel de cortes subidos por el usuario
+# - Etiquetas ZPL generadas en modo simulación
+data/cortes/
+data/etiquetas_simuladas/
+
 # Basura del sistema operativo
 .DS_Store
 Thumbs.db

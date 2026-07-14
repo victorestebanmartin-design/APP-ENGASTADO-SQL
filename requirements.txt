@@ -5,13 +5,16 @@
 # Python: 3.9+
 
 # Servidor WSGI para producción
-gunicorn==21.2.0
+# gunicorn >= 22 corrige CVE-2024-1135 y >= 23 CVE-2024-6827 (request smuggling)
+gunicorn==23.0.0
 waitress==3.0.2
 
 # Framework Web
-Flask==3.1.0
+# Flask >= 3.1.1 corrige CVE-2025-47278 (fallback de claves de sesión)
+# Jinja2 >= 3.1.6 corrige CVE-2024-56201 y CVE-2025-27516 (escape del sandbox)
+Flask==3.1.1
 Werkzeug==3.1.3
-Jinja2==3.1.4
+Jinja2==3.1.6
 MarkupSafe==3.0.2
 click==8.1.7
 itsdangerous==2.2.0
