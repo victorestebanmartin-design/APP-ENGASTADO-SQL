@@ -57,9 +57,13 @@ def health():
             'sqlite_version': version
         })
     except Exception as e:
+        # No exponer el detalle del error; queda en el log con su referencia
+        import uuid
+        error_id = uuid.uuid4().hex[:8]
+        current_app.logger.exception(f"[{error_id}] Health check fallido: {e}")
         return jsonify({
             'status': 'error',
-            'error': str(e)
+            'error': f'Base de datos no disponible (ref: {error_id})'
         }), 500
 
 def _encontrar_git():
@@ -300,8 +304,9 @@ def deploy_pull():
     """Endpoint interno para hacer git pull desde el script de deploy local."""
     token = request.headers.get('X-Deploy-Token', '')
     expected = _deploy_token()
-    if not expected or token != expected:
-        return jsonify({'success': False, 'error': 'unauthorized', 'path_checked': os.path.join(os.path.dirname(current_app.root_path), '.deploy_token')}), 401
+    # Comparación en tiempo constante y respuesta sin detalles internos
+    if not expected or not hmac.compare_digest(token.encode('utf-8'), expected.encode('utf-8')):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
 
     project_dir = os.path.dirname(current_app.root_path)
     git = '/usr/bin/git'
