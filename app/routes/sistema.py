@@ -340,33 +340,43 @@ def _config_manager():
 @bp.route('/api/exportar/db', methods=['POST'])
 @requiere_pin_admin
 def api_exportar_db():
-    """Exporta la BD completa como ZIP descargable."""
+    """Exporta solo la BD (sin Excel) como ZIP descargable."""
     try:
         contenido, nombre = _config_manager().exportar_db()
-        return send_file(
-            io.BytesIO(contenido),
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name=nombre
-        )
+        return send_file(io.BytesIO(contenido), mimetype='application/zip',
+                         as_attachment=True, download_name=nombre)
     except Exception as e:
         return error_interno(e, 'Error al exportar BD', clave='error')
+
+
+@bp.route('/api/exportar/completo', methods=['POST'])
+@requiere_pin_admin
+def api_exportar_completo():
+    """Exporta BD + todos los Excel de data/cortes/ como ZIP."""
+    try:
+        contenido, nombre = _config_manager().exportar_completo()
+        return send_file(io.BytesIO(contenido), mimetype='application/zip',
+                         as_attachment=True, download_name=nombre)
+    except Exception as e:
+        return error_interno(e, 'Error al exportar completo', clave='error')
 
 
 @bp.route('/api/importar/db', methods=['POST'])
 @requiere_pin_admin
 def api_importar_db():
-    """Importa una BD desde un ZIP subido. Reemplaza la BD actual."""
+    """Importa una BD (y opcionalmente Excel) desde un ZIP. Reemplaza la BD actual."""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No se proporcionó archivo'}), 400
     archivo = request.files['file']
     if not archivo or not archivo.filename.lower().endswith('.zip'):
         return jsonify({'success': False, 'error': 'El archivo debe ser un ZIP'}), 400
+    incluir_excels = request.form.get('incluir_excels', 'true').lower() == 'true'
     try:
-        resultado = _config_manager().importar_db(archivo.read())
+        resultado = _config_manager().importar_db(archivo.read(), incluir_excels=incluir_excels)
         return jsonify({'success': resultado['éxito'],
                         'mensaje': resultado['mensaje'],
-                        'tablas': resultado.get('tablas', {})})
+                        'tablas':  resultado.get('tablas', {}),
+                        'excels':  resultado.get('excels', 0)})
     except Exception as e:
         return error_interno(e, 'Error al importar BD', clave='error')
 

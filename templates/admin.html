@@ -334,20 +334,33 @@
                     <!-- ===== EXPORTAR / IMPORTAR BD ===== -->
                     <div class="card">
                         <h2>💾 Exportar base de datos</h2>
-                        <p class="instruccion">Descarga una copia exacta de toda la BD (puestos, máquinas, terminales, bonos, órdenes… todo) en un ZIP. Úsala para hacer backup o llevarla a otro equipo.</p>
-                        <button onclick="exportarDB()" class="btn-primary" style="margin-top:10px;">⬇️ Descargar ZIP de la BD</button>
+                        <p class="instruccion">Descarga una copia exacta de toda la BD en un ZIP. Úsala para hacer backup o llevarla a otro equipo.</p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+                            <button onclick="exportarDB(false)" class="btn-secondary">⬇️ Solo BD</button>
+                            <button onclick="exportarDB(true)" class="btn-primary">⬇️ BD + Excel (completo)</button>
+                        </div>
+                        <p class="instruccion" style="margin-top:10px;font-size:0.85em;">
+                            <strong>Solo BD</strong>: incluye toda la configuración, bonos, órdenes, etc. — los Excel hay que resubirlos manualmente.<br>
+                            <strong>BD + Excel</strong>: todo lo anterior más los archivos Excel de <code>data/cortes/</code> — import 100% portátil.
+                        </p>
                         <div id="export-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
                     </div>
 
                     <div class="card">
                         <h2>📥 Importar base de datos</h2>
-                        <p class="instruccion">Sube el ZIP exportado anteriormente para reemplazar la BD de esta instalación. <strong style="color:#f87171;">⚠ BORRARÁ TODO LO ACTUAL</strong> y lo sustituirá por el contenido del ZIP.</p>
+                        <p class="instruccion">Sube el ZIP exportado anteriormente. <strong style="color:#f87171;">⚠ REEMPLAZA todo lo actual</strong> por el contenido del ZIP.</p>
                         <form id="import-db-form" enctype="multipart/form-data" style="margin-top:14px;">
                             <div class="input-group">
                                 <label for="import-db-file">Archivo ZIP:</label>
                                 <input type="file" id="import-db-file" accept=".zip" required>
                             </div>
-                            <button type="submit" class="btn-primary" style="margin-top:10px;background:#dc2626;">📥 Importar y reemplazar BD</button>
+                            <div class="input-group" style="margin-top:10px;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" id="import-incluir-excels" checked>
+                                    <span>Restaurar también los Excel del ZIP (si los contiene)</span>
+                                </label>
+                            </div>
+                            <button type="submit" class="btn-primary" style="margin-top:12px;background:#dc2626;">📥 Importar y reemplazar BD</button>
                         </form>
                         <div id="import-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
                     </div>

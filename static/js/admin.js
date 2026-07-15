@@ -986,20 +986,23 @@ async function _esperarReinicio(maxSegundos) {
 // ======================== EXPORTAR / IMPORTAR BD ============================
 // ============================================================================
 
-async function exportarDB() {
+async function exportarDB(conExcels) {
     const statusDiv = document.getElementById('export-db-status');
     statusDiv.className = 'mensaje info';
-    statusDiv.textContent = '⏳ Preparando ZIP de la BD...';
+    statusDiv.textContent = conExcels
+        ? '⏳ Preparando ZIP completo (BD + Excel)...'
+        : '⏳ Preparando ZIP de la BD...';
     statusDiv.classList.remove('hidden');
 
+    const endpoint = conExcels ? '/api/exportar/completo' : '/api/exportar/db';
+
     try {
-        const response = await fetch('/api/exportar/db', { method: 'POST' });
+        const response = await fetch(endpoint, { method: 'POST' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        // Obtener nombre del archivo del header Content-Disposition
         const disposition = response.headers.get('Content-Disposition') || '';
         const match = disposition.match(/filename[^;=\n]*=['"]?([^'"\n]+)['"]?/);
-        const filename = match ? match[1] : 'engastado_db.zip';
+        const filename = match ? match[1] : (conExcels ? 'engastado_completo.zip' : 'engastado_db.zip');
 
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -1028,8 +1031,11 @@ async function _importarDB(e) {
     statusDiv.textContent = '⏳ Importando BD...';
     statusDiv.classList.remove('hidden');
 
+    const incluirExcels = document.getElementById('import-incluir-excels')?.checked ?? true;
+
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('incluir_excels', incluirExcels ? 'true' : 'false');
 
     try {
         const response = await fetch('/api/importar/db', { method: 'POST', body: fd });
@@ -1040,9 +1046,10 @@ async function _importarDB(e) {
             const resumen = Object.entries(tablas)
                 .map(([t, n]) => `<li><strong>${t}</strong>: ${n} filas</li>`)
                 .join('');
+            const excelsMsg = data.excels > 0 ? `<br>📂 ${data.excels} Excel restaurados` : '';
             statusDiv.className = 'mensaje success';
             statusDiv.innerHTML = `
-                <strong>✓ ${data.mensaje}</strong>
+                <strong>✓ ${data.mensaje}</strong>${excelsMsg}
                 ${resumen ? `<ul style="margin:8px 0 0 16px;font-size:0.88em;">${resumen}</ul>` : ''}
                 <br><span style="font-size:0.85em;">Recarga la página para ver los datos actualizados.</span>
             `;
