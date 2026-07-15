@@ -97,31 +97,46 @@ class ConfigManager:
         """
         result = {'éxito': 0, 'errores': 0, 'detalles': []}
         
-        if not merge:
-            # REPLACE: borrar tabla antes
-            try:
-                self.db.session.execute(text(f"DELETE FROM {tabla}"))
-                self.db.session.commit()
-            except Exception as e:
-                result['detalles'].append(f"No se pudo vaciar {tabla}: {e}")
-        
-        # Insertar datos
-        for fila in datos:
-            try:
-                cols = ', '.join(fila.keys())
-                placeholders = ', '.join([f":{k}" for k in fila.keys()])
-                query = f"INSERT OR REPLACE INTO {tabla} ({cols}) VALUES ({placeholders})"
-                self.db.session.execute(text(query), fila)
-                result['éxito'] += 1
-            except Exception as e:
-                result['errores'] += 1
-                result['detalles'].append(f"Error insertando en {tabla}: {e}")
+        if not datos:
+            return result
         
         try:
-            self.db.session.commit()
+            # Usar conexión cruda de SQLite para mejor control
+            conn = self.db.engine.raw_connection()
+            cursor = conn.cursor()
+            
+            if not merge:
+                # REPLACE: borrar tabla antes
+                try:
+                    cursor.execute(f"DELETE FROM {tabla}")
+                    conn.commit()
+                except Exception as e:
+                    result['detalles'].append(f"No se pudo vaciar {tabla}: {e}")
+            
+            # Preparar columnas (igual para todas las filas)
+            if not datos:
+                conn.close()
+                return result
+                
+            cols = list(datos[0].keys())
+            placeholders = ', '.join(['?' for _ in cols])
+            query = f"INSERT OR REPLACE INTO {tabla} ({', '.join(cols)}) VALUES ({placeholders})"
+            
+            # Convertir cada dict a tupla en el orden correcto
+            rows = []
+            for fila in datos:
+                valores = tuple(fila.get(col) for col in cols)
+                rows.append(valores)
+            
+            # executemany es más eficiente
+            cursor.executemany(query, rows)
+            conn.commit()
+            result['éxito'] = len(datos)
+            
+            conn.close()
         except Exception as e:
-            result['detalles'].append(f"Error committing {tabla}: {e}")
-            self.db.session.rollback()
+            result['errores'] = len(datos)
+            result['detalles'].append(f"Error insertando en {tabla}: {e}")
         
         return result
     
@@ -217,8 +232,11 @@ class ConfigManager:
         
         try:
             # Deshabilitar claves foráneas durante la importación
-            self.db.session.execute(text("PRAGMA foreign_keys = OFF"))
-            self.db.session.commit()
+            conn = self.db.engine.raw_connection()
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA foreign_keys = OFF")
+            conn.commit()
+            conn.close()
             
             zip_buffer = io.BytesIO(contenido_zip)
             
@@ -255,8 +273,14 @@ class ConfigManager:
                 
                 except Exception as e:
                     resultado['detalles'].append(f"Error importando config: {e}")
-                    self.db.session.execute(text("PRAGMA foreign_keys = ON"))
-                    self.db.session.commit()
+                    try:
+                        conn_fk = self.db.engine.raw_connection()
+                        cursor_fk = conn_fk.cursor()
+                        cursor_fk.execute("PRAGMA foreign_keys = ON")
+                        conn_fk.commit()
+                        conn_fk.close()
+                    except:
+                        pass
                     return resultado
                 
                 # Importar producción (si aplica)
@@ -288,14 +312,20 @@ class ConfigManager:
                         resultado['detalles'].append(f"Error importando producción: {e}")
             
             # Re-habilitar claves foráneas
-            self.db.session.execute(text("PRAGMA foreign_keys = ON"))
-            self.db.session.commit()
+            conn_fk = self.db.engine.raw_connection()
+            cursor_fk = conn_fk.cursor()
+            cursor_fk.execute("PRAGMA foreign_keys = ON")
+            conn_fk.commit()
+            conn_fk.close()
         
         except Exception as e:
             resultado['detalles'].append(f"Error leyendo ZIP: {e}")
             try:
-                self.db.session.execute(text("PRAGMA foreign_keys = ON"))
-                self.db.session.commit()
+                conn_fk = self.db.engine.raw_connection()
+                cursor_fk = conn_fk.cursor()
+                cursor_fk.execute("PRAGMA foreign_keys = ON")
+                conn_fk.commit()
+                conn_fk.close()
             except:
                 pass
             return resultado
