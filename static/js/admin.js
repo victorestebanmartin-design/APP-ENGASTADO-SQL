@@ -983,5 +983,172 @@ async function _esperarReinicio(maxSegundos) {
 
 
 // ============================================================================
+// ======================== EXPORTAR / IMPORTAR CONFIGURACIÓN ================
+// ============================================================================
+
+/**
+ * Exporta solo la configuración pura (puestos, máquinas, etc.)
+ */
+async function exportarConfigPura() {
+    const statusDiv = document.getElementById('export-status');
+    statusDiv.className = 'mensaje info';
+    statusDiv.textContent = '⏳ Generando exportación...';
+    statusDiv.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/api/exportar/config', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.name || 'engastado_config.zip';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        
+        statusDiv.className = 'mensaje success';
+        statusDiv.textContent = '✓ Exportación completada. El ZIP se ha descargado.';
+    } catch (error) {
+        console.error('Error:', error);
+        statusDiv.className = 'mensaje error';
+        statusDiv.textContent = '❌ Error al exportar: ' + error.message;
+    }
+}
+
+/**
+ * Exporta la configuración completa (puestos, máquinas, bonos, órdenes, etc.)
+ */
+async function exportarConfigCompleta() {
+    const confirmar = confirm('¿Estás seguro?\n\nEsto incluirá todos los bonos, órdenes y datos de producción.\nEl archivo puede ser grande.');
+    if (!confirmar) return;
+    
+    const statusDiv = document.getElementById('export-status');
+    statusDiv.className = 'mensaje info';
+    statusDiv.textContent = '⏳ Generando exportación completa (esto puede tardar)...';
+    statusDiv.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/api/exportar/completo', {
+            method: 'POST'
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blob.name || 'engastado_completo.zip';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        
+        statusDiv.className = 'mensaje success';
+        statusDiv.textContent = '✓ Exportación completada. El ZIP se ha descargado.';
+    } catch (error) {
+        console.error('Error:', error);
+        statusDiv.className = 'mensaje error';
+        statusDiv.textContent = '❌ Error al exportar: ' + error.message;
+    }
+}
+
+/**
+ * Importa configuración desde un ZIP
+ */
+async function importarConfiguracion(e) {
+    e.preventDefault();
+    
+    const fileInput = document.getElementById('import-file');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        mostrarMensaje('import-status', 'Por favor selecciona un archivo ZIP', 'error');
+        return;
+    }
+    
+    // Obtener opciones
+    const modoInput = document.querySelector('input[name="modo"]:checked');
+    const modo = modoInput ? modoInput.value : 'merge';
+    const incluirProduccion = document.getElementById('import-incluir-produccion').checked;
+    
+    // Confirmación según el modo
+    let msgConfirma = modo === 'replace'
+        ? '⚠️ REPLACE: Se BORRARÁN todos los datos actuales y se recrearán desde el ZIP.\n¿Estás SEGURO?'
+        : '🔄 MERGE: Se actualizarán los datos existentes y se añadirán los nuevos.\n¿Continuar?';
+    
+    if (!confirm(msgConfirma)) return;
+    
+    const statusDiv = document.getElementById('import-status');
+    statusDiv.className = 'mensaje info';
+    statusDiv.textContent = '⏳ Importando configuración...';
+    statusDiv.classList.remove('hidden');
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('modo', modo);
+    formData.append('incluir_produccion', incluirProduccion ? 'true' : 'false');
+    
+    try {
+        const response = await fetch('/api/importar/config', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.éxito) {
+            const resumenEntradas = [];
+            for (const [tabla, res] of Object.entries(data.resumen || {})) {
+                if (res.éxito > 0 || res.errores > 0) {
+                    resumenEntradas.push(`<li><strong>${tabla}</strong>: ${res.éxito} insertados${res.errores > 0 ? `, ${res.errores} errores` : ''}</li>`);
+                }
+            }
+            
+            statusDiv.className = 'mensaje success';
+            statusDiv.innerHTML = `
+                <strong>✓ Importación completada (${data.modo})</strong>
+                <ul style="margin:8px 0 0 18px;font-size:0.9em;">${resumenEntradas.join('')}</ul>
+                ${data.detalles && data.detalles.length > 0 
+                    ? `<br><details style="margin-top:8px;font-size:0.85em;"><summary>Detalles/avisos</summary><pre style="background:#0f172a;padding:8px;border-radius:4px;overflow-x:auto;margin:6px 0 0 0;">${data.detalles.join('\n')}</pre></details>`
+                    : ''
+                }
+            `;
+            
+            // Limpiar formulario tras 2 segundos
+            setTimeout(() => {
+                document.getElementById('import-form').reset();
+            }, 2000);
+        } else {
+            statusDiv.className = 'mensaje error';
+            statusDiv.innerHTML = `
+                <strong>❌ Error al importar</strong><br>
+                ${data.detalles && data.detalles.length > 0 
+                    ? data.detalles.slice(0, 3).join('<br>')
+                    : 'Error desconocido'
+                }
+            `;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        statusDiv.className = 'mensaje error';
+        statusDiv.textContent = '❌ Error al importar: ' + error.message;
+    }
+}
+
+// Event listener para el formulario de importación
+document.addEventListener('DOMContentLoaded', function() {
+    const importForm = document.getElementById('import-form');
+    if (importForm) {
+        importForm.addEventListener('submit', importarConfiguracion);
+    }
+});
 
 
+// ============================================================================

@@ -38,6 +38,7 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
+from app.config_manager import ConfigManager
 
 
 # ==================== SALUD DEL SISTEMA ====================
@@ -326,3 +327,82 @@ def deploy_pull():
         })
     except Exception as e:
         return error_interno(e, 'Error al sincronizar con GitHub', clave='error')
+
+
+# ==================== EXPORTAR / IMPORTAR CONFIGURACIÓN ====================
+
+@bp.route('/api/exportar/config', methods=['POST'])
+@requiere_pin_admin
+def api_exportar_config():
+    """Exporta configuración pura (puestos, máquinas, etc.) en ZIP."""
+    try:
+        manager = ConfigManager(db)
+        contenido, nombre = manager.exportar(incluir_produccion=False)
+        
+        return send_file(
+            io.BytesIO(contenido),
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=nombre
+        )
+    except Exception as e:
+        return error_interno(e, 'Error al exportar configuración', clave='error')
+
+
+@bp.route('/api/exportar/completo', methods=['POST'])
+@requiere_pin_admin
+def api_exportar_completo():
+    """Exporta configuración + datos de producción (órdenes, bonos, etc.) en ZIP."""
+    try:
+        manager = ConfigManager(db)
+        contenido, nombre = manager.exportar(incluir_produccion=True)
+        
+        return send_file(
+            io.BytesIO(contenido),
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=nombre
+        )
+    except Exception as e:
+        return error_interno(e, 'Error al exportar datos completos', clave='error')
+
+
+@bp.route('/api/importar/config', methods=['POST'])
+@requiere_pin_admin
+def api_importar_config():
+    """
+    Importa configuración desde un ZIP.
+    
+    Parámetros POST:
+      - file: archivo ZIP
+      - modo: 'merge' (actualiza existentes) o 'replace' (borra y recrea)
+      - incluir_produccion: 'true' o 'false' para incluir datos de producción
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No se proporcionó archivo'}), 400
+        
+        archivo = request.files['file']
+        if not archivo or not archivo.filename.endswith('.zip'):
+            return jsonify({'success': False, 'error': 'El archivo debe ser un ZIP'}), 400
+        
+        # Leer parámetros
+        modo = request.form.get('modo', 'merge')
+        merge = (modo == 'merge')
+        incluir_produccion = request.form.get('incluir_produccion', 'false').lower() == 'true'
+        
+        # Leer contenido del ZIP
+        contenido = archivo.read()
+        
+        # Importar
+        manager = ConfigManager(db)
+        resultado = manager.importar(
+            contenido,
+            merge=merge,
+            incluir_produccion=incluir_produccion
+        )
+        
+        return jsonify(resultado)
+    
+    except Exception as e:
+        return error_interno(e, 'Error al importar configuración', clave='error')
