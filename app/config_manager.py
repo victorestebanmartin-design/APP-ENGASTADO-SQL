@@ -191,7 +191,35 @@ class ConfigManager:
             'modo': 'MERGE' if merge else 'REPLACE',
         }
         
+        # Orden de importación: maestras primero, luego dependientes
+        ORDEN_CONFIG = [
+            'puestos',                          # Maestro
+            'operarios',                        # Maestro
+            'cable_colores',                    # Maestro
+            'maquinas',                         # FK → puestos
+            'maquinas_terminales',              # FK → maquinas
+            'terminales_desactivados',          # FK → (nada)
+            'terminales_imagenes',              # (nada)
+            'terminales_gavetas',               # (nada)
+            'codigos_cortes',                   # (nada)
+        ]
+        
+        ORDEN_PRODUCCION = [
+            'bonos',                            # Maestro
+            'carros',                           # FK → bonos
+            'proyectos',                        # (nada)
+            'ordenes_produccion',               # FK → bonos, carros
+            'proyectos_terminales_completados', # FK → proyectos
+            'grupos_etiquetas',                 # FK → bonos
+            'etiquetas_elementos',              # (nada)
+            'sesiones_trabajo',                 # (nada)
+        ]
+        
         try:
+            # Deshabilitar claves foráneas durante la importación
+            self.db.session.execute(text("PRAGMA foreign_keys = OFF"))
+            self.db.session.commit()
+            
             zip_buffer = io.BytesIO(contenido_zip)
             
             with _zipfile.ZipFile(zip_buffer, 'r') as zf:
@@ -208,13 +236,27 @@ class ConfigManager:
                     config_json = zf.read('config.json').decode('utf-8')
                     config_data = json.loads(config_json)
                     
+                    # Importar en orden
+                    for tabla in ORDEN_CONFIG:
+                        if tabla in config_data:
+                            datos = config_data[tabla]
+                            res = self._json_a_tabla(tabla, datos, merge=merge)
+                            resultado['resumen'][tabla] = res
+                            if res['detalles']:
+                                resultado['detalles'].extend(res['detalles'])
+                    
+                    # Importar las que no estén en el orden (por si hay nuevas)
                     for tabla, datos in config_data.items():
-                        res = self._json_a_tabla(tabla, datos, merge=merge)
-                        resultado['resumen'][tabla] = res
-                        if res['detalles']:
-                            resultado['detalles'].extend(res['detalles'])
+                        if tabla not in resultado['resumen']:
+                            res = self._json_a_tabla(tabla, datos, merge=merge)
+                            resultado['resumen'][tabla] = res
+                            if res['detalles']:
+                                resultado['detalles'].extend(res['detalles'])
+                
                 except Exception as e:
                     resultado['detalles'].append(f"Error importando config: {e}")
+                    self.db.session.execute(text("PRAGMA foreign_keys = ON"))
+                    self.db.session.commit()
                     return resultado
                 
                 # Importar producción (si aplica)
@@ -223,18 +265,39 @@ class ConfigManager:
                         produccion_json = zf.read('produccion.json').decode('utf-8')
                         produccion_data = json.loads(produccion_json)
                         
+                        # Importar en orden
+                        for tabla in ORDEN_PRODUCCION:
+                            if tabla in produccion_data:
+                                datos = produccion_data[tabla]
+                                res = self._json_a_tabla(tabla, datos, merge=merge)
+                                resultado['resumen'][tabla] = res
+                                if res['detalles']:
+                                    resultado['detalles'].extend(res['detalles'])
+                        
+                        # Importar las que no estén en el orden
                         for tabla, datos in produccion_data.items():
-                            res = self._json_a_tabla(tabla, datos, merge=merge)
-                            resultado['resumen'][tabla] = res
-                            if res['detalles']:
-                                resultado['detalles'].extend(res['detalles'])
+                            if tabla not in resultado['resumen']:
+                                res = self._json_a_tabla(tabla, datos, merge=merge)
+                                resultado['resumen'][tabla] = res
+                                if res['detalles']:
+                                    resultado['detalles'].extend(res['detalles'])
+                    
                     except KeyError:
                         resultado['detalles'].append("Aviso: archivo no contiene datos de producción")
                     except Exception as e:
                         resultado['detalles'].append(f"Error importando producción: {e}")
+            
+            # Re-habilitar claves foráneas
+            self.db.session.execute(text("PRAGMA foreign_keys = ON"))
+            self.db.session.commit()
         
         except Exception as e:
             resultado['detalles'].append(f"Error leyendo ZIP: {e}")
+            try:
+                self.db.session.execute(text("PRAGMA foreign_keys = ON"))
+                self.db.session.commit()
+            except:
+                pass
             return resultado
         
         resultado['éxito'] = True
