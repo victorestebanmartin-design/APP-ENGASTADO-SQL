@@ -1,334 +1,239 @@
 """
 config_manager.py
 -----------------
-Exportación e importación de configuración de la app (y opcionalmente datos de producción).
+Exportación e importación de la BD completa como archivo .db dentro de un ZIP.
 
-Permite:
-  - Exportar config pura (puestos, máquinas, terminales, etc.) o completa (+ órdenes, bonos)
-  - Importar con opción MERGE (actualiza existentes) o REPLACE (borra y recrea)
-  - Transportar config entre equipos sin perder datos de producción
+Filosofía: copia directa del archivo SQLite — sin JSON, sin tablas, sin FK.
+Lo que ves en una instalación es exactamente lo que llega a la otra.
 """
-import json
 import os
+import sqlite3
 import zipfile as _zipfile
 import io
+import tempfile
 from datetime import datetime
-from sqlalchemy import text, inspect
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 
-# Tablas de configuración pura (no tienen datos operacionales)
-TABLAS_CONFIG = [
-    'puestos',
-    'maquinas',
-    'maquinas_terminales',
-    'terminales_desactivados',
-    'terminales_imagenes',
-    'terminales_gavetas',
-    'cable_colores',
-    'operarios',
-    'codigos_cortes',
-]
-
-# Tablas de producción (órdenes, bonos, progreso)
-TABLAS_PRODUCCION = [
-    'bonos',
-    'carros',
-    'proyectos',
-    'ordenes_produccion',
-    'proyectos_terminales_completados',
-    'grupos_etiquetas',
-    'etiquetas_elementos',
-    'sesiones_trabajo',
-]
+DATA_DIR_NAME = 'data'
+DB_FILE_NAME  = 'engastado.db'
 
 
 class ConfigManager:
-    """Gestor de exportación/importación de configuración."""
-    
-    def __init__(self, db):
+
+    def __init__(self, db, base_dir):
         """
         Args:
-            db: SQLAlchemy database instance
+            db:       SQLAlchemy database instance
+            base_dir: directorio raíz del proyecto (donde está la carpeta data/)
         """
-        self.db = db
-    
-    def _tabla_a_json(self, tabla):
+        self.db       = db
+        self.base_dir = base_dir
+        self.data_dir = os.path.join(base_dir, DATA_DIR_NAME)
+        self.db_path  = os.path.join(self.data_dir, DB_FILE_NAME)
+
+    # ------------------------------------------------------------------
+    #  EXPORTAR — descarga el archivo .db como ZIP
+    # ------------------------------------------------------------------
+
+    def exportar_db(self):
         """
-        Convierte una tabla completa a lista de dicts (JSON-serializable).
-        
-        Args:
-            tabla (str): Nombre de la tabla
-            
+        Exporta la BD completa como ZIP que contiene 'engastado.db'.
+
+        Hace un WAL checkpoint antes de exportar para asegurar que
+        todos los datos pendientes están escritos en el archivo principal.
+
         Returns:
-            list: Lista de dicts con los registros
+            (bytes, str): (contenido ZIP, nombre_archivo sugerido)
+        """
+        # Vaciar el WAL al archivo principal antes de leer el fichero
+        try:
+            with self.db.engine.connect() as conn:
+                conn.execute(text("PRAGMA wal_checkpoint(FULL)"))
+                conn.commit()
+        except Exception:
+            pass
+
+        # Copiar la BD a un archivo temporal usando sqlite3.backup()
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        src_con = sqlite3.connect(self.db_path)
+        tmp_con = sqlite3.connect(tmp_path)
+        src_con.backup(tmp_con)
+        tmp_con.close()
+        src_con.close()
+
+        with open(tmp_path, 'rb') as f:
+            db_bytes = f.read()
+        os.unlink(tmp_path)
+
+        # Empaquetar en ZIP
+        zip_buf = io.BytesIO()
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        with _zipfile.ZipFile(zip_buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(DB_FILE_NAME, db_bytes)
+            zf.writestr('info.txt',
+                        f"Exportado: {datetime.now().isoformat()}\n"
+                        f"Archivo:   {DB_FILE_NAME}\n"
+                        f"Tamaño DB: {len(db_bytes)} bytes\n")
+        zip_buf.seek(0)
+
+        nombre = f"engastado_db_{ts}.zip"
+        return zip_buf.getvalue(), nombre
+
+    # ------------------------------------------------------------------
+    #  IMPORTAR — sube un ZIP con engastado.db y reemplaza la BD local
+    # ------------------------------------------------------------------
+
+    def importar_db(self, contenido_zip):
+        """
+        Reemplaza la BD actual con la contenida en el ZIP.
+
+        Args:
+            contenido_zip (bytes): Contenido del archivo ZIP subido
+
+        Returns:
+            dict: {'éxito': bool, 'mensaje': str, 'tablas': dict}
         """
         try:
-            result = self.db.session.execute(text(f"SELECT * FROM {tabla}"))
-            cols = [d[0] for d in result.keys()]
-            rows = []
-            for row in result:
-                fila = {}
-                for i, col in enumerate(cols):
-                    val = row[i]
-                    # Convertir tipos especiales a JSON-compatible
-                    if val is None:
-                        fila[col] = None
-                    elif isinstance(val, (int, float, str, bool)):
-                        fila[col] = val
-                    else:
-                        fila[col] = str(val)
-                rows.append(fila)
-            return rows
-        except Exception as e:
-            print(f"[AVISO] No se pudo exportar tabla {tabla}: {e}")
-            return []
-    
-    def _json_a_tabla(self, tabla, datos, merge=True):
-        """
-        Carga datos JSON a una tabla.
-        
-        Args:
-            tabla (str): Nombre de la tabla
-            datos (list): Lista de dicts
-            merge (bool): Si True, merge (INSERT OR REPLACE); si False, borra antes
-            
-        Returns:
-            dict: {'éxito': n_insertados, 'errores': n_errores, 'detalles': []}
-        """
-        result = {'éxito': 0, 'errores': 0, 'detalles': []}
-        
-        if not datos:
-            return result
-        
-        try:
-            # Usar conexión cruda de SQLite para mejor control
-            conn = self.db.engine.raw_connection()
-            cursor = conn.cursor()
-            
-            if not merge:
-                # REPLACE: borrar tabla antes
-                try:
-                    cursor.execute(f"DELETE FROM {tabla}")
-                    conn.commit()
-                except Exception as e:
-                    result['detalles'].append(f"No se pudo vaciar {tabla}: {e}")
-            
-            # Preparar columnas (igual para todas las filas)
-            if not datos:
-                conn.close()
-                return result
-                
-            cols = list(datos[0].keys())
-            placeholders = ', '.join(['?' for _ in cols])
-            query = f"INSERT OR REPLACE INTO {tabla} ({', '.join(cols)}) VALUES ({placeholders})"
-            
-            # Convertir cada dict a tupla en el orden correcto
-            rows = []
-            for fila in datos:
-                valores = tuple(fila.get(col) for col in cols)
-                rows.append(valores)
-            
-            # executemany es más eficiente
-            cursor.executemany(query, rows)
-            conn.commit()
-            result['éxito'] = len(datos)
-            
-            conn.close()
-        except Exception as e:
-            result['errores'] = len(datos)
-            result['detalles'].append(f"Error insertando en {tabla}: {e}")
-        
-        return result
-    
-    def exportar(self, incluir_produccion=False):
-        """
-        Exporta configuración a un archivo ZIP en memoria.
-        
-        Args:
-            incluir_produccion (bool): Si True, incluye también órdenes, bonos, etc.
-            
-        Returns:
-            (bytes, str): (contenido ZIP, nombre_archivo)
-        """
-        zip_buffer = io.BytesIO()
-        
-        with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
-            # Metadatos
-            metadata = {
-                'version': '1.0',
-                'fecha_exportacion': datetime.now().isoformat(),
-                'incluye_produccion': incluir_produccion,
-            }
-            zf.writestr('metadata.json', json.dumps(metadata, indent=2, ensure_ascii=False))
-            
-            # Tablas de configuración
-            config_data = {}
-            for tabla in TABLAS_CONFIG:
-                datos = self._tabla_a_json(tabla)
-                if datos:
-                    config_data[tabla] = datos
-            
-            zf.writestr('config.json', json.dumps(config_data, indent=2, ensure_ascii=False))
-            
-            # Tablas de producción (si está habilitado)
-            if incluir_produccion:
-                produccion_data = {}
-                for tabla in TABLAS_PRODUCCION:
-                    datos = self._tabla_a_json(tabla)
-                    if datos:
-                        produccion_data[tabla] = datos
-                
-                zf.writestr('produccion.json', json.dumps(produccion_data, indent=2, ensure_ascii=False))
-        
-        zip_buffer.seek(0)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        tipo = 'completa' if incluir_produccion else 'config'
-        nombre_archivo = f"engastado_export_{tipo}_{timestamp}.zip"
-        
-        return zip_buffer.getvalue(), nombre_archivo
-    
-    def importar(self, contenido_zip, merge=True, incluir_produccion=False):
-        """
-        Importa configuración desde un archivo ZIP.
-        
-        Args:
-            contenido_zip (bytes): Contenido del ZIP
-            merge (bool): Si True, MERGE; si False, REPLACE
-            incluir_produccion (bool): Si True, importa también datos de producción
-            
-        Returns:
-            dict: {'éxito': True/False, 'resumen': {...}, 'detalles': [...]}
-        """
-        resultado = {
-            'éxito': False,
-            'resumen': {},
-            'detalles': [],
-            'modo': 'MERGE' if merge else 'REPLACE',
-        }
-        
-        # Orden de importación: maestras primero, luego dependientes
-        ORDEN_CONFIG = [
-            'puestos',                          # Maestro
-            'operarios',                        # Maestro
-            'cable_colores',                    # Maestro
-            'maquinas',                         # FK → puestos
-            'maquinas_terminales',              # FK → maquinas
-            'terminales_desactivados',          # FK → (nada)
-            'terminales_imagenes',              # (nada)
-            'terminales_gavetas',               # (nada)
-            'codigos_cortes',                   # (nada)
-        ]
-        
-        ORDEN_PRODUCCION = [
-            'bonos',                            # Maestro
-            'carros',                           # FK → bonos
-            'proyectos',                        # (nada)
-            'ordenes_produccion',               # FK → bonos, carros
-            'proyectos_terminales_completados', # FK → proyectos
-            'grupos_etiquetas',                 # FK → bonos
-            'etiquetas_elementos',              # (nada)
-            'sesiones_trabajo',                 # (nada)
-        ]
-        
-        try:
-            # Deshabilitar claves foráneas durante la importación
-            conn = self.db.engine.raw_connection()
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA foreign_keys = OFF")
-            conn.commit()
-            conn.close()
-            
-            zip_buffer = io.BytesIO(contenido_zip)
-            
-            with _zipfile.ZipFile(zip_buffer, 'r') as zf:
-                # Leer metadata
-                try:
-                    metadata_json = zf.read('metadata.json').decode('utf-8')
-                    metadata = json.loads(metadata_json)
-                    resultado['metadata'] = metadata
-                except Exception as e:
-                    resultado['detalles'].append(f"Aviso: no hay metadata: {e}")
-                
-                # Importar config
-                try:
-                    config_json = zf.read('config.json').decode('utf-8')
-                    config_data = json.loads(config_json)
-                    
-                    # Importar en orden
-                    for tabla in ORDEN_CONFIG:
-                        if tabla in config_data:
-                            datos = config_data[tabla]
-                            res = self._json_a_tabla(tabla, datos, merge=merge)
-                            resultado['resumen'][tabla] = res
-                            if res['detalles']:
-                                resultado['detalles'].extend(res['detalles'])
-                    
-                    # Importar las que no estén en el orden (por si hay nuevas)
-                    for tabla, datos in config_data.items():
-                        if tabla not in resultado['resumen']:
-                            res = self._json_a_tabla(tabla, datos, merge=merge)
-                            resultado['resumen'][tabla] = res
-                            if res['detalles']:
-                                resultado['detalles'].extend(res['detalles'])
-                
-                except Exception as e:
-                    resultado['detalles'].append(f"Error importando config: {e}")
-                    try:
-                        conn_fk = self.db.engine.raw_connection()
-                        cursor_fk = conn_fk.cursor()
-                        cursor_fk.execute("PRAGMA foreign_keys = ON")
-                        conn_fk.commit()
-                        conn_fk.close()
-                    except:
-                        pass
-                    return resultado
-                
-                # Importar producción (si aplica)
-                if incluir_produccion:
-                    try:
-                        produccion_json = zf.read('produccion.json').decode('utf-8')
-                        produccion_data = json.loads(produccion_json)
-                        
-                        # Importar en orden
-                        for tabla in ORDEN_PRODUCCION:
-                            if tabla in produccion_data:
-                                datos = produccion_data[tabla]
-                                res = self._json_a_tabla(tabla, datos, merge=merge)
-                                resultado['resumen'][tabla] = res
-                                if res['detalles']:
-                                    resultado['detalles'].extend(res['detalles'])
-                        
-                        # Importar las que no estén en el orden
-                        for tabla, datos in produccion_data.items():
-                            if tabla not in resultado['resumen']:
-                                res = self._json_a_tabla(tabla, datos, merge=merge)
-                                resultado['resumen'][tabla] = res
-                                if res['detalles']:
-                                    resultado['detalles'].extend(res['detalles'])
-                    
-                    except KeyError:
-                        resultado['detalles'].append("Aviso: archivo no contiene datos de producción")
-                    except Exception as e:
-                        resultado['detalles'].append(f"Error importando producción: {e}")
-            
-            # Re-habilitar claves foráneas
-            conn_fk = self.db.engine.raw_connection()
-            cursor_fk = conn_fk.cursor()
-            cursor_fk.execute("PRAGMA foreign_keys = ON")
-            conn_fk.commit()
-            conn_fk.close()
-        
-        except Exception as e:
-            resultado['detalles'].append(f"Error leyendo ZIP: {e}")
+            zip_buf = io.BytesIO(contenido_zip)
+
+            # Extraer el .db del ZIP
+            with _zipfile.ZipFile(zip_buf, 'r') as zf:
+                db_files = [n for n in zf.namelist() if n.endswith('.db')]
+                if not db_files:
+                    return {'éxito': False, 'mensaje': 'El ZIP no contiene ningún archivo .db'}
+                db_bytes = zf.read(db_files[0])
+
+            # Guardar en un archivo temporal
+            with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
+                tmp.write(db_bytes)
+                tmp_path = tmp.name
+
+            # Verificar que es una BD SQLite válida
             try:
-                conn_fk = self.db.engine.raw_connection()
-                cursor_fk = conn_fk.cursor()
-                cursor_fk.execute("PRAGMA foreign_keys = ON")
-                conn_fk.commit()
-                conn_fk.close()
-            except:
-                pass
+                test_con = sqlite3.connect(tmp_path)
+                tablas = test_con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                ).fetchall()
+                conteos = {}
+                for (t,) in tablas:
+                    try:
+                        n = test_con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                        conteos[t] = n
+                    except Exception:
+                        conteos[t] = '?'
+                test_con.close()
+            except Exception as e:
+                os.unlink(tmp_path)
+                return {'éxito': False, 'mensaje': f'El archivo .db es inválido o está corrupto: {e}'}
+
+            # Cerrar el pool de SQLAlchemy para liberar handles
+            self.db.engine.dispose()
+
+            # Borrar WAL/SHM si existen
+            for ext in ['-wal', '-shm']:
+                f = self.db_path + ext
+                if os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
+            # Restaurar: copiar src → dst con sqlite3.backup()
+            src_con = sqlite3.connect(tmp_path)
+            dst_con = sqlite3.connect(self.db_path)
+            src_con.backup(dst_con)
+            dst_con.close()
+            src_con.close()
+            os.unlink(tmp_path)
+
+            # Forzar reconexión del pool
+            self.db.engine.dispose()
+
+            return {
+                'éxito':   True,
+                'mensaje': f'BD restaurada correctamente ({len(conteos)} tablas)',
+                'tablas':  conteos,
+            }
+
+        except Exception as e:
+            return {'éxito': False, 'mensaje': f'Error inesperado: {e}'}
+
+    # ------------------------------------------------------------------
+    #  BACKUPS LOCALES — listar y restaurar desde data/
+    # ------------------------------------------------------------------
+
+    def listar_backups(self):
+        """
+        Lista los archivos de backup disponibles en data/.
+
+        Returns:
+            list[dict]: [{nombre, fecha_str, tamaño_kb}, ...]  ordenados desc
+        """
+        resultado = []
+        if not os.path.isdir(self.data_dir):
             return resultado
-        
-        resultado['éxito'] = True
+
+        for nombre in os.listdir(self.data_dir):
+            if 'backup' not in nombre.lower() or not nombre.startswith('engastado'):
+                continue
+            ruta = os.path.join(self.data_dir, nombre)
+            if not os.path.isfile(ruta):
+                continue
+            try:
+                stat = os.stat(ruta)
+                resultado.append({
+                    'nombre':    nombre,
+                    'fecha_ts':  stat.st_mtime,
+                    'fecha_str': datetime.fromtimestamp(stat.st_mtime).strftime('%d/%m/%Y %H:%M'),
+                    'tamano_kb': round(stat.st_size / 1024, 1),
+                })
+            except Exception:
+                pass
+
+        resultado.sort(key=lambda x: x['fecha_ts'], reverse=True)
         return resultado
+
+    def restaurar_backup(self, nombre_backup):
+        """
+        Restaura la BD desde un archivo de backup local en data/.
+
+        Args:
+            nombre_backup (str): Nombre del archivo (solo nombre, sin ruta)
+
+        Returns:
+            dict: {'éxito': bool, 'mensaje': str}
+        """
+        nombre_limpio = os.path.basename(nombre_backup)
+        if not nombre_limpio.startswith('engastado') or 'backup' not in nombre_limpio:
+            return {'éxito': False, 'mensaje': 'Nombre de backup no válido'}
+
+        ruta = os.path.join(self.data_dir, nombre_limpio)
+        if not os.path.isfile(ruta):
+            return {'éxito': False, 'mensaje': 'Archivo de backup no encontrado'}
+
+        try:
+            c = sqlite3.connect(ruta)
+            c.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+            c.close()
+        except Exception as e:
+            return {'éxito': False, 'mensaje': f'Backup corrupto: {e}'}
+
+        self.db.engine.dispose()
+        for ext in ['-wal', '-shm']:
+            f = self.db_path + ext
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+
+        src_con = sqlite3.connect(ruta)
+        dst_con = sqlite3.connect(self.db_path)
+        src_con.backup(dst_con)
+        dst_con.close()
+        src_con.close()
+        self.db.engine.dispose()
+
+        return {'éxito': True, 'mensaje': f'Restaurado desde {nombre_limpio}'}

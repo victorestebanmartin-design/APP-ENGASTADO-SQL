@@ -983,171 +983,152 @@ async function _esperarReinicio(maxSegundos) {
 
 
 // ============================================================================
-// ======================== EXPORTAR / IMPORTAR CONFIGURACIÓN ================
+// ======================== EXPORTAR / IMPORTAR BD ============================
 // ============================================================================
 
-/**
- * Exporta solo la configuración pura (puestos, máquinas, etc.)
- */
-async function exportarConfigPura() {
-    const statusDiv = document.getElementById('export-status');
+async function exportarDB() {
+    const statusDiv = document.getElementById('export-db-status');
     statusDiv.className = 'mensaje info';
-    statusDiv.textContent = '⏳ Generando exportación...';
+    statusDiv.textContent = '⏳ Preparando ZIP de la BD...';
     statusDiv.classList.remove('hidden');
-    
+
     try {
-        const response = await fetch('/api/exportar/config', {
-            method: 'POST'
-        });
-        
+        const response = await fetch('/api/exportar/db', { method: 'POST' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
+        // Obtener nombre del archivo del header Content-Disposition
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename[^;=\n]*=['"]?([^'"\n]+)['"]?/);
+        const filename = match ? match[1] : 'engastado_db.zip';
+
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = blob.name || 'engastado_config.zip';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-        
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        URL.revokeObjectURL(url); a.remove();
+
         statusDiv.className = 'mensaje success';
-        statusDiv.textContent = '✓ Exportación completada. El ZIP se ha descargado.';
-    } catch (error) {
-        console.error('Error:', error);
+        statusDiv.textContent = `✓ ZIP descargado: ${filename}`;
+    } catch (err) {
         statusDiv.className = 'mensaje error';
-        statusDiv.textContent = '❌ Error al exportar: ' + error.message;
+        statusDiv.textContent = '❌ Error al exportar: ' + err.message;
     }
 }
 
-/**
- * Exporta la configuración completa (puestos, máquinas, bonos, órdenes, etc.)
- */
-async function exportarConfigCompleta() {
-    const confirmar = confirm('¿Estás seguro?\n\nEsto incluirá todos los bonos, órdenes y datos de producción.\nEl archivo puede ser grande.');
-    if (!confirmar) return;
-    
-    const statusDiv = document.getElementById('export-status');
-    statusDiv.className = 'mensaje info';
-    statusDiv.textContent = '⏳ Generando exportación completa (esto puede tardar)...';
-    statusDiv.classList.remove('hidden');
-    
-    try {
-        const response = await fetch('/api/exportar/completo', {
-            method: 'POST'
-        });
-        
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = blob.name || 'engastado_completo.zip';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
-        
-        statusDiv.className = 'mensaje success';
-        statusDiv.textContent = '✓ Exportación completada. El ZIP se ha descargado.';
-    } catch (error) {
-        console.error('Error:', error);
-        statusDiv.className = 'mensaje error';
-        statusDiv.textContent = '❌ Error al exportar: ' + error.message;
-    }
-}
-
-/**
- * Importa configuración desde un ZIP
- */
-async function importarConfiguracion(e) {
+async function _importarDB(e) {
     e.preventDefault();
-    
-    const fileInput = document.getElementById('import-file');
-    const file = fileInput.files[0];
-    
-    if (!file) {
-        mostrarMensaje('import-status', 'Por favor selecciona un archivo ZIP', 'error');
-        return;
-    }
-    
-    // Obtener opciones
-    const modoInput = document.querySelector('input[name="modo"]:checked');
-    const modo = modoInput ? modoInput.value : 'merge';
-    const incluirProduccion = document.getElementById('import-incluir-produccion').checked;
-    
-    // Confirmación según el modo
-    let msgConfirma = modo === 'replace'
-        ? '⚠️ REPLACE: Se BORRARÁN todos los datos actuales y se recrearán desde el ZIP.\n¿Estás SEGURO?'
-        : '🔄 MERGE: Se actualizarán los datos existentes y se añadirán los nuevos.\n¿Continuar?';
-    
-    if (!confirm(msgConfirma)) return;
-    
-    const statusDiv = document.getElementById('import-status');
+    const file = document.getElementById('import-db-file').files[0];
+    if (!file) return;
+
+    if (!confirm('⚠️ Esto REEMPLAZARÁ toda la base de datos de esta instalación.\n\n¿Seguro que quieres continuar?')) return;
+
+    const statusDiv = document.getElementById('import-db-status');
     statusDiv.className = 'mensaje info';
-    statusDiv.textContent = '⏳ Importando configuración...';
+    statusDiv.textContent = '⏳ Importando BD...';
     statusDiv.classList.remove('hidden');
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('modo', modo);
-    formData.append('incluir_produccion', incluirProduccion ? 'true' : 'false');
-    
+
+    const fd = new FormData();
+    fd.append('file', file);
+
     try {
-        const response = await fetch('/api/importar/config', {
-            method: 'POST',
-            body: formData
-        });
-        
+        const response = await fetch('/api/importar/db', { method: 'POST', body: fd });
         const data = await response.json();
-        
-        if (data.éxito) {
-            const resumenEntradas = [];
-            for (const [tabla, res] of Object.entries(data.resumen || {})) {
-                if (res.éxito > 0 || res.errores > 0) {
-                    resumenEntradas.push(`<li><strong>${tabla}</strong>: ${res.éxito} insertados${res.errores > 0 ? `, ${res.errores} errores` : ''}</li>`);
-                }
-            }
-            
+
+        if (data.success) {
+            const tablas = data.tablas || {};
+            const resumen = Object.entries(tablas)
+                .map(([t, n]) => `<li><strong>${t}</strong>: ${n} filas</li>`)
+                .join('');
             statusDiv.className = 'mensaje success';
             statusDiv.innerHTML = `
-                <strong>✓ Importación completada (${data.modo})</strong>
-                <ul style="margin:8px 0 0 18px;font-size:0.9em;">${resumenEntradas.join('')}</ul>
-                ${data.detalles && data.detalles.length > 0 
-                    ? `<br><details style="margin-top:8px;font-size:0.85em;"><summary>Detalles/avisos</summary><pre style="background:#0f172a;padding:8px;border-radius:4px;overflow-x:auto;margin:6px 0 0 0;">${data.detalles.join('\n')}</pre></details>`
-                    : ''
-                }
+                <strong>✓ ${data.mensaje}</strong>
+                ${resumen ? `<ul style="margin:8px 0 0 16px;font-size:0.88em;">${resumen}</ul>` : ''}
+                <br><span style="font-size:0.85em;">Recarga la página para ver los datos actualizados.</span>
             `;
-            
-            // Limpiar formulario tras 2 segundos
-            setTimeout(() => {
-                document.getElementById('import-form').reset();
-            }, 2000);
+            document.getElementById('import-db-form').reset();
         } else {
             statusDiv.className = 'mensaje error';
-            statusDiv.innerHTML = `
-                <strong>❌ Error al importar</strong><br>
-                ${data.detalles && data.detalles.length > 0 
-                    ? data.detalles.slice(0, 3).join('<br>')
-                    : 'Error desconocido'
-                }
-            `;
+            statusDiv.textContent = '❌ ' + (data.mensaje || data.error || 'Error desconocido');
         }
-    } catch (error) {
-        console.error('Error:', error);
+    } catch (err) {
         statusDiv.className = 'mensaje error';
-        statusDiv.textContent = '❌ Error al importar: ' + error.message;
+        statusDiv.textContent = '❌ Error: ' + err.message;
     }
 }
 
-// Event listener para el formulario de importación
-document.addEventListener('DOMContentLoaded', function() {
-    const importForm = document.getElementById('import-form');
-    if (importForm) {
-        importForm.addEventListener('submit', importarConfiguracion);
+async function cargarBackups() {
+    const lista = document.getElementById('backups-lista');
+    const status = document.getElementById('backups-status');
+    lista.innerHTML = '<p class="instruccion">Cargando...</p>';
+
+    try {
+        const response = await fetch('/api/backups');
+        const data = await response.json();
+
+        if (!data.success || !data.backups.length) {
+            lista.innerHTML = '<p class="instruccion">No hay backups disponibles en data/.</p>';
+            return;
+        }
+
+        lista.innerHTML = `
+            <div class="tabla-container">
+                <table>
+                    <thead><tr><th>Archivo</th><th>Fecha</th><th>Tamaño</th><th></th></tr></thead>
+                    <tbody>
+                        ${data.backups.map(b => `
+                            <tr>
+                                <td style="font-size:0.82em;font-family:monospace;">${b.nombre}</td>
+                                <td>${b.fecha_str}</td>
+                                <td>${b.tamano_kb} KB</td>
+                                <td>
+                                    <button onclick="restaurarBackup('${b.nombre}')"
+                                        class="btn-secondary" style="padding:4px 12px;font-size:0.83em;">
+                                        🔄 Restaurar
+                                    </button>
+                                </td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    } catch (err) {
+        lista.innerHTML = `<p class="instruccion" style="color:#f87171;">Error: ${err.message}</p>`;
     }
+}
+
+async function restaurarBackup(nombre) {
+    if (!confirm(`¿Restaurar la BD desde:\n${nombre}\n\nSe REEMPLAZARÁ todo lo actual.`)) return;
+
+    const status = document.getElementById('backups-status');
+    status.className = 'mensaje info';
+    status.textContent = '⏳ Restaurando...';
+    status.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/backups/restaurar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            status.className = 'mensaje success';
+            status.innerHTML = `✓ ${data.mensaje}<br><span style="font-size:0.85em;">Recarga la página para ver los datos.</span>`;
+        } else {
+            status.className = 'mensaje error';
+            status.textContent = '❌ ' + (data.mensaje || data.error);
+        }
+    } catch (err) {
+        status.className = 'mensaje error';
+        status.textContent = '❌ Error: ' + err.message;
+    }
+}
+
+// Event listeners para exportar/importar
+document.addEventListener('DOMContentLoaded', function () {
+    const importDbForm = document.getElementById('import-db-form');
+    if (importDbForm) importDbForm.addEventListener('submit', _importarDB);
 });
 
 

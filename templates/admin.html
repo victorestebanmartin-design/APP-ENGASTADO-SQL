@@ -331,43 +331,33 @@
                         <div id="bloqueos-lista" style="margin-top:14px;"></div>
                     </div>
 
+                    <!-- ===== EXPORTAR / IMPORTAR BD ===== -->
                     <div class="card">
-                        <h2>💾 Exportar Configuración</h2>
-                        <p class="instruccion">Descarga un ZIP con toda la configuración (puestos, máquinas, terminales, etc.) para hacer backup o transportar a otro equipo</p>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
-                            <button onclick="exportarConfigPura()" class="btn-secondary">📦 Config Pura</button>
-                            <button onclick="exportarConfigCompleta()" class="btn-primary">📦 Config Completa (+ bonos/órdenes)</button>
-                        </div>
-                        <div id="export-status" class="mensaje hidden" style="margin-top:14px;"></div>
+                        <h2>💾 Exportar base de datos</h2>
+                        <p class="instruccion">Descarga una copia exacta de toda la BD (puestos, máquinas, terminales, bonos, órdenes… todo) en un ZIP. Úsala para hacer backup o llevarla a otro equipo.</p>
+                        <button onclick="exportarDB()" class="btn-primary" style="margin-top:10px;">⬇️ Descargar ZIP de la BD</button>
+                        <div id="export-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
                     </div>
 
                     <div class="card">
-                        <h2>📥 Importar Configuración</h2>
-                        <p class="instruccion">Sube un ZIP exportado anteriormente para restaurar configuración</p>
-                        <form id="import-form" enctype="multipart/form-data" style="margin-top:14px;">
+                        <h2>📥 Importar base de datos</h2>
+                        <p class="instruccion">Sube el ZIP exportado anteriormente para reemplazar la BD de esta instalación. <strong style="color:#f87171;">⚠ BORRARÁ TODO LO ACTUAL</strong> y lo sustituirá por el contenido del ZIP.</p>
+                        <form id="import-db-form" enctype="multipart/form-data" style="margin-top:14px;">
                             <div class="input-group">
-                                <label for="import-file">Seleccionar archivo ZIP:</label>
-                                <input type="file" id="import-file" name="file" accept=".zip" required>
+                                <label for="import-db-file">Archivo ZIP:</label>
+                                <input type="file" id="import-db-file" accept=".zip" required>
                             </div>
-                            <div class="input-group" style="margin-top:12px;">
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                                    <input type="radio" name="modo" value="merge" checked>
-                                    <span>🔄 MERGE: actualizar existentes (conserva lo que ya hay)</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">
-                                    <input type="radio" name="modo" value="replace">
-                                    <span>⚠️ REPLACE: borrar y recrear todo (peligroso)</span>
-                                </label>
-                            </div>
-                            <div class="input-group" style="margin-top:12px;">
-                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                                    <input type="checkbox" id="import-incluir-produccion" name="incluir_produccion">
-                                    <span>Incluir datos de producción (bonos, órdenes, etc.)</span>
-                                </label>
-                            </div>
-                            <button type="submit" class="btn-primary" style="margin-top:14px;">📥 Importar</button>
+                            <button type="submit" class="btn-primary" style="margin-top:10px;background:#dc2626;">📥 Importar y reemplazar BD</button>
                         </form>
-                        <div id="import-status" class="mensaje hidden" style="margin-top:14px;"></div>
+                        <div id="import-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
+                    </div>
+
+                    <div class="card">
+                        <h2>🗂️ Backups locales</h2>
+                        <p class="instruccion">Backups de PythonAnywhere descargados automáticamente en cada deploy. Haz clic en uno para restaurarlo.</p>
+                        <button onclick="cargarBackups()" class="btn-secondary" style="margin-bottom:14px;">🔄 Ver backups disponibles</button>
+                        <div id="backups-status" class="mensaje hidden"></div>
+                        <div id="backups-lista"></div>
                     </div>
                 </section>
 
