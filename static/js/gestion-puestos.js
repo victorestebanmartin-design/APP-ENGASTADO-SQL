@@ -258,31 +258,34 @@ function mostrarListaMaquinas(maquinas) {
         <div class="puesto-grupo">
             <h4 class="puesto-titulo">🏢 ${puestoNombre}</h4>
             <div class="maquinas-grid">
-                ${maquinasPuesto.map(maquina => `
-                    <div class="maquina-card" data-id="${maquina.id}">
+                ${maquinasPuesto.map(maquina => {
+                    const tipo = maquina.tipo_operacion || 'MANUAL';
+                    const tipoCls = tipo === 'AUTOMATICA' ? 'automatica' : tipo === 'SEMI-AUTOMATICA' ? 'semi' : 'manual';
+                    const tipoIcon = tipo === 'AUTOMATICA' ? '🤖' : tipo === 'SEMI-AUTOMATICA' ? '⚡' : '🤚';
+                    const pdfBtn = maquina.pdf_instrucciones
+                        ? `<button class="btn-pdf" onclick="event.stopPropagation();verPdfMaquina('${maquina.id}')" title="Ver PDF">📄 PDF</button>`
+                        : `<button class="btn-pdf sin-pdf" onclick="event.stopPropagation();editarMaquina('${maquina.id}')" title="Adjuntar PDF">📄 PDF</button>`;
+                    return `
+                    <div class="maquina-card tipo-${tipoCls}" data-id="${maquina.id}">
                         <div class="maquina-header">
                             <h5>${maquina.nombre}</h5>
                             <div class="maquina-actions">
-                                <button class="btn-icon" onclick="editarMaquina('${maquina.id}')" title="Editar">
-                                    ✏️
-                                </button>
-                                <button class="btn-icon" onclick="eliminarMaquina('${maquina.id}')" title="Eliminar">
-                                    🗑️
-                                </button>
+                                <button class="btn-icon" onclick="editarMaquina('${maquina.id}')" title="Editar">✏️</button>
+                                <button class="btn-icon" onclick="eliminarMaquina('${maquina.id}')" title="Eliminar">🗑️</button>
                             </div>
                         </div>
                         <p class="maquina-modelo">${maquina.modelo || 'Sin modelo'}</p>
                         <p class="maquina-descripcion">${maquina.descripcion || 'Sin descripción'}</p>
-                        <div class="maquina-stats">
-                            <span class="stat">
-                                📱 ${maquina.terminales_asignados ? maquina.terminales_asignados.length : 0} terminales
-                            </span>
+                        <div class="maquina-stats" style="gap:6px;flex-wrap:wrap;">
+                            <span class="badge-tipo ${tipoCls}">${tipoIcon} ${tipo}</span>
+                            ${pdfBtn}
+                            <span class="stat">🔗 ${maquina.terminales_asignados ? maquina.terminales_asignados.length : 0}</span>
                             <span class="stat-status ${maquina.activo ? 'activo' : 'inactivo'}">
                                 ${maquina.activo ? '✅ Activa' : '❌ Inactiva'}
                             </span>
                         </div>
-                    </div>
-                `).join('')}
+                    </div>`;
+                }).join('')}
             </div>
         </div>
     `).join('');
@@ -543,6 +546,58 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
         `<option value="${m.id}">${m.puesto_nombre} — ${m.nombre}</option>`
     ).join('');
 
+    // Mapa de máquina → tipo (para badges en filas)
+    const tipoMapa = {};
+    maquinas.forEach(m => { tipoMapa[m.id] = m.tipo_operacion || 'MANUAL'; });
+
+    // ── Calcular estadísticas por tipo de operación ──────────────────
+    const statsTotal = { MANUAL: 0, AUTOMATICA: 0, 'SEMI-AUTOMATICA': 0, sinAsignar: 0 };
+    dataTerminales.terminales.forEach(t => {
+        if (!t.asignado) { statsTotal.sinAsignar++; }
+        else {
+            const tipo = tipoMapa[t.asignacion.maquina_id] || 'MANUAL';
+            statsTotal[tipo] = (statsTotal[tipo] || 0) + 1;
+        }
+    });
+    const totalAsignados = statsTotal.MANUAL + statsTotal.AUTOMATICA + statsTotal['SEMI-AUTOMATICA'];
+    const pct = n => totalAsignados ? Math.round(n * 100 / totalAsignados) : 0;
+
+    const statsHTML = `
+        <div class="stats-tipo-bar">
+            <div class="stats-tipo-title">Distribución por tipo de operación</div>
+            <div class="stats-tipo-pills">
+                <div class="stp stp-manual">
+                    <span class="stp-icon">🤚</span>
+                    <span class="stp-label">Manual</span>
+                    <span class="stp-val">${statsTotal.MANUAL}</span>
+                    <span class="stp-pct">${pct(statsTotal.MANUAL)}%</span>
+                </div>
+                <div class="stp stp-semi">
+                    <span class="stp-icon">⚡</span>
+                    <span class="stp-label">Semi-Auto</span>
+                    <span class="stp-val">${statsTotal['SEMI-AUTOMATICA']}</span>
+                    <span class="stp-pct">${pct(statsTotal['SEMI-AUTOMATICA'])}%</span>
+                </div>
+                <div class="stp stp-auto">
+                    <span class="stp-icon">🤖</span>
+                    <span class="stp-label">Automática</span>
+                    <span class="stp-val">${statsTotal.AUTOMATICA}</span>
+                    <span class="stp-pct">${pct(statsTotal.AUTOMATICA)}%</span>
+                </div>
+                ${statsTotal.sinAsignar > 0 ? `<div class="stp stp-none">
+                    <span class="stp-icon">⚠️</span>
+                    <span class="stp-label">Sin asignar</span>
+                    <span class="stp-val">${statsTotal.sinAsignar}</span>
+                    <span class="stp-pct"></span>
+                </div>` : ''}
+            </div>
+            <div class="stats-tipo-barra">
+                ${statsTotal.MANUAL    > 0 ? `<div class="stb-seg manual"    style="width:${pct(statsTotal.MANUAL)}%"    title="Manual ${pct(statsTotal.MANUAL)}%"></div>` : ''}
+                ${statsTotal['SEMI-AUTOMATICA'] > 0 ? `<div class="stb-seg semi" style="width:${pct(statsTotal['SEMI-AUTOMATICA'])}%" title="Semi-Auto ${pct(statsTotal['SEMI-AUTOMATICA'])}%"></div>` : ''}
+                ${statsTotal.AUTOMATICA > 0 ? `<div class="stb-seg auto"    style="width:${pct(statsTotal.AUTOMATICA)}%" title="Automática ${pct(statsTotal.AUTOMATICA)}%"></div>` : ''}
+            </div>
+        </div>`;
+
     // Agrupar terminales: asignados por puesto, después sin asignar
     const grupos = {};
     const sinAsignarList = [];
@@ -567,7 +622,11 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                 <span class="tl-group-arrow">▼</span>
             </div>
             <div class="tl-rows">
-                ${lista.map(t => `
+                ${lista.map(t => {
+                    const mTipo = t.asignacion ? tipoMapa[t.asignacion.maquina_id] || 'MANUAL' : 'MANUAL';
+                    const mTipoCls = mTipo === 'AUTOMATICA' ? 'automatica' : mTipo === 'SEMI-AUTOMATICA' ? 'semi' : 'manual';
+                    const mTipoIcon = mTipo === 'AUTOMATICA' ? '🤖' : mTipo === 'SEMI-AUTOMATICA' ? '⚡' : '🤚';
+                    return `
                     <div class="terminal-row asignado"
                          data-terminal="${t.terminal}"
                          data-estado="asignados">
@@ -576,11 +635,11 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                         <span class="tr-dot asignado"></span>
                         <span class="tr-code">${t.terminal}</span>
                         <span class="tr-assign asignado">${t.asignacion.puesto_nombre} · ${t.asignacion.maquina_nombre}</span>
+                        <span class="badge-tipo ${mTipoCls}" style="font-size:0.62rem;padding:1px 6px;">${mTipoIcon} ${mTipo}</span>
                         ${gavetaChip(t)}
                         <span class="tr-badge asignado">Asignado</span>
                         <button class="btn-desvincular" onclick="desasignarTerminal('${t.terminal}')" title="Desasignar">✕</button>
-                    </div>
-                `).join('')}
+                    </div>`; }).join('')}
             </div>
         </div>
     `).join('');
@@ -614,6 +673,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
     ` : '';
 
     container.innerHTML = `
+        ${statsHTML}
         <div class="asignacion-rapida">
             <h4>Asignación Rápida</h4>
             <div class="asignacion-controles">

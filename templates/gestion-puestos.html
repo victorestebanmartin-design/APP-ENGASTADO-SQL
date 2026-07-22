@@ -35,8 +35,12 @@
             background: var(--accent); border-radius: 2px; flex-shrink: 0;
         }
         .maquinas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px,1fr)); gap: 10px; }
-        .maquina-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; transition: border-color .15s; }
+        .maquina-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; transition: border-color .15s; border-left-width: 4px; }
         .maquina-card:hover { border-color: var(--accent); }
+        /* Borde izquierdo de color según tipo */
+        .maquina-card.tipo-manual     { border-left-color: #f59e0b; }
+        .maquina-card.tipo-semi       { border-left-color: #a855f7; }
+        .maquina-card.tipo-automatica { border-left-color: #3b82f6; }
         .maquina-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
         .maquina-header h5 { margin: 0; font-size: 0.88rem; font-weight: 600; color: var(--text); }
         .maquina-actions { display: flex; gap: 4px; }
@@ -304,6 +308,34 @@
             cursor: pointer; font-size: 1rem; line-height: 1;
         }
         .pdf-info-bar button:hover { color: #f87171; }
+
+        /* ── Estadísticas tipo operación ── */
+        .stats-tipo-bar {
+            background: var(--panel-2); border: 1px solid var(--border);
+            border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
+        }
+        .stats-tipo-title { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 10px; }
+        .stats-tipo-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        .stp {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px; border-radius: 8px; font-size: 0.8rem;
+        }
+        .stp-label { color: var(--text-muted); }
+        .stp-val   { font-family: 'DM Mono', monospace; font-weight: 700; color: var(--text); font-size: 1rem; }
+        .stp-pct   { font-family: 'DM Mono', monospace; font-size: 0.72rem; opacity: .7; }
+        .stp.stp-manual  { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.25); }
+        .stp.stp-semi    { background: rgba(168,85,247,.1); border: 1px solid rgba(168,85,247,.25); }
+        .stp.stp-auto    { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25); }
+        .stp.stp-none    { background: rgba(100,116,139,.1); border: 1px solid rgba(100,116,139,.2); }
+        /* Barra de progreso compuesta */
+        .stats-tipo-barra {
+            display: flex; height: 6px; border-radius: 3px; overflow: hidden;
+            background: rgba(255,255,255,.05);
+        }
+        .stb-seg { height: 100%; transition: width .4s; }
+        .stb-seg.manual  { background: #f59e0b; }
+        .stb-seg.semi    { background: #a855f7; }
+        .stb-seg.auto    { background: #3b82f6; }
 
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
