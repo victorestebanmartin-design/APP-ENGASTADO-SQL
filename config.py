@@ -88,6 +88,7 @@ class Config:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     DATA_DIR = os.path.join(BASE_DIR, 'data')
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'cortes')
+    MAQUINAS_PDF_FOLDER = os.path.join(DATA_DIR, 'maquinas_pdf')
     
     # Configuración de uploads
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
@@ -155,6 +156,7 @@ class Config:
         # Crear directorios necesarios
         os.makedirs(Config.DATA_DIR, exist_ok=True)
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        os.makedirs(Config.MAQUINAS_PDF_FOLDER, exist_ok=True)
         os.makedirs(Config.PRINTER_SIMULATION_DIR, exist_ok=True)
         os.makedirs(os.path.join(Config.BASE_DIR, 'logs'), exist_ok=True)
 

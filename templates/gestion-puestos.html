@@ -246,6 +246,65 @@
             outline: none; width: 110px; flex-shrink: 0;
         }
 
+        /* Badge tipo operación */
+        .badge-tipo {
+            display: inline-flex; align-items: center; gap: 3px;
+            font-size: 0.67rem; font-weight: 700; letter-spacing: .05em;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+        }
+        .badge-tipo.manual        { background: rgba(245,158,11,.12); color: #fcd34d; border: 1px solid rgba(245,158,11,.3); }
+        .badge-tipo.automatica    { background: rgba(59,130,246,.12); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
+        .badge-tipo.semi          { background: rgba(168,85,247,.12); color: #d8b4fe; border: 1px solid rgba(168,85,247,.3); }
+
+        /* Botón PDF en card */
+        .btn-pdf {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 6px;
+            background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+            color: #fca5a5; cursor: pointer; transition: all .14s; white-space: nowrap;
+        }
+        .btn-pdf:hover { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.6); color: #f87171; }
+        .btn-pdf.sin-pdf {
+            background: transparent; border: 1px dashed rgba(255,255,255,.12);
+            color: rgba(255,255,255,.2);
+        }
+        .btn-pdf.sin-pdf:hover { border-color: rgba(239,68,68,.4); color: #fca5a5; background: rgba(239,68,68,.07); }
+
+        /* Radio tipo operación en modal */
+        .tipo-op-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+        .tipo-op-label {
+            display: flex; align-items: center; gap: 6px;
+            padding: 7px 14px; border-radius: 8px; cursor: pointer;
+            border: 1.5px solid #334155; background: #2a3a52;
+            font-size: 0.82rem; color: #94a3b8; transition: all .14s; user-select: none;
+        }
+        .tipo-op-label input[type=radio] { display: none; }
+        .tipo-op-label:has(input:checked) { border-color: #3b82f6; background: rgba(59,130,246,.15); color: #f1f5f9; }
+        .tipo-op-label.manual:has(input:checked)  { border-color: #f59e0b; background: rgba(245,158,11,.12); color: #fcd34d; }
+        .tipo-op-label.auto:has(input:checked)    { border-color: #3b82f6; background: rgba(59,130,246,.12); color: #93c5fd; }
+        .tipo-op-label.semi:has(input:checked)    { border-color: #a855f7; background: rgba(168,85,247,.12); color: #d8b4fe; }
+
+        /* PDF upload en modal */
+        .pdf-drop-area {
+            border: 2px dashed #334155; border-radius: 10px;
+            background: #131e2e; padding: 18px; text-align: center;
+            cursor: pointer; transition: border-color .15s;
+            color: #64748b; font-size: 0.82rem;
+        }
+        .pdf-drop-area:hover { border-color: #3b82f6; color: #94a3b8; }
+        .pdf-drop-area.tiene-pdf { border-color: rgba(239,68,68,.4); color: #fca5a5; }
+        .pdf-info-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; padding: 8px 12px; border-radius: 8px; margin-top: 8px;
+            background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.2);
+            font-size: 0.78rem; color: #fca5a5;
+        }
+        .pdf-info-bar button {
+            background: none; border: none; color: rgba(239,68,68,.6);
+            cursor: pointer; font-size: 1rem; line-height: 1;
+        }
+        .pdf-info-bar button:hover { color: #f87171; }
+
         /* Empty state */
         .empty-state { padding: 40px; text-align: center; color: var(--text-muted); }
         .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
@@ -462,8 +521,40 @@
                 <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 455">
             </div>
             <div class="p-form-group">
+                <label>Tipo de Operación *</label>
+                <div class="tipo-op-group">
+                    <label class="tipo-op-label manual">
+                        <input type="radio" name="maquina-tipo" value="MANUAL" checked> 🤚 Manual
+                    </label>
+                    <label class="tipo-op-label semi">
+                        <input type="radio" name="maquina-tipo" value="SEMI-AUTOMATICA"> ⚡ Semi-Auto
+                    </label>
+                    <label class="tipo-op-label auto">
+                        <input type="radio" name="maquina-tipo" value="AUTOMATICA"> 🤖 Automática
+                    </label>
+                </div>
+            </div>
+            <div class="p-form-group">
                 <label for="maquina-descripcion">Descripción</label>
                 <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
+            </div>
+            <div class="p-form-group" id="pdf-upload-group">
+                <label>PDF de Instrucciones / Regulación</label>
+                <div id="pdf-drop-area" class="pdf-drop-area" onclick="document.getElementById('pdf-file-input').click()">
+                    📄 Clic para adjuntar PDF de instrucciones
+                </div>
+                <input type="file" id="pdf-file-input" accept="application/pdf,.pdf" style="display:none" onchange="pdfOnFileSelected(this)">
+                <div id="pdf-info-bar" class="pdf-info-bar" style="display:none">
+                    <span id="pdf-nombre-display">—</span>
+                    <button onclick="pdfEliminarPendiente()" title="Quitar PDF">✕</button>
+                </div>
+                <div id="pdf-existente-bar" class="pdf-info-bar" style="display:none">
+                    📎 <span id="pdf-existente-nombre">—</span>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="pdfVerExistente()" title="Ver PDF" style="color:#93c5fd">👁</button>
+                        <button onclick="pdfEliminarExistente()" title="Eliminar PDF del servidor">🗑</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="p-modal-footer">

@@ -143,6 +143,16 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: columnas tipo_operacion y pdf_instrucciones en maquinas
+    cur.execute("PRAGMA table_info(maquinas)")
+    maq_cols = {row[1] for row in cur.fetchall()}
+    if maq_cols:
+        if 'tipo_operacion' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN tipo_operacion TEXT NOT NULL DEFAULT 'MANUAL'")
+        if 'pdf_instrucciones' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN pdf_instrucciones TEXT")
+        conn.commit()
+
     conn.close()
 
 

@@ -8,8 +8,9 @@ from .base_repository import BaseRepository
 class MaquinaRepository(BaseRepository):
     """Repositorio para máquinas de producción"""
     
-    def crear_maquina(self, id: str, puesto_id: str, nombre: str, 
-                      modelo: Optional[str] = None, descripcion: Optional[str] = None) -> bool:
+    def crear_maquina(self, id: str, puesto_id: str, nombre: str,
+                      modelo: Optional[str] = None, descripcion: Optional[str] = None,
+                      tipo_operacion: str = 'MANUAL') -> bool:
         """
         Crear nueva máquina
         
@@ -19,20 +20,22 @@ class MaquinaRepository(BaseRepository):
             nombre: Nombre de la máquina
             modelo: Modelo de la máquina (opcional)
             descripcion: Descripción (opcional)
+            tipo_operacion: MANUAL, AUTOMATICA o SEMI-AUTOMATICA
         
         Returns:
             True si se creó correctamente
         """
         query = """
-            INSERT INTO maquinas (id, puesto_id, nombre, modelo, descripcion, activo)
-            VALUES (:id, :puesto_id, :nombre, :modelo, :descripcion, 1)
+            INSERT INTO maquinas (id, puesto_id, nombre, modelo, descripcion, tipo_operacion, activo)
+            VALUES (:id, :puesto_id, :nombre, :modelo, :descripcion, :tipo_operacion, 1)
         """
         params = {
             'id': id,
             'puesto_id': puesto_id,
             'nombre': nombre,
             'modelo': modelo,
-            'descripcion': descripcion
+            'descripcion': descripcion,
+            'tipo_operacion': tipo_operacion or 'MANUAL'
         }
         try:
             self.execute_insert(query, params)
@@ -89,7 +92,10 @@ class MaquinaRepository(BaseRepository):
     
     def actualizar_maquina(self, id: str, nombre: Optional[str] = None,
                           modelo: Optional[str] = None, descripcion: Optional[str] = None,
-                          puesto_id: Optional[str] = None) -> bool:
+                          puesto_id: Optional[str] = None,
+                          tipo_operacion: Optional[str] = None,
+                          pdf_instrucciones: Optional[str] = None,
+                          limpiar_pdf: bool = False) -> bool:
         """Actualizar información de una máquina"""
         updates = []
         params = {'id': id}
@@ -109,6 +115,16 @@ class MaquinaRepository(BaseRepository):
         if descripcion is not None:
             updates.append("descripcion = :descripcion")
             params['descripcion'] = descripcion
+
+        if tipo_operacion is not None:
+            updates.append("tipo_operacion = :tipo_operacion")
+            params['tipo_operacion'] = tipo_operacion
+
+        if pdf_instrucciones is not None:
+            updates.append("pdf_instrucciones = :pdf_instrucciones")
+            params['pdf_instrucciones'] = pdf_instrucciones
+        elif limpiar_pdf:
+            updates.append("pdf_instrucciones = NULL")
         
         if not updates:
             return False

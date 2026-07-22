@@ -199,6 +199,9 @@ def api_crear_maquina():
         nombre = data.get('nombre', '').strip()
         modelo = data.get('modelo', '').strip()
         descripcion = data.get('descripcion', '').strip()
+        tipo_operacion = data.get('tipo_operacion', 'MANUAL').strip().upper()
+        if tipo_operacion not in ('MANUAL', 'AUTOMATICA', 'SEMI-AUTOMATICA'):
+            tipo_operacion = 'MANUAL'
         
         if not puesto_id or not nombre:
             return jsonify({
@@ -225,7 +228,7 @@ def api_crear_maquina():
             new_id = f"maq_{len(maquinas_existentes) + 1:03d}_{random.randint(100, 999)}"
         
         # Crear máquina
-        if maquina_repo.crear_maquina(new_id, puesto_id, nombre, modelo, descripcion):
+        if maquina_repo.crear_maquina(new_id, puesto_id, nombre, modelo, descripcion, tipo_operacion):
             nueva_maquina = maquina_repo.obtener_maquina(new_id)
             nueva_maquina['terminales_asignados'] = []
             return jsonify({
@@ -264,8 +267,13 @@ def api_actualizar_maquina(maquina_id):
         modelo = data.get('modelo')
         descripcion = data.get('descripcion')
         puesto_id = data.get('puesto_id')
+        tipo_operacion = data.get('tipo_operacion')
+        if tipo_operacion:
+            tipo_operacion = tipo_operacion.strip().upper()
+            if tipo_operacion not in ('MANUAL', 'AUTOMATICA', 'SEMI-AUTOMATICA'):
+                tipo_operacion = None
         
-        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id):
+        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id, tipo_operacion):
             maquina_actualizada = maquina_repo.obtener_maquina(maquina_id)
             maquina_actualizada['terminales_asignados'] = maquina_repo.obtener_terminales_asignados(maquina_id)
             return jsonify({
@@ -302,6 +310,106 @@ def api_eliminar_maquina(maquina_id):
             
     except Exception as e:
         return error_interno(e, 'Error al eliminar máquina')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf', methods=['POST'])
+@requiere_pin_admin
+def api_subir_pdf_maquina(maquina_id):
+    """Subir o reemplazar el PDF de instrucciones de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        if 'pdf' not in request.files:
+            return jsonify({'success': False, 'message': 'No se envió ningún archivo'}), 400
+
+        archivo = request.files['pdf']
+        if not archivo.filename:
+            return jsonify({'success': False, 'message': 'Nombre de archivo vacío'}), 400
+
+        nombre_seguro = secure_filename(archivo.filename)
+        if not nombre_seguro.lower().endswith('.pdf'):
+            return jsonify({'success': False, 'message': 'Solo se aceptan archivos PDF'}), 400
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        os.makedirs(pdf_folder, exist_ok=True)
+
+        # Eliminar PDF anterior si existe
+        if maquina.get('pdf_instrucciones'):
+            pdf_anterior = os.path.join(pdf_folder, maquina['pdf_instrucciones'])
+            if os.path.exists(pdf_anterior):
+                os.remove(pdf_anterior)
+
+        # Nombre único: maquina_id + nombre original
+        nombre_final = f"{maquina_id}_{nombre_seguro}"
+        ruta_destino = os.path.join(pdf_folder, nombre_final)
+        archivo.save(ruta_destino)
+
+        maquina_repo.actualizar_maquina(maquina_id, pdf_instrucciones=nombre_final)
+
+        return jsonify({'success': True, 'pdf_instrucciones': nombre_final})
+
+    except Exception as e:
+        return error_interno(e, 'Error al subir PDF de máquina')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf', methods=['GET'])
+def api_obtener_pdf_maquina(maquina_id):
+    """Descargar / visualizar el PDF de instrucciones de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        nombre_pdf = maquina.get('pdf_instrucciones')
+        if not nombre_pdf:
+            return jsonify({'success': False, 'message': 'Esta máquina no tiene PDF adjunto'}), 404
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        ruta_pdf = os.path.join(pdf_folder, nombre_pdf)
+
+        if not os.path.exists(ruta_pdf):
+            return jsonify({'success': False, 'message': 'Archivo PDF no encontrado en disco'}), 404
+
+        return send_file(
+            ruta_pdf,
+            mimetype='application/pdf',
+            as_attachment=False,
+            download_name=nombre_pdf
+        )
+
+    except Exception as e:
+        return error_interno(e, 'Error al obtener PDF de máquina')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf', methods=['DELETE'])
+@requiere_pin_admin
+def api_eliminar_pdf_maquina(maquina_id):
+    """Eliminar el PDF de instrucciones de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        nombre_pdf = maquina.get('pdf_instrucciones')
+        if not nombre_pdf:
+            return jsonify({'success': False, 'message': 'No hay PDF que eliminar'}), 404
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        ruta_pdf = os.path.join(pdf_folder, nombre_pdf)
+        if os.path.exists(ruta_pdf):
+            os.remove(ruta_pdf)
+
+        maquina_repo.actualizar_maquina(maquina_id, limpiar_pdf=True)
+
+        return jsonify({'success': True, 'message': 'PDF eliminado correctamente'})
+
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar PDF de máquina')
 
 
 @bp.route('/api/terminales-disponibles', methods=['GET'])

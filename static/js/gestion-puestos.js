@@ -5,6 +5,10 @@
 let dataPuestos = null;
 let dataMaquinas = null;
 
+// Estado PDF modal máquina
+let _pdfPendiente = null;          // File object pendiente de subir
+let _pdfMaquinaIdActual = null;    // ID de la máquina en edición
+
 // Cargar datos al iniciar
 document.addEventListener('DOMContentLoaded', function() {
     cargarPuestos();
@@ -325,13 +329,27 @@ function mostrarModalMaquina(maquinaId = null) {
                 document.getElementById('maquina-nombre').value = maquina.nombre || '';
                 document.getElementById('maquina-modelo').value = maquina.modelo || '';
                 document.getElementById('maquina-descripcion').value = maquina.descripcion || '';
-                
-                console.log('Valores establecidos en el formulario:', {
-                    puesto: document.getElementById('maquina-puesto').value,
-                    nombre: document.getElementById('maquina-nombre').value,
-                    modelo: document.getElementById('maquina-modelo').value,
-                    descripcion: document.getElementById('maquina-descripcion').value
-                });
+
+                // Tipo de operación
+                const tipo = maquina.tipo_operacion || 'MANUAL';
+                const radioEl = document.querySelector(`input[name="maquina-tipo"][value="${tipo}"]`);
+                if (radioEl) radioEl.checked = true;
+
+                // PDF existente
+                _pdfPendiente = null;
+                _pdfMaquinaIdActual = maquina.id;
+                if (maquina.pdf_instrucciones) {
+                    document.getElementById('pdf-drop-area').style.display = 'none';
+                    document.getElementById('pdf-existente-nombre').textContent = maquina.pdf_instrucciones;
+                    document.getElementById('pdf-existente-bar').style.display = 'flex';
+                    document.getElementById('pdf-info-bar').style.display = 'none';
+                } else {
+                    document.getElementById('pdf-drop-area').style.display = '';
+                    document.getElementById('pdf-existente-bar').style.display = 'none';
+                    document.getElementById('pdf-info-bar').style.display = 'none';
+                    document.getElementById('pdf-drop-area').classList.remove('tiene-pdf');
+                    document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
+                }
             }, 100);
         } else {
             console.error('Máquina no encontrada con ID:', maquinaId);
@@ -342,6 +360,17 @@ function mostrarModalMaquina(maquinaId = null) {
         document.getElementById('maquina-nombre').value = '';
         document.getElementById('maquina-modelo').value = '';
         document.getElementById('maquina-descripcion').value = '';
+        // Reset tipo
+        const radioManual = document.querySelector('input[name="maquina-tipo"][value="MANUAL"]');
+        if (radioManual) radioManual.checked = true;
+        // Reset PDF
+        _pdfPendiente = null;
+        _pdfMaquinaIdActual = null;
+        document.getElementById('pdf-drop-area').style.display = '';
+        document.getElementById('pdf-drop-area').classList.remove('tiene-pdf');
+        document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
+        document.getElementById('pdf-info-bar').style.display = 'none';
+        document.getElementById('pdf-existente-bar').style.display = 'none';
     }
     
     modal.dataset.editId = maquinaId || '';
@@ -357,8 +386,8 @@ async function guardarMaquina() {
     const modelo = document.getElementById('maquina-modelo').value.trim();
     const descripcion = document.getElementById('maquina-descripcion').value.trim();
     const editId = document.getElementById('modal-maquina').dataset.editId;
-    
-    console.log('Datos a enviar:', { puestoId, nombre, modelo, descripcion, editId });
+    const tipoRadio = document.querySelector('input[name="maquina-tipo"]:checked');
+    const tipoOperacion = tipoRadio ? tipoRadio.value : 'MANUAL';
     
     if (!puestoId) {
         alert('Debe seleccionar un puesto de trabajo');
@@ -374,37 +403,46 @@ async function guardarMaquina() {
         const url = editId ? `/api/maquinas/${editId}` : '/api/maquinas';
         const method = editId ? 'PUT' : 'POST';
         
-        console.log('Enviando petición:', method, url);
-        
         const response = await fetch(url, {
             method: method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 puesto_id: puestoId,
                 nombre: nombre,
                 modelo: modelo || '',
-                descripcion: descripcion || ''
+                descripcion: descripcion || '',
+                tipo_operacion: tipoOperacion
             })
         });
         
-        console.log('Respuesta del servidor:', response.status, response.statusText);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        console.log('Datos de respuesta:', data);
         
-        if (data.success) {
-            cerrarModal('modal-maquina');
-            cargarMaquinas();
-            mostrarNotificacion(editId ? 'Máquina actualizada correctamente' : 'Máquina creada correctamente', 'success');
-        } else {
+        if (!data.success) {
             alert('Error del servidor: ' + (data.message || 'Error desconocido'));
+            return;
         }
+
+        const maquinaId = editId || data.maquina.id;
+
+        // Subir PDF pendiente si lo hay
+        if (_pdfPendiente) {
+            const formData = new FormData();
+            formData.append('pdf', _pdfPendiente);
+            const pdfResp = await fetch(`/api/maquinas/${maquinaId}/pdf`, {
+                method: 'POST',
+                body: formData
+            });
+            const pdfData = await pdfResp.json();
+            if (!pdfData.success) {
+                alert('Máquina guardada pero error al subir PDF: ' + pdfData.message);
+            }
+        }
+
+        cerrarModal('modal-maquina');
+        cargarMaquinas();
+        mostrarNotificacion(editId ? 'Máquina actualizada correctamente' : 'Máquina creada correctamente', 'success');
+
     } catch (error) {
         console.error('Error completo:', error);
         alert('Error al guardar la máquina: ' + error.message);
@@ -855,6 +893,67 @@ async function imgEliminar() {
     } catch (e) {
         alert('Error de conexión al eliminar la imagen');
     }
+}
+
+// ================================
+// PDF DE MÁQUINAS
+// ================================
+
+/** Cuando el usuario selecciona un PDF desde el input */
+function pdfOnFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Solo se aceptan archivos PDF.');
+        return;
+    }
+    _pdfPendiente = file;
+    document.getElementById('pdf-drop-area').style.display = 'none';
+    document.getElementById('pdf-nombre-display').textContent = file.name;
+    document.getElementById('pdf-info-bar').style.display = 'flex';
+}
+
+/** Quitar PDF pendiente (aún no subido) */
+function pdfEliminarPendiente() {
+    _pdfPendiente = null;
+    document.getElementById('pdf-file-input').value = '';
+    document.getElementById('pdf-info-bar').style.display = 'none';
+    document.getElementById('pdf-drop-area').style.display = '';
+    document.getElementById('pdf-drop-area').classList.remove('tiene-pdf');
+    document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
+}
+
+/** Ver el PDF ya guardado en el servidor */
+function pdfVerExistente() {
+    if (!_pdfMaquinaIdActual) return;
+    window.open(`/api/maquinas/${_pdfMaquinaIdActual}/pdf`, '_blank');
+}
+
+/** Eliminar el PDF ya guardado en el servidor */
+async function pdfEliminarExistente() {
+    if (!_pdfMaquinaIdActual) return;
+    if (!confirm('¿Eliminar el PDF de instrucciones de esta máquina?')) return;
+    try {
+        const resp = await fetch(`/api/maquinas/${_pdfMaquinaIdActual}/pdf`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('pdf-existente-bar').style.display = 'none';
+            document.getElementById('pdf-drop-area').style.display = '';
+            document.getElementById('pdf-drop-area').classList.remove('tiene-pdf');
+            document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
+            mostrarNotificacion('PDF eliminado correctamente', 'success');
+            cargarMaquinas();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al eliminar el PDF');
+    }
+}
+
+/** Abrir el PDF de una máquina desde la card */
+function verPdfMaquina(maquinaId) {
+    window.open(`/api/maquinas/${maquinaId}/pdf`, '_blank');
 }
 
 // ================================
