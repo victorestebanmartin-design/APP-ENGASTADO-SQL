@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarMaquinas();
     cargarAsignaciones();
 });
-
 // ================================
 // GESTIÓN DE PUESTOS
 // ================================
@@ -953,6 +952,129 @@ async function imgEliminar() {
     } catch (e) {
         alert('Error de conexión al eliminar la imagen');
     }
+}
+
+// ================================
+// ANÁLISIS POR CORTE DE CABLE
+// ================================
+
+let _analisisData = null;
+
+async function cargarAnalisis() {
+    const container = document.getElementById('lista-analisis');
+    const globalEl  = document.getElementById('analisis-global');
+    container.innerHTML = '<div class="loading">🔄 Calculando estadísticas...</div>';
+    globalEl.style.display = 'none';
+    try {
+        const resp = await fetch('/api/estadisticas-tipo-operacion');
+        const data = await resp.json();
+        if (!data.success) {
+            container.innerHTML = '<p class="error">Error al cargar estadísticas</p>';
+            return;
+        }
+        _analisisData = data;
+        renderAnalisis(data);
+    } catch (e) {
+        container.innerHTML = '<p class="error">Error de conexión</p>';
+    }
+}
+
+function ordenarAnalisis() {
+    if (_analisisData) renderAnalisis(_analisisData);
+}
+
+function renderAnalisis(data) {
+    const container = document.getElementById('lista-analisis');
+    const globalEl  = document.getElementById('analisis-global');
+    const orden     = document.getElementById('analisis-orden')?.value || 'nombre';
+
+    if (!data.por_archivo || data.por_archivo.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">📊</div>
+                <h4>Sin datos</h4>
+                <p>No hay archivos de corte activos o no tienen terminales.</p>
+            </div>`;
+        return;
+    }
+
+    // ── Bloque global ──────────────────────────────────────────────
+    const g = data.global;
+    const totalAsig = g.MANUAL + g.AUTOMATICA + (g['SEMI-AUTOMATICA'] || 0);
+    const gPct = n => totalAsig ? Math.round(n * 100 / totalAsig) : 0;
+
+    globalEl.style.display = '';
+    globalEl.innerHTML = `
+        <div class="analisis-global-row">
+            <div><span class="ag-label">TOTAL TERMINALES</span><br><span class="ag-val">${g.total}</span></div>
+            <div class="analisis-global-sep"></div>
+            <div><span class="ag-label">🤚 Manual</span><br><span class="ag-val">${g.MANUAL}</span> <span class="ag-pct">${gPct(g.MANUAL)}%</span></div>
+            <div class="analisis-global-sep"></div>
+            <div><span class="ag-label">⚡ Semi-Auto</span><br><span class="ag-val">${g['SEMI-AUTOMATICA']||0}</span> <span class="ag-pct">${gPct(g['SEMI-AUTOMATICA']||0)}%</span></div>
+            <div class="analisis-global-sep"></div>
+            <div><span class="ag-label">🤖 Automática</span><br><span class="ag-val">${g.AUTOMATICA}</span> <span class="ag-pct">${gPct(g.AUTOMATICA)}%</span></div>
+            <div class="analisis-global-sep"></div>
+            <div><span class="ag-label" style="color:#fcd34d;">⚠️ Sin asignar</span><br><span class="ag-val" style="color:#fcd34d;">${g.sin_asignar}</span></div>
+        </div>
+        <div style="padding:0 16px 14px;">
+            <div class="analisis-barra" style="height:8px;">
+                ${g.MANUAL      > 0 ? `<div class="stb-seg manual" style="width:${gPct(g.MANUAL)}%"></div>` : ''}
+                ${(g['SEMI-AUTOMATICA']||0) > 0 ? `<div class="stb-seg semi" style="width:${gPct(g['SEMI-AUTOMATICA']||0)}%"></div>` : ''}
+                ${g.AUTOMATICA  > 0 ? `<div class="stb-seg auto"   style="width:${gPct(g.AUTOMATICA)}%"></div>` : ''}
+            </div>
+        </div>`;
+
+    // ── Ordenar ────────────────────────────────────────────────────
+    const lista = [...data.por_archivo];
+    const pct = (n, total) => total ? Math.round(n * 100 / total) : 0;
+    lista.sort((a, b) => {
+        const totA = a.manual + a.semi + a.automatica || 1;
+        const totB = b.manual + b.semi + b.automatica || 1;
+        switch (orden) {
+            case 'total':      return b.total - a.total;
+            case 'manual_pct': return pct(b.manual, totB) - pct(a.manual, totA);
+            case 'auto_pct':   return pct(b.automatica, totB) - pct(a.automatica, totA);
+            case 'semi_pct':   return pct(b.semi, totB) - pct(a.semi, totA);
+            case 'sin_pct':    return pct(b.sin_asignar, b.total) - pct(a.sin_asignar, a.total);
+            default:           return a.nombre.localeCompare(b.nombre);
+        }
+    });
+
+    // ── Render cards ───────────────────────────────────────────────
+    container.innerHTML = `<div class="analisis-grid">${lista.map(item => {
+        const tot   = item.total || 1;
+        const asig  = item.manual + item.semi + item.automatica || 1;
+        const wM    = pct(item.manual,     tot);
+        const wS    = pct(item.semi,       tot);
+        const wA    = pct(item.automatica, tot);
+        const wN    = pct(item.sin_asignar, tot);
+        const pM    = pct(item.manual,     asig);
+        const pS    = pct(item.semi,       asig);
+        const pA    = pct(item.automatica, asig);
+
+        // Nombre corto: quitar fecha tipo _YYYYMMDD o _vX al final
+        const nombreCorto = item.nombre.replace(/_\d{8}(_v\d+)?$/i, '').replace(/_v\d+$/i, '');
+
+        return `
+        <div class="analisis-card">
+            <div class="analisis-card-header">
+                <span class="analisis-card-nombre" title="${item.archivo}">${nombreCorto}</span>
+                <span class="analisis-card-total">${item.total} terminales</span>
+            </div>
+            <div class="analisis-barra">
+                ${wM > 0 ? `<div class="stb-seg manual" style="width:${wM}%" title="Manual ${wM}%"></div>` : ''}
+                ${wS > 0 ? `<div class="stb-seg semi"   style="width:${wS}%" title="Semi-Auto ${wS}%"></div>` : ''}
+                ${wA > 0 ? `<div class="stb-seg auto"   style="width:${wA}%" title="Automática ${wA}%"></div>` : ''}
+                ${wN > 0 ? `<div class="stb-seg" style="width:${wN}%;background:rgba(100,116,139,.5);" title="Sin asignar ${wN}%"></div>` : ''}
+            </div>
+            <div class="analisis-pills">
+                ${item.manual > 0      ? `<div class="analisis-pill manual"><span>🤚</span><span class="ap-val">${item.manual}</span><span class="ap-pct">${pM}%</span></div>` : ''}
+                ${item.semi > 0        ? `<div class="analisis-pill semi"><span>⚡</span><span class="ap-val">${item.semi}</span><span class="ap-pct">${pS}%</span></div>` : ''}
+                ${item.automatica > 0  ? `<div class="analisis-pill auto"><span>🤖</span><span class="ap-val">${item.automatica}</span><span class="ap-pct">${pA}%</span></div>` : ''}
+                ${item.sin_asignar > 0 ? `<div class="analisis-pill none"><span>⚠️</span><span class="ap-val">${item.sin_asignar}</span><span class="ap-pct">${wN}%</span></div>` : ''}
+            </div>
+        </div>`;
+    }).join('')}</div>`;
 }
 
 // ================================

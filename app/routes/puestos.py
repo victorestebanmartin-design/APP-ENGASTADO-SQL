@@ -412,6 +412,81 @@ def api_eliminar_pdf_maquina(maquina_id):
         return error_interno(e, 'Error al eliminar PDF de máquina')
 
 
+@bp.route('/api/estadisticas-tipo-operacion', methods=['GET'])
+def api_estadisticas_tipo_operacion():
+    """Estadísticas de tipo de operación por archivo Excel / corte de cable"""
+    try:
+        codigo_repo = CodigoCorteRepository(db)
+        codigos = codigo_repo.obtener_todos_codigos()
+
+        maquina_repo = MaquinaRepository(db)
+        maquinas = maquina_repo.obtener_todas_maquinas()
+
+        # Construir mapa terminal_codigo → tipo_operacion
+        terminal_tipo = {}
+        for maquina in maquinas:
+            tipo = maquina.get('tipo_operacion') or 'MANUAL'
+            for terminal in maquina_repo.obtener_terminales_asignados(maquina['id']):
+                terminal_tipo[terminal] = tipo
+
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        por_archivo = []
+        g = {'MANUAL': 0, 'AUTOMATICA': 0, 'SEMI-AUTOMATICA': 0, 'sin_asignar': 0, 'total': 0}
+
+        for codigo in codigos:
+            archivo = codigo['archivo_excel']
+            filepath = os.path.join(upload_folder, archivo)
+            if not os.path.exists(filepath):
+                continue
+            try:
+                df = leer_excel_cacheado(filepath)
+                terminales_archivo = set()
+                for col in df.columns:
+                    if 'terminal' in str(col).lower():
+                        for t in df[col].dropna().unique():
+                            t = str(t).strip()
+                            if t and not t.endswith('*'):
+                                terminales_archivo.add(t)
+
+                stats = {'MANUAL': 0, 'AUTOMATICA': 0, 'SEMI-AUTOMATICA': 0, 'sin_asignar': 0}
+                for t in terminales_archivo:
+                    tipo = terminal_tipo.get(t)
+                    if tipo:
+                        stats[tipo] = stats.get(tipo, 0) + 1
+                    else:
+                        stats['sin_asignar'] += 1
+
+                total = len(terminales_archivo)
+                for k in stats:
+                    g[k] = g.get(k, 0) + stats[k]
+                g['total'] += total
+
+                nombre = os.path.splitext(archivo)[0]
+
+                por_archivo.append({
+                    'archivo': archivo,
+                    'nombre': nombre,
+                    'codigo': codigo.get('codigo', nombre),
+                    'total': total,
+                    'manual': stats['MANUAL'],
+                    'semi': stats['SEMI-AUTOMATICA'],
+                    'automatica': stats['AUTOMATICA'],
+                    'sin_asignar': stats['sin_asignar'],
+                })
+            except Exception:
+                pass
+
+        por_archivo.sort(key=lambda x: x['archivo'])
+
+        return jsonify({
+            'success': True,
+            'por_archivo': por_archivo,
+            'global': g
+        })
+    except Exception as e:
+        return error_interno(e, 'Error al calcular estadísticas de tipo de operación')
+
+
 @bp.route('/api/terminales-disponibles', methods=['GET'])
 def api_terminales_disponibles():
     """Obtener todos los terminales disponibles con su estado de asignación"""
