@@ -65,6 +65,9 @@
             background: var(--panel-2); border: 1px solid var(--border);
             border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            position: sticky; top: 0; z-index: 20;
+            backdrop-filter: blur(8px);
+            background: rgba(22, 34, 50, 0.95);
         }
         .asignacion-rapida h4 { margin: 0; font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; }
         .asignacion-controles { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex: 1; }
