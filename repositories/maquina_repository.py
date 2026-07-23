@@ -95,7 +95,10 @@ class MaquinaRepository(BaseRepository):
                           puesto_id: Optional[str] = None,
                           tipo_operacion: Optional[str] = None,
                           pdf_instrucciones: Optional[str] = None,
-                          limpiar_pdf: bool = False) -> bool:
+                          limpiar_pdf: bool = False,
+                          lleva_regulacion: Optional[bool] = None,
+                          pdf_regulacion: Optional[str] = None,
+                          limpiar_pdf_regulacion: bool = False) -> bool:
         """Actualizar información de una máquina"""
         updates = []
         params = {'id': id}
@@ -125,6 +128,16 @@ class MaquinaRepository(BaseRepository):
             params['pdf_instrucciones'] = pdf_instrucciones
         elif limpiar_pdf:
             updates.append("pdf_instrucciones = NULL")
+
+        if lleva_regulacion is not None:
+            updates.append("lleva_regulacion = :lleva_regulacion")
+            params['lleva_regulacion'] = 1 if lleva_regulacion else 0
+
+        if pdf_regulacion is not None:
+            updates.append("pdf_regulacion = :pdf_regulacion")
+            params['pdf_regulacion'] = pdf_regulacion
+        elif limpiar_pdf_regulacion:
+            updates.append("pdf_regulacion = NULL")
         
         if not updates:
             return False

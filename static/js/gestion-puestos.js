@@ -8,6 +8,7 @@ let dataMaquinas = null;
 // Estado PDF modal máquina
 let _pdfPendiente = null;          // File object pendiente de subir
 let _pdfMaquinaIdActual = null;    // ID de la máquina en edición
+let _pdfRegPendiente = null;       // File PDF regulación pendiente de subir
 
 // Cargar datos al iniciar
 document.addEventListener('DOMContentLoaded', function() {
@@ -261,6 +262,8 @@ function mostrarListaMaquinas(maquinas) {
                     const tipo = maquina.tipo_operacion || 'MANUAL';
                     const tipoCls = tipo === 'AUTOMATICA' ? 'automatica' : tipo === 'SEMI-AUTOMATICA' ? 'semi' : 'manual';
                     const tipoIcon = tipo === 'AUTOMATICA' ? '🤖' : tipo === 'SEMI-AUTOMATICA' ? '⚡' : '🤚';
+                    const regBadge = maquina.lleva_regulacion
+                        ? `<span class="badge-reg">🔧 REG</span>` : '';
                     const pdfBtn = maquina.pdf_instrucciones
                         ? `<button class="btn-pdf" onclick="event.stopPropagation();verPdfMaquina('${maquina.id}')" title="Ver PDF">📄 PDF</button>`
                         : `<button class="btn-pdf sin-pdf" onclick="event.stopPropagation();editarMaquina('${maquina.id}')" title="Adjuntar PDF">📄 PDF</button>`;
@@ -277,6 +280,7 @@ function mostrarListaMaquinas(maquinas) {
                         <p class="maquina-descripcion">${maquina.descripcion || 'Sin descripción'}</p>
                         <div class="maquina-stats" style="gap:6px;flex-wrap:wrap;">
                             <span class="badge-tipo ${tipoCls}">${tipoIcon} ${tipo}</span>
+                            ${regBadge}
                             ${pdfBtn}
                             <span class="stat">🔗 ${maquina.terminales_asignados ? maquina.terminales_asignados.length : 0}</span>
                             <span class="stat-status ${maquina.activo ? 'activo' : 'inactivo'}">
@@ -352,6 +356,23 @@ function mostrarModalMaquina(maquinaId = null) {
                     document.getElementById('pdf-drop-area').classList.remove('tiene-pdf');
                     document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
                 }
+
+                // Regulación
+                const llevaReg = !!maquina.lleva_regulacion;
+                document.getElementById('maquina-lleva-regulacion').checked = llevaReg;
+                document.getElementById('pdf-reg-group').style.display = llevaReg ? '' : 'none';
+                _pdfRegPendiente = null;
+                if (llevaReg && maquina.pdf_regulacion) {
+                    document.getElementById('pdf-reg-drop-area').style.display = 'none';
+                    document.getElementById('pdf-reg-existente-nombre').textContent = maquina.pdf_regulacion;
+                    document.getElementById('pdf-reg-existente-bar').style.display = 'flex';
+                    document.getElementById('pdf-reg-info-bar').style.display = 'none';
+                } else {
+                    document.getElementById('pdf-reg-drop-area').style.display = '';
+                    document.getElementById('pdf-reg-existente-bar').style.display = 'none';
+                    document.getElementById('pdf-reg-info-bar').style.display = 'none';
+                    document.getElementById('pdf-reg-drop-area').textContent = '🔧 Clic para adjuntar PDF de regulación';
+                }
             }, 100);
         } else {
             console.error('Máquina no encontrada con ID:', maquinaId);
@@ -373,6 +394,14 @@ function mostrarModalMaquina(maquinaId = null) {
         document.getElementById('pdf-drop-area').textContent = '📄 Clic para adjuntar PDF de instrucciones';
         document.getElementById('pdf-info-bar').style.display = 'none';
         document.getElementById('pdf-existente-bar').style.display = 'none';
+        // Reset regulación
+        document.getElementById('maquina-lleva-regulacion').checked = false;
+        document.getElementById('pdf-reg-group').style.display = 'none';
+        _pdfRegPendiente = null;
+        document.getElementById('pdf-reg-drop-area').style.display = '';
+        document.getElementById('pdf-reg-drop-area').textContent = '🔧 Clic para adjuntar PDF de regulación';
+        document.getElementById('pdf-reg-info-bar').style.display = 'none';
+        document.getElementById('pdf-reg-existente-bar').style.display = 'none';
     }
     
     modal.dataset.editId = maquinaId || '';
@@ -390,6 +419,7 @@ async function guardarMaquina() {
     const editId = document.getElementById('modal-maquina').dataset.editId;
     const tipoRadio = document.querySelector('input[name="maquina-tipo"]:checked');
     const tipoOperacion = tipoRadio ? tipoRadio.value : 'MANUAL';
+    const llevaRegulacion = document.getElementById('maquina-lleva-regulacion').checked;
     
     if (!puestoId) {
         alert('Debe seleccionar un puesto de trabajo');
@@ -413,7 +443,8 @@ async function guardarMaquina() {
                 nombre: nombre,
                 modelo: modelo || '',
                 descripcion: descripcion || '',
-                tipo_operacion: tipoOperacion
+                tipo_operacion: tipoOperacion,
+                lleva_regulacion: llevaRegulacion
             })
         });
         
@@ -437,7 +468,21 @@ async function guardarMaquina() {
             });
             const pdfData = await pdfResp.json();
             if (!pdfData.success) {
-                alert('Máquina guardada pero error al subir PDF: ' + pdfData.message);
+                alert('Máquina guardada pero error al subir PDF instrucciones: ' + pdfData.message);
+            }
+        }
+
+        // Subir PDF de regulación pendiente si lo hay
+        if (_pdfRegPendiente) {
+            const formData = new FormData();
+            formData.append('pdf', _pdfRegPendiente);
+            const pdfResp = await fetch(`/api/maquinas/${maquinaId}/pdf-regulacion`, {
+                method: 'POST',
+                body: formData
+            });
+            const pdfData = await pdfResp.json();
+            if (!pdfData.success) {
+                alert('Máquina guardada pero error al subir PDF regulación: ' + pdfData.message);
             }
         }
 
@@ -1136,6 +1181,59 @@ async function pdfEliminarExistente() {
 /** Abrir el PDF de una máquina desde la card */
 function verPdfMaquina(maquinaId) {
     window.open(`/api/maquinas/${maquinaId}/pdf`, '_blank');
+}
+
+// ── PDF Regulación ─────────────────────────────────────────────────
+
+/** Mostrar/ocultar sección PDF regulación según el toggle */
+function toggleRegulacion(checked) {
+    document.getElementById('pdf-reg-group').style.display = checked ? '' : 'none';
+}
+
+function pdfRegOnFileSelected(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Solo se aceptan archivos PDF.');
+        return;
+    }
+    _pdfRegPendiente = file;
+    document.getElementById('pdf-reg-drop-area').style.display = 'none';
+    document.getElementById('pdf-reg-nombre-display').textContent = file.name;
+    document.getElementById('pdf-reg-info-bar').style.display = 'flex';
+}
+
+function pdfRegEliminarPendiente() {
+    _pdfRegPendiente = null;
+    document.getElementById('pdf-reg-file-input').value = '';
+    document.getElementById('pdf-reg-info-bar').style.display = 'none';
+    document.getElementById('pdf-reg-drop-area').style.display = '';
+    document.getElementById('pdf-reg-drop-area').textContent = '🔧 Clic para adjuntar PDF de regulación';
+}
+
+function pdfRegVerExistente() {
+    if (!_pdfMaquinaIdActual) return;
+    window.open(`/api/maquinas/${_pdfMaquinaIdActual}/pdf-regulacion`, '_blank');
+}
+
+async function pdfRegEliminarExistente() {
+    if (!_pdfMaquinaIdActual) return;
+    if (!confirm('¿Eliminar el PDF de regulación de esta máquina?')) return;
+    try {
+        const resp = await fetch(`/api/maquinas/${_pdfMaquinaIdActual}/pdf-regulacion`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('pdf-reg-existente-bar').style.display = 'none';
+            document.getElementById('pdf-reg-drop-area').style.display = '';
+            document.getElementById('pdf-reg-drop-area').textContent = '🔧 Clic para adjuntar PDF de regulación';
+            mostrarNotificacion('PDF de regulación eliminado', 'success');
+            cargarMaquinas();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error de conexión al eliminar el PDF de regulación');
+    }
 }
 
 // ================================

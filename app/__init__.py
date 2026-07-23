@@ -151,6 +151,10 @@ def _apply_migrations(db_path):
             cur.execute("ALTER TABLE maquinas ADD COLUMN tipo_operacion TEXT NOT NULL DEFAULT 'MANUAL'")
         if 'pdf_instrucciones' not in maq_cols:
             cur.execute("ALTER TABLE maquinas ADD COLUMN pdf_instrucciones TEXT")
+        if 'lleva_regulacion' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN lleva_regulacion INTEGER NOT NULL DEFAULT 0")
+        if 'pdf_regulacion' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN pdf_regulacion TEXT")
         conn.commit()
 
     conn.close()

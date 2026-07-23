@@ -291,6 +291,37 @@
         .tipo-op-label.auto:has(input:checked)    { border-color: #3b82f6; background: rgba(59,130,246,.12); color: #93c5fd; }
         .tipo-op-label.semi:has(input:checked)    { border-color: #a855f7; background: rgba(168,85,247,.12); color: #d8b4fe; }
 
+        /* Toggle switch regulación */
+        .toggle-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; border-radius: 8px;
+            background: #2a3a52; border: 1px solid #334155;
+        }
+        .toggle-row label { font-size: 0.85rem; color: #94a3b8; cursor: pointer; user-select: none; }
+        .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+        .toggle-switch input { display: none; }
+        .toggle-slider {
+            position: absolute; inset: 0; border-radius: 22px;
+            background: #334155; cursor: pointer; transition: background .2s;
+        }
+        .toggle-slider::before {
+            content: ''; position: absolute;
+            width: 16px; height: 16px; border-radius: 50%;
+            left: 3px; bottom: 3px; background: #64748b;
+            transition: transform .2s, background .2s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: rgba(168,85,247,.35); border: 1px solid #a855f7; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); background: #a855f7; }
+
+        /* Badge regulación en card */
+        .badge-reg {
+            display: inline-flex; align-items: center; gap: 3px;
+            font-size: 0.63rem; font-weight: 700; letter-spacing: .06em;
+            padding: 2px 7px; border-radius: 20px; white-space: nowrap;
+            background: rgba(168,85,247,.12); color: #d8b4fe;
+            border: 1px solid rgba(168,85,247,.35);
+        }
+
         /* PDF upload en modal */
         .pdf-drop-area {
             border: 2px dashed #334155; border-radius: 10px;
@@ -648,7 +679,7 @@
                 <textarea id="maquina-descripcion" placeholder="Características y funciones de la máquina"></textarea>
             </div>
             <div class="p-form-group" id="pdf-upload-group">
-                <label>PDF de Instrucciones / Regulación</label>
+                <label>PDF de Instrucciones / Regulación general</label>
                 <div id="pdf-drop-area" class="pdf-drop-area" onclick="document.getElementById('pdf-file-input').click()">
                     📄 Clic para adjuntar PDF de instrucciones
                 </div>
@@ -662,6 +693,35 @@
                     <div style="display:flex;gap:6px;">
                         <button onclick="pdfVerExistente()" title="Ver PDF" style="color:#93c5fd">👁</button>
                         <button onclick="pdfEliminarExistente()" title="Eliminar PDF del servidor">🗑</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Toggle regulación -->
+            <div class="p-form-group">
+                <div class="toggle-row">
+                    <label for="maquina-lleva-regulacion">🔧 Esta máquina lleva regulación</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="maquina-lleva-regulacion" onchange="toggleRegulacion(this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div id="pdf-reg-group" class="p-form-group" style="display:none">
+                <label>PDF de Regulación (instrucciones de ajuste/regulación)</label>
+                <div id="pdf-reg-drop-area" class="pdf-drop-area" onclick="document.getElementById('pdf-reg-file-input').click()">
+                    🔧 Clic para adjuntar PDF de regulación
+                </div>
+                <input type="file" id="pdf-reg-file-input" accept="application/pdf,.pdf" style="display:none" onchange="pdfRegOnFileSelected(this)">
+                <div id="pdf-reg-info-bar" class="pdf-info-bar" style="display:none">
+                    <span id="pdf-reg-nombre-display">—</span>
+                    <button onclick="pdfRegEliminarPendiente()" title="Quitar PDF">✕</button>
+                </div>
+                <div id="pdf-reg-existente-bar" class="pdf-info-bar" style="display:none">
+                    🔧 <span id="pdf-reg-existente-nombre">—</span>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="pdfRegVerExistente()" title="Ver PDF" style="color:#93c5fd">👁</button>
+                        <button onclick="pdfRegEliminarExistente()" title="Eliminar PDF del servidor">🗑</button>
                     </div>
                 </div>
             </div>

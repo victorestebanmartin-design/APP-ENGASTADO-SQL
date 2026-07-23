@@ -272,8 +272,12 @@ def api_actualizar_maquina(maquina_id):
             tipo_operacion = tipo_operacion.strip().upper()
             if tipo_operacion not in ('MANUAL', 'AUTOMATICA', 'SEMI-AUTOMATICA'):
                 tipo_operacion = None
+        lleva_regulacion = data.get('lleva_regulacion')
+        if lleva_regulacion is not None:
+            lleva_regulacion = bool(lleva_regulacion)
         
-        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id, tipo_operacion):
+        if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id, tipo_operacion,
+                                           lleva_regulacion=lleva_regulacion):
             maquina_actualizada = maquina_repo.obtener_maquina(maquina_id)
             maquina_actualizada['terminales_asignados'] = maquina_repo.obtener_terminales_asignados(maquina_id)
             return jsonify({
@@ -410,6 +414,96 @@ def api_eliminar_pdf_maquina(maquina_id):
 
     except Exception as e:
         return error_interno(e, 'Error al eliminar PDF de máquina')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf-regulacion', methods=['POST'])
+@requiere_pin_admin
+def api_subir_pdf_regulacion(maquina_id):
+    """Subir o reemplazar el PDF de regulación de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        if 'pdf' not in request.files:
+            return jsonify({'success': False, 'message': 'No se envió ningún archivo'}), 400
+
+        archivo = request.files['pdf']
+        if not archivo.filename:
+            return jsonify({'success': False, 'message': 'Nombre de archivo vacío'}), 400
+
+        nombre_seguro = secure_filename(archivo.filename)
+        if not nombre_seguro.lower().endswith('.pdf'):
+            return jsonify({'success': False, 'message': 'Solo se aceptan archivos PDF'}), 400
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        os.makedirs(pdf_folder, exist_ok=True)
+
+        if maquina.get('pdf_regulacion'):
+            pdf_anterior = os.path.join(pdf_folder, maquina['pdf_regulacion'])
+            if os.path.exists(pdf_anterior):
+                os.remove(pdf_anterior)
+
+        nombre_final = f"reg_{maquina_id}_{nombre_seguro}"
+        ruta_destino = os.path.join(pdf_folder, nombre_final)
+        archivo.save(ruta_destino)
+
+        maquina_repo.actualizar_maquina(maquina_id, pdf_regulacion=nombre_final)
+        return jsonify({'success': True, 'pdf_regulacion': nombre_final})
+
+    except Exception as e:
+        return error_interno(e, 'Error al subir PDF de regulación')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf-regulacion', methods=['GET'])
+def api_obtener_pdf_regulacion(maquina_id):
+    """Descargar / visualizar el PDF de regulación de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        nombre_pdf = maquina.get('pdf_regulacion')
+        if not nombre_pdf:
+            return jsonify({'success': False, 'message': 'Esta máquina no tiene PDF de regulación'}), 404
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        ruta_pdf = os.path.join(pdf_folder, nombre_pdf)
+        if not os.path.exists(ruta_pdf):
+            return jsonify({'success': False, 'message': 'Archivo PDF no encontrado en disco'}), 404
+
+        return send_file(ruta_pdf, mimetype='application/pdf', as_attachment=False, download_name=nombre_pdf)
+
+    except Exception as e:
+        return error_interno(e, 'Error al obtener PDF de regulación')
+
+
+@bp.route('/api/maquinas/<maquina_id>/pdf-regulacion', methods=['DELETE'])
+@requiere_pin_admin
+def api_eliminar_pdf_regulacion(maquina_id):
+    """Eliminar el PDF de regulación de una máquina"""
+    try:
+        maquina_repo = MaquinaRepository(db)
+        maquina = maquina_repo.obtener_maquina(maquina_id)
+        if not maquina:
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        nombre_pdf = maquina.get('pdf_regulacion')
+        if not nombre_pdf:
+            return jsonify({'success': False, 'message': 'No hay PDF de regulación que eliminar'}), 404
+
+        pdf_folder = current_app.config['MAQUINAS_PDF_FOLDER']
+        ruta_pdf = os.path.join(pdf_folder, nombre_pdf)
+        if os.path.exists(ruta_pdf):
+            os.remove(ruta_pdf)
+
+        maquina_repo.actualizar_maquina(maquina_id, limpiar_pdf_regulacion=True)
+        return jsonify({'success': True, 'message': 'PDF de regulación eliminado correctamente'})
+
+    except Exception as e:
+        return error_interno(e, 'Error al eliminar PDF de regulación')
 
 
 @bp.route('/api/estadisticas-tipo-operacion', methods=['GET'])
