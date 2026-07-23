@@ -278,7 +278,64 @@ async function abrirModalMaquina() {
 
 async function seleccionarMaquinaDesdeModal(idx) {
     maquinaSeleccionada = _maquinasCache[idx];
+
+    // Si la máquina lleva regulación, mostrar popup de verificación primero
+    if (maquinaSeleccionada.lleva_regulacion) {
+        mostrarModalRegulacion();
+    } else {
+        await abrirModalTerminal();
+    }
+}
+
+/** Muestra el modal de verificación de regulación */
+function mostrarModalRegulacion() {
+    // Ocultar resto de modales wizard
+    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro'].forEach(mid => {
+        const el = document.getElementById(mid);
+        if (el) el.classList.add('hidden');
+    });
+
+    // Nombre de la máquina
+    const nombreEl = document.getElementById('modal-reg-maquina-nombre');
+    if (nombreEl) nombreEl.textContent = maquinaSeleccionada.nombre || '';
+
+    // Botón PDF regulación
+    const btnPdf = document.getElementById('btn-ver-regulacion');
+    if (btnPdf) btnPdf.style.display = maquinaSeleccionada.pdf_regulacion ? '' : 'none';
+
+    // Reset checkbox y botón confirmar
+    const chk = document.getElementById('check-regulacion-ok');
+    if (chk) chk.checked = false;
+    const btnIniciar = document.getElementById('btn-iniciar-reg');
+    if (btnIniciar) btnIniciar.disabled = true;
+
+    document.getElementById('modal-regulacion').classList.remove('hidden');
+}
+
+/** Habilitar/deshabilitar botón confirmar según checkbox */
+function toggleBtnIniciarReg(checked) {
+    const btn = document.getElementById('btn-iniciar-reg');
+    if (btn) btn.disabled = !checked;
+}
+
+/** Abre el PDF de regulación de la máquina actual */
+function verPdfRegulacionV3() {
+    if (maquinaSeleccionada?.id) {
+        window.open(`/api/maquinas/${maquinaSeleccionada.id}/pdf-regulacion`, '_blank');
+    }
+}
+
+/** Confirmar regulación y continuar al modal de terminales */
+async function confirmarRegulacion() {
+    document.getElementById('modal-regulacion').classList.add('hidden');
     await abrirModalTerminal();
+}
+
+/** Abre el PDF de instrucciones de la máquina actual (botón en cabecera) */
+function verInstruccionesMaquina() {
+    if (maquinaSeleccionada?.id && maquinaSeleccionada?.pdf_instrucciones) {
+        window.open(`/api/maquinas/${maquinaSeleccionada.id}/pdf`, '_blank');
+    }
 }
 
 async function abrirModalTerminal() {
@@ -337,6 +394,7 @@ async function abrirModalTerminal() {
 
 async function seleccionarTerminalDesdeModal(terminal) {
     _cerrarModalesWizard();
+    document.getElementById('modal-regulacion')?.classList.add('hidden');
 
     // Mostrar workspace y paso-trabajo
     document.getElementById('workspace-v3').classList.remove('hidden');
@@ -348,6 +406,10 @@ async function seleccionarTerminalDesdeModal(terminal) {
     document.getElementById('maquina-seleccionada-nombre').textContent = maquinaSeleccionada.nombre;
     document.getElementById('ruta-puesto').textContent = puestoSeleccionado?.nombre || '';
     document.getElementById('ruta-maquina').textContent = maquinaSeleccionada.nombre;
+
+    // Botón instrucciones — visible solo si tiene PDF
+    const btnInstr = document.getElementById('btn-instrucciones-maquina');
+    if (btnInstr) btnInstr.style.display = maquinaSeleccionada?.pdf_instrucciones ? '' : 'none';
 
     // Indicador compacto con botón de cambio
     const container = document.getElementById('terminales-asignados');

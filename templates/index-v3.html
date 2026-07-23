@@ -159,6 +159,39 @@
         </div>
     </div>
 
+    <!-- Modal verificación de regulación -->
+    <div id="modal-regulacion" class="modal-operario-overlay hidden">
+        <div class="modal-regulacion-card">
+            <div class="modal-reg-header">
+                <div class="modal-reg-icon">🔧</div>
+                <h2>Verificación de Regulación</h2>
+                <p id="modal-reg-maquina-nombre">Nombre de máquina</p>
+            </div>
+            <div class="modal-reg-body">
+                <div class="modal-reg-aviso">
+                    <span class="modal-reg-aviso-icon">⚠️</span>
+                    <div>
+                        <strong>Esta máquina requiere regulación específica</strong>
+                        <p>Antes de iniciar el engastado debes verificar que la regulación de la máquina es correcta.</p>
+                    </div>
+                </div>
+                <button id="btn-ver-regulacion" class="modal-reg-btn-pdf" onclick="verPdfRegulacionV3()" style="display:none">
+                    📄 Ver PDF de Regulación
+                </button>
+                <label class="modal-reg-check-row">
+                    <input type="checkbox" id="check-regulacion-ok" onchange="toggleBtnIniciarReg(this.checked)">
+                    <span class="modal-reg-check-label">He verificado que la regulación es correcta y la máquina está lista</span>
+                </label>
+            </div>
+            <div class="modal-reg-footer">
+                <button type="button" onclick="abrirModalMaquina()" class="btn-volver-modal">← Cambiar máquina</button>
+                <button type="button" id="btn-iniciar-reg" onclick="confirmarRegulacion()" class="modal-reg-btn-confirmar" disabled>
+                    ✅ Iniciar Engastado
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>🚀 Sistema de Engastado V3.0</h1>
@@ -236,7 +269,12 @@
                     <div class="ruta-trabajo">
                         <span id="ruta-puesto"></span> → <span id="ruta-maquina"></span>
                     </div>
-                    <button onclick="cambiarMaquina()" class="btn-secondary">🔄 Cambiar Máquina</button>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <button id="btn-instrucciones-maquina" onclick="verInstruccionesMaquina()" class="btn-instrucciones-maq" style="display:none">
+                            📘 Instrucciones
+                        </button>
+                        <button onclick="cambiarMaquina()" class="btn-secondary">🔄 Cambiar Máquina</button>
+                    </div>
                 </div>
 
                 <!-- Lista de terminales asignados -->
