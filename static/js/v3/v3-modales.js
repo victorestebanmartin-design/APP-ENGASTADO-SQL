@@ -135,14 +135,14 @@ async function seleccionarBonoDesdeModal(nombreBono) {
 // ==================== MODALES WIZARD: PUESTO / MÁQUINA / TERMINAL ====================
 
 function _mostrarModalWizard(id) {
-    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro'].forEach(mid => {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro', 'modal-regulacion'].forEach(mid => {
         const el = document.getElementById(mid);
         if (el) el.classList.toggle('hidden', mid !== id);
     });
 }
 
 function _cerrarModalesWizard() {
-    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro'].forEach(mid => {
+    ['modal-puesto', 'modal-maquina', 'modal-terminal', 'modal-carro', 'modal-regulacion'].forEach(mid => {
         const el = document.getElementById(mid);
         if (el) el.classList.add('hidden');
     });
