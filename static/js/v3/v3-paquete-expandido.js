@@ -157,6 +157,16 @@ async function mostrarPaqueteExpandido() {
 
             <div id="engaste-scroll-body" style="flex:1;overflow-y:auto;padding:20px 24px 12px;">
 
+            ${maquinaSeleccionada?.lleva_regulacion ? `
+            <div onclick="verPdfRegulacionV3()" style="display:flex;align-items:center;gap:12px;background:#2d1b69;border:1.5px solid #a855f7;border-radius:10px;padding:11px 16px;margin-bottom:16px;cursor:${maquinaSeleccionada?.pdf_regulacion ? 'pointer' : 'default'};user-select:none;">
+                <span style="font-size:1.5em;flex-shrink:0;">🔧</span>
+                <div style="flex:1;">
+                    <div style="font-size:0.82em;font-weight:700;color:#c4b5fd;letter-spacing:.04em;">ATENCI\u00d3N — M\u00c1QUINA CON REGULACI\u00d3N</div>
+                    <div style="font-size:0.78em;color:rgba(196,181,253,.7);margin-top:2px;">${maquinaSeleccionada?.pdf_regulacion ? 'Toca para ver el PDF de regulaci\u00f3n' : 'Verifica que la regulaci\u00f3n es correcta antes de engastar'}</div>
+                </div>
+                ${maquinaSeleccionada?.pdf_regulacion ? '<span style="font-size:1.2em;opacity:.8;">\u2197\ufe0f</span>' : ''}
+            </div>` : ''}
+
             <div style="text-align:center;margin-bottom:18px;">
                 ${numPadre ? `
                 <div style="display:inline-flex;flex-direction:column;align-items:center;background:#f59e0b;color:#111;padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
@@ -218,6 +228,15 @@ async function mostrarPaqueteExpandido() {
             </div>
 
             <div id="engaste-scroll-body" style="flex:1;overflow-y:auto;padding:20px 24px 16px;">
+            ${maquinaSeleccionada?.lleva_regulacion ? `
+            <div onclick="verPdfRegulacionV3()" style="display:flex;align-items:center;gap:12px;background:#2d1b69;border:1.5px solid #a855f7;border-radius:10px;padding:11px 16px;margin-bottom:16px;cursor:${maquinaSeleccionada?.pdf_regulacion ? 'pointer' : 'default'};user-select:none;">
+                <span style="font-size:1.5em;flex-shrink:0;">🔧</span>
+                <div style="flex:1;">
+                    <div style="font-size:0.82em;font-weight:700;color:#c4b5fd;letter-spacing:.04em;">ATENCI\u00d3N — M\u00c1QUINA CON REGULACI\u00d3N</div>
+                    <div style="font-size:0.78em;color:rgba(196,181,253,.7);margin-top:2px;">${maquinaSeleccionada?.pdf_regulacion ? 'Toca para ver el PDF de regulaci\u00f3n' : 'Verifica que la regulaci\u00f3n es correcta antes de engastar'}</div>
+                </div>
+                ${maquinaSeleccionada?.pdf_regulacion ? '<span style="font-size:1.2em;opacity:.8;">\u2197\ufe0f</span>' : ''}
+            </div>` : ''}
             <div style="text-align:center;margin-bottom:16px;">
                 ${numeroEtiqueta ? `
                 <div style="display:inline-flex;flex-direction:column;align-items:center;background:${_etq.bg};color:${_etq.text};padding:12px 34px;border-radius:12px;border:3px dashed rgba(0,0,0,0.25);box-shadow:0 4px 12px rgba(0,0,0,0.18);">
