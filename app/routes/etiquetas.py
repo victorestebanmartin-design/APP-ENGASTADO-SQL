@@ -707,7 +707,8 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     # Agrupar ordenado alfabéticamente por Cod. cable + elemento (orden del corte)
     agrupados = df.groupby(['Cod. cable', 'De Elemento Etiquetas']).first().reset_index()
 
-    SERIE_PAT_R = re.compile(r'\((S\w+)\)$')
+    SERIE_PAT_R  = re.compile(r'\((S\w+)\)$')
+    _S_OBS_PAT   = re.compile(r'\((S_\w+)\)')
     series_dict_r = {}
     series_orden_r = []   # para mantener el orden de primera aparición de cada serie
     individuales_r = []
@@ -716,6 +717,9 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
         m = SERIE_PAT_R.search(elemento)
+        if not m and 'Observaciones' in agrupados.columns:
+            _obs = str(row.get('Observaciones', '') or '').strip()
+            m = _S_OBS_PAT.search(_obs)
         if m:
             sc = m.group(1)
             if sc not in series_dict_r:

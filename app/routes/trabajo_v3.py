@@ -101,7 +101,8 @@ def datos_trabajo_v3():
                 'cables_doble_terminal': grupo.get('cables_doble_terminal', []),
                 'cables_de_terminal': grupo.get('cables_de_terminal', []),
                 'cables_para_terminal': grupo.get('cables_para_terminal', []),
-                'archivo_excel': archivo  # para lookup de etiqueta correcto por archivo
+                'archivo_excel': archivo,  # para lookup de etiqueta correcto por archivo
+                'serie_obs': grupo.get('serie_obs'),
             }
             paquetes_raw.append(paquete)
             total_terminales += grupo['num_terminales']
@@ -118,6 +119,7 @@ def datos_trabajo_v3():
         paquetes_raw = [p for p in paquetes_raw if _tiene_engaste(p)]
 
         # Fusionar paquetes de la misma serie SXX en un paquete virtual único
+        # Fuentes de serie: (1) sufijo (SXXX) en De Elemento, (2) (S_XXX) en Observaciones
         _SERIE_PAT = re.compile(r'\((S\w+)\)$')
         series_paquetes = {}       # serie_code -> [paquete, ...]
         paquetes_individuales = []
@@ -125,6 +127,8 @@ def datos_trabajo_v3():
             m = _SERIE_PAT.search(str(p['elemento']).strip())
             if m:
                 series_paquetes.setdefault(m.group(1), []).append(p)
+            elif p.get('serie_obs'):
+                series_paquetes.setdefault(p['serie_obs'], []).append(p)
             else:
                 paquetes_individuales.append(p)
 

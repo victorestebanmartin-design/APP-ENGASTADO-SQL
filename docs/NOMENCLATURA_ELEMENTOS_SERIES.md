@@ -19,7 +19,9 @@ Un nombre de elemento sin ningún sufijo especial. Se genera una etiqueta indivi
 
 ---
 
-### 2. Elemento perteneciente a una serie — `(CODIGO_SERIE)`
+### 2. Elemento perteneciente a una serie — dos formas
+
+#### Forma A — sufijo en `De Elemento Etiquetas`: `(SXXX)`
 
 ```
 TB1(S216)
@@ -32,10 +34,26 @@ El código de serie se pone **al final** del nombre entre paréntesis: `NOMBRE(S
 > **Regla obligatoria:** el código dentro del paréntesis **debe empezar por `S`**.  
 > Si no empieza por `S`, la app NO lo trata como serie — el elemento se procesa como individual normal.
 
-- Todos los elementos que terminan con el mismo `(SXXX)` se **agrupan automáticamente** en un paquete virtual de serie.
+---
+
+#### Forma B — código en columna `Observaciones`: `(S_XXXX)`
+
+```
+(S_RELES)
+(S_BORNES_24V)
+```
+
+Si la celda de `Observaciones` contiene un código entre paréntesis con el prefijo `S_`, todos los elementos del Excel que tengan **ese mismo código en sus observaciones** se agrupan como serie.
+
+> El código debe empezar **exactamente por `S_`** (S mayúscula + guion bajo).  
+> Puede aparecer en cualquier posición dentro de la celda de observaciones.
+
+---
+
+**Ambas formas producen el mismo resultado:** un paquete grupo padre con el totales, y los sub-elementos listados debajo. Se pueden usar indistintamente según lo que sea más cómodo poner en el Excel.
+
+- Todos los elementos que comparten el mismo código se **agrupan automáticamente** en un paquete virtual de serie.
 - En pantalla se muestra primero el **grupo padre** (resumen total) y debajo cada sub-elemento.
-- El código debe empezar por `S` seguido de letras o números: `S216`, `S203`, `SABC`, `S1`, etc.
-- El texto antes del `(SXXX)` puede incluir espacios y sufijos: `TB1(S216) 1-3` es válido.
 
 **Ejemplo con tres miembros del mismo grupo:**
 
@@ -109,7 +127,8 @@ Cuando una fila tiene **Longitud = 0** y en Observaciones aparece un número ent
 | Notación | Columna | Significado |
 |---|---|---|
 | `ELEMENTO` | De Elemento | Paquete individual normal |
-| `ELEMENTO(SXXX)` | De Elemento | Pertenece al grupo de serie SXXX |
+| `ELEMENTO(SXXX)` | De Elemento | Pertenece al grupo de serie SXXX (sufijo al final) |
+| `(S_XXXX)` | Observaciones | Pertenece al grupo de serie S_XXXX (código en obs.) |
 | `ELEMENTO*` | De Elemento | Terminal en ese lado no se engasta |
 | `S/T` | De/Para Terminal | Sin terminal en ese extremo |
 | `S/M` | De Manguito | Sin manguito en esa fila |
@@ -120,6 +139,7 @@ Cuando una fila tiene **Longitud = 0** y en Observaciones aparece un número ent
 ## Reglas clave
 
 1. **El `(SXXX)` debe ir al final** del nombre de elemento y **empezar por `S`** — `TB1(S216)` sí; `TB1(ABC)` o `TB1(123)` NO son serie, se tratan como elemento individual.
+2. **El `(S_XXX)` en observaciones debe empezar por `S_`** — `(S_RELES)` sí; `(RELES)` o `(A_RELES)` NO se reconocen como serie.
 2. **El `*` también debe ir al final** — `TB1*` sí; `*TB1` no funciona.
 3. **`S/T` y `S/M` son insensibles a mayúsculas** — `s/t` también se reconoce.
 4. **Un elemento puede combinar serie y asterisco:** `TB1(S216)*` agrupa y a la vez marca como no-engastar.
