@@ -118,7 +118,7 @@ def datos_trabajo_v3():
         paquetes_raw = [p for p in paquetes_raw if _tiene_engaste(p)]
 
         # Fusionar paquetes de la misma serie SXX en un paquete virtual único
-        _SERIE_PAT = re.compile(r'\((\w+)\)$')
+        _SERIE_PAT = re.compile(r'\((S\w+)\)$')
         series_paquetes = {}       # serie_code -> [paquete, ...]
         paquetes_individuales = []
         for p in paquetes_raw:

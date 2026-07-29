@@ -27,12 +27,15 @@ TB1(S216) 1-3
 XPM-05(S203) ef17
 ```
 
-El código de serie se pone **al final** del nombre entre paréntesis: `NOMBRE(CODIGO)`.
+El código de serie se pone **al final** del nombre entre paréntesis: `NOMBRE(SXXX)`.
 
-- Todos los elementos que terminan con el mismo `(CODIGO)` se **agrupan automáticamente** en un paquete virtual de serie.
+> **Regla obligatoria:** el código dentro del paréntesis **debe empezar por `S`**.  
+> Si no empieza por `S`, la app NO lo trata como serie — el elemento se procesa como individual normal.
+
+- Todos los elementos que terminan con el mismo `(SXXX)` se **agrupan automáticamente** en un paquete virtual de serie.
 - En pantalla se muestra primero el **grupo padre** (resumen total) y debajo cada sub-elemento.
-- El código puede ser cualquier combinación de letras y números: `S216`, `S203`, `GRP1`, etc.
-- El texto antes del `(CODIGO)` puede incluir espacios y sufijos: `TB1(S216) 1-3` es válido.
+- El código debe empezar por `S` seguido de letras o números: `S216`, `S203`, `SABC`, `S1`, etc.
+- El texto antes del `(SXXX)` puede incluir espacios y sufijos: `TB1(S216) 1-3` es válido.
 
 **Ejemplo con tres miembros del mismo grupo:**
 
@@ -116,7 +119,7 @@ Cuando una fila tiene **Longitud = 0** y en Observaciones aparece un número ent
 
 ## Reglas clave
 
-1. **El `(CODIGO_SERIE)` debe ir al final** del nombre de elemento — la app busca el patrón `\(código\)` al final de la cadena.
+1. **El `(SXXX)` debe ir al final** del nombre de elemento y **empezar por `S`** — `TB1(S216)` sí; `TB1(ABC)` o `TB1(123)` NO son serie, se tratan como elemento individual.
 2. **El `*` también debe ir al final** — `TB1*` sí; `*TB1` no funciona.
 3. **`S/T` y `S/M` son insensibles a mayúsculas** — `s/t` también se reconoce.
 4. **Un elemento puede combinar serie y asterisco:** `TB1(S216)*` agrupa y a la vez marca como no-engastar.
