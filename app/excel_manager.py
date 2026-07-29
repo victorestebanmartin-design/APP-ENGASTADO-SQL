@@ -470,7 +470,7 @@ def _parse_instrucciones(inst_str):
         if m:
             inst['pm'] = int(m.group(1))
             continue
-        if t == 'M_CORTAR':
+        if t in ('M_CORTAR', 'MCORTAR'):
             inst['m_cortar'] = True
             continue
         if t == 'MRS':
