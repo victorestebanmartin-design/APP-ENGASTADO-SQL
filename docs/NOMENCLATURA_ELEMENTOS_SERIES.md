@@ -46,6 +46,7 @@ El código de serie se pone **al final** del nombre entre paréntesis: `NOMBRE(S
 Si la celda de `Observaciones` contiene un código entre paréntesis con el prefijo `S_`, todos los elementos del Excel que tengan **ese mismo código en sus observaciones** se agrupan como serie.
 
 > El código debe empezar **exactamente por `S_`** (S mayúscula + guion bajo).  
+> El nombre puede contener espacios, letras, acentos y números: `(S_Mazo Exterior)`, `(S_Puentes entre mazos)` son válidos.  
 > Puede aparecer en cualquier posición dentro de la celda de observaciones.
 
 ---
