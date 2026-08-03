@@ -293,7 +293,7 @@ class ExcelManager:
                     'cables_de_terminal': [],     # AZUL: terminal solo en "De Terminal"
                     'cables_para_terminal': [],   # VERDE: terminal solo en "Para Terminal"
                     'num_terminales': 0,
-                    'serie_col': _safe_str(row['Series']) if 'Series' in row and row['Series'] == row['Series'] else '',
+                    'serie_col': _serie_str(row.get('Series')),
                 }
 
             if cable_marca:
@@ -459,6 +459,24 @@ class ExcelManager:
 
 
 # ── Helpers de parseo de Observaciones (Preparación de Mangueras) ─────────────
+
+def _serie_str(val):
+    """Convierte un valor de celda Series a string limpio (1706.0 → '1706')."""
+    try:
+        if val is None or pd.isna(val):
+            return ''
+    except Exception:
+        pass
+    s = str(val).strip()
+    if s.lower() in ('nan', 'none', ''):
+        return ''
+    if s.endswith('.0'):
+        try:
+            return str(int(float(s)))
+        except ValueError:
+            pass
+    return s
+
 
 def _parse_retractiles(val_str):
     """Parsea '649255_40/649251_70' en lista de dicts {codigo, medida}."""

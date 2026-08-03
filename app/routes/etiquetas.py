@@ -707,6 +707,18 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     # Agrupar ordenado alfabéticamente por Cod. cable + elemento (orden del corte)
     agrupados = df.groupby(['Cod. cable', 'De Elemento Etiquetas']).first().reset_index()
 
+    # Para Series, tomar el primer valor no-nulo del grupo (first() puede coger NaN)
+    if 'Series' in df.columns:
+        _series_first = (
+            df.groupby(['Cod. cable', 'De Elemento Etiquetas'])['Series']
+            .apply(lambda x: next((v for v in x if not pd.isna(v)), None))
+            .reset_index(name='_serie_val')
+        )
+        agrupados = agrupados.drop(columns=['Series'], errors='ignore').merge(
+            _series_first, on=['Cod. cable', 'De Elemento Etiquetas'], how='left'
+        )
+        agrupados.rename(columns={'_serie_val': 'Series'}, inplace=True)
+
     _col_series_ok = 'Series' in agrupados.columns
     series_dict_r = {}
     series_orden_r = []   # para mantener el orden de primera aparición de cada serie
@@ -721,6 +733,12 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
                 _sc_raw = '' if pd.isna(_sv) else str(_sv).strip()
             except Exception:
                 _sc_raw = str(_sv).strip() if _sv else ''
+            # Convertir floats enteros (1706.0 → '1706')
+            if _sc_raw.endswith('.0'):
+                try:
+                    _sc_raw = str(int(float(_sc_raw)))
+                except ValueError:
+                    pass
             sc = '' if _sc_raw.lower() in ('nan', 'none', '') else _sc_raw
         else:
             sc = ''
