@@ -516,7 +516,7 @@ function _mostrarValidacionExcel(v) {
     const avisos      = v.advertencias            || [];
     const totalAvisos = v.advertencias_total       || 0;
 
-    if (faltantes.length === 0 && totalAvisos === 0) return;
+    if (faltantes.length === 0 && avisos.length === 0) return;
 
     let html = '';
 
@@ -530,11 +530,12 @@ function _mostrarValidacionExcel(v) {
     }
 
     // — Celdas a revisar: resumen colapsable —
-    if (totalAvisos > 0) {
+    if (avisos.length > 0) {
         const uid = 'val-det-' + Date.now();
+        const count = totalAvisos || avisos.length;
         html += `<div style="background:#fef2f2;border-left:4px solid #f87171;border-radius:4px;padding:8px 12px;font-size:13px;">
             <span style="cursor:pointer;" onclick="document.getElementById('${uid}').classList.toggle('hidden')">
-                🔍 <strong>${totalAvisos} celda${totalAvisos>1?'s':''} a revisar</strong>
+                🔍 <strong>${count} celda${count>1?'s':''} a revisar</strong>
                 <span style="color:#6b7280;">— pulsa para ver detalle ▾</span>
             </span>
             <div id="${uid}" class="hidden" style="margin-top:8px;overflow-x:auto;">

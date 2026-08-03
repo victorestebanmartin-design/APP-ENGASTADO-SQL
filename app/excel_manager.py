@@ -709,8 +709,7 @@ def validar_excel_columnas(filepath):
         return s == '' or s.lower() in ('nan', 'none', 'nat')
 
     try:
-        df = pd.read_excel(filepath, engine='openpyxl')
-        df.columns = [str(c).strip() for c in df.columns]
+        df = leer_excel_cacheado(filepath)
     except Exception as exc:
         return {
             'columnas_faltantes': [], 'features_no_disponibles': [],
