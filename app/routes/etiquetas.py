@@ -715,7 +715,15 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     for _, row in agrupados.iterrows():
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
-        sc = str(row.get('Series', '') or '').strip() if _col_series_ok else ''
+        if _col_series_ok:
+            _sv = row.get('Series', None)
+            try:
+                _sc_raw = '' if pd.isna(_sv) else str(_sv).strip()
+            except Exception:
+                _sc_raw = str(_sv).strip() if _sv else ''
+            sc = '' if _sc_raw.lower() in ('nan', 'none', '') else _sc_raw
+        else:
+            sc = ''
         if sc:
             if sc not in series_dict_r:
                 series_dict_r[sc] = []
