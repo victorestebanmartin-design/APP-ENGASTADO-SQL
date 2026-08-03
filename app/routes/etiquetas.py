@@ -707,41 +707,37 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     # Agrupar ordenado alfabéticamente por Cod. cable + elemento (orden del corte)
     agrupados = df.groupby(['Cod. cable', 'De Elemento Etiquetas']).first().reset_index()
 
-    # Para Series, tomar el primer valor no-nulo del grupo (first() puede coger NaN)
+    # Mapa (cod_cable, elemento) → serie_code; primer valor no-nulo gana
+    _series_map = {}
     if 'Series' in df.columns:
-        _series_first = (
-            df.groupby(['Cod. cable', 'De Elemento Etiquetas'])['Series']
-            .apply(lambda x: next((v for v in x if not pd.isna(v)), None))
-            .reset_index(name='_serie_val')
-        )
-        agrupados = agrupados.drop(columns=['Series'], errors='ignore').merge(
-            _series_first, on=['Cod. cable', 'De Elemento Etiquetas'], how='left'
-        )
-        agrupados.rename(columns={'_serie_val': 'Series'}, inplace=True)
+        for _, _r in df.iterrows():
+            _key = (str(_r['Cod. cable']), str(_r.get('De Elemento Etiquetas', '')).strip())
+            if _key in _series_map:
+                continue
+            _sv = _r.get('Series', None)
+            try:
+                _is_null = pd.isna(_sv)
+            except Exception:
+                _is_null = _sv is None
+            if _is_null:
+                continue
+            _sc = str(_sv).strip()
+            if _sc.endswith('.0'):
+                try:
+                    _sc = str(int(float(_sc)))
+                except ValueError:
+                    pass
+            if _sc.lower() not in ('nan', 'none', ''):
+                _series_map[_key] = _sc
 
-    _col_series_ok = 'Series' in agrupados.columns
     series_dict_r = {}
-    series_orden_r = []   # para mantener el orden de primera aparición de cada serie
+    series_orden_r = []
     individuales_r = []
 
     for _, row in agrupados.iterrows():
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
-        if _col_series_ok:
-            _sv = row.get('Series', None)
-            try:
-                _sc_raw = '' if pd.isna(_sv) else str(_sv).strip()
-            except Exception:
-                _sc_raw = str(_sv).strip() if _sv else ''
-            # Convertir floats enteros (1706.0 → '1706')
-            if _sc_raw.endswith('.0'):
-                try:
-                    _sc_raw = str(int(float(_sc_raw)))
-                except ValueError:
-                    pass
-            sc = '' if _sc_raw.lower() in ('nan', 'none', '') else _sc_raw
-        else:
-            sc = ''
+        sc = _series_map.get((cod_cable, elemento), '')
         if sc:
             if sc not in series_dict_r:
                 series_dict_r[sc] = []
