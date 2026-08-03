@@ -47,23 +47,6 @@ Cada lado tiene su propia columna en el Excel. Los tokens se escriben directamen
 | `A{n}` | Pelado de **todos los activos** en mm | `A150` → activos a 150 mm |
 | `A{activo}_{n}` | Pelado de un **activo concreto** en mm | `A2_40` → activo 2 a 40 mm |
 
----
-
-## Columnas de retráctiles
-
-Las columnas `Retractil DE` y `Retractil PARA` son independientes de las instrucciones de pelado.
-Cada una puede tener uno o varios retráctiles separados por `/`:
-
-```
-CODIGO_MEDIDA/CODIGO_MEDIDA/...
-```
-
-| Columna | Ejemplo | Significa |
-|---|---|---|
-| `Retractil DE` | `649255_40` | Retráctil cód. 649255, cortar 40 mm |
-| `Retractil DE` | `649255_40/649251_70` | Dos retráctiles: 649255 a 40 mm y 649251 a 70 mm |
-| `Retractil PARA` | `649251_70` | Retráctil cód. 649251, cortar 70 mm |
-
 ### Valores por defecto (cuando se omite un token)
 
 | Campo | Si no se especifica… |
