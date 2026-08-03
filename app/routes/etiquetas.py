@@ -704,31 +704,24 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     numero_etiqueta = 1
     codigo_corte = archivo.replace('.xlsx', '').replace('.xls', '')
 
-    # Agrupar ordenado alfabéticamente por Cod. cable + elemento (orden del corte)
-    agrupados = df.groupby(['Cod. cable', 'De Elemento Etiquetas']).first().reset_index()
+    # Añadir columna con serie limpia para poder agrupar por (cable, elemento, serie)
+    def _limpiar_serie(val):
+        try:
+            if pd.isna(val): return ''
+        except Exception:
+            pass
+        s = str(val).strip()
+        if s.endswith('.0'):
+            try: s = str(int(float(s)))
+            except ValueError: pass
+        return '' if s.lower() in ('nan', 'none', '') else s
 
-    # Mapa (cod_cable, elemento) → serie_code; primer valor no-nulo gana
-    _series_map = {}
-    if 'Series' in df.columns:
-        for _, _r in df.iterrows():
-            _key = (str(_r['Cod. cable']), str(_r.get('De Elemento Etiquetas', '')).strip())
-            if _key in _series_map:
-                continue
-            _sv = _r.get('Series', None)
-            try:
-                _is_null = pd.isna(_sv)
-            except Exception:
-                _is_null = _sv is None
-            if _is_null:
-                continue
-            _sc = str(_sv).strip()
-            if _sc.endswith('.0'):
-                try:
-                    _sc = str(int(float(_sc)))
-                except ValueError:
-                    pass
-            if _sc.lower() not in ('nan', 'none', ''):
-                _series_map[_key] = _sc
+    df = df.copy()
+    df['_sc'] = df['Series'].apply(_limpiar_serie) if 'Series' in df.columns else ''
+
+    # Agrupar por (cable, elemento, serie) — mismo elemento puede estar en varias series
+    _gb_keys = ['Cod. cable', 'De Elemento Etiquetas', '_sc']
+    agrupados = df.groupby(_gb_keys).first().reset_index()
 
     series_dict_r = {}
     series_orden_r = []
@@ -737,7 +730,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     for _, row in agrupados.iterrows():
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
-        sc = _series_map.get((cod_cable, elemento), '')
+        sc        = str(row['_sc']).strip()
         if sc:
             if sc not in series_dict_r:
                 series_dict_r[sc] = []
@@ -756,14 +749,16 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
         det = str(row_data.get('De Terminal', ''))
         return desc, sec, lon, det
 
-    # Series (en orden de primera aparición en el groupby)
     for serie_code in series_orden_r:
         miembros = series_dict_r[serie_code]
         total_cables = total_terminales = 0
         primer_det = primer_desc = primer_sec = ''
         for cod_cable, elemento, row_data in miembros:
-            mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-            nc = int(len(df[mask]))
+            # contar solo filas de esta serie concreta
+            mask = ((df['Cod. cable'] == cod_cable) &
+                    (df['De Elemento Etiquetas'] == elemento) &
+                    (df['_sc'] == serie_code))
+            nc = int(mask.sum())
             total_cables += nc
             total_terminales += nc
             desc, sec, _, det = _get_cols_r(row_data)
@@ -779,8 +774,10 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
             'num_terminales': total_terminales, 'archivo': archivo, 'codigo_corte': codigo_corte
         })
         for sub_idx, (cod_cable, elemento, row_data) in enumerate(miembros, 1):
-            mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-            nc = int(len(df[mask]))
+            mask = ((df['Cod. cable'] == cod_cable) &
+                    (df['De Elemento Etiquetas'] == elemento) &
+                    (df['_sc'] == serie_code))
+            nc = int(mask.sum())
             desc, sec, lon, det = _get_cols_r(row_data)
             grupos_generados.append({
                 'numero_etiqueta': numero_etiqueta, 'sub_numero': sub_idx, 'es_grupo_padre': 0,
@@ -790,10 +787,11 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
             })
         numero_etiqueta += 1
 
-    # Individuales
     for cod_cable, elemento, row_data in individuales_r:
-        mask = (df['Cod. cable'] == cod_cable) & (df['De Elemento Etiquetas'] == elemento)
-        nc = int(len(df[mask]))
+        mask = ((df['Cod. cable'] == cod_cable) &
+                (df['De Elemento Etiquetas'] == elemento) &
+                (df['_sc'] == ''))
+        nc = int(mask.sum())
         desc, sec, lon, det = _get_cols_r(row_data)
         grupos_generados.append({
             'numero_etiqueta': numero_etiqueta, 'sub_numero': 0, 'es_grupo_padre': 0,
