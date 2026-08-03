@@ -697,15 +697,17 @@ def _retractil_formato_valido(val_str):
 def validar_excel_columnas(filepath):
     """
     Valida las columnas de preparación de mangueras en un Excel recién subido.
-
-    Returns:
-        {
-          'columnas_faltantes':       [str, ...],
-          'features_no_disponibles':  [str, ...],
-          'advertencias':             [{columna, fila, valor, mensaje}, ...],
-          'advertencias_total':       int,
-        }
     """
+    def _celda_vacia(val):
+        """True si la celda no tiene contenido útil."""
+        try:
+            if pd.isna(val):
+                return True
+        except Exception:
+            pass
+        s = str(val).strip()
+        return s == '' or s.lower() in ('nan', 'none', 'nat')
+
     try:
         df = pd.read_excel(filepath, engine='openpyxl')
         df.columns = [str(c).strip() for c in df.columns]
@@ -724,15 +726,15 @@ def validar_excel_columnas(filepath):
         if col not in df.columns:
             continue
         for idx, val in df[col].items():
-            val_str = '' if pd.isna(val) else str(val).strip()
-            if not val_str:
+            if _celda_vacia(val):
                 continue
+            val_str = str(val).strip()
             errores = _tokens_invalidos_instrucciones(val_str)
             if errores:
                 advertencias.append({
                     'columna': col,
                     'fila': int(idx) + 2,
-                    'valor': val_str,
+                    'valor': val_str[:60],
                     'mensaje': f"Token(s) no reconocido(s): {', '.join(errores)}",
                 })
 
@@ -740,14 +742,14 @@ def validar_excel_columnas(filepath):
         if col not in df.columns:
             continue
         for idx, val in df[col].items():
-            val_str = '' if pd.isna(val) else str(val).strip()
-            if not val_str:
+            if _celda_vacia(val):
                 continue
+            val_str = str(val).strip()
             if not _retractil_formato_valido(val_str):
                 advertencias.append({
                     'columna': col,
                     'fila': int(idx) + 2,
-                    'valor': val_str,
+                    'valor': val_str[:60],
                     'mensaje': 'Formato inválido — se esperaba CODIGO_MEDIDA (ej: 649255_40)',
                 })
 
@@ -755,7 +757,7 @@ def validar_excel_columnas(filepath):
     return {
         'columnas_faltantes':      columnas_faltantes,
         'features_no_disponibles': features_no_disponibles,
-        'advertencias':            advertencias[:50],   # máx 50 en respuesta
+        'advertencias':            advertencias[:30],
         'advertencias_total':      total,
     }
 

@@ -516,43 +516,46 @@ function _mostrarValidacionExcel(v) {
     const avisos      = v.advertencias            || [];
     const totalAvisos = v.advertencias_total       || 0;
 
-    if (faltantes.length === 0 && avisos.length === 0) return;
+    if (faltantes.length === 0 && totalAvisos === 0) return;
 
     let html = '';
 
-    // — Columnas faltantes —
+    // — Columnas faltantes: resumen en una línea —
     if (faltantes.length > 0) {
-        html += `<div style="background:#fef9c3;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;margin-bottom:10px;">
-            <strong>⚠️ Columnas no encontradas (${faltantes.length}):</strong>
-            <ul style="margin:6px 0 0 16px;padding:0;">`;
-        faltantes.forEach((col, i) => {
-            html += `<li><code>${col}</code> → <em style="color:#92400e;">${features[i] || ''} no disponible</em></li>`;
-        });
-        html += `</ul></div>`;
+        const lista = features.join(', ');
+        html += `<div style="background:#fef9c3;border-left:4px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:13px;">
+            ⚠️ <strong>Columnas no encontradas (${faltantes.length}):</strong>
+            <span style="color:#92400e;margin-left:4px;">${lista} — funciones no disponibles</span>
+        </div>`;
     }
 
-    // — Contenido con tokens no reconocidos —
-    if (avisos.length > 0) {
-        const extra = totalAvisos > avisos.length
-            ? ` <span style="color:#6b7280;">(mostrando ${avisos.length} de ${totalAvisos})</span>` : '';
-        html += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;">
-            <strong>🔍 Celdas a revisar (${totalAvisos})${extra}:</strong>
-            <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;">
-                <thead><tr style="background:#fee2e2;">
-                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Columna</th>
-                    <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #fca5a5;">Fila</th>
-                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Valor</th>
-                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Problema</th>
-                </tr></thead><tbody>`;
+    // — Celdas a revisar: resumen colapsable —
+    if (totalAvisos > 0) {
+        const uid = 'val-det-' + Date.now();
+        html += `<div style="background:#fef2f2;border-left:4px solid #f87171;border-radius:4px;padding:8px 12px;font-size:13px;">
+            <span style="cursor:pointer;" onclick="document.getElementById('${uid}').classList.toggle('hidden')">
+                🔍 <strong>${totalAvisos} celda${totalAvisos>1?'s':''} a revisar</strong>
+                <span style="color:#6b7280;">— pulsa para ver detalle ▾</span>
+            </span>
+            <div id="${uid}" class="hidden" style="margin-top:8px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead><tr style="background:#fee2e2;">
+                        <th style="padding:3px 8px;text-align:left;">Columna</th>
+                        <th style="padding:3px 8px;text-align:center;">Fila</th>
+                        <th style="padding:3px 8px;text-align:left;">Valor</th>
+                        <th style="padding:3px 8px;text-align:left;">Problema</th>
+                    </tr></thead><tbody>`;
         avisos.forEach(a => {
             html += `<tr style="border-bottom:1px solid #fecaca;">
-                <td style="padding:4px 8px;"><code>${a.columna}</code></td>
-                <td style="padding:4px 8px;text-align:center;font-weight:700;">${a.fila}</td>
-                <td style="padding:4px 8px;font-family:monospace;color:#374151;">${a.valor}</td>
-                <td style="padding:4px 8px;color:#b91c1c;">${a.mensaje}</td>
+                <td style="padding:3px 8px;"><code>${a.columna}</code></td>
+                <td style="padding:3px 8px;text-align:center;font-weight:700;">${a.fila}</td>
+                <td style="padding:3px 8px;font-family:monospace;">${a.valor}</td>
+                <td style="padding:3px 8px;color:#b91c1c;">${a.mensaje}</td>
             </tr>`;
         });
-        html += `</tbody></table></div>`;
+        if (totalAvisos > avisos.length)
+            html += `<tr><td colspan="4" style="padding:4px 8px;color:#6b7280;">... y ${totalAvisos - avisos.length} más</td></tr>`;
+        html += `</tbody></table></div></div>`;
     }
 
     div.innerHTML = html;
