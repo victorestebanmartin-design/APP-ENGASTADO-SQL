@@ -1,11 +1,27 @@
 # Nomenclatura de Observaciones — Preparación de Mangueras
 
 > **Fichero vivo:** actualizar aquí cuando se añadan nuevos tokens o se cambien reglas.  
-> Última revisión: 2026-07-29
+> Última revisión: 2026-08-03
 
 ---
 
-## Estructura general
+## Formato actual — columnas separadas por lado
+
+Cada lado tiene su propia columna en el Excel. Los tokens se escriben directamente, sin `<-` ni `->`:
+
+| Columna | Contiene | Ejemplo |
+|---|---|---|
+| `Instrucciones Mangueras DE` | tokens del lado De | `PM150/M70` |
+| `Instrucciones Mangueras PARA` | tokens del lado Para | `PM200/MCORTAR` |
+
+- Se pueden rellenar una sola o las dos columnas — si una está vacía, ese lado queda sin instrucciones.
+- Los tokens dentro de cada columna se separan con `/`.
+
+---
+
+## Formato legacy — columna Observaciones (mantener hasta migrar todos los Excels)
+
+> ⚠️ **A eliminar** una vez todos los ficheros usen las columnas nuevas.
 
 ```
 [texto libre] <-[instrucciones lado DE] // [instrucciones lado PARA]->
@@ -14,8 +30,7 @@
 - `<-` marca el **lado De** — las instrucciones van **después** de `<-`
 - `->` marca el **lado Para** — las instrucciones van **antes** de `->`
 - `//` ó `$` separa ambos lados
-- Las instrucciones dentro de cada lado se separan con `/`
-- El texto libre antes de `<-` (p.ej. nombre de la manguera) se ignora completamente
+- El texto libre antes de `<-` se ignora
 
 ---
 

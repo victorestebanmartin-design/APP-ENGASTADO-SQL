@@ -535,8 +535,13 @@ class ManguerasManager:
 # Extender ExcelManager con get_mangueras
 def _get_mangueras(self, filename: str) -> list:
     """
-    Lee las filas del Excel donde Observaciones empieza por '<-' o '->'
-    y devuelve lista con instrucciones de pelado parseadas.
+    Lee las filas del Excel con instrucciones de pelado de mangueras.
+
+    Soporta dos formatos (con fallback automático):
+      1. NUEVO: columnas 'Instrucciones Mangueras DE' y/o 'Instrucciones Mangueras PARA'
+         Cada columna contiene los tokens directamente: PM150/M70
+      2. LEGACY: columna 'Observaciones' con sintaxis '<-tokens // tokens->'
+         Se mantiene como fallback mientras se migran los Excels.
     """
     filepath = self._ruta_segura(filename)
     if not filepath or not os.path.exists(filepath):
@@ -558,6 +563,8 @@ def _get_mangueras(self, filename: str) -> list:
                 return n
         return None
 
+    col_inst_de       = _col(['Instrucciones Mangueras DE'])
+    col_inst_para     = _col(['Instrucciones Mangueras PARA'])
     col_obs           = _col(['Observaciones'])
     col_cable_marca   = _col(['Cable / Marca'])
     col_de_marca      = _col(['De Marca'])
@@ -566,13 +573,25 @@ def _get_mangueras(self, filename: str) -> list:
     col_de_terminal   = _col(['De Terminal'])
     col_para_terminal = _col(['Para Terminal'])
 
-    if not col_obs:
-        raise ValueError("Columna 'Observaciones' no encontrada en el Excel")
+    # Al menos una fuente de instrucciones debe existir
+    usa_columnas_nuevas = col_inst_de or col_inst_para
+    if not usa_columnas_nuevas and not col_obs:
+        raise ValueError(
+            "No se encontró ninguna columna de instrucciones de mangueras. "
+            "Se esperaba 'Instrucciones Mangueras DE'/'PARA' o 'Observaciones'."
+        )
 
     resultado = []
     for _, row in df.iterrows():
-        obs = _safe(row[col_obs])
-        if '<-' not in obs and '->' not in obs:
+        val_de   = _safe(row[col_inst_de])   if col_inst_de   else ''
+        val_para = _safe(row[col_inst_para]) if col_inst_para else ''
+        obs      = _safe(row[col_obs])       if col_obs       else ''
+
+        # Determinar si esta fila tiene instrucciones de manguera
+        tiene_nuevas = bool(val_de or val_para)
+        tiene_legacy = '<-' in obs or '->' in obs
+
+        if not tiene_nuevas and not tiene_legacy:
             continue
 
         cm_raw = _safe(row[col_cable_marca]) if col_cable_marca else ''
@@ -581,16 +600,27 @@ def _get_mangueras(self, filename: str) -> list:
                        else dm_raw if dm_raw and dm_raw.lower() != 'nan'
                        else 'nan')
 
-        parsed = _parse_pelado(obs)
+        if tiene_nuevas:
+            # Formato nuevo: cada columna ya contiene los tokens del lado
+            inst_de   = _parse_instrucciones(val_de)   if val_de   else None
+            inst_para = _parse_instrucciones(val_para) if val_para else None
+            obs_raw   = f"DE: {val_de} | PARA: {val_para}" if (val_de or val_para) else obs
+        else:
+            # Formato legacy: parsear <-tokens // tokens->
+            parsed    = _parse_pelado(obs)
+            inst_de   = parsed.get('de')
+            inst_para = parsed.get('para')
+            obs_raw   = obs
+
         resultado.append({
             'cable_marca':       cable_marca,
-            'cod_cable':         _safe(row[col_cod_cable]) if col_cod_cable else '',
-            'de_elemento':       _safe(row[col_de_elemento])   if col_de_elemento   else '',
-            'de_terminal':       _safe(row[col_de_terminal])   if col_de_terminal   else '',
+            'cod_cable':         _safe(row[col_cod_cable])    if col_cod_cable    else '',
+            'de_elemento':       _safe(row[col_de_elemento])  if col_de_elemento  else '',
+            'de_terminal':       _safe(row[col_de_terminal])  if col_de_terminal  else '',
             'para_terminal':     _safe(row[col_para_terminal]) if col_para_terminal else '',
-            'observaciones_raw': obs,
-            'de':                parsed.get('de'),
-            'para':              parsed.get('para'),
+            'observaciones_raw': obs_raw,
+            'de':                inst_de,
+            'para':              inst_para,
         })
 
     return resultado
