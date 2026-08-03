@@ -293,15 +293,8 @@ class ExcelManager:
                     'cables_de_terminal': [],     # AZUL: terminal solo en "De Terminal"
                     'cables_para_terminal': [],   # VERDE: terminal solo en "Para Terminal"
                     'num_terminales': 0,
-                    'serie_obs': None,
+                    'serie_col': _safe_str(row['Series']) if 'Series' in row and row['Series'] == row['Series'] else '',
                 }
-
-            # Detectar serie por Observaciones: patrón (S_XXX) — primera coincidencia gana
-            if not grupos[clave]['serie_obs']:
-                _obs = str(row.get('Observaciones', '') or '').strip()
-                _m_obs = re.search(r'\((S_[^)]+)\)', _obs)
-                if _m_obs:
-                    grupos[clave]['serie_obs'] = _m_obs.group(1).strip()
 
             if cable_marca:
                 # Verificar si ESTA FILA tiene el terminal en ambos lados (case-insensitive)

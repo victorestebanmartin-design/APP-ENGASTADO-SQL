@@ -1,13 +1,113 @@
-# Nomenclatura de Elementos — Columnas De Elemento / De Terminal / De Manguito
+# Nomenclatura de Elementos — Series, Terminales y Manguitos
 
-> **Fichero vivo:** actualizar aquí cuando se añadan nuevos códigos o se cambien reglas.  
-> Última revisión: 2026-07-29
+> **Fichero vivo:** actualizar aquí cuando cambien los criterios.  
+> Última revisión: 2026-08-03
+
+---
+
+## Columna `Series` — agrupación de elementos en serie
+
+Las series se definen mediante la columna **`Series`** en el Excel.
+
+- Todas las filas con el **mismo valor** en `Series` se agrupan automáticamente en un paquete de serie.
+- El valor puede ser cualquier texto: `S_Mazo Central`, `S216`, `S_Relé`, etc.
+- Si la celda está **vacía**, la fila se trata como elemento individual.
+
+### Ejemplo
+
+| De Elemento Etiquetas | Series | Resultado |
+|---|---|---|
+| `CF22` | `S_Mazo Central` | sub-elemento del grupo S_Mazo Central |
+| `CF23` | `S_Mazo Central` | sub-elemento del grupo S_Mazo Central |
+| `CF24` | *(vacío)* | paquete individual |
+
+→ La app crea un **paquete grupo `S_Mazo Central`** con el total de cables y terminales, y dentro lista CF22 y CF23 como sub-elementos.
 
 ---
 
 ## Columna `De Elemento Etiquetas` (o `De Elemento`)
 
-### 1. Elemento individual — formato normal
+### Elemento individual — formato normal
+
+```
+TB1
+XPM-05
+Q16.2
+```
+
+Sin ningún sufijo especial → paquete individual propio en pantalla.
+
+### Terminal no se engasta — sufijo `*`
+
+```
+TB1*
+XPM-05*
+```
+
+Cuando el nombre del elemento **termina en `*`**, ese terminal **no se engasta** en ese lado.
+
+- El cable sigue en el Excel y cuenta para manguitos, pero **no genera crimp** en pantalla.
+- Puede afectar solo al lado De o solo al lado Para (según en qué columna esté el `*`).
+
+---
+
+## Columna `De Terminal` / `Para Terminal`
+
+### Sin terminal — valor `S/T`
+
+Indica que ese lado **no tiene terminal**. La app lo ignora al contar crimps y al buscar terminales.
+
+---
+
+## Columna `De Manguito`
+
+### Sin manguito — valor `S/M`
+
+Indica que esa fila **no lleva manguito**. La app la omite al cargar la lista de manguitos.
+
+---
+
+## Columna `Observaciones` — código especial para manguitos
+
+### Activo del manguito — `(N)` cuando Longitud = 0
+
+Cuando una fila tiene **Longitud = 0** y en Observaciones aparece un número entre paréntesis, ese número indica a **qué activo de la manguera** se conecta el manguito.
+
+---
+
+## Resumen rápido
+
+| Notación | Columna | Significado |
+|---|---|---|
+| Cualquier texto | `Series` | Agrupa en esa serie |
+| *(vacío)* | `Series` | Paquete individual |
+| `ELEMENTO*` | De Elemento | Terminal en ese lado no se engasta |
+| `S/T` | De/Para Terminal | Sin terminal en ese extremo |
+| `S/M` | De Manguito | Sin manguito en esa fila |
+| `(N)` en obs. | Observaciones | Activo de manguera (solo si Longitud=0) |
+
+---
+
+## Reglas
+
+1. **El agrupamiento se hace exclusivamente por la columna `Series`** — no se usan sufijos en De Elemento ni códigos en Observaciones para series.
+2. **El `*` debe ir al final** del nombre de elemento: `TB1*` sí; `*TB1` no funciona.
+3. **`S/T` y `S/M` son insensibles a mayúsculas** — `s/t` también se reconoce.
+
+
+---
+
+## Columna `Series`
+
+Las series se definen mediante una columna dedicada llamada **`Series`** en el Excel.
+
+- Todas las filas que tengan el **mismo valor** en la columna `Series` se agrupan en un único paquete de serie.
+- El valor puede ser cualquier texto: `S_Mazo Central`, `S216`, `S_Relé`, etc.
+- Si la celda está vacía, la fila se trata como elemento individual.
+
+---
+
+## Formato del valor en la columna `Series`
 
 ```
 TB1
