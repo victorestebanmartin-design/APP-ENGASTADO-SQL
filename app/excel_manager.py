@@ -642,3 +642,120 @@ def _get_mangueras(self, filename: str) -> list:
 
 
 ExcelManager.get_mangueras = _get_mangueras
+
+
+# ── Validación de columnas Excel al subir fichero ─────────────────────────────
+
+COLUMNAS_MANGUERAS_ESPERADAS = [
+    'De Elemento Etiquetas',
+    'Instrucciones Mangueras DE',
+    'Retractil DE',
+    'Instrucciones Mangueras PARA',
+    'Retractil PARA',
+    'Series',
+]
+
+_FEATURE_POR_COLUMNA = {
+    'De Elemento Etiquetas':        'Etiquetas de elementos',
+    'Instrucciones Mangueras DE':   'Preparación mangueras — lado De',
+    'Retractil DE':                 'Retráctiles — lado De',
+    'Instrucciones Mangueras PARA': 'Preparación mangueras — lado Para',
+    'Retractil PARA':               'Retráctiles — lado Para',
+    'Series':                       'Agrupación por series',
+}
+
+
+def _tokens_invalidos_instrucciones(inst_str):
+    """Retorna lista de tokens no reconocidos en una cadena de instrucciones de manguera."""
+    invalidos = []
+    for token in inst_str.split('/'):
+        t = token.strip().upper()
+        if not t:
+            continue
+        if (re.match(r'^PM\d+$', t) or
+                re.match(r'^M\d+$', t) or
+                re.match(r'^MRC\d*$', t) or
+                re.match(r'^A\d+_\d+$', t) or
+                re.match(r'^A\d+$', t) or
+                t in ('MCORTAR', 'M_CORTAR', 'MRS')):
+            continue
+        invalidos.append(token.strip())
+    return invalidos
+
+
+def _retractil_formato_valido(val_str):
+    """Verifica que todos los tokens de retráctil tienen formato CODIGO_MEDIDA."""
+    for token in val_str.split('/'):
+        t = token.strip()
+        if not t:
+            continue
+        if not re.match(r'^.+_\d+$', t):
+            return False
+    return True
+
+
+def validar_excel_columnas(filepath):
+    """
+    Valida las columnas de preparación de mangueras en un Excel recién subido.
+
+    Returns:
+        {
+          'columnas_faltantes':       [str, ...],
+          'features_no_disponibles':  [str, ...],
+          'advertencias':             [{columna, fila, valor, mensaje}, ...],
+          'advertencias_total':       int,
+        }
+    """
+    try:
+        df = pd.read_excel(filepath, engine='openpyxl')
+        df.columns = [str(c).strip() for c in df.columns]
+    except Exception as exc:
+        return {
+            'columnas_faltantes': [], 'features_no_disponibles': [],
+            'advertencias': [], 'advertencias_total': 0,
+            'error': str(exc),
+        }
+
+    columnas_faltantes      = [c for c in COLUMNAS_MANGUERAS_ESPERADAS if c not in df.columns]
+    features_no_disponibles = [_FEATURE_POR_COLUMNA[c] for c in columnas_faltantes]
+    advertencias = []
+
+    for col in ['Instrucciones Mangueras DE', 'Instrucciones Mangueras PARA']:
+        if col not in df.columns:
+            continue
+        for idx, val in df[col].items():
+            val_str = '' if pd.isna(val) else str(val).strip()
+            if not val_str:
+                continue
+            errores = _tokens_invalidos_instrucciones(val_str)
+            if errores:
+                advertencias.append({
+                    'columna': col,
+                    'fila': int(idx) + 2,
+                    'valor': val_str,
+                    'mensaje': f"Token(s) no reconocido(s): {', '.join(errores)}",
+                })
+
+    for col in ['Retractil DE', 'Retractil PARA']:
+        if col not in df.columns:
+            continue
+        for idx, val in df[col].items():
+            val_str = '' if pd.isna(val) else str(val).strip()
+            if not val_str:
+                continue
+            if not _retractil_formato_valido(val_str):
+                advertencias.append({
+                    'columna': col,
+                    'fila': int(idx) + 2,
+                    'valor': val_str,
+                    'mensaje': 'Formato inválido — se esperaba CODIGO_MEDIDA (ej: 649255_40)',
+                })
+
+    total = len(advertencias)
+    return {
+        'columnas_faltantes':      columnas_faltantes,
+        'features_no_disponibles': features_no_disponibles,
+        'advertencias':            advertencias[:50],   # máx 50 en respuesta
+        'advertencias_total':      total,
+    }
+

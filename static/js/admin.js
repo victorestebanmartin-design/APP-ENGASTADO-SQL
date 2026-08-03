@@ -209,6 +209,7 @@ async function subirArchivo(e) {
             }
 
             mostrarMensaje('upload-mensaje', msg, 'success');
+            _mostrarValidacionExcel(data.validacion || {});
             fileInput.value = '';
         } else {
             mostrarMensaje('upload-mensaje', data.message, 'error');
@@ -504,6 +505,60 @@ async function eliminarCorte(codigoBarras) {
 /**
  * Mostrar mensaje
  */
+function _mostrarValidacionExcel(v) {
+    const div = document.getElementById('upload-validacion');
+    if (!div) return;
+    div.innerHTML = '';
+    div.classList.add('hidden');
+
+    const faltantes   = v.columnas_faltantes      || [];
+    const features    = v.features_no_disponibles || [];
+    const avisos      = v.advertencias            || [];
+    const totalAvisos = v.advertencias_total       || 0;
+
+    if (faltantes.length === 0 && avisos.length === 0) return;
+
+    let html = '';
+
+    // — Columnas faltantes —
+    if (faltantes.length > 0) {
+        html += `<div style="background:#fef9c3;border:1px solid #fbbf24;border-radius:8px;padding:12px 16px;margin-bottom:10px;">
+            <strong>⚠️ Columnas no encontradas (${faltantes.length}):</strong>
+            <ul style="margin:6px 0 0 16px;padding:0;">`;
+        faltantes.forEach((col, i) => {
+            html += `<li><code>${col}</code> → <em style="color:#92400e;">${features[i] || ''} no disponible</em></li>`;
+        });
+        html += `</ul></div>`;
+    }
+
+    // — Contenido con tokens no reconocidos —
+    if (avisos.length > 0) {
+        const extra = totalAvisos > avisos.length
+            ? ` <span style="color:#6b7280;">(mostrando ${avisos.length} de ${totalAvisos})</span>` : '';
+        html += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;">
+            <strong>🔍 Celdas a revisar (${totalAvisos})${extra}:</strong>
+            <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;">
+                <thead><tr style="background:#fee2e2;">
+                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Columna</th>
+                    <th style="padding:4px 8px;text-align:center;border-bottom:1px solid #fca5a5;">Fila</th>
+                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Valor</th>
+                    <th style="padding:4px 8px;text-align:left;border-bottom:1px solid #fca5a5;">Problema</th>
+                </tr></thead><tbody>`;
+        avisos.forEach(a => {
+            html += `<tr style="border-bottom:1px solid #fecaca;">
+                <td style="padding:4px 8px;"><code>${a.columna}</code></td>
+                <td style="padding:4px 8px;text-align:center;font-weight:700;">${a.fila}</td>
+                <td style="padding:4px 8px;font-family:monospace;color:#374151;">${a.valor}</td>
+                <td style="padding:4px 8px;color:#b91c1c;">${a.mensaje}</td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+    }
+
+    div.innerHTML = html;
+    div.classList.remove('hidden');
+}
+
 function mostrarMensaje(elementId, texto, tipo = 'info') {
     const mensajeDiv = document.getElementById(elementId);
     mensajeDiv.textContent = texto;

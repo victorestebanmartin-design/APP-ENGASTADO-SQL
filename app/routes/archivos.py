@@ -26,7 +26,7 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager
+from app.excel_manager import ExcelManager, validar_excel_columnas
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -115,7 +115,8 @@ def upload_file():
             filepath = os.path.join(upload_folder, filename)
             file.save(filepath)
 
-            # Leer nombres de hojas y buscar patrón CODIGO_EDICION (ej: H0457486_ED04)
+            # Validar columnas de mangueras
+            validacion = validar_excel_columnas(filepath) y buscar patrón CODIGO_EDICION (ej: H0457486_ED04)
             hoja_codigo = None
             codigo_extraido = None
             edicion_extraida = None
@@ -156,7 +157,8 @@ def upload_file():
                 'codigo': codigo_extraido,
                 'edicion': edicion_extraida,
                 'etiquetas_regeneradas': etiquetas_regeneradas,
-                'etiquetas_total': etiquetas_total
+                'etiquetas_total': etiquetas_total,
+                'validacion': validacion,
             })
         else:
             return jsonify({
