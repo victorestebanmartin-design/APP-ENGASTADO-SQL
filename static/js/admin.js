@@ -561,6 +561,23 @@ function _mostrarValidacionExcel(v) {
 
     div.innerHTML = html;
     div.classList.remove('hidden');
+
+    // — Pintar botón Asociar si hay problemas —
+    const btnAsociar = document.querySelector('#asociar-form button[type="submit"]');
+    if (btnAsociar) {
+        const hayProblemas = faltantes.length > 0 || avisos.length > 0;
+        if (hayProblemas) {
+            btnAsociar.textContent = '⚠️ Asociar';
+            btnAsociar.style.background = '#d97706';
+            btnAsociar.style.borderColor = '#b45309';
+            btnAsociar.title = 'El Excel tiene advertencias — revisa el detalle antes de asociar';
+        } else {
+            btnAsociar.textContent = '✅ Asociar';
+            btnAsociar.style.background = '';
+            btnAsociar.style.borderColor = '';
+            btnAsociar.title = '';
+        }
+    }
 }
 
 function mostrarMensaje(elementId, texto, tipo = 'info') {
