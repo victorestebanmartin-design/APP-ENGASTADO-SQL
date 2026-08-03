@@ -295,11 +295,11 @@
     } else if (inst.m_mrc) {
       var mrcMedida = inst.m_mrc_medida;
       rows += instFila('Malla',
-        '<span class="inst-val" style="color:#b45309;">↩ Hacia atrás</span>' +
-        '<span style="font-size:10px;color:#9ca3af;margin-left:6px;">con retráctil</span>' +
         (mrcMedida !== null && mrcMedida !== undefined
-          ? '<br><span style="font-size:11px;color:#6d28d9;">Retráctil: <strong>' + mrcMedida + ' mm</strong></span>'
-          : ''));
+          ? '<span class="inst-val val-malla">' + mrcMedida + '</span><span class="inst-unit">mm</span> '
+          : '') +
+        '<span style="color:#b45309; font-weight:700;">↩ Hacia atrás</span>' +
+        '<span style="font-size:10px;color:#9ca3af;margin-left:6px;">con retráctil</span>');
     } else if (inst.m !== null && inst.m !== undefined) {
       rows += instFila('Pelado Malla',
         '<span class="inst-val val-malla">' + inst.m + '</span><span class="inst-unit">mm</span>');
