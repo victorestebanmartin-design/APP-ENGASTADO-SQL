@@ -260,13 +260,14 @@
 
   function instruccionesHtml(mg) {
     var html = '';
-    html += ladoHtml(mg.de,   '← Lado De',   'lado-de');
-    html += ladoHtml(mg.para, 'Lado Para →', 'lado-para');
+    html += ladoHtml(mg.de,   '← Lado De',   'lado-de',   mg.retractil_de   || []);
+    html += ladoHtml(mg.para, 'Lado Para →', 'lado-para', mg.retractil_para || []);
     return html;
   }
 
-  function ladoHtml(inst, titulo, clase) {
-    if (!inst) {
+  function ladoHtml(inst, titulo, clase, retractiles) {
+    retractiles = retractiles || [];
+    if (!inst && retractiles.length === 0) {
       return '<div class="lado-card lado-vacio">' +
                '<div class="lado-title">⬜ ' + titulo + '</div>' +
                '<div style="color:#d1d5db; font-size:14px;">Sin instrucciones</div>' +
@@ -274,8 +275,9 @@
     }
 
     var rows = '';
-    var pmVal = inst.pm;  // puede ser null si no se especificó
+    var pmVal = inst ? inst.pm : null;  // puede ser null si no se especificó
 
+    if (inst) {
     // PM (pelado manguera)
     rows += instFila('Pelado Manguera',
       pmVal !== null && pmVal !== undefined
@@ -329,6 +331,15 @@
             '<span class="inst-unit">mm</span>' +
             '<span style="font-size:10px;color:#9ca3af;margin-left:4px;">(= manguera)</span>'
           : '<span class="val-dash">—</span>');
+    }
+    } // fin if (inst)
+
+    // Retráctiles
+    if (retractiles.length > 0) {
+      retractiles.forEach(function(r) {
+        rows += instFila('Retráctil ' + esc(r.codigo),
+          '<span class="inst-val val-retractil">' + r.medida + '</span><span class="inst-unit">mm</span>');
+      });
     }
 
     return '<div class="lado-card ' + clase + '">' +

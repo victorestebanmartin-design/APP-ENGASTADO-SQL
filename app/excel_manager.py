@@ -467,6 +467,21 @@ class ExcelManager:
 
 # ── Helpers de parseo de Observaciones (Preparación de Mangueras) ─────────────
 
+def _parse_retractiles(val_str):
+    """Parsea '649255_40/649251_70' en lista de dicts {codigo, medida}."""
+    if not val_str:
+        return []
+    result = []
+    for token in val_str.split('/'):
+        t = token.strip()
+        if not t:
+            continue
+        m = re.match(r'^(.+?)_(\d+)$', t)
+        if m:
+            result.append({'codigo': m.group(1).strip(), 'medida': int(m.group(2))})
+    return result
+
+
 def _parse_instrucciones(inst_str):
     """Parsea una cadena de instrucciones como 'PM120/M110/A150' en un dict."""
     inst = {'pm': None, 'm': None, 'm_cortar': False, 'm_mrs': False, 'm_mrc': False, 'm_mrc_medida': None, 'a_todos': None, 'a_especificos': {}}
@@ -565,6 +580,8 @@ def _get_mangueras(self, filename: str) -> list:
 
     col_inst_de       = _col(['Instrucciones Mangueras DE'])
     col_inst_para     = _col(['Instrucciones Mangueras PARA'])
+    col_ret_de        = _col(['Retractil DE', 'Retráctil DE'])
+    col_ret_para      = _col(['Retractil PARA', 'Retráctil PARA'])
     col_obs           = _col(['Observaciones'])
     col_cable_marca   = _col(['Cable / Marca'])
     col_de_marca      = _col(['De Marca'])
@@ -588,10 +605,13 @@ def _get_mangueras(self, filename: str) -> list:
         obs      = _safe(row[col_obs])       if col_obs       else ''
 
         # Determinar si esta fila tiene instrucciones de manguera
-        tiene_nuevas = bool(val_de or val_para)
-        tiene_legacy = '<-' in obs or '->' in obs
+        val_ret_de   = _safe(row[col_ret_de])   if col_ret_de   else ''
+        val_ret_para = _safe(row[col_ret_para]) if col_ret_para else ''
+        tiene_nuevas    = bool(val_de or val_para)
+        tiene_legacy    = '<-' in obs or '->' in obs
+        tiene_retractil = bool(val_ret_de or val_ret_para)
 
-        if not tiene_nuevas and not tiene_legacy:
+        if not tiene_nuevas and not tiene_legacy and not tiene_retractil:
             continue
 
         cm_raw = _safe(row[col_cable_marca]) if col_cable_marca else ''
@@ -621,6 +641,8 @@ def _get_mangueras(self, filename: str) -> list:
             'observaciones_raw': obs_raw,
             'de':                inst_de,
             'para':              inst_para,
+            'retractil_de':      _parse_retractiles(val_ret_de),
+            'retractil_para':    _parse_retractiles(val_ret_para),
         })
 
     return resultado
