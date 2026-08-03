@@ -547,15 +547,15 @@ function _mostrarValidacionExcel(v) {
                         <th style="padding:3px 8px;text-align:left;">Problema</th>
                     </tr></thead><tbody>`;
         avisos.forEach(a => {
-            html += `<tr style="border-bottom:1px solid #fecaca;color:#111827;">
-                <td style="padding:3px 8px;"><code style="color:#374151;">${a.columna}</code></td>
+            html += `<tr style="border-bottom:1px solid #fecaca;background:#fff;color:#111827;">
+                <td style="padding:3px 8px;"><code style="background:transparent;color:#374151;">${a.columna}</code></td>
                 <td style="padding:3px 8px;text-align:center;font-weight:700;">${a.fila}</td>
                 <td style="padding:3px 8px;font-family:monospace;">${a.valor}</td>
                 <td style="padding:3px 8px;color:#b91c1c;">${a.mensaje}</td>
             </tr>`;
         });
         if (totalAvisos > avisos.length)
-            html += `<tr><td colspan="4" style="padding:4px 8px;color:#6b7280;">... y ${totalAvisos - avisos.length} más</td></tr>`;
+            html += `<tr style="background:#fff;"><td colspan="4" style="padding:4px 8px;color:#6b7280;">... y ${totalAvisos - avisos.length} más</td></tr>`;
         html += `</tbody></table></div></div>`;
     }
 
