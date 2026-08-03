@@ -477,7 +477,7 @@ def _parse_retractiles(val_str):
 
 def _parse_instrucciones(inst_str):
     """Parsea una cadena de instrucciones como 'PM120/M110/A150' en un dict."""
-    inst = {'pm': None, 'm': None, 'm_cortar': False, 'm_mrs': False, 'm_mrc': False, 'm_mrc_medida': None, 'a_todos': None, 'a_especificos': {}}
+    inst = {'pm': None, 'm': None, 'm_cortar': False, 'm_mrs': False, 'm_mrs_medida': None, 'm_mrc': False, 'm_mrc_medida': None, 'a_todos': None, 'a_especificos': {}}
     for token in inst_str.split('/'):
         t = token.strip().upper()
         if not t:
@@ -491,6 +491,11 @@ def _parse_instrucciones(inst_str):
             continue
         if t == 'MRS':
             inst['m_mrs'] = True
+            continue
+        m = re.match(r'^MRS(\d+)$', t)
+        if m:
+            inst['m_mrs'] = True
+            inst['m_mrs_medida'] = int(m.group(1))
             continue
         m = re.match(r'^MRC(\d+)$', t)
         if m:
@@ -677,6 +682,7 @@ def _tokens_invalidos_instrucciones(inst_str):
                 re.match(r'^MRC\d*$', t) or
                 re.match(r'^A\d+_\d+$', t) or
                 re.match(r'^A\d+$', t) or
+                re.match(r'^MRS\d+$', t) or
                 t in ('MCORTAR', 'M_CORTAR', 'MRS')):
             continue
         invalidos.append(token.strip())

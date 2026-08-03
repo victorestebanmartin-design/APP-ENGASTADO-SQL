@@ -290,6 +290,9 @@
         '<span class="inst-val val-cortar">✂ CORTAR</span>');
     } else if (inst.m_mrs) {
       rows += instFila('Malla',
+        (inst.m_mrs_medida !== null && inst.m_mrs_medida !== undefined
+          ? '<span class="inst-val val-malla">' + inst.m_mrs_medida + '</span><span class="inst-unit">mm</span> '
+          : '') +
         '<span class="inst-val" style="color:#b45309;">↩ Hacia atrás</span>' +
         '<span style="font-size:10px;color:#9ca3af;margin-left:6px;">sin retráctil</span>');
     } else if (inst.m_mrc) {

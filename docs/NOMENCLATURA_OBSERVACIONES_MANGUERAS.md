@@ -42,6 +42,7 @@ Cada lado tiene su propia columna en el Excel. Los tokens se escriben directamen
 | `M{n}` | Pelado de **malla** en mm (valor específico) | `M70` → pelar malla 70 mm |
 | `MCORTAR` | **Cortar** la malla (no se pela, se corta) | `MCORTAR` |
 | `MRS` | Malla **hacia atrás**, sin retráctil | `MRS` |
+| `MRS{n}` | Malla hacia atrás sin retráctil, doblada **n mm** | `MRS6` → doblada 6 mm |
 | `MRC` | Malla **hacia atrás**, con retráctil (sin medida) | `MRC` |
 | `MRC{n}` | Malla hacia atrás con retráctil, medida en mm | `MRC30` → retráctil 30 mm |
 | `A{n}` | Pelado de **todos los activos** en mm | `A150` → activos a 150 mm |
