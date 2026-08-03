@@ -116,7 +116,9 @@ def upload_file():
             file.save(filepath)
 
             # Validar columnas de mangueras
-            validacion = validar_excel_columnas(filepath) y buscar patrón CODIGO_EDICION (ej: H0457486_ED04)
+            validacion = validar_excel_columnas(filepath)
+
+            # Leer nombres de hojas y buscar patrón CODIGO_EDICION (ej: H0457486_ED04)
             hoja_codigo = None
             codigo_extraido = None
             edicion_extraida = None
