@@ -523,9 +523,9 @@ function _mostrarValidacionExcel(v) {
     // — Columnas faltantes: resumen en una línea —
     if (faltantes.length > 0) {
         const lista = features.join(', ');
-        html += `<div style="background:#fef9c3;border-left:4px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:13px;">
-            ⚠️ <strong>Columnas no encontradas (${faltantes.length}):</strong>
-            <span style="color:#92400e;margin-left:4px;">${lista} — funciones no disponibles</span>
+        html += `<div style="background:#fef9c3;border-left:4px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:6px;font-size:13px;color:#78350f;">
+            ⚠️ <strong style="color:#92400e;">Columnas no encontradas (${faltantes.length}):</strong>
+            <span style="margin-left:4px;">${lista} — funciones no disponibles</span>
         </div>`;
     }
 
@@ -533,22 +533,22 @@ function _mostrarValidacionExcel(v) {
     if (avisos.length > 0) {
         const uid = 'val-det-' + Date.now();
         const count = totalAvisos || avisos.length;
-        html += `<div style="background:#fef2f2;border-left:4px solid #f87171;border-radius:4px;padding:8px 12px;font-size:13px;">
+        html += `<div style="background:#fef2f2;border-left:4px solid #f87171;border-radius:4px;padding:8px 12px;font-size:13px;color:#7f1d1d;">
             <span style="cursor:pointer;" onclick="document.getElementById('${uid}').classList.toggle('hidden')">
-                🔍 <strong>${count} celda${count>1?'s':''} a revisar</strong>
+                🔍 <strong style="color:#991b1b;">${count} celda${count>1?'s':''} a revisar</strong>
                 <span style="color:#6b7280;">— pulsa para ver detalle ▾</span>
             </span>
             <div id="${uid}" class="hidden" style="margin-top:8px;overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;font-size:12px;">
-                    <thead><tr style="background:#fee2e2;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;color:#111827;">
+                    <thead><tr style="background:#fee2e2;color:#7f1d1d;">
                         <th style="padding:3px 8px;text-align:left;">Columna</th>
                         <th style="padding:3px 8px;text-align:center;">Fila</th>
                         <th style="padding:3px 8px;text-align:left;">Valor</th>
                         <th style="padding:3px 8px;text-align:left;">Problema</th>
                     </tr></thead><tbody>`;
         avisos.forEach(a => {
-            html += `<tr style="border-bottom:1px solid #fecaca;">
-                <td style="padding:3px 8px;"><code>${a.columna}</code></td>
+            html += `<tr style="border-bottom:1px solid #fecaca;color:#111827;">
+                <td style="padding:3px 8px;"><code style="color:#374151;">${a.columna}</code></td>
                 <td style="padding:3px 8px;text-align:center;font-weight:700;">${a.fila}</td>
                 <td style="padding:3px 8px;font-family:monospace;">${a.valor}</td>
                 <td style="padding:3px 8px;color:#b91c1c;">${a.mensaje}</td>
