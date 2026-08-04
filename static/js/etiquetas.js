@@ -111,7 +111,7 @@ function mostrarInfoGrupos() {
     const gruposPadre = gruposConSeccion.filter(g => !g.sub_numero || g.sub_numero == 0);
     
     statGrupos.textContent = gruposPadre.length;
-    statEtiquetas.textContent = gruposPadre.length; // Una etiqueta por grupo padre
+    statEtiquetas.textContent = gruposConSeccion.length; // Total filas (padres + sub-filas)
     const statHojas = document.getElementById('stat_hojas');
     if (statHojas) statHojas.textContent = Math.ceil(gruposPadre.length / 65) || 1;
     
