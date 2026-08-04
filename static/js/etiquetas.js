@@ -82,7 +82,8 @@ async function cargarGrupos() {
             gruposCargados = data.grupos;
             codigoCorteActual = data.codigo_corte || '';
             mostrarInfoGrupos();
-            document.getElementById('archivo_info').textContent = `✓ ${data.grupos.length} grupos cargados`;
+            const padreCount = data.grupos.filter(g => !g.sub_numero || g.sub_numero == 0).length;
+            document.getElementById('archivo_info').textContent = `✓ ${padreCount} grupos cargados`;
             document.getElementById('archivo_info').style.color = '#4CAF50';
         } else {
             document.getElementById('archivo_info').textContent = '⚠ No se encontraron grupos en el archivo';
@@ -105,11 +106,14 @@ function mostrarInfoGrupos() {
     const statGrupos = document.getElementById('stat_grupos');
     const statEtiquetas = document.getElementById('stat_etiquetas');
     
-    // Filtrar solo grupos con sección
+    // Filtrar solo grupos padre con sección (excluir sub-filas de series múltiples)
     const gruposConSeccion = gruposCargados.filter(g => g.seccion && String(g.seccion).trim());
+    const gruposPadre = gruposConSeccion.filter(g => !g.sub_numero || g.sub_numero == 0);
     
-    statGrupos.textContent = gruposConSeccion.length;
-    statEtiquetas.textContent = gruposConSeccion.length; // Una etiqueta por grupo
+    statGrupos.textContent = gruposPadre.length;
+    statEtiquetas.textContent = gruposPadre.length; // Una etiqueta por grupo padre
+    const statHojas = document.getElementById('stat_hojas');
+    if (statHojas) statHojas.textContent = Math.ceil(gruposPadre.length / 65) || 1;
     
     infoBox.style.display = 'block';
     infoBox.scrollIntoView({ behavior: 'smooth' });
