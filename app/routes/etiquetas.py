@@ -363,6 +363,7 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
             border-radius: 4mm;
             min-width: 10mm;
             text-align: center;
+            white-space: nowrap;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;

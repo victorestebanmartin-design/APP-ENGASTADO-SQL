@@ -162,7 +162,7 @@ function generarVistaPrevia() {
             html += `
                 <div style="border: 2px solid ${esPadre ? '#f59e0b' : '#333'}; background: white; display: flex; flex-direction: column; overflow: hidden;">
                     <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-bottom: 2px solid ${borderColor}; padding: 1px; gap: 1px;">
-                        <div style="background: ${etqColor}; color: ${etqText}; font-size: 9px; font-weight: bold; padding: 1px 3px; border-radius: 2px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">${badgeLabel}</div>
+                        <div style="background: ${etqColor}; color: ${etqText}; font-size: 9px; font-weight: bold; padding: 1px 3px; border-radius: 2px; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.2); white-space: nowrap; overflow: hidden; max-width: 100%;">${badgeLabel}</div>
                         <div style="font-weight: bold; font-size: 6px; color: #1e40af; text-align: center; line-height: 1.1;">${elemento}</div>
                     </div>
                     <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 1px; gap: 0.5px;">
