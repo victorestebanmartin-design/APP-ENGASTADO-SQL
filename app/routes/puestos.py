@@ -933,9 +933,12 @@ def api_kanban_terminales():
         codigos = codigo_repo.obtener_todos_codigos()
         upload_folder = current_app.config['UPLOAD_FOLDER']
 
-        # terminal → {archivo_nombre: cantidad_crimps}
-        terminal_detalle: dict = {}
+        terminal_detalle: dict = {}   # {terminal_upper: {nombre_archivo: qty}}
         archivos_ordenados: list = []
+        errores: list = []
+
+        def _valido(t):
+            return bool(t) and t not in ('NAN', 'S/T', '')
 
         for codigo in codigos:
             archivo = codigo['archivo_excel']
@@ -943,15 +946,56 @@ def api_kanban_terminales():
             if not os.path.exists(filepath):
                 continue
             nombre = os.path.splitext(archivo)[0]
-            if nombre not in archivos_ordenados:
-                archivos_ordenados.append(nombre)
             try:
-                crimps = _crimps_por_terminal_archivo(archivo)
-                for t, qty in crimps.items():
+                df = leer_excel_cacheado(filepath)
+
+                # Detectar columnas de terminal con tolerancia de nombre
+                col_de = next((c for c in df.columns if 'de terminal' in str(c).lower()), None)
+                col_para = next((c for c in df.columns if 'para terminal' in str(c).lower()), None)
+                col_cod = next((c for c in df.columns if 'cod' in str(c).lower() and 'cable' in str(c).lower()), None)
+                col_sec = next((c for c in df.columns if 'secci' in str(c).lower() or c.lower() == 'seccion'), None)
+                col_de_el = next((c for c in df.columns if 'de elemento' in str(c).lower()), None)
+                col_para_el = next((c for c in df.columns if 'para elemento' in str(c).lower()), None)
+
+                if not col_de and not col_para:
+                    errores.append({'archivo': archivo, 'motivo': 'sin columnas terminal'})
+                    continue
+
+                if nombre not in archivos_ordenados:
+                    archivos_ordenados.append(nombre)
+
+                cont: dict = {}
+                for _, row in df.iterrows():
+                    # Filtrar filas auxiliares
+                    if col_cod:
+                        cod = str(row.get(col_cod, '')).strip()
+                        if not cod or cod.lower() == 'nan':
+                            continue
+                    if col_sec:
+                        sec = str(row.get(col_sec, '')).strip()
+                        if not sec or sec.lower() == 'nan':
+                            continue
+
+                    de_t   = str(row.get(col_de,   '') if col_de   else '').strip().upper()
+                    para_t = str(row.get(col_para, '') if col_para else '').strip().upper()
+                    de_np   = str(row.get(col_de_el,   '') if col_de_el   else '').strip().endswith('*')
+                    para_np = str(row.get(col_para_el, '') if col_para_el else '').strip().endswith('*')
+
+                    if _valido(de_t) and _valido(para_t) and de_t == para_t:
+                        if not (de_np and para_np):
+                            cont[de_t] = cont.get(de_t, 0) + (1 if (de_np or para_np) else 2)
+                    else:
+                        if _valido(de_t) and not de_np:
+                            cont[de_t] = cont.get(de_t, 0) + 1
+                        if _valido(para_t) and not para_np:
+                            cont[para_t] = cont.get(para_t, 0) + 1
+
+                for t, qty in cont.items():
                     if qty > 0:
                         terminal_detalle.setdefault(t, {})[nombre] = qty
-            except Exception:
-                pass
+
+            except Exception as exc:
+                errores.append({'archivo': archivo, 'motivo': str(exc)})
 
         maquina_repo = MaquinaRepository(db)
         maquinas = maquina_repo.obtener_todas_maquinas()
@@ -981,27 +1025,30 @@ def api_kanban_terminales():
             st   = stock_map.get(terminal, {'stock_actual': 0, 'stock_minimo': 0, 'notas': None})
             detalle = terminal_detalle[terminal]
             subtotal = sum(detalle.values())
-            detalle_lista = [{'nombre': a, 'cantidad': detalle.get(a, 0)}
+            detalle_lista = [{'nombre': a, 'cantidad': detalle[a]}
                              for a in archivos_ordenados if a in detalle]
             resultado.append({
-                'terminal':       terminal,
-                'maquina_nombre': asig['maquina_nombre'] if asig else None,
-                'puesto_nombre':  asig['puesto_nombre']  if asig else None,
-                'tipo_operacion': asig['tipo_operacion'] if asig else None,
-                'gaveta':         gavetas_map.get(terminal),
-                'stock_actual':   st['stock_actual'],
-                'stock_minimo':   st['stock_minimo'],
-                'notas':          st['notas'],
+                'terminal':         terminal,
+                'maquina_nombre':   asig['maquina_nombre'] if asig else None,
+                'puesto_nombre':    asig['puesto_nombre']  if asig else None,
+                'tipo_operacion':   asig['tipo_operacion'] if asig else None,
+                'gaveta':           gavetas_map.get(terminal),
+                'stock_actual':     st['stock_actual'],
+                'stock_minimo':     st['stock_minimo'],
+                'notas':            st['notas'],
                 'detalle_archivos': detalle_lista,
-                'subtotal':       subtotal,
+                'subtotal':         subtotal,
             })
 
-        return jsonify({
-            'success': True,
+        resp = {
+            'success':    True,
             'terminales': resultado,
-            'total': len(resultado),
-            'archivos': archivos_ordenados,
-        })
+            'total':      len(resultado),
+            'archivos':   archivos_ordenados,
+        }
+        if errores:
+            resp['errores'] = errores
+        return jsonify(resp)
     except Exception as e:
         return error_interno(e, 'Error al obtener kanban de terminales')
 
@@ -1044,17 +1091,50 @@ def api_exportar_pedido_excel():
         terminal_detalle: dict = {}
         archivos_ordenados: list = []
 
+        def _valido(t):
+            return bool(t) and t not in ('NAN', 'S/T', '')
+
         for codigo in codigos:
             archivo = codigo['archivo_excel']
             filepath = os.path.join(upload_folder, archivo)
             if not os.path.exists(filepath):
                 continue
             nombre = os.path.splitext(archivo)[0]
-            if nombre not in archivos_ordenados:
-                archivos_ordenados.append(nombre)
             try:
-                crimps = _crimps_por_terminal_archivo(archivo)
-                for t, qty in crimps.items():
+                df = leer_excel_cacheado(filepath)
+                col_de    = next((c for c in df.columns if 'de terminal'   in str(c).lower()), None)
+                col_para  = next((c for c in df.columns if 'para terminal' in str(c).lower()), None)
+                col_cod   = next((c for c in df.columns if 'cod' in str(c).lower() and 'cable' in str(c).lower()), None)
+                col_sec   = next((c for c in df.columns if 'secci' in str(c).lower() or c.lower() == 'seccion'), None)
+                col_de_el = next((c for c in df.columns if 'de elemento'   in str(c).lower()), None)
+                col_pa_el = next((c for c in df.columns if 'para elemento' in str(c).lower()), None)
+                if not col_de and not col_para:
+                    continue
+                if nombre not in archivos_ordenados:
+                    archivos_ordenados.append(nombre)
+                cont: dict = {}
+                for _, row in df.iterrows():
+                    if col_cod:
+                        cod = str(row.get(col_cod, '')).strip()
+                        if not cod or cod.lower() == 'nan':
+                            continue
+                    if col_sec:
+                        sec = str(row.get(col_sec, '')).strip()
+                        if not sec or sec.lower() == 'nan':
+                            continue
+                    de_t   = str(row.get(col_de,   '') if col_de   else '').strip().upper()
+                    para_t = str(row.get(col_para, '') if col_para else '').strip().upper()
+                    de_np   = str(row.get(col_de_el, '') if col_de_el else '').strip().endswith('*')
+                    para_np = str(row.get(col_pa_el, '') if col_pa_el else '').strip().endswith('*')
+                    if _valido(de_t) and _valido(para_t) and de_t == para_t:
+                        if not (de_np and para_np):
+                            cont[de_t] = cont.get(de_t, 0) + (1 if (de_np or para_np) else 2)
+                    else:
+                        if _valido(de_t) and not de_np:
+                            cont[de_t] = cont.get(de_t, 0) + 1
+                        if _valido(para_t) and not para_np:
+                            cont[para_t] = cont.get(para_t, 0) + 1
+                for t, qty in cont.items():
                     if qty > 0:
                         terminal_detalle.setdefault(t, {})[nombre] = qty
             except Exception:

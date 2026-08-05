@@ -1414,9 +1414,10 @@ function renderKanban() {
         return;
     }
 
-    // Sólo mostrar los archivos que tienen al menos un terminal en la lista filtrada
+    // Columnas de archivos: solo los que aparecen en al menos un terminal del listado total (no filtrado),
+    // para que las columnas no cambien al filtrar.
     const archivosActivos = _kanbanArchivos.filter(a =>
-        lista.some(t => t.detalle_archivos && t.detalle_archivos.find(d => d.nombre === a && d.cantidad > 0))
+        _kanbanData.some(t => (t.detalle_archivos || []).some(d => d.nombre === a && d.cantidad > 0))
     );
 
     // Cabecera fija
