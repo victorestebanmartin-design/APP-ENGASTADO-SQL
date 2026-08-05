@@ -1079,6 +1079,115 @@ def api_guardar_stock_terminal(codigo):
         return error_interno(e, 'Error al guardar stock de terminal')
 
 
+def _sugerir_stock(subtotal: int):
+    """Tabla de tiers calibrada con las referencias del usuario."""
+    tiers = [
+        (1,   30,  10),
+        (3,   40,  20),
+        (5,   50,  20),
+        (8,   70,  30),
+        (11,  100, 40),
+        (16,  250, 100),
+        (33,  400, 200),
+        (50,  600, 250),
+        (75,  1000, 500),
+        (100, 1200, 500),
+        (160, 2000, 800),
+        (280, 3500, 1500),
+    ]
+    for max_sub, actual, minimo in tiers:
+        if subtotal <= max_sub:
+            return actual, minimo
+    return 5000, 2000
+
+
+@bp.route('/api/kanban-terminales/sugerir-stock', methods=['POST'])
+@requiere_pin_admin
+def api_sugerir_stock_batch():
+    """Calcula y guarda stock sugerido para terminales con stock_actual = 0."""
+    try:
+        # Obtener todos los subtotales igual que el kanban principal
+        codigo_repo = CodigoCorteRepository(db)
+        codigos = codigo_repo.obtener_todos_codigos()
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+
+        subtotales: dict = {}
+
+        def _valido(t):
+            return bool(t) and t not in ('NAN', 'S/T', '')
+
+        for codigo in codigos:
+            archivo = codigo['archivo_excel']
+            filepath = os.path.join(upload_folder, archivo)
+            if not os.path.exists(filepath):
+                continue
+            nombre = os.path.splitext(archivo)[0]
+            try:
+                df = leer_excel_cacheado(filepath)
+                col_de    = next((c for c in df.columns if 'de terminal'   in str(c).lower()), None)
+                col_para  = next((c for c in df.columns if 'para terminal' in str(c).lower()), None)
+                col_cod   = next((c for c in df.columns if 'cod' in str(c).lower() and 'cable' in str(c).lower()), None)
+                col_sec   = next((c for c in df.columns if 'secci' in str(c).lower() or c.lower() == 'seccion'), None)
+                col_de_el = next((c for c in df.columns if 'de elemento'   in str(c).lower()), None)
+                col_pa_el = next((c for c in df.columns if 'para elemento' in str(c).lower()), None)
+                if not col_de and not col_para:
+                    continue
+                cont: dict = {}
+                for _, row in df.iterrows():
+                    if col_cod:
+                        cod = str(row.get(col_cod, '')).strip()
+                        if not cod or cod.lower() == 'nan':
+                            continue
+                    if col_sec:
+                        sec = str(row.get(col_sec, '')).strip()
+                        if not sec or sec.lower() == 'nan':
+                            continue
+                    de_t   = str(row.get(col_de,   '') if col_de   else '').strip().upper()
+                    para_t = str(row.get(col_para, '') if col_para else '').strip().upper()
+                    de_np   = str(row.get(col_de_el, '') if col_de_el else '').strip().endswith('*')
+                    para_np = str(row.get(col_pa_el, '') if col_pa_el else '').strip().endswith('*')
+                    if _valido(de_t) and _valido(para_t) and de_t == para_t:
+                        if not (de_np and para_np):
+                            cont[de_t] = cont.get(de_t, 0) + (1 if (de_np or para_np) else 2)
+                    else:
+                        if _valido(de_t) and not de_np:
+                            cont[de_t] = cont.get(de_t, 0) + 1
+                        if _valido(para_t) and not para_np:
+                            cont[para_t] = cont.get(para_t, 0) + 1
+                for t, qty in cont.items():
+                    subtotales[t] = subtotales.get(t, 0) + qty
+            except Exception:
+                pass
+
+        # Obtener stock actual
+        rows_stock = db.session.execute(
+            text("SELECT terminal_codigo, stock_actual FROM terminales_stock")
+        ).fetchall()
+        tiene_stock = {r[0] for r in rows_stock if r[1] > 0}
+
+        # Solo actualizar terminales sin stock
+        actualizados = []
+        for terminal, subtotal in subtotales.items():
+            if terminal in tiene_stock or subtotal == 0:
+                continue
+            actual, minimo = _sugerir_stock(subtotal)
+            db.session.execute(text("""
+                INSERT INTO terminales_stock (terminal_codigo, stock_actual, stock_minimo, updated_at)
+                VALUES (:cod, :actual, :minimo, datetime('now'))
+                ON CONFLICT(terminal_codigo) DO UPDATE
+                    SET stock_actual = excluded.stock_actual,
+                        stock_minimo = excluded.stock_minimo,
+                        updated_at   = excluded.updated_at
+            """), {'cod': terminal, 'actual': actual, 'minimo': minimo})
+            actualizados.append({'terminal': terminal, 'subtotal': subtotal,
+                                 'stock_actual': actual, 'stock_minimo': minimo})
+        db.session.commit()
+
+        return jsonify({'success': True, 'actualizados': len(actualizados), 'detalle': actualizados})
+    except Exception as e:
+        return error_interno(e, 'Error al sugerir stock')
+
+
 @bp.route('/api/kanban-terminales/export-excel', methods=['GET'])
 @requiere_pin_admin
 def api_exportar_pedido_excel():

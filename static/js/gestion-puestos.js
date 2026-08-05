@@ -1552,3 +1552,30 @@ async function ktrGuardar(terminal, safeId) {
 function exportarExcelPedido() {
     window.location.href = '/api/kanban-terminales/export-excel';
 }
+
+async function sugerirStockAuto() {
+    const nSinStock = (_kanbanData || []).filter(t => t.stock_actual === 0 && t.subtotal > 0).length;
+    if (nSinStock === 0) {
+        alert('Todos los terminales ya tienen stock definido.');
+        return;
+    }
+    if (!confirm(`Se aplicará stock sugerido a ${nSinStock} terminales que actualmente tienen stock = 0.\n\nLas sugerencias se basan en el subtotal de crimps de cada terminal.\n\n¿Continuar?`)) return;
+
+    const btn = document.getElementById('btn-sugerir-stock');
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳ Calculando...';
+    try {
+        const resp = await fetch('/api/kanban-terminales/sugerir-stock', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert(`✅ Stock sugerido aplicado a ${data.actualizados} terminales.\n\nRecargando la tabla...`);
+            await cargarKanban();
+        } else {
+            alert('Error: ' + (data.message || 'desconocido'));
+        }
+    } catch (e) {
+        alert('Error de conexión');
+    } finally {
+        btn.disabled = false; btn.textContent = orig;
+    }
+}
