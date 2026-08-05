@@ -95,7 +95,7 @@ def api_mangueras_datos():
                 rows_full = conn.execute(text(
                     """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
                        FROM etiquetas_elementos
-                       WHERE archivo_excel = :arch AND es_grupo_padre = 0"""
+                       WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)"""
                 ), {'arch': archivo}).fetchall()
             num_map = {}      # clave exacta: (cod_cable.upper(), elemento)
             num_map_elem = {} # fallback: solo elemento (primer match)
@@ -138,7 +138,7 @@ def api_manguitos_datos():
                 rows = conn.execute(text(
                     """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
                        FROM etiquetas_elementos
-                       WHERE archivo_excel = :arch AND es_grupo_padre = 0"""
+                       WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)"""
                 ), {'arch': archivo}).fetchall()
             num_map_full = {}   # (cod_cable.upper(), elemento) -> label
             num_map_elem = {}   # elemento -> label (fallback: primer match)
@@ -210,7 +210,7 @@ def api_manguitos_generar_txt():
                 rows = conn.execute(text(
                     """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
                        FROM etiquetas_elementos
-                       WHERE archivo_excel = :arch AND es_grupo_padre = 0"""
+                       WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)"""
                 ), {'arch': archivo}).fetchall()
             for r in rows:
                 elem_name, num_etq, sub_num, cod = r[0], r[1], r[2], (r[3] or '').strip().upper()

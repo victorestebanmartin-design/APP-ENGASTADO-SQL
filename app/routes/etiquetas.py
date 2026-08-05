@@ -63,7 +63,8 @@ def api_etiquetas_grupos_json():
                 codigo_corte,
                 grupo_serie,
                 es_grupo_padre,
-                sub_numero
+                sub_numero,
+                COALESCE(es_padre_manual, 0)
             FROM etiquetas_elementos
             ORDER BY numero_etiqueta, sub_numero
         """
@@ -87,7 +88,8 @@ def api_etiquetas_grupos_json():
                 'codigo_corte': row[10],
                 'grupo_serie': row[11],
                 'es_grupo_padre': row[12],
-                'sub_numero': row[13]
+                'sub_numero': row[13],
+                'es_padre_manual': row[14]
             })
         
         return jsonify({
@@ -152,7 +154,8 @@ def api_etiquetas_cargar_grupos():
                 codigo_corte,
                 grupo_serie,
                 es_grupo_padre,
-                sub_numero
+                sub_numero,
+                COALESCE(es_padre_manual, 0)
             FROM etiquetas_elementos
             WHERE archivo_excel = :archivo
             ORDER BY numero_etiqueta, sub_numero
@@ -182,7 +185,8 @@ def api_etiquetas_cargar_grupos():
                 'codigo_corte': row[10],
                 'grupo_serie': row[11],
                 'es_grupo_padre': row[12],
-                'sub_numero': row[13]
+                'sub_numero': row[13],
+                'es_padre_manual': row[14]
             })
         
         return jsonify({
@@ -581,7 +585,7 @@ def api_etiquetas_grupos_bono(nombre_bono):
                 cur.execute("""
                     SELECT numero_etiqueta, cod_cable, elemento, descripcion, seccion,
                            longitud, de_terminal, num_cables, num_terminales, archivo_excel, codigo_corte,
-                           grupo_serie, es_grupo_padre, sub_numero
+                           grupo_serie, es_grupo_padre, sub_numero, COALESCE(es_padre_manual, 0)
                     FROM etiquetas_elementos
                     WHERE LOWER(archivo_excel) = LOWER(?) OR LOWER(codigo_corte) = LOWER(?)
                     ORDER BY numero_etiqueta, sub_numero
@@ -598,7 +602,7 @@ def api_etiquetas_grupos_bono(nombre_bono):
                     cur.execute("""
                         SELECT numero_etiqueta, cod_cable, elemento, descripcion, seccion,
                                longitud, de_terminal, num_cables, num_terminales, archivo_excel, codigo_corte,
-                               grupo_serie, es_grupo_padre, sub_numero
+                               grupo_serie, es_grupo_padre, sub_numero, COALESCE(es_padre_manual, 0)
                         FROM etiquetas_elementos
                         WHERE LOWER(codigo_corte) LIKE LOWER(?) || '%'
                            OR LOWER(codigo_corte) = LOWER(?)
@@ -626,7 +630,8 @@ def api_etiquetas_grupos_bono(nombre_bono):
                 'codigo_corte': row[10],
                 'grupo_serie': row[11],
                 'es_grupo_padre': row[12],
-                'sub_numero': row[13]
+                'sub_numero': row[13],
+                'es_padre_manual': row[14]
             })
         
         return jsonify({
@@ -886,3 +891,197 @@ def api_etiquetas_buscar_por_numero():
         
     except Exception as e:
         return error_interno(e, 'Error al buscar etiqueta')
+
+
+# ==================== REAGRUPACIÓN MANUAL ====================
+
+def _compactar_numeracion(archivo: str, conn) -> dict:
+    """Renumera los grupos de un archivo sin huecos. Devuelve mapa {viejo: nuevo}."""
+    filas = conn.execute(text(
+        "SELECT DISTINCT numero_etiqueta FROM etiquetas_elementos "
+        "WHERE archivo_excel = :a AND sub_numero = 0 ORDER BY numero_etiqueta"
+    ), {'a': archivo}).fetchall()
+    numeros = [r[0] for r in filas]
+    mapa = {}
+    for nuevo_num, viejo_num in enumerate(numeros, 1):
+        if nuevo_num != viejo_num:
+            mapa[viejo_num] = nuevo_num
+    # Procesar de menor a mayor: los movimientos siempre van hacia abajo (sin conflictos)
+    for viejo, nuevo in sorted(mapa.items()):
+        conn.execute(text(
+            "UPDATE etiquetas_elementos SET numero_etiqueta = :nuevo "
+            "WHERE archivo_excel = :a AND numero_etiqueta = :viejo"
+        ), {'nuevo': nuevo, 'a': archivo, 'viejo': viejo})
+    return mapa
+
+
+@bp.route('/api/etiquetas/candidatos_reagrupar', methods=['GET'])
+def api_etiquetas_candidatos_reagrupar():
+    """Etiquetas del mismo archivo/cable con terminal solapado, válidas como hijos del padre dado."""
+    try:
+        archivo = request.args.get('archivo', '').strip()
+        numero_padre = request.args.get('numero_padre', type=int)
+        if not archivo or numero_padre is None:
+            return jsonify({'success': False, 'message': 'Faltan parámetros'}), 400
+
+        with db.engine.connect() as conn:
+            padre = conn.execute(text(
+                "SELECT cod_cable, de_terminal FROM etiquetas_elementos "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+            ), {'a': archivo, 'n': numero_padre}).fetchone()
+            if not padre:
+                return jsonify({'success': False, 'message': 'Etiqueta padre no encontrada'}), 404
+
+            padre_cable = padre[0]
+            padre_terminales = {t.strip().upper() for t in (padre[1] or '').split(',') if t.strip()}
+
+            rows = conn.execute(text("""
+                SELECT numero_etiqueta, cod_cable, elemento, de_terminal, descripcion, seccion
+                FROM etiquetas_elementos
+                WHERE archivo_excel = :a
+                  AND cod_cable = :cable
+                  AND sub_numero = 0
+                  AND numero_etiqueta != :padre
+                  AND COALESCE(es_padre_manual, 0) = 0
+                  AND es_grupo_padre = 0
+                ORDER BY numero_etiqueta
+            """), {'a': archivo, 'cable': padre_cable, 'padre': numero_padre}).fetchall()
+
+        candidatos = []
+        for r in rows:
+            terminales_cand = {t.strip().upper() for t in (r[3] or '').split(',') if t.strip()}
+            compatible = bool(padre_terminales & terminales_cand) if (padre_terminales and terminales_cand) else True
+            candidatos.append({
+                'numero_etiqueta': r[0],
+                'cod_cable': r[1],
+                'elemento': r[2],
+                'de_terminal': r[3],
+                'descripcion': r[4],
+                'seccion': r[5],
+                'compatible': compatible,
+            })
+        return jsonify({'success': True, 'candidatos': candidatos})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener candidatos')
+
+
+@bp.route('/api/etiquetas/reagrupar_manual', methods=['POST'])
+def api_etiquetas_reagrupar_manual():
+    """Fusiona hijos bajo el padre: reasigna numero_etiqueta/sub_numero y compacta el archivo."""
+    try:
+        data = request.get_json() or {}
+        archivo = data.get('archivo', '').strip()
+        numero_padre = data.get('numero_padre')
+        hijos = data.get('hijos', [])
+
+        if not archivo or numero_padre is None or not hijos:
+            return jsonify({'success': False, 'message': 'Faltan parámetros (archivo, numero_padre, hijos)'}), 400
+        if len(hijos) > 20:
+            return jsonify({'success': False, 'message': 'Máximo 20 hijos por grupo'}), 400
+
+        with db.engine.connect() as conn:
+            padre_row = conn.execute(text(
+                "SELECT cod_cable, de_terminal FROM etiquetas_elementos "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+            ), {'a': archivo, 'n': numero_padre}).fetchone()
+            if not padre_row:
+                return jsonify({'success': False, 'message': 'Etiqueta padre no encontrada'}), 404
+
+            padre_cable = padre_row[0]
+            padre_terminales = {t.strip().upper() for t in (padre_row[1] or '').split(',') if t.strip()}
+
+            for hijo_num in hijos:
+                hijo_row = conn.execute(text(
+                    "SELECT cod_cable, de_terminal FROM etiquetas_elementos "
+                    "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+                ), {'a': archivo, 'n': hijo_num}).fetchone()
+                if not hijo_row:
+                    return jsonify({'success': False, 'message': f'Hijo {hijo_num} no encontrado o no es independiente'}), 400
+                if hijo_row[0] != padre_cable:
+                    return jsonify({'success': False, 'message': f'Hijo {hijo_num} tiene cod_cable diferente al padre'}), 400
+                terminales_hijo = {t.strip().upper() for t in (hijo_row[1] or '').split(',') if t.strip()}
+                if padre_terminales and terminales_hijo and not (padre_terminales & terminales_hijo):
+                    return jsonify({'success': False, 'message': f'Hijo {hijo_num} no comparte ningún terminal con el padre'}), 400
+
+            max_sub = conn.execute(text(
+                "SELECT COALESCE(MAX(sub_numero), 0) FROM etiquetas_elementos "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n"
+            ), {'a': archivo, 'n': numero_padre}).scalar() or 0
+
+            conn.execute(text(
+                "UPDATE etiquetas_elementos SET es_grupo_padre = 1, es_padre_manual = 1 "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+            ), {'a': archivo, 'n': numero_padre})
+
+            for sub_idx, hijo_num in enumerate(hijos, max_sub + 1):
+                conn.execute(text("""
+                    UPDATE etiquetas_elementos
+                    SET numero_etiqueta = :padre,
+                        sub_numero = :sub,
+                        numero_etiqueta_original = :original
+                    WHERE archivo_excel = :a AND numero_etiqueta = :hijo AND sub_numero = 0
+                """), {'padre': numero_padre, 'sub': sub_idx, 'original': hijo_num,
+                       'a': archivo, 'hijo': hijo_num})
+
+            mapa = _compactar_numeracion(archivo, conn)
+            conn.commit()
+
+        nuevo_padre = mapa.get(numero_padre, numero_padre)
+        return jsonify({'success': True, 'nuevo_numero_padre': nuevo_padre, 'mapa_renumeracion': mapa})
+    except Exception as e:
+        return error_interno(e, 'Error al reagrupar')
+
+
+@bp.route('/api/etiquetas/desagrupar', methods=['POST'])
+def api_etiquetas_desagrupar():
+    """Deshace una reagrupación manual: libera los hijos a slots independientes y compacta."""
+    try:
+        data = request.get_json() or {}
+        archivo = data.get('archivo', '').strip()
+        numero_grupo = data.get('numero_grupo')
+
+        if not archivo or numero_grupo is None:
+            return jsonify({'success': False, 'message': 'Faltan parámetros'}), 400
+
+        with db.engine.connect() as conn:
+            padre_row = conn.execute(text(
+                "SELECT es_padre_manual FROM etiquetas_elementos "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+            ), {'a': archivo, 'n': numero_grupo}).fetchone()
+            if not padre_row or padre_row[0] != 1:
+                return jsonify({'success': False, 'message': 'No es un grupo de reagrupación manual'}), 400
+
+            hijos = conn.execute(text(
+                "SELECT sub_numero, COALESCE(numero_etiqueta_original, sub_numero) "
+                "FROM etiquetas_elementos "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero > 0 "
+                "ORDER BY sub_numero"
+            ), {'a': archivo, 'n': numero_grupo}).fetchall()
+
+            # Mover a números temporales (100000 + original) para evitar conflictos al restaurar
+            TEMP = 100000
+            for sub, orig in hijos:
+                conn.execute(text("""
+                    UPDATE etiquetas_elementos
+                    SET numero_etiqueta = :tmp, sub_numero = 0, numero_etiqueta_original = NULL
+                    WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = :sub
+                """), {'tmp': TEMP + orig, 'a': archivo, 'n': numero_grupo, 'sub': sub})
+
+            # Mover de temporales a originales
+            for _, orig in hijos:
+                conn.execute(text(
+                    "UPDATE etiquetas_elementos SET numero_etiqueta = :orig "
+                    "WHERE archivo_excel = :a AND numero_etiqueta = :tmp AND sub_numero = 0"
+                ), {'orig': orig, 'a': archivo, 'tmp': TEMP + orig})
+
+            conn.execute(text(
+                "UPDATE etiquetas_elementos SET es_grupo_padre = 0, es_padre_manual = 0 "
+                "WHERE archivo_excel = :a AND numero_etiqueta = :n AND sub_numero = 0"
+            ), {'a': archivo, 'n': numero_grupo})
+
+            mapa = _compactar_numeracion(archivo, conn)
+            conn.commit()
+
+        return jsonify({'success': True, 'mapa_renumeracion': mapa})
+    except Exception as e:
+        return error_interno(e, 'Error al desagrupar')

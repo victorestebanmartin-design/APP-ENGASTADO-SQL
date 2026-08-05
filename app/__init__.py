@@ -29,6 +29,10 @@ def _apply_migrations(db_path):
         missing.append("ALTER TABLE etiquetas_elementos ADD COLUMN es_grupo_padre INTEGER NOT NULL DEFAULT 0")
     if 'grupo_serie' not in cols:
         missing.append("ALTER TABLE etiquetas_elementos ADD COLUMN grupo_serie TEXT")
+    if 'numero_etiqueta_original' not in cols:
+        missing.append("ALTER TABLE etiquetas_elementos ADD COLUMN numero_etiqueta_original INTEGER")
+    if 'es_padre_manual' not in cols:
+        missing.append("ALTER TABLE etiquetas_elementos ADD COLUMN es_padre_manual INTEGER NOT NULL DEFAULT 0")
 
     for sql in missing:
         cur.execute(sql)

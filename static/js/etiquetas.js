@@ -242,3 +242,207 @@ async function imprimirEtiquetas() {
         alert('Error al imprimir etiquetas: ' + error.message);
     }
 }
+
+// ==================== REAGRUPACIÓN MANUAL ====================
+
+let rgPadre = null;          // numero_etiqueta del padre seleccionado
+let rgHijos = [];            // numeros de hijos seleccionados
+let rgCandidatos = [];       // respuesta de /candidatos_reagrupar
+
+function abrirModalReagrupar() {
+    if (!gruposCargados || gruposCargados.length === 0) {
+        alert('Carga un archivo primero.');
+        return;
+    }
+    rgPadre = null;
+    rgHijos = [];
+    rgCandidatos = [];
+    renderRgGrid();
+    document.getElementById('modal-reagrupar').style.display = 'flex';
+}
+
+function cerrarModalReagrupar() {
+    document.getElementById('modal-reagrupar').style.display = 'none';
+}
+
+function resetearReagrupar() {
+    rgPadre = null;
+    rgHijos = [];
+    rgCandidatos = [];
+    renderRgGrid();
+}
+
+// Devuelve solo las filas top-level (sub_numero == 0)
+function rgSoloIndependientes() {
+    return gruposCargados.filter(g => !g.sub_numero || g.sub_numero == 0);
+}
+
+async function renderRgGrid() {
+    const grid = document.getElementById('rg-grid');
+    const independientes = rgSoloIndependientes();
+    grid.innerHTML = '';
+
+    independientes.forEach(g => {
+        const num = g.numero_etiqueta;
+        const esPadreManual = g.es_padre_manual == 1;
+        let estado = 'normal';
+
+        if (esPadreManual) {
+            estado = 'ya-manual';
+        } else if (rgPadre !== null) {
+            if (num == rgPadre) {
+                estado = 'padre';
+            } else if (rgHijos.includes(num)) {
+                estado = 'hijo';
+            } else {
+                const cand = rgCandidatos.find(c => c.numero_etiqueta == num);
+                if (cand) {
+                    estado = cand.compatible ? 'compatible' : 'incompatible';
+                } else {
+                    estado = 'incompatible'; // diferente cable
+                }
+            }
+        }
+
+        const card = document.createElement('div');
+        card.className = `rcard ${estado}`;
+        const hijos = gruposCargados.filter(h => h.numero_etiqueta == num && h.sub_numero > 0);
+        const subLabel = hijos.length > 0
+            ? `<div class="rcard-badge">★ +${hijos.length}</div>`
+            : '';
+        const elem = (g.elemento || '').substring(0, 14);
+        card.innerHTML = `
+            <div class="rcard-num">${estado === 'ya-manual' ? '★' : ''}${num}</div>
+            <div class="rcard-elem">${elem}</div>
+            ${subLabel}
+        `;
+        card.addEventListener('click', () => onClickRgCard(g, estado));
+        grid.appendChild(card);
+    });
+
+    // Grupos manuales existentes
+    const manuales = independientes.filter(g => g.es_padre_manual == 1);
+    const seccion = document.getElementById('rg-grupos-manuales');
+    const lista   = document.getElementById('rg-lista-manuales');
+    if (manuales.length > 0) {
+        lista.innerHTML = manuales.map(g => {
+            const hijos = gruposCargados.filter(h => h.numero_etiqueta == g.numero_etiqueta && h.sub_numero > 0);
+            const hijosTxt = hijos.map(h => `${h.numero_etiqueta}.${String(h.sub_numero).padStart(2,'0')} (${h.elemento})`).join(', ');
+            return `<div class="grupo-manual-item">
+                <span>★ ${g.numero_etiqueta} — ${g.elemento} → ${hijosTxt || '(sin hijos)'}</span>
+                <button class="btn-secondary" style="padding:2px 10px;font-size:11px;"
+                    onclick="desagruparGrupo(${g.numero_etiqueta})">✕ Desagrupar</button>
+            </div>`;
+        }).join('');
+        seccion.style.display = 'block';
+    } else {
+        seccion.style.display = 'none';
+    }
+
+    actualizarInfoRg();
+}
+
+async function onClickRgCard(g, estado) {
+    if (estado === 'ya-manual') return;
+    if (estado === 'incompatible') return;
+
+    const num = g.numero_etiqueta;
+
+    if (rgPadre === null) {
+        // Paso 1: seleccionar padre
+        rgPadre = num;
+        rgHijos = [];
+        try {
+            const resp = await fetch(
+                `/api/etiquetas/candidatos_reagrupar?archivo=${encodeURIComponent(archivoSeleccionado)}&numero_padre=${num}`
+            );
+            const data = await resp.json();
+            rgCandidatos = data.success ? data.candidatos : [];
+        } catch (e) {
+            rgCandidatos = [];
+        }
+        renderRgGrid();
+        return;
+    }
+
+    if (num == rgPadre) {
+        // Deseleccionar padre
+        rgPadre = null;
+        rgHijos = [];
+        rgCandidatos = [];
+        renderRgGrid();
+        return;
+    }
+
+    // Paso 2: toggle hijo (solo si compatible)
+    if (estado !== 'compatible' && estado !== 'hijo') return;
+    const idx = rgHijos.indexOf(num);
+    if (idx >= 0) rgHijos.splice(idx, 1);
+    else rgHijos.push(num);
+    renderRgGrid();
+}
+
+function actualizarInfoRg() {
+    const info = document.getElementById('rg-info');
+    const btn  = document.getElementById('rg-btn-confirmar');
+    const paso = document.getElementById('rg-paso');
+
+    if (rgPadre === null) {
+        paso.textContent = 'Paso 1: Haz clic en la etiqueta que será el PADRE (mantendrá su número, borde amarillo)';
+        info.textContent = 'Selecciona el padre primero';
+        btn.disabled = true;
+    } else if (rgHijos.length === 0) {
+        paso.textContent = `Paso 2: Selecciona los HIJOS del padre ${rgPadre} (borde verde = compatibles)`;
+        info.textContent = `Padre: ${rgPadre} | Selecciona al menos un hijo`;
+        btn.disabled = true;
+    } else {
+        const total = rgHijos.length + 1;
+        paso.textContent = `Padre: ${rgPadre} → Hijos: ${rgHijos.join(', ')} | ${total} etiquetas → 1 slot en el peine`;
+        info.textContent = `Ahorra ${rgHijos.length} slot(s)`;
+        btn.disabled = false;
+    }
+}
+
+async function confirmarReagrupacion() {
+    if (!rgPadre || rgHijos.length === 0) return;
+    if (!confirm(`¿Reagrupar ${rgHijos.length} etiqueta(s) bajo el padre ${rgPadre}?\n\nLos números se compactarán automáticamente.`)) return;
+
+    try {
+        const resp = await fetch('/api/etiquetas/reagrupar_manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archivo: archivoSeleccionado, numero_padre: rgPadre, hijos: rgHijos })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            cerrarModalReagrupar();
+            await cargarGrupos();
+            alert(`✅ Reagrupación completada. El grupo tiene ahora el número ${data.nuevo_numero_padre}.`);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error al reagrupar: ' + e.message);
+    }
+}
+
+async function desagruparGrupo(numeroGrupo) {
+    if (!confirm(`¿Desagrupar el grupo ${numeroGrupo}?\nLos hijos volverán a ser etiquetas independientes y se renumerará todo.`)) return;
+    try {
+        const resp = await fetch('/api/etiquetas/desagrupar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archivo: archivoSeleccionado, numero_grupo: numeroGrupo })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            await cargarGrupos();
+            renderRgGrid();
+            alert('✅ Grupo desagrupado correctamente. Etiquetas renumeradas.');
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        alert('Error al desagrupar: ' + e.message);
+    }
+}
