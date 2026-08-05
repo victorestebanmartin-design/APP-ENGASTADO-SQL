@@ -927,29 +927,29 @@ def api_eliminar_gaveta_terminal(codigo):
 
 @bp.route('/api/kanban-terminales', methods=['GET'])
 def api_kanban_terminales():
-    """Devuelve todos los terminales del sistema con: máquina, gaveta, stock y archivos que los usan."""
+    """Devuelve todos los terminales del sistema con: máquina, gaveta, stock, cantidades por archivo y subtotal."""
     try:
         codigo_repo = CodigoCorteRepository(db)
         codigos = codigo_repo.obtener_todos_codigos()
         upload_folder = current_app.config['UPLOAD_FOLDER']
 
-        # terminal → set de archivos que lo usan
-        terminal_archivos: dict = {}
+        # terminal → {archivo_nombre: cantidad_crimps}
+        terminal_detalle: dict = {}
+        archivos_ordenados: list = []
+
         for codigo in codigos:
             archivo = codigo['archivo_excel']
             filepath = os.path.join(upload_folder, archivo)
             if not os.path.exists(filepath):
                 continue
+            nombre = os.path.splitext(archivo)[0]
+            if nombre not in archivos_ordenados:
+                archivos_ordenados.append(nombre)
             try:
-                df = leer_excel_cacheado(filepath)
-                for col in df.columns:
-                    if 'terminal' in str(col).lower():
-                        for t in df[col].dropna().unique():
-                            t = str(t).strip()
-                            if t and not t.endswith('*'):
-                                terminal_archivos.setdefault(t, set()).add(
-                                    os.path.splitext(archivo)[0]
-                                )
+                crimps = _crimps_por_terminal_archivo(archivo)
+                for t, qty in crimps.items():
+                    if qty > 0:
+                        terminal_detalle.setdefault(t, {})[nombre] = qty
             except Exception:
                 pass
 
@@ -965,22 +965,24 @@ def api_kanban_terminales():
                     'tipo_operacion': maq.get('tipo_operacion', 'MANUAL'),
                 }
 
-        # gavetas
         rows_gav = db.session.execute(
             text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")
         ).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
 
-        # stock
         rows_stock = db.session.execute(
             text("SELECT terminal_codigo, stock_actual, stock_minimo, notas FROM terminales_stock")
         ).fetchall()
         stock_map = {r[0]: {'stock_actual': r[1], 'stock_minimo': r[2], 'notas': r[3]} for r in rows_stock}
 
         resultado = []
-        for terminal in sorted(terminal_archivos.keys()):
+        for terminal in sorted(terminal_detalle.keys()):
             asig = terminal_maquina.get(terminal)
             st   = stock_map.get(terminal, {'stock_actual': 0, 'stock_minimo': 0, 'notas': None})
+            detalle = terminal_detalle[terminal]
+            subtotal = sum(detalle.values())
+            detalle_lista = [{'nombre': a, 'cantidad': detalle.get(a, 0)}
+                             for a in archivos_ordenados if a in detalle]
             resultado.append({
                 'terminal':       terminal,
                 'maquina_nombre': asig['maquina_nombre'] if asig else None,
@@ -990,10 +992,16 @@ def api_kanban_terminales():
                 'stock_actual':   st['stock_actual'],
                 'stock_minimo':   st['stock_minimo'],
                 'notas':          st['notas'],
-                'archivos':       sorted(terminal_archivos[terminal]),
+                'detalle_archivos': detalle_lista,
+                'subtotal':       subtotal,
             })
 
-        return jsonify({'success': True, 'terminales': resultado, 'total': len(resultado)})
+        return jsonify({
+            'success': True,
+            'terminales': resultado,
+            'total': len(resultado),
+            'archivos': archivos_ordenados,
+        })
     except Exception as e:
         return error_interno(e, 'Error al obtener kanban de terminales')
 
@@ -1027,28 +1035,28 @@ def api_guardar_stock_terminal(codigo):
 @bp.route('/api/kanban-terminales/export-excel', methods=['GET'])
 @requiere_pin_admin
 def api_exportar_pedido_excel():
-    """Genera un Excel de hoja de pedido con todos los terminales y su stock."""
+    """Genera un Excel de hoja de pedido con columnas dinámicas por archivo de corte."""
     try:
         codigo_repo = CodigoCorteRepository(db)
         codigos = codigo_repo.obtener_todos_codigos()
         upload_folder = current_app.config['UPLOAD_FOLDER']
 
-        terminal_archivos: dict = {}
+        terminal_detalle: dict = {}
+        archivos_ordenados: list = []
+
         for codigo in codigos:
             archivo = codigo['archivo_excel']
             filepath = os.path.join(upload_folder, archivo)
             if not os.path.exists(filepath):
                 continue
+            nombre = os.path.splitext(archivo)[0]
+            if nombre not in archivos_ordenados:
+                archivos_ordenados.append(nombre)
             try:
-                df = leer_excel_cacheado(filepath)
-                for col in df.columns:
-                    if 'terminal' in str(col).lower():
-                        for t in df[col].dropna().unique():
-                            t = str(t).strip()
-                            if t and not t.endswith('*'):
-                                terminal_archivos.setdefault(t, set()).add(
-                                    os.path.splitext(archivo)[0]
-                                )
+                crimps = _crimps_por_terminal_archivo(archivo)
+                for t, qty in crimps.items():
+                    if qty > 0:
+                        terminal_detalle.setdefault(t, {})[nombre] = qty
             except Exception:
                 pass
 
@@ -1057,12 +1065,9 @@ def api_exportar_pedido_excel():
         terminal_maquina = {}
         for maq in maquinas:
             for t in maquina_repo.obtener_terminales_asignados(maq['id']):
-                terminal_maquina[t] = {
-                    'maquina': maq['nombre'],
-                    'puesto':  maq.get('puesto_nombre', ''),
-                }
+                terminal_maquina[t] = {'maquina': maq['nombre'], 'puesto': maq.get('puesto_nombre', '')}
 
-        rows_gav   = db.session.execute(text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")).fetchall()
+        rows_gav = db.session.execute(text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
 
         rows_stock = db.session.execute(
@@ -1071,27 +1076,31 @@ def api_exportar_pedido_excel():
         stock_map = {r[0]: {'stock_actual': r[1], 'stock_minimo': r[2], 'notas': r[3]} for r in rows_stock}
 
         filas = []
-        for terminal in sorted(terminal_archivos.keys()):
+        for terminal in sorted(terminal_detalle.keys()):
             asig = terminal_maquina.get(terminal, {})
             st   = stock_map.get(terminal, {'stock_actual': 0, 'stock_minimo': 0, 'notas': None})
-            filas.append({
-                'Terminal':       terminal,
-                'Máquina':        asig.get('maquina', '—'),
-                'Puesto':         asig.get('puesto',  '—'),
-                'Gaveta':         gavetas_map.get(terminal, '—'),
-                'Stock actual':   st['stock_actual'],
-                'Stock mínimo':   st['stock_minimo'],
-                'Cantidad pedido': '',
-                'Notas':          st['notas'] or '',
-                'Archivos':       ', '.join(sorted(terminal_archivos[terminal])),
-            })
+            detalle = terminal_detalle[terminal]
+            subtotal = sum(detalle.values())
+            fila = {
+                'Terminal':        terminal,
+                'Máquina':         asig.get('maquina', '—'),
+                'Puesto':          asig.get('puesto',  '—'),
+                'Gaveta':          gavetas_map.get(terminal, '—'),
+            }
+            for a in archivos_ordenados:
+                fila[a] = detalle.get(a, '')
+            fila['SUBTOTAL'] = subtotal
+            fila['Stock actual']    = st['stock_actual']
+            fila['Stock mínimo']    = st['stock_minimo']
+            fila['Cantidad pedido'] = ''
+            fila['Notas']           = st['notas'] or ''
+            filas.append(fila)
 
         df_out = pd.DataFrame(filas)
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as writer:
             df_out.to_excel(writer, index=False, sheet_name='Pedido Terminales')
             ws = writer.sheets['Pedido Terminales']
-            # Anchos aproximados
             for col_cells in ws.columns:
                 max_len = max((len(str(c.value or '')) for c in col_cells), default=10)
                 ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)

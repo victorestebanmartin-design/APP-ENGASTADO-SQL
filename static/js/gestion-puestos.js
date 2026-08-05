@@ -1369,7 +1369,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // KANBAN DE STOCK
 // ================================
 
-let _kanbanData = null;
+let _kanbanData     = null;
+let _kanbanArchivos = [];   // orden de archivos para las columnas
 
 async function cargarKanban() {
     const container = document.getElementById('lista-kanban');
@@ -1379,7 +1380,8 @@ async function cargarKanban() {
         const resp = await fetch('/api/kanban-terminales');
         const data = await resp.json();
         if (!data.success) { container.innerHTML = '<p class="error">Error al cargar</p>'; return; }
-        _kanbanData = data.terminales;
+        _kanbanData     = data.terminales;
+        _kanbanArchivos = data.archivos || [];
         document.getElementById('kanban-total').textContent = data.total + ' terminales';
         container.classList.remove('loading');
         renderKanban();
@@ -1402,113 +1404,112 @@ function renderKanban() {
         return true;
     });
 
-    // Contar alertas en el total (sin filtro) para el badge
     const nBajo = _kanbanData.filter(t => t.stock_actual <= t.stock_minimo).length;
     const badgeEl = document.getElementById('kanban-stock-bajo');
-    if (nBajo > 0) {
-        badgeEl.textContent = '⚠ ' + nBajo + ' stock bajo';
-        badgeEl.style.display = '';
-    } else {
-        badgeEl.style.display = 'none';
-    }
+    if (nBajo > 0) { badgeEl.textContent = '⚠ ' + nBajo + ' stock bajo'; badgeEl.style.display = ''; }
+    else            { badgeEl.style.display = 'none'; }
 
     if (lista.length === 0) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><h4>Sin resultados</h4><p>No hay terminales que coincidan con los filtros.</p></div>';
         return;
     }
 
+    // Sólo mostrar los archivos que tienen al menos un terminal en la lista filtrada
+    const archivosActivos = _kanbanArchivos.filter(a =>
+        lista.some(t => t.detalle_archivos && t.detalle_archivos.find(d => d.nombre === a && d.cantidad > 0))
+    );
+
+    // Cabecera fija
+    const thead = `<thead><tr>
+        <th>Terminal</th>
+        <th>Máquina / Puesto</th>
+        <th>Gaveta</th>
+        <th>Tipo</th>
+        ${archivosActivos.map(a => `<th class="th-archivo th-num" title="${a}">${_nombreCorto(a)}</th>`).join('')}
+        <th class="th-num" style="color:var(--text);">Subtotal</th>
+        <th class="th-num">Stock<br><span style="font-weight:400;font-size:0.68rem;">actual</span></th>
+        <th class="th-num">Stock<br><span style="font-weight:400;font-size:0.68rem;">mínimo</span></th>
+        <th></th>
+    </tr></thead>`;
+
+    let tbodyHtml = '';
+
     if (agrupar === 'ninguno') {
-        container.innerHTML = `<div class="kanban-grid">${lista.map(_tarjetaKanban).join('')}</div>`;
+        tbodyHtml = lista.map(t => _filaTabla(t, archivosActivos)).join('');
     } else {
         const key = agrupar === 'maquina' ? 'maquina_nombre' : 'puesto_nombre';
         const grupos = {};
-        lista.forEach(t => {
-            const g = t[key] || '— Sin asignar';
-            if (!grupos[g]) grupos[g] = [];
-            grupos[g].push(t);
-        });
-        container.innerHTML = Object.keys(grupos).sort().map(g => `
-            <div style="margin-bottom:20px;">
-                <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;
-                            color:var(--text);border-bottom:1px solid var(--border);
-                            padding-bottom:6px;margin-bottom:10px;">
-                    <span style="display:inline-block;width:4px;height:14px;background:var(--accent);
-                                 border-radius:2px;margin-right:8px;vertical-align:middle;"></span>
-                    ${g} <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);font-weight:normal;">(${grupos[g].length})</span>
-                </div>
-                <div class="kanban-grid">${grupos[g].map(_tarjetaKanban).join('')}</div>
-            </div>`
+        lista.forEach(t => { const g = t[key] || '— Sin asignar'; (grupos[g] = grupos[g] || []).push(t); });
+        const totalCols = 4 + archivosActivos.length + 4;
+        tbodyHtml = Object.keys(grupos).sort().map(g =>
+            `<tr class="ktr-group"><td colspan="${totalCols}">▸ ${g} (${grupos[g].length})</td></tr>` +
+            grupos[g].map(t => _filaTabla(t, archivosActivos)).join('')
         ).join('');
     }
+
+    container.innerHTML = `<div class="kanban-table-wrap"><table class="kanban-table">${thead}<tbody>${tbodyHtml}</tbody></table></div>`;
 }
 
-function _tarjetaKanban(t) {
+function _nombreCorto(nombre) {
+    // Quitar sufijos de fecha/versión para que la cabecera sea compacta
+    return nombre.replace(/_\d{8}(_v\d+)?$/i, '').replace(/_v\d+$/i, '');
+}
+
+function _filaTabla(t, archivosActivos) {
     const esBajo  = t.stock_actual <= t.stock_minimo;
-    const tipoMap = { 'MANUAL': 'manual', 'AUTOMATICA': 'automatica', 'SEMI-AUTOMATICA': 'semi' };
-    const tipoCls = t.tipo_operacion ? (tipoMap[t.tipo_operacion] || 'manual') : 'sin-asignar';
-    const tipoLbl = t.tipo_operacion
-        ? { 'MANUAL': '🤚 Manual', 'AUTOMATICA': '🤖 Auto', 'SEMI-AUTOMATICA': '⚡ Semi' }[t.tipo_operacion] || t.tipo_operacion
-        : '— Sin máquina';
+    const tipoMap = { 'MANUAL': ['manual','🤚 Manual'], 'AUTOMATICA': ['automatica','🤖 Auto'], 'SEMI-AUTOMATICA': ['semi','⚡ Semi'] };
+    const [tipoCls, tipoLbl] = t.tipo_operacion && tipoMap[t.tipo_operacion] ? tipoMap[t.tipo_operacion] : ['none', '—'];
 
     let badgeCls = 'ok';
-    if (t.stock_actual === 0)              badgeCls = 'cero';
-    else if (t.stock_actual <= t.stock_minimo) badgeCls = 'bajo';
+    if (t.stock_actual === 0)                   badgeCls = 'cero';
+    else if (t.stock_actual <= t.stock_minimo)  badgeCls = 'bajo';
 
-    const cod = encodeURIComponent(t.terminal);
+    const cod       = encodeURIComponent(t.terminal);
+    const safeId    = t.terminal.replace(/[^a-zA-Z0-9]/g, '_');
+    const detalleMap = {};
+    (t.detalle_archivos || []).forEach(d => { detalleMap[d.nombre] = d.cantidad; });
 
-    return `
-    <div class="kanban-card${esBajo ? ' alerta-stock' : ''}" id="kc-${t.terminal.replace(/[^a-zA-Z0-9]/g,'_')}">
-        <div class="kc-header">
-            <span class="kc-code">${t.terminal}</span>
-            <span class="kc-tipo ${tipoCls}">${tipoLbl}</span>
-        </div>
-        <div class="kc-meta">
-            <span class="kc-tag${t.maquina_nombre ? '' : ' sin-dato'}" title="Máquina">
-                ⚙️ ${t.maquina_nombre || '—'}
+    const celdasArchivos = archivosActivos.map(a => {
+        const qty = detalleMap[a] || 0;
+        return `<td class="ktr-qty${qty ? ' has-val' : ''}">${qty || ''}</td>`;
+    }).join('');
+
+    return `<tr class="${esBajo ? 'ktr-alerta' : ''}" id="ktr-${safeId}">
+        <td class="ktr-code">${t.terminal}</td>
+        <td class="ktr-maq">
+            <div class="ktr-maq-name">${t.maquina_nombre || '<span style="opacity:.4">—</span>'}</div>
+            ${t.puesto_nombre ? `<div class="ktr-maq-puesto">${t.puesto_nombre}</div>` : ''}
+        </td>
+        <td><span class="ktr-gaveta${t.gaveta ? '' : ' empty'}">${t.gaveta || '—'}</span></td>
+        <td><span class="ktr-tipo ${tipoCls}">${tipoLbl}</span></td>
+        ${celdasArchivos}
+        <td class="ktr-subtotal">${t.subtotal || 0}</td>
+        <td><input class="ktr-input" type="number" min="0" value="${t.stock_actual}"
+                   oninput="ktrChanged(this, '${safeId}')" title="Stock actual"></td>
+        <td><input class="ktr-input" type="number" min="0" value="${t.stock_minimo}"
+                   oninput="ktrChanged(this, '${safeId}')" title="Stock mínimo"></td>
+        <td>
+            <span class="ktr-badge ${badgeCls}" id="ktr-badge-${cod}">
+                ${t.stock_actual === 0 ? '⚠ 0' : (esBajo ? '↓ bajo' : '✓ ok')}
             </span>
-            <span class="kc-tag gaveta${t.gaveta ? '' : ' sin-dato'}" title="Gaveta">
-                📦 ${t.gaveta || '—'}
-            </span>
-        </div>
-        <div class="kc-archivos">📋 ${t.archivos.join(' · ') || '—'}</div>
-        <div class="kc-stock-row">
-            <span class="kc-stock-label">Stock:</span>
-            <input class="kc-stock-input" type="number" min="0"
-                   value="${t.stock_actual}"
-                   data-original="${t.stock_actual}"
-                   data-terminal="${t.terminal}"
-                   oninput="kcStockChanged(this)"
-                   title="Stock actual">
-            <span class="kc-stock-label" style="font-size:0.72rem;">mín.</span>
-            <input class="kc-stock-input" type="number" min="0"
-                   value="${t.stock_minimo}"
-                   data-original-min="${t.stock_minimo}"
-                   data-terminal-min="${t.terminal}"
-                   oninput="kcStockChanged(this)"
-                   title="Stock mínimo" style="width:55px;">
-            <span class="kc-stock-badge ${badgeCls}" id="kc-badge-${cod}">
-                ${t.stock_actual === 0 ? '⚠ Vacío' : (esBajo ? '↓ Bajo' : '✓ OK')}
-            </span>
-            <button class="kc-save-btn" id="kc-save-${cod}" onclick="kcGuardarStock('${t.terminal}', this)">💾</button>
-        </div>
-        ${t.notas ? `<div class="kc-notas">📝 ${t.notas}</div>` : ''}
-    </div>`;
+            <button class="ktr-save" id="ktr-save-${safeId}"
+                    onclick="ktrGuardar('${t.terminal}', '${safeId}')">💾 Guardar</button>
+        </td>
+    </tr>`;
 }
 
-function kcStockChanged(input) {
-    // Mostrar botón guardar al modificar cualquiera de los dos inputs de la card
-    const card = input.closest('.kanban-card');
-    const saveBtn = card.querySelector('.kc-save-btn');
-    if (saveBtn) saveBtn.classList.add('visible');
+function ktrChanged(input, safeId) {
+    const btn = document.getElementById('ktr-save-' + safeId);
+    if (btn) btn.classList.add('visible');
 }
 
-async function kcGuardarStock(terminal, btn) {
-    const card        = btn.closest('.kanban-card');
-    const inputs      = card.querySelectorAll('.kc-stock-input');
+async function ktrGuardar(terminal, safeId) {
+    const row         = document.getElementById('ktr-' + safeId);
+    const inputs      = row.querySelectorAll('.ktr-input');
     const stockActual = parseInt(inputs[0].value) || 0;
     const stockMinimo = parseInt(inputs[1].value) || 0;
-    btn.disabled = true;
-    btn.textContent = '…';
+    const btn         = document.getElementById('ktr-save-' + safeId);
+    btn.disabled = true; btn.textContent = '…';
     try {
         const resp = await fetch(`/api/terminal-stock/${encodeURIComponent(terminal)}`, {
             method: 'PUT',
@@ -1517,30 +1518,20 @@ async function kcGuardarStock(terminal, btn) {
         });
         const data = await resp.json();
         if (data.success) {
-            // Actualizar datos locales
             const t = _kanbanData.find(x => x.terminal === terminal);
             if (t) { t.stock_actual = stockActual; t.stock_minimo = stockMinimo; }
-            inputs[0].dataset.original    = stockActual;
-            inputs[1].dataset.originalMin = stockMinimo;
             btn.classList.remove('visible');
-            // Actualizar badge inline
-            const cod     = encodeURIComponent(terminal);
-            const badgeEl = document.getElementById('kc-badge-' + cod);
             const esBajo  = stockActual <= stockMinimo;
+            const cod     = encodeURIComponent(terminal);
+            const badgeEl = document.getElementById('ktr-badge-' + cod);
             if (badgeEl) {
-                badgeEl.className = 'kc-stock-badge ' + (stockActual === 0 ? 'cero' : esBajo ? 'bajo' : 'ok');
-                badgeEl.textContent = stockActual === 0 ? '⚠ Vacío' : (esBajo ? '↓ Bajo' : '✓ OK');
+                badgeEl.className = 'ktr-badge ' + (stockActual === 0 ? 'cero' : esBajo ? 'bajo' : 'ok');
+                badgeEl.textContent = stockActual === 0 ? '⚠ 0' : (esBajo ? '↓ bajo' : '✓ ok');
             }
-            card.classList.toggle('alerta-stock', esBajo);
-        } else {
-            alert('Error al guardar: ' + (data.message || ''));
-        }
-    } catch (e) {
-        alert('Error de conexión');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '💾';
-    }
+            row.classList.toggle('ktr-alerta', esBajo);
+        } else { alert('Error al guardar: ' + (data.message || '')); }
+    } catch (e) { alert('Error de conexión'); }
+    finally { btn.disabled = false; btn.textContent = '💾 Guardar'; }
 }
 
 function exportarExcelPedido() {
