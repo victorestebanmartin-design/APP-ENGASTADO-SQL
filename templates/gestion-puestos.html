@@ -560,12 +560,39 @@
         .ktr-tipo.semi       { background:rgba(168,85,247,.12); color:#d8b4fe; border:1px solid rgba(168,85,247,.3); }
         .ktr-tipo.none       { background:rgba(100,116,139,.1); color:var(--text-muted); border:1px solid rgba(100,116,139,.2); }
 
-        /* Cantidad por archivo */
+        /* Cantidad por archivo — ya no se usa en la tabla principal */
         .ktr-qty { text-align:right; font-family:'DM Mono',monospace; color:var(--text-dim); }
         .ktr-qty.has-val { color:var(--text); }
 
-        /* Subtotal */
-        .ktr-subtotal { text-align:right; font-family:'DM Mono',monospace; font-weight:700; color:var(--text); }
+        /* Subtotal — clicable */
+        .ktr-subtotal { text-align:right; }
+        .ktr-subtotal-btn {
+            display:inline-flex; align-items:center; gap:5px;
+            font-family:'DM Mono',monospace; font-weight:700; color:var(--text);
+            cursor:pointer; border-radius:6px; padding:2px 8px;
+            transition:background .12s;
+        }
+        .ktr-subtotal-btn:hover { background:rgba(59,130,246,.12); color:#93c5fd; }
+        .ktr-expand-ico { font-size:0.7rem; opacity:.6; }
+
+        /* Fila de desglose por archivo */
+        .ktr-detalle td { padding:0; border-bottom:1px solid var(--border-soft); }
+        .ktr-detalle-inner {
+            display:flex; flex-wrap:wrap; gap:6px;
+            padding:8px 14px 10px 24px;
+            background:rgba(59,130,246,.04);
+            border-top:1px dashed rgba(59,130,246,.2);
+        }
+        .ktr-det-pill {
+            display:inline-flex; align-items:center; gap:5px;
+            background:var(--panel-3); border:1px solid var(--border);
+            border-radius:8px; padding:3px 10px; font-size:0.76rem;
+        }
+        .ktr-det-archivo { color:var(--text-muted); }
+        .ktr-det-qty {
+            font-family:'DM Mono',monospace; font-weight:700;
+            color:#93c5fd; min-width:20px; text-align:right;
+        }
 
         /* Inputs stock */
         .ktr-input {

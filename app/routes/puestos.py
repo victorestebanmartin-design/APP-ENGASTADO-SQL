@@ -1082,7 +1082,12 @@ def api_guardar_stock_terminal(codigo):
 @bp.route('/api/kanban-terminales/export-excel', methods=['GET'])
 @requiere_pin_admin
 def api_exportar_pedido_excel():
-    """Genera un Excel de hoja de pedido con columnas dinámicas por archivo de corte."""
+    """Genera un Excel de hoja de pedido con subtotal y detalle de archivos en una sola columna."""
+
+    def _nombreCorto(nombre: str) -> str:
+        import re as _re
+        return _re.sub(r'(_\d{8}(_v\d+)?|_v\d+)$', '', nombre, flags=_re.IGNORECASE)
+
     try:
         codigo_repo = CodigoCorteRepository(db)
         codigos = codigo_repo.obtener_todos_codigos()
@@ -1161,20 +1166,19 @@ def api_exportar_pedido_excel():
             st   = stock_map.get(terminal, {'stock_actual': 0, 'stock_minimo': 0, 'notas': None})
             detalle = terminal_detalle[terminal]
             subtotal = sum(detalle.values())
-            fila = {
-                'Terminal':        terminal,
-                'Máquina':         asig.get('maquina', '—'),
-                'Puesto':          asig.get('puesto',  '—'),
-                'Gaveta':          gavetas_map.get(terminal, '—'),
-            }
-            for a in archivos_ordenados:
-                fila[a] = detalle.get(a, '')
-            fila['SUBTOTAL'] = subtotal
-            fila['Stock actual']    = st['stock_actual']
-            fila['Stock mínimo']    = st['stock_minimo']
-            fila['Cantidad pedido'] = ''
-            fila['Notas']           = st['notas'] or ''
-            filas.append(fila)
+            detalle_txt = ' | '.join(f"{_nombreCorto(a)}: {detalle[a]}" for a in archivos_ordenados if a in detalle)
+            filas.append({
+                'Terminal':          terminal,
+                'Máquina':           asig.get('maquina', '—'),
+                'Puesto':            asig.get('puesto',  '—'),
+                'Gaveta':            gavetas_map.get(terminal, '—'),
+                'Subtotal crimps':   subtotal,
+                'Detalle archivos':  detalle_txt,
+                'Stock actual':      st['stock_actual'],
+                'Stock mínimo':      st['stock_minimo'],
+                'Cantidad pedido':   '',
+                'Notas':             st['notas'] or '',
+            })
 
         df_out = pd.DataFrame(filas)
         buf = io.BytesIO()

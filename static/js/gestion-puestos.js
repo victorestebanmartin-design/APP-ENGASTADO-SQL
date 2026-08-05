@@ -1420,14 +1420,13 @@ function renderKanban() {
         _kanbanData.some(t => (t.detalle_archivos || []).some(d => d.nombre === a && d.cantidad > 0))
     );
 
-    // Cabecera fija
+    // Cabecera fija — sin columnas dinámicas de archivos
     const thead = `<thead><tr>
         <th>Terminal</th>
         <th>Máquina / Puesto</th>
         <th>Gaveta</th>
         <th>Tipo</th>
-        ${archivosActivos.map(a => `<th class="th-archivo th-num" title="${a}">${_nombreCorto(a)}</th>`).join('')}
-        <th class="th-num" style="color:var(--text);">Subtotal</th>
+        <th class="th-num" style="color:var(--text);">Subtotal<br><span style="font-weight:400;font-size:0.67rem;opacity:.7;">clic = detalle</span></th>
         <th class="th-num">Stock<br><span style="font-weight:400;font-size:0.68rem;">actual</span></th>
         <th class="th-num">Stock<br><span style="font-weight:400;font-size:0.68rem;">mínimo</span></th>
         <th></th>
@@ -1436,15 +1435,14 @@ function renderKanban() {
     let tbodyHtml = '';
 
     if (agrupar === 'ninguno') {
-        tbodyHtml = lista.map(t => _filaTabla(t, archivosActivos)).join('');
+        tbodyHtml = lista.map(t => _filaTabla(t)).join('');
     } else {
         const key = agrupar === 'maquina' ? 'maquina_nombre' : 'puesto_nombre';
         const grupos = {};
         lista.forEach(t => { const g = t[key] || '— Sin asignar'; (grupos[g] = grupos[g] || []).push(t); });
-        const totalCols = 4 + archivosActivos.length + 4;
         tbodyHtml = Object.keys(grupos).sort().map(g =>
-            `<tr class="ktr-group"><td colspan="${totalCols}">▸ ${g} (${grupos[g].length})</td></tr>` +
-            grupos[g].map(t => _filaTabla(t, archivosActivos)).join('')
+            `<tr class="ktr-group"><td colspan="8">▸ ${g} (${grupos[g].length})</td></tr>` +
+            grupos[g].map(t => _filaTabla(t)).join('')
         ).join('');
     }
 
@@ -1456,7 +1454,7 @@ function _nombreCorto(nombre) {
     return nombre.replace(/_\d{8}(_v\d+)?$/i, '').replace(/_v\d+$/i, '');
 }
 
-function _filaTabla(t, archivosActivos) {
+function _filaTabla(t) {
     const esBajo  = t.stock_actual <= t.stock_minimo;
     const tipoMap = { 'MANUAL': ['manual','🤚 Manual'], 'AUTOMATICA': ['automatica','🤖 Auto'], 'SEMI-AUTOMATICA': ['semi','⚡ Semi'] };
     const [tipoCls, tipoLbl] = t.tipo_operacion && tipoMap[t.tipo_operacion] ? tipoMap[t.tipo_operacion] : ['none', '—'];
@@ -1465,15 +1463,9 @@ function _filaTabla(t, archivosActivos) {
     if (t.stock_actual === 0)                   badgeCls = 'cero';
     else if (t.stock_actual <= t.stock_minimo)  badgeCls = 'bajo';
 
-    const cod       = encodeURIComponent(t.terminal);
-    const safeId    = t.terminal.replace(/[^a-zA-Z0-9]/g, '_');
-    const detalleMap = {};
-    (t.detalle_archivos || []).forEach(d => { detalleMap[d.nombre] = d.cantidad; });
-
-    const celdasArchivos = archivosActivos.map(a => {
-        const qty = detalleMap[a] || 0;
-        return `<td class="ktr-qty${qty ? ' has-val' : ''}">${qty || ''}</td>`;
-    }).join('');
+    const cod    = encodeURIComponent(t.terminal);
+    const safeId = t.terminal.replace(/[^a-zA-Z0-9]/g, '_');
+    const subtotal = t.subtotal || 0;
 
     return `<tr class="${esBajo ? 'ktr-alerta' : ''}" id="ktr-${safeId}">
         <td class="ktr-code">${t.terminal}</td>
@@ -1483,8 +1475,12 @@ function _filaTabla(t, archivosActivos) {
         </td>
         <td><span class="ktr-gaveta${t.gaveta ? '' : ' empty'}">${t.gaveta || '—'}</span></td>
         <td><span class="ktr-tipo ${tipoCls}">${tipoLbl}</span></td>
-        ${celdasArchivos}
-        <td class="ktr-subtotal">${t.subtotal || 0}</td>
+        <td class="ktr-subtotal">
+            <span class="ktr-subtotal-btn" onclick="ktrToggleDetalle('${safeId}', this)" title="Clic para ver desglose por archivo">
+                ${subtotal}
+                ${subtotal > 0 ? '<span class="ktr-expand-ico">▾</span>' : ''}
+            </span>
+        </td>
         <td><input class="ktr-input" type="number" min="0" value="${t.stock_actual}"
                    oninput="ktrChanged(this, '${safeId}')" title="Stock actual"></td>
         <td><input class="ktr-input" type="number" min="0" value="${t.stock_minimo}"
@@ -1496,7 +1492,25 @@ function _filaTabla(t, archivosActivos) {
             <button class="ktr-save" id="ktr-save-${safeId}"
                     onclick="ktrGuardar('${t.terminal}', '${safeId}')">💾 Guardar</button>
         </td>
+    </tr>
+    <tr class="ktr-detalle" id="ktr-det-${safeId}" style="display:none;">
+        <td colspan="8">
+            <div class="ktr-detalle-inner">
+                ${(t.detalle_archivos || []).map(d =>
+                    `<span class="ktr-det-pill"><span class="ktr-det-archivo">${_nombreCorto(d.nombre)}</span><span class="ktr-det-qty">${d.cantidad}</span></span>`
+                ).join('') || '<span style="color:var(--text-dim);font-size:.75rem;">Sin datos de archivos</span>'}
+            </div>
+        </td>
     </tr>`;
+}
+
+function ktrToggleDetalle(safeId, btn) {
+    const row = document.getElementById('ktr-det-' + safeId);
+    if (!row) return;
+    const open = row.style.display !== 'none';
+    row.style.display = open ? 'none' : '';
+    const ico = btn.querySelector('.ktr-expand-ico');
+    if (ico) ico.textContent = open ? '▾' : '▴';
 }
 
 function ktrChanged(input, safeId) {
