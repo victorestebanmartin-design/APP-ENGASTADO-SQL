@@ -1364,3 +1364,185 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+// ================================
+// KANBAN DE STOCK
+// ================================
+
+let _kanbanData = null;
+
+async function cargarKanban() {
+    const container = document.getElementById('lista-kanban');
+    container.classList.add('loading');
+    container.textContent = '🔄 Cargando...';
+    try {
+        const resp = await fetch('/api/kanban-terminales');
+        const data = await resp.json();
+        if (!data.success) { container.innerHTML = '<p class="error">Error al cargar</p>'; return; }
+        _kanbanData = data.terminales;
+        document.getElementById('kanban-total').textContent = data.total + ' terminales';
+        container.classList.remove('loading');
+        renderKanban();
+    } catch (e) {
+        container.innerHTML = '<p class="error">Error de conexión</p>';
+    }
+}
+
+function renderKanban() {
+    if (!_kanbanData) return;
+    const container   = document.getElementById('lista-kanban');
+    const filtroStock = document.getElementById('kanban-filtro-stock').value;
+    const buscar      = (document.getElementById('kanban-buscar').value || '').trim().toLowerCase();
+    const agrupar     = document.getElementById('kanban-agrupar').value;
+
+    let lista = _kanbanData.filter(t => {
+        if (buscar && !t.terminal.toLowerCase().includes(buscar)) return false;
+        if (filtroStock === 'bajo') return t.stock_actual <= t.stock_minimo;
+        if (filtroStock === 'ok')   return t.stock_actual > t.stock_minimo;
+        return true;
+    });
+
+    // Contar alertas en el total (sin filtro) para el badge
+    const nBajo = _kanbanData.filter(t => t.stock_actual <= t.stock_minimo).length;
+    const badgeEl = document.getElementById('kanban-stock-bajo');
+    if (nBajo > 0) {
+        badgeEl.textContent = '⚠ ' + nBajo + ' stock bajo';
+        badgeEl.style.display = '';
+    } else {
+        badgeEl.style.display = 'none';
+    }
+
+    if (lista.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><h4>Sin resultados</h4><p>No hay terminales que coincidan con los filtros.</p></div>';
+        return;
+    }
+
+    if (agrupar === 'ninguno') {
+        container.innerHTML = `<div class="kanban-grid">${lista.map(_tarjetaKanban).join('')}</div>`;
+    } else {
+        const key = agrupar === 'maquina' ? 'maquina_nombre' : 'puesto_nombre';
+        const grupos = {};
+        lista.forEach(t => {
+            const g = t[key] || '— Sin asignar';
+            if (!grupos[g]) grupos[g] = [];
+            grupos[g].push(t);
+        });
+        container.innerHTML = Object.keys(grupos).sort().map(g => `
+            <div style="margin-bottom:20px;">
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;
+                            color:var(--text);border-bottom:1px solid var(--border);
+                            padding-bottom:6px;margin-bottom:10px;">
+                    <span style="display:inline-block;width:4px;height:14px;background:var(--accent);
+                                 border-radius:2px;margin-right:8px;vertical-align:middle;"></span>
+                    ${g} <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);font-weight:normal;">(${grupos[g].length})</span>
+                </div>
+                <div class="kanban-grid">${grupos[g].map(_tarjetaKanban).join('')}</div>
+            </div>`
+        ).join('');
+    }
+}
+
+function _tarjetaKanban(t) {
+    const esBajo  = t.stock_actual <= t.stock_minimo;
+    const tipoMap = { 'MANUAL': 'manual', 'AUTOMATICA': 'automatica', 'SEMI-AUTOMATICA': 'semi' };
+    const tipoCls = t.tipo_operacion ? (tipoMap[t.tipo_operacion] || 'manual') : 'sin-asignar';
+    const tipoLbl = t.tipo_operacion
+        ? { 'MANUAL': '🤚 Manual', 'AUTOMATICA': '🤖 Auto', 'SEMI-AUTOMATICA': '⚡ Semi' }[t.tipo_operacion] || t.tipo_operacion
+        : '— Sin máquina';
+
+    let badgeCls = 'ok';
+    if (t.stock_actual === 0)              badgeCls = 'cero';
+    else if (t.stock_actual <= t.stock_minimo) badgeCls = 'bajo';
+
+    const cod = encodeURIComponent(t.terminal);
+
+    return `
+    <div class="kanban-card${esBajo ? ' alerta-stock' : ''}" id="kc-${t.terminal.replace(/[^a-zA-Z0-9]/g,'_')}">
+        <div class="kc-header">
+            <span class="kc-code">${t.terminal}</span>
+            <span class="kc-tipo ${tipoCls}">${tipoLbl}</span>
+        </div>
+        <div class="kc-meta">
+            <span class="kc-tag${t.maquina_nombre ? '' : ' sin-dato'}" title="Máquina">
+                ⚙️ ${t.maquina_nombre || '—'}
+            </span>
+            <span class="kc-tag gaveta${t.gaveta ? '' : ' sin-dato'}" title="Gaveta">
+                📦 ${t.gaveta || '—'}
+            </span>
+        </div>
+        <div class="kc-archivos">📋 ${t.archivos.join(' · ') || '—'}</div>
+        <div class="kc-stock-row">
+            <span class="kc-stock-label">Stock:</span>
+            <input class="kc-stock-input" type="number" min="0"
+                   value="${t.stock_actual}"
+                   data-original="${t.stock_actual}"
+                   data-terminal="${t.terminal}"
+                   oninput="kcStockChanged(this)"
+                   title="Stock actual">
+            <span class="kc-stock-label" style="font-size:0.72rem;">mín.</span>
+            <input class="kc-stock-input" type="number" min="0"
+                   value="${t.stock_minimo}"
+                   data-original-min="${t.stock_minimo}"
+                   data-terminal-min="${t.terminal}"
+                   oninput="kcStockChanged(this)"
+                   title="Stock mínimo" style="width:55px;">
+            <span class="kc-stock-badge ${badgeCls}" id="kc-badge-${cod}">
+                ${t.stock_actual === 0 ? '⚠ Vacío' : (esBajo ? '↓ Bajo' : '✓ OK')}
+            </span>
+            <button class="kc-save-btn" id="kc-save-${cod}" onclick="kcGuardarStock('${t.terminal}', this)">💾</button>
+        </div>
+        ${t.notas ? `<div class="kc-notas">📝 ${t.notas}</div>` : ''}
+    </div>`;
+}
+
+function kcStockChanged(input) {
+    // Mostrar botón guardar al modificar cualquiera de los dos inputs de la card
+    const card = input.closest('.kanban-card');
+    const saveBtn = card.querySelector('.kc-save-btn');
+    if (saveBtn) saveBtn.classList.add('visible');
+}
+
+async function kcGuardarStock(terminal, btn) {
+    const card        = btn.closest('.kanban-card');
+    const inputs      = card.querySelectorAll('.kc-stock-input');
+    const stockActual = parseInt(inputs[0].value) || 0;
+    const stockMinimo = parseInt(inputs[1].value) || 0;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+        const resp = await fetch(`/api/terminal-stock/${encodeURIComponent(terminal)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stock_actual: stockActual, stock_minimo: stockMinimo })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            // Actualizar datos locales
+            const t = _kanbanData.find(x => x.terminal === terminal);
+            if (t) { t.stock_actual = stockActual; t.stock_minimo = stockMinimo; }
+            inputs[0].dataset.original    = stockActual;
+            inputs[1].dataset.originalMin = stockMinimo;
+            btn.classList.remove('visible');
+            // Actualizar badge inline
+            const cod     = encodeURIComponent(terminal);
+            const badgeEl = document.getElementById('kc-badge-' + cod);
+            const esBajo  = stockActual <= stockMinimo;
+            if (badgeEl) {
+                badgeEl.className = 'kc-stock-badge ' + (stockActual === 0 ? 'cero' : esBajo ? 'bajo' : 'ok');
+                badgeEl.textContent = stockActual === 0 ? '⚠ Vacío' : (esBajo ? '↓ Bajo' : '✓ OK');
+            }
+            card.classList.toggle('alerta-stock', esBajo);
+        } else {
+            alert('Error al guardar: ' + (data.message || ''));
+        }
+    } catch (e) {
+        alert('Error de conexión');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💾';
+    }
+}
+
+function exportarExcelPedido() {
+    window.location.href = '/api/kanban-terminales/export-excel';
+}

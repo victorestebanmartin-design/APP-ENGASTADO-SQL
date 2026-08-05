@@ -161,6 +161,18 @@ def _apply_migrations(db_path):
             cur.execute("ALTER TABLE maquinas ADD COLUMN pdf_regulacion TEXT")
         conn.commit()
 
+    # Migración: tabla terminales_stock (stock de terminales por pedido)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS terminales_stock (
+            terminal_codigo TEXT PRIMARY KEY,
+            stock_actual    INTEGER NOT NULL DEFAULT 0,
+            stock_minimo    INTEGER NOT NULL DEFAULT 0,
+            notas           TEXT,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     conn.close()
 
 

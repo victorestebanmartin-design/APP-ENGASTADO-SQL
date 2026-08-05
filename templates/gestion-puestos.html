@@ -499,6 +499,69 @@
             color: var(--text); padding: 7px 12px; font-size: 0.85rem; outline: none;
         }
         .terminales-filtros select:focus, .terminales-filtros input[type="text"]:focus { border-color: var(--accent); }
+
+        /* ── Kanban Stock ── */
+        .kanban-toolbar { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+        .kanban-toolbar label { font-size:0.78rem; color:var(--text-muted); display:block; margin-bottom:4px; }
+        .kanban-toolbar select, .kanban-toolbar input[type="text"] {
+            background:var(--panel-3); border:1px solid var(--border); border-radius:7px;
+            color:var(--text); padding:7px 12px; font-size:0.85rem; outline:none;
+        }
+        .kanban-toolbar select:focus, .kanban-toolbar input:focus { border-color:var(--accent); }
+        .kanban-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:12px; }
+        .kanban-card {
+            background:var(--panel-2); border:1px solid var(--border); border-radius:12px;
+            padding:14px 16px; display:flex; flex-direction:column; gap:8px;
+            transition:border-color .15s;
+        }
+        .kanban-card:hover { border-color:var(--accent); }
+        .kanban-card.alerta-stock { border-color:rgba(239,68,68,.5); }
+        .kc-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .kc-code {
+            font-family:'DM Mono',monospace; font-weight:700; font-size:0.88rem;
+            color:var(--text); word-break:break-all;
+        }
+        .kc-tipo { font-size:0.68rem; font-weight:700; letter-spacing:.05em; padding:2px 8px; border-radius:20px; white-space:nowrap; flex-shrink:0; }
+        .kc-tipo.manual     { background:rgba(245,158,11,.12); color:#fcd34d; border:1px solid rgba(245,158,11,.3); }
+        .kc-tipo.automatica { background:rgba(59,130,246,.12); color:#93c5fd; border:1px solid rgba(59,130,246,.3); }
+        .kc-tipo.semi       { background:rgba(168,85,247,.12); color:#d8b4fe; border:1px solid rgba(168,85,247,.3); }
+        .kc-tipo.sin-asignar { background:rgba(100,116,139,.1); color:var(--text-muted); border:1px solid rgba(100,116,139,.2); }
+        .kc-meta { display:flex; flex-wrap:wrap; gap:6px; }
+        .kc-tag {
+            font-size:0.72rem; padding:2px 8px; border-radius:20px;
+            background:rgba(255,255,255,.05); color:var(--text-dim);
+            border:1px solid rgba(255,255,255,.08); white-space:nowrap;
+            overflow:hidden; text-overflow:ellipsis; max-width:180px;
+        }
+        .kc-tag.gaveta { border-color:rgba(139,92,246,.35); color:rgba(167,139,250,.85); background:rgba(139,92,246,.08); }
+        .kc-tag.sin-dato { border-style:dashed; color:rgba(255,255,255,.2); }
+        .kc-archivos { font-size:0.71rem; color:var(--text-dim); line-height:1.5; }
+        .kc-stock-row { display:flex; align-items:center; gap:8px; margin-top:4px; }
+        .kc-stock-label { font-size:0.76rem; color:var(--text-muted); white-space:nowrap; }
+        .kc-stock-input {
+            width:70px; background:var(--panel-3); border:1px solid var(--border);
+            border-radius:6px; color:var(--text); padding:5px 8px;
+            font-family:'DM Mono',monospace; font-size:0.85rem; outline:none; text-align:right;
+        }
+        .kc-stock-input:focus { border-color:var(--accent); }
+        .kc-stock-badge {
+            font-family:'DM Mono',monospace; font-size:0.8rem; font-weight:700;
+            padding:3px 10px; border-radius:20px; white-space:nowrap;
+        }
+        .kc-stock-badge.ok    { background:rgba(34,197,94,.12);  color:rgba(74,222,128,.9);  border:1px solid rgba(34,197,94,.25); }
+        .kc-stock-badge.bajo  { background:rgba(239,68,68,.12);  color:#fca5a5;              border:1px solid rgba(239,68,68,.3); }
+        .kc-stock-badge.cero  { background:rgba(245,158,11,.1);  color:#fcd34d;              border:1px solid rgba(245,158,11,.3); }
+        .kc-save-btn {
+            display:none; padding:4px 12px; border-radius:6px; font-size:0.78rem;
+            background:var(--accent); border:1px solid var(--accent); color:#fff;
+            cursor:pointer; transition:background .13s; white-space:nowrap;
+        }
+        .kc-save-btn:hover { background:var(--accent-hover); }
+        .kc-save-btn.visible { display:inline-flex; align-items:center; gap:4px; }
+        .kc-notas {
+            font-size:0.72rem; font-style:italic; color:var(--text-dim);
+            border-top:1px solid var(--border-soft); padding-top:6px;
+        }
     </style>
 </head>
 <body>
@@ -520,6 +583,7 @@
             <button class="admin-nav-item"         data-section="maquinas" onclick="gpNav('maquinas')"><span class="ico">⚙️</span> Máquinas</button>
             <button class="admin-nav-item"         data-section="terminales" onclick="gpNav('terminales')"><span class="ico">🔗</span> Terminales</button>
             <button class="admin-nav-item"         data-section="analisis"   onclick="gpNav('analisis')"><span class="ico">📊</span> Análisis</button>
+            <button class="admin-nav-item"         data-section="kanban"     onclick="gpNav('kanban')"><span class="ico">📦</span> Kanban Stock</button>
         </nav>
 
         <!-- Content -->
@@ -583,6 +647,49 @@
                         </div>
                     </div>
                     <div id="lista-asignaciones" class="loading">🔄 Cargando terminales...</div>
+                </div>
+            </section>
+
+            <!-- ══ KANBAN STOCK ═══════════════════════════════════ -->
+            <section id="sec-kanban" class="admin-section">
+                <div class="admin-section-head">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                        <div>
+                            <h1>Kanban de Stock</h1>
+                            <p>Control de stock de terminales por máquina, gaveta y archivo de corte</p>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <span id="kanban-total" style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text-muted);background:var(--panel-2);border:1px solid var(--border);padding:5px 14px;border-radius:20px;">0 terminales</span>
+                            <span id="kanban-stock-bajo" style="display:none;font-family:'DM Mono',monospace;font-size:12px;color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);padding:5px 14px;border-radius:20px;">⚠ 0 stock bajo</span>
+                            <button class="btn" onclick="exportarExcelPedido()" style="padding:6px 14px;font-size:0.82rem;">📥 Hoja de pedido Excel</button>
+                            <button class="btn" onclick="cargarKanban()" style="padding:6px 14px;font-size:0.82rem;">🔄 Recargar</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card" style="margin-bottom:0;">
+                    <div class="kanban-toolbar">
+                        <div>
+                            <label>Filtrar stock:</label>
+                            <select id="kanban-filtro-stock" onchange="renderKanban()">
+                                <option value="todos">Todos</option>
+                                <option value="bajo">Stock bajo / sin stock</option>
+                                <option value="ok">Stock OK</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Buscar terminal:</label>
+                            <input type="text" id="kanban-buscar" placeholder="Ej: 641H10057" oninput="renderKanban()">
+                        </div>
+                        <div>
+                            <label>Agrupar por:</label>
+                            <select id="kanban-agrupar" onchange="renderKanban()">
+                                <option value="ninguno">Sin agrupar</option>
+                                <option value="maquina">Máquina</option>
+                                <option value="puesto">Puesto</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="lista-kanban" class="loading">🔄 Cargando...</div>
                 </div>
             </section>
 
@@ -772,6 +879,11 @@ function gpNav(section) {
     if (section === 'analisis') {
         var el = document.getElementById('lista-analisis');
         if (el && el.classList.contains('loading')) cargarAnalisis();
+    }
+    // Cargar kanban la primera vez que se abre la pestaña
+    if (section === 'kanban') {
+        var elk = document.getElementById('lista-kanban');
+        if (elk && elk.classList.contains('loading')) cargarKanban();
     }
 }
 
