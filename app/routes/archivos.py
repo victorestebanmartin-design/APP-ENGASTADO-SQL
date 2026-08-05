@@ -26,7 +26,7 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager, validar_excel_columnas
+from app.excel_manager import ExcelManager, validar_excel_columnas, invalidar_cache_excel
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -380,7 +380,9 @@ def delete_file():
                 'success': False,
                 'message': 'Archivo no encontrado'
             }), 404
-        
+
+        # Liberar el caché antes de borrar para que Windows suelte el handle
+        invalidar_cache_excel(filepath)
         os.remove(filepath)
         
         # Desactivar todos los códigos asociados a este archivo

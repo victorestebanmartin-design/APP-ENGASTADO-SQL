@@ -83,8 +83,9 @@ def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.Dat
             return entrada[2]
 
     xl = pd.ExcelFile(ruta)
-    hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
-    df = pd.read_excel(xl, sheet_name=hoja)
+    with xl:   # cierra el handle en cuanto terminamos de leer
+        hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
+        df = pd.read_excel(xl, sheet_name=hoja)
     df = normalizar_nombres_columnas(df)
 
     with _EXCEL_CACHE_LOCK:
@@ -93,6 +94,13 @@ def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.Dat
             _EXCEL_CACHE.pop(next(iter(_EXCEL_CACHE)))
         _EXCEL_CACHE[ruta] = (mtime, hoja, df)
     return df
+
+
+def invalidar_cache_excel(filepath: str) -> None:
+    """Elimina la entrada de caché del archivo para liberar el DataFrame y el path."""
+    ruta = os.path.abspath(filepath)
+    with _EXCEL_CACHE_LOCK:
+        _EXCEL_CACHE.pop(ruta, None)
 
 
 class ExcelManager:
