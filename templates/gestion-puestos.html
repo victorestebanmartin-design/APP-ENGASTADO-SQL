@@ -486,13 +486,13 @@
             display: flex; flex-direction: column;
             box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(59,130,246,.2);
         }
-        .p-modal-body { overflow-y: auto; flex: 1; }
         .p-modal-header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 16px 20px;
             border-bottom: 1px solid #334155;
             background: #243044;
             border-radius: 14px 14px 0 0;
+            flex-shrink: 0;
         }
         .p-modal-header h3 { margin: 0; font-size: 1rem; color: #f1f5f9; font-weight: 600; letter-spacing: .02em; }
         .p-modal-close {
@@ -501,13 +501,14 @@
             transition: color .15s;
         }
         .p-modal-close:hover { color: #f1f5f9; }
-        .p-modal-body { padding: 20px; background: #1e293b; }
+        .p-modal-body { padding: 20px; background: #1e293b; overflow-y: auto; flex: 1; min-height: 0; }
         .p-modal-footer {
             display: flex; justify-content: flex-end; gap: 10px;
             padding: 14px 20px;
             border-top: 1px solid #334155;
             background: #243044;
             border-radius: 0 0 14px 14px;
+            flex-shrink: 0;
         }
 
         /* Filtros sección terminales */
