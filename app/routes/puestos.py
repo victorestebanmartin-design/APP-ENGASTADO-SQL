@@ -655,6 +655,12 @@ def api_terminales_disponibles():
         ).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
 
+        # Cargar terminales ignorados
+        rows_ign = db.session.execute(
+            text("SELECT terminal_codigo FROM terminales_ignorados")
+        ).fetchall()
+        ignorados_set = {r[0] for r in rows_ign}
+
         # Preparar respuesta con estado de cada terminal
         terminales_con_estado = []
         for terminal in sorted(list(terminales_sistema)):
@@ -663,12 +669,13 @@ def api_terminales_disponibles():
                 'asignado': terminal in terminales_asignados,
                 'asignacion': terminales_asignados.get(terminal, None),
                 'imagen_data': imagenes_map.get(terminal),
-                'gaveta': gavetas_map.get(terminal)
+                'gaveta': gavetas_map.get(terminal),
+                'ignorado': terminal in ignorados_set
             }
             terminales_con_estado.append(estado)
-        
-        # Contar terminales sin asignar
-        sin_asignar = len([t for t in terminales_con_estado if not t['asignado']])
+
+        # Contar terminales sin asignar (excluir ignorados)
+        sin_asignar = len([t for t in terminales_con_estado if not t['asignado'] and not t['ignorado']])
         
         respuesta = {
             'success': True,
@@ -801,6 +808,36 @@ def api_desasignar_terminal():
             
     except Exception as e:
         return error_interno(e, 'Error al desasignar terminal')
+
+
+@bp.route('/api/terminal-ignorar', methods=['POST'])
+@requiere_pin_admin
+def api_toggle_ignorar_terminal():
+    """Activar o desactivar (ignorar) un terminal para que no aparezca en pendientes."""
+    try:
+        data = request.get_json()
+        terminal = (data.get('terminal') or '').strip()
+        ignorar = data.get('ignorar', True)
+
+        if not terminal:
+            return jsonify({'success': False, 'message': 'Terminal es obligatorio'}), 400
+
+        if ignorar:
+            db.session.execute(
+                text("INSERT OR IGNORE INTO terminales_ignorados (terminal_codigo) VALUES (:cod)"),
+                {'cod': terminal}
+            )
+        else:
+            db.session.execute(
+                text("DELETE FROM terminales_ignorados WHERE terminal_codigo = :cod"),
+                {'cod': terminal}
+            )
+        db.session.commit()
+
+        accion = 'ignorado' if ignorar else 'activado'
+        return jsonify({'success': True, 'message': f'Terminal {terminal} {accion}', 'ignorado': ignorar})
+    except Exception as e:
+        return error_interno(e, 'Error al cambiar estado de terminal')
 
 
 # ==================== IMÁGENES DE TERMINALES ====================

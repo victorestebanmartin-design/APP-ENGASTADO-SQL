@@ -170,6 +170,7 @@
         }
         .tr-badge.asignado   { background: rgba(34,197,94,.12); color: rgba(74,222,128,.9); border: 1px solid rgba(34,197,94,.2); }
         .tr-badge.sin-asignar { background: rgba(245,158,11,.1); color: rgba(253,186,116,.9); border: 1px solid rgba(245,158,11,.2); }
+        .tr-badge.ignorado   { background: rgba(100,116,139,.12); color: rgba(148,163,184,.8); border: 1px solid rgba(100,116,139,.25); }
 
         /* Botón desvincular */
         .btn-desvincular {
@@ -180,6 +181,22 @@
             transition: all .15s; line-height: 1; flex-shrink: 0;
         }
         .btn-desvincular:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.6); color: #f87171; }
+
+        /* Botón ignorar/activar terminal */
+        .btn-ignorar {
+            display: inline-flex; align-items: center; justify-content: center;
+            height: 22px; border-radius: 11px; padding: 0 8px;
+            background: transparent; border: 1px solid rgba(100,116,139,.3);
+            color: rgba(100,116,139,.6); font-size: 10px; cursor: pointer;
+            transition: all .15s; line-height: 1; flex-shrink: 0; white-space: nowrap;
+        }
+        .btn-ignorar:hover { background: rgba(100,116,139,.15); border-color: rgba(100,116,139,.6); color: #94a3b8; }
+        .btn-ignorar.activo { border-color: rgba(34,197,94,.4); color: rgba(74,222,128,.8); background: rgba(34,197,94,.07); }
+        .btn-ignorar.activo:hover { background: rgba(34,197,94,.15); border-color: rgba(74,222,128,.7); }
+
+        /* Filas ignoradas */
+        .terminal-row.ignorado { opacity: 0.45; }
+        .terminal-row.ignorado .tr-dot { background: rgba(100,116,139,.4); }
 
         /* Compat. legado (no se usan en la nueva vista pero pueden quedar refs) */
         .terminales-grid { display: none; }
@@ -694,6 +711,7 @@
                                 <option value="todos">Todos los terminales</option>
                                 <option value="sin-asignar">Solo sin asignar</option>
                                 <option value="asignados">Solo asignados</option>
+                                <option value="ignorados">Solo desactivados</option>
                             </select>
                         </div>
                         <div>

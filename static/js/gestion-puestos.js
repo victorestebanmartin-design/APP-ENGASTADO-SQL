@@ -595,9 +595,10 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
     maquinas.forEach(m => { tipoMapa[m.id] = m.tipo_operacion || 'MANUAL'; });
 
     // ── Calcular estadísticas por tipo de operación ──────────────────
-    const statsTotal = { MANUAL: 0, AUTOMATICA: 0, 'SEMI-AUTOMATICA': 0, sinAsignar: 0 };
+    const statsTotal = { MANUAL: 0, AUTOMATICA: 0, 'SEMI-AUTOMATICA': 0, sinAsignar: 0, ignorado: 0 };
     dataTerminales.terminales.forEach(t => {
-        if (!t.asignado) { statsTotal.sinAsignar++; }
+        if (t.ignorado) { statsTotal.ignorado++; }
+        else if (!t.asignado) { statsTotal.sinAsignar++; }
         else {
             const tipo = tipoMapa[t.asignacion.maquina_id] || 'MANUAL';
             statsTotal[tipo] = (statsTotal[tipo] || 0) + 1;
@@ -642,12 +643,15 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
             </div>
         </div>`;
 
-    // Agrupar terminales: asignados por puesto, después sin asignar
+    // Agrupar terminales: asignados por puesto, después sin asignar, después ignorados
     const grupos = {};
     const sinAsignarList = [];
+    const ignoradosList = [];
 
     dataTerminales.terminales.forEach(t => {
-        if (t.asignado) {
+        if (t.ignorado) {
+            ignoradosList.push(t);
+        } else if (t.asignado) {
             const key = t.asignacion.puesto_nombre;
             if (!grupos[key]) grupos[key] = [];
             grupos[key].push(t);
@@ -683,6 +687,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                         ${gavetaChip(t)}
                         <span class="tr-badge asignado">Asignado</span>
                         <button class="btn-desvincular" onclick="desasignarTerminal('${t.terminal}')" title="Desasignar">✕</button>
+                        <button class="btn-ignorar" onclick="event.stopPropagation();toggleIgnorarTerminal('${t.terminal}', true)" title="Desactivar terminal">🚫 Desactivar</button>
                     </div>`; }).join('')}
             </div>
         </div>
@@ -710,6 +715,34 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
                         <span class="tr-assign sin-asignar">sin asignar</span>
                         ${gavetaChip(t)}
                         <span class="tr-badge sin-asignar">Pendiente</span>
+                        <button class="btn-ignorar" onclick="event.stopPropagation();toggleIgnorarTerminal('${t.terminal}', true)" title="Desactivar este terminal">🚫 Desactivar</button>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    // Grupo ignorados
+    const ignoradosHTML = ignoradosList.length > 0 ? `
+        <div class="tl-group" data-grupo="ignorados">
+            <div class="tl-group-header" onclick="toggleGrupo(this.parentElement)">
+                <span class="tl-group-stripe" style="background:rgba(100,116,139,.5)"></span>
+                <span class="tl-group-name" style="color:var(--text-muted)">DESACTIVADOS</span>
+                <span class="tl-group-count">${ignoradosList.length} terminal${ignoradosList.length !== 1 ? 'es' : ''}</span>
+                <span class="tl-group-arrow">▼</span>
+            </div>
+            <div class="tl-rows">
+                ${ignoradosList.map(t => `
+                    <div class="terminal-row ignorado"
+                         data-terminal="${t.terminal}"
+                         data-estado="ignorados">
+                        <span class="tr-check-spacer"></span>
+                        ${imgThumb(t)}
+                        <span class="tr-dot"></span>
+                        <span class="tr-code">${t.terminal}</span>
+                        <span class="tr-assign" style="color:var(--text-dim);font-style:italic">desactivado</span>
+                        <span class="tr-badge ignorado">Desactivado</span>
+                        <button class="btn-ignorar activo" onclick="event.stopPropagation();toggleIgnorarTerminal('${t.terminal}', false)" title="Reactivar terminal">✓ Activar</button>
                     </div>
                 `).join('')}
             </div>
@@ -733,6 +766,7 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
         <div class="terminales-list" id="terminales-grid">
             ${gruposHTML}
             ${sinAsignarHTML}
+            ${ignoradosHTML}
         </div>
     `;
 
@@ -748,11 +782,14 @@ function aplicarFiltros() {
 
     // Mostrar/ocultar grupos según filtro de estado
     document.querySelectorAll('.tl-group').forEach(grupo => {
-        const essinAsignar = grupo.dataset.grupo === 'sin-asignar';
+        const g = grupo.dataset.grupo;
         let mostrarGrupo = true;
 
-        if (filtroEstado === 'asignados' && essinAsignar) mostrarGrupo = false;
-        if (filtroEstado === 'sin-asignar' && !essinAsignar) mostrarGrupo = false;
+        if (filtroEstado === 'asignados'   && (g === 'sin-asignar' || g === 'ignorados')) mostrarGrupo = false;
+        if (filtroEstado === 'sin-asignar' && (g !== 'sin-asignar')) mostrarGrupo = false;
+        if (filtroEstado === 'ignorados'   && (g !== 'ignorados')) mostrarGrupo = false;
+        // En modo 'todos' ocultar ignorados a menos que se pida explícitamente
+        if (filtroEstado === 'todos'       && g === 'ignorados') mostrarGrupo = false;
 
         grupo.style.display = mostrarGrupo ? '' : 'none';
     });
@@ -763,8 +800,10 @@ function aplicarFiltros() {
         const estadoRow = row.dataset.estado;
         let visible = true;
 
-        if (filtroEstado === 'asignados' && estadoRow === 'sin-asignar') visible = false;
+        if (filtroEstado === 'asignados'   && estadoRow !== 'asignados') visible = false;
         if (filtroEstado === 'sin-asignar' && estadoRow !== 'sin-asignar') visible = false;
+        if (filtroEstado === 'ignorados'   && estadoRow !== 'ignorados') visible = false;
+        if (filtroEstado === 'todos'       && estadoRow === 'ignorados') visible = false;
         if (busqueda && !codigo.includes(busqueda)) visible = false;
 
         row.style.display = visible ? '' : 'none';
@@ -865,6 +904,29 @@ function mostrarAsignacionRapida(terminal) {
 
 function toggleSeleccionTerminal(row) {
     row.classList.toggle('seleccionado');
+}
+
+/**
+ * Activar o desactivar (ignorar) un terminal
+ */
+async function toggleIgnorarTerminal(terminal, ignorar) {
+    try {
+        const resp = await fetch('/api/terminal-ignorar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ terminal, ignorar })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            mostrarNotificacion(data.message, 'success');
+            cargarAsignaciones();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión');
+    }
 }
 
 // ================================

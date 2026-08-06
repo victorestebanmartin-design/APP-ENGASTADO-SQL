@@ -173,6 +173,15 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: tabla terminales_ignorados (terminales desactivados de la vista)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS terminales_ignorados (
+            terminal_codigo TEXT PRIMARY KEY,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     conn.close()
 
 
