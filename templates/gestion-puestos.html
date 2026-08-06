@@ -482,9 +482,11 @@
             background: #1e293b;
             border: 1px solid #3b82f6;
             border-radius: 14px;
-            width: min(460px, 95vw); max-height: 90vh; overflow-y: auto;
+            width: min(460px, 95vw); max-height: 90vh;
+            display: flex; flex-direction: column;
             box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(59,130,246,.2);
         }
+        .p-modal-body { overflow-y: auto; flex: 1; }
         .p-modal-header {
             display: flex; align-items: center; justify-content: space-between;
             padding: 16px 20px;
@@ -959,6 +961,8 @@ function gpNav(section) {
         var elk = document.getElementById('lista-kanban');
         if (elk && elk.classList.contains('loading')) cargarKanban();
     }
+    // Siempre recargar terminales al entrar: puede haber máquinas nuevas
+    if (section === 'terminales') cargarAsignaciones();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
