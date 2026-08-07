@@ -12,11 +12,11 @@ import framebuf
 # network y socket se importan tarde, tras el primer draw, para no ralentizar SoftSPI
 
 # ── CONFIG WIFI ───────────────────────────────────────────────────────────────
-SSID     = "MOVISTAR_8A70"   # nombre del hotspot del PC
-PASSWORD = "tnADEofvTsc8MNGj6PSK"      # contraseña del hotspot
-HOST_IP  = "192.168.1.46"   # IP del PC con hotspot Windows (defecto)
-PORT     = 5001              # puerto Flask local
-INTERVAL = 30                # segundos entre peticiones
+SSID     = "MOVISTAR_8A70"
+PASSWORD = "tnADEofvTsc8MNGj6PSK"
+HOST_IP  = "viktor85.pythonanywhere.com"  # servidor de produccion, sin firewall
+PORT     = 80               # HTTP estandar (PythonAnywhere)
+INTERVAL = 30               # segundos entre peticiones
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────

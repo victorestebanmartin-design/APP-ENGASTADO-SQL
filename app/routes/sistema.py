@@ -289,12 +289,7 @@ def api_stats():
 
 @bp.route('/api/display', methods=['GET'])
 def api_display():
-    """Panel ESP32 — solo acceso desde red local, sin autenticación."""
-    # Bloquear acceso desde IPs externas (solo localhost/LAN)
-    ip = request.remote_addr or ''
-    if not (ip.startswith('127.') or ip.startswith('192.168.') or
-            ip.startswith('10.') or ip == '::1'):
-        return jsonify({'error': 'forbidden'}), 403
+    """Panel ESP32 — público pero limitado en datos (no expone información sensible)."""
     try:
         orden_repo = OrdenRepository(db)
         stats = orden_repo.obtener_estadisticas_por_estado()
