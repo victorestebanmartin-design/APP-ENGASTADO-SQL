@@ -114,35 +114,34 @@ def draw_wifi_bar():
         text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
 def draw_work_screen(d):
-    """Pantalla de trabajo — minimos caracteres para ser rapido con WiFi activo."""
-    carro = str(d.get('carro', ''))
-    bono  = str(d.get('bono', ''))[:14]
+    """Pantalla de trabajo: cabecera con Carro + Orden y en el centro los paquetes."""
+    carro = str(d.get('carro', ''))[:8]
+    orden = str(d.get('orden', '') or d.get('bono', ''))[:18]
     pkgs  = d.get('paquetes', [])[:5]
 
-    # Borrar el area de titulo + contenido para que no queden restos del panel de stats
+    # Borrar todo el area util (desde titulo hasta separador inferior)
     rect(0, Y_TITLE, 240, Y_SEP2 - Y_TITLE, BLACK)
 
-    # Carro numero (el dato mas importante) — escala 2, pocas letras
-    text(4, Y_TITLE, ('C-' + carro).ljust(8), WHITE, BLACK, scale=2)
-    text(4, Y_DATE,  bono.ljust(18),           YELLOW, BLACK, scale=1)
+    # ── Cabecera ────────────────────────────────────────────────
+    text(4, Y_TITLE, 'CARRO ' + carro, WHITE, BLACK, scale=2)
+    text(4, Y_DATE,  orden,            YELLOW, BLACK, scale=1)
     hline(0, Y_SEP1, 240, DGRAY)
 
-    # 5 paquetes en las mismas filas del panel (sobrescriben PENDIENTES etc.)
-    y = Y_ROW1 + 2
-    for i, p in enumerate(pkgs):
-        etiq  = str(p.get('etiqueta') or '')[:5]
-        cod   = str(p.get('cod',  '') or '')[:14]
+    # ── Paquetes (centro): etiqueta grande + elemento ───────────
+    y = Y_ROW1
+    if not pkgs:
+        text(4, y, 'Sin paquetes', LGRAY, BLACK, scale=1)
+    for p in pkgs:
+        etiq  = str(p.get('etiqueta') if p.get('etiqueta') not in (None, '') else '-')[:4]
+        elem  = str(p.get('elem') or p.get('cod') or '')[:16]
         color = LGRAY if p.get('bloqueado') else WHITE
-        text(4, y, (etiq + ' ' + cod).ljust(22), color, BLACK, scale=1)
-        y += 14
-
-    # Limpiar filas sobrantes
-    while y < Y_ROW1 + 2 + 5*14:
-        text(4, y, ' ' * 22, BLACK, BLACK, scale=1)
-        y += 14
+        # numero de etiqueta a escala 2 (grande) + elemento a escala 1 debajo
+        text(4, y, '#' + etiq, ORANGE if not p.get('bloqueado') else LGRAY, BLACK, scale=2)
+        text(4, y + 18, elem, color, BLACK, scale=1)
+        y += 36
 
     draw_wifi_bar()
-    print("work OK carro", carro)
+    print("work OK carro", carro, "pkgs", len(pkgs))
 
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
