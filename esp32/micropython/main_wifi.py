@@ -227,25 +227,34 @@ conectado = conectar_wifi()   # WiFi DESPUES de dibujar el panel
 draw_wifi_bar()               # actualizar indicador con IP o error
 draw_status("OK" if conectado else "Sin WiFi", GREEN if conectado else RED)
 
-# Ya no necesitamos servidor HTTP local (usamos PA como relay)
 vp=ve=vt=-1
-ultimo_ok = 0
-ultimo_poll  = time.ticks_ms() - INTERVAL * 1000  # forzar poll inmediato
-ultimo_push  = time.ticks_ms() - PUSH_INTERVAL * 1000
+ultimo_ok    = 0
+ultimo_poll  = time.ticks_ms() - INTERVAL * 1000  # forzar stats inmediato
+ultimo_push  = time.ticks_ms()                      # esperar 3s antes de 1er push poll
 ultimo_ts    = ""   # timestamp del último push procesado
+en_work_mode = False  # True mientras la pantalla de trabajo está activa
 
 while True:
-    # ── Poll rápido: pantalla de trabajo vía PA relay (cada 3s) ──────
+    # ── Poll rápido: pantalla de trabajo vía PA (cada 3s) ─────────────
     if time.ticks_diff(time.ticks_ms(), ultimo_push) >= PUSH_INTERVAL * 1000:
         ultimo_push = time.ticks_ms()
         body = http_get(HOST_IP, PORT, "/api/esp32/current")
         if body:
             try:
                 d = json.loads(body)
-                if d.get('data') and d.get('ts') != ultimo_ts:
+                wdata = d.get('data')
+                if wdata and not wdata.get('clear') and d.get('ts') != ultimo_ts:
+                    # Nuevo dato de trabajo → mostrar pantalla de trabajo
                     ultimo_ts = d['ts']
-                    draw_work_screen(d['data'])
+                    en_work_mode = True
+                    draw_work_screen(wdata)
                     ultimo_ok = time.ticks_ms()
+                elif (not wdata or wdata.get('clear')) and en_work_mode:
+                    # Datos expirados o "clear" → volver al panel
+                    en_work_mode = False
+                    ultimo_ts = ""
+                    draw_panel()
+                    draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
             except: pass
 
     # ── Poll periódico: stats generales (cada 30s) ────────────────────
@@ -265,12 +274,14 @@ while True:
                 d = json.loads(body)
                 np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
                 hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
-                # Solo actualizar panel de stats si no hay pantalla de trabajo activa
-                if not ultimo_ts and (np!=vp or ne!=ve or nt!=vt):
-                    vp=np; ve=ne; vt=nt
-                    draw_panel()
-                    draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
-                    draw_datetime(fecha,hora)
+                if not en_work_mode:
+                    if np!=vp or ne!=ve or nt!=vt:
+                        vp=np; ve=ne; vt=nt
+                        draw_panel()
+                        draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
+                        draw_datetime(fecha,hora)
+                else:
+                    vp=np; ve=ne; vt=nt  # guardar valores para cuando vuelva al panel
                 draw_status("OK  "+hora,GREEN)
                 draw_wifi_bar()
                 ultimo_ok = time.ticks_ms()
