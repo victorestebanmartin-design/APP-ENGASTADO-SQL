@@ -300,8 +300,8 @@ def api_display():
 
         orden_repo = OrdenRepository(db)
         stats = orden_repo.obtener_estadisticas_por_estado()
-        from datetime import datetime
-        ahora = datetime.now()
+        from datetime import datetime, timezone, timedelta
+        ahora = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=2)))
         return jsonify({
             'p': stats.get('pendiente', 0),
             'e': stats.get('en_proceso', 0),
@@ -362,10 +362,13 @@ def api_esp32_current():
             return jsonify({'data': None})
         with open(push_file) as f:
             payload = json.load(f)
-        # Expirar tras 5 minutos
-        from datetime import datetime
+        # Expirar tras 60 minutos
+        from datetime import datetime, timezone, timedelta
         ts = datetime.fromisoformat(payload.get('ts', '2000-01-01'))
-        if (datetime.now() - ts).total_seconds() > 300:
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        if age > 3600:
             return jsonify({'data': None})
         return jsonify({'data': payload['data'], 'ts': payload['ts']})
     except Exception as e:
