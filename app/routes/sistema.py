@@ -286,6 +286,31 @@ def api_stats():
     except Exception as e:
         return error_interno(e)
 
+
+@bp.route('/api/display', methods=['GET'])
+def api_display():
+    """Panel ESP32 — solo acceso desde red local, sin autenticación."""
+    # Bloquear acceso desde IPs externas (solo localhost/LAN)
+    ip = request.remote_addr or ''
+    if not (ip.startswith('127.') or ip.startswith('192.168.') or
+            ip.startswith('10.') or ip == '::1'):
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        orden_repo = OrdenRepository(db)
+        stats = orden_repo.obtener_estadisticas_por_estado()
+        from datetime import datetime
+        ahora = datetime.now()
+        return jsonify({
+            'p': stats.get('pendiente', 0),
+            'e': stats.get('en_proceso', 0),
+            't': stats.get('terminada',  0),
+            'hora':  ahora.strftime('%H:%M'),
+            'fecha': ahora.strftime('%d/%m'),
+        })
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():

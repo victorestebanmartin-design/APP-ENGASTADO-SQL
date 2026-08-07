@@ -111,14 +111,36 @@ def draw_datetime(fecha, hora):
     rect(0,Y_DATE,240,17,BLACK)
     text(4,Y_DATE,fecha+"  "+hora,LGRAY,BLACK,scale=1)
 
+def draw_sw_logo():
+    W=WHITE; B=BLACK; G=LGRAY; DG=DGRAY; O=ORANGE
+    rect(0, 0, 240, 320, W)
+    # Badge superior
+    text(8,   5, "Automated Crimping System", DG, W, scale=1)
+    hline(20, 19, 200, DG)
+    # COJO (negro grande) + sw (gris pequeño, bottom-aligned)
+    text(12,  35, "COJO", B, W, scale=5)   # 4*45=180px, height=40
+    text(192, 59, "sw",   G, W, scale=2)   # x=12+180, y=35+24 (bottom alineado)
+    # Tagline
+    text(35,  82, "Crimping Operations",  G, W, scale=1)
+    text(21,  95, "Jobs & Orders Software", G, W, scale=1)
+    hline(20, 108, 200, DG)
+    # Acrónimo igual que el HTML
+    text(5, 116, "C",  O, W, scale=1); text(19, 116, " Crimping",   B, W, scale=1)
+    text(5, 130, "O",  O, W, scale=1); text(19, 130, " Operations", B, W, scale=1)
+    text(5, 144, "J",  O, W, scale=1); text(19, 144, " Jobs",       B, W, scale=1)
+    text(5, 158, "O",  O, W, scale=1); text(19, 158, " Orders",     B, W, scale=1)
+    text(5, 172, "sw", G, W, scale=1); text(23, 172, " Software",   B, W, scale=1)
+    hline(20, 190, 200, DG)
+    # Meta
+    text(30, 198, "MERAK - Knorr-Bremse", DG, W, scale=1)
+    text(52, 212, "Version 3.0 Pro",      DG, W, scale=1)
+
 def draw_status(ok, hora=""):
     rect(0,Y_STATUS,240,17,BLACK)
     if ok: text(4,Y_STATUS,"OK  "+hora,GREEN,BLACK,scale=1)
     else:  text(4,Y_STATUS,"Sin datos...",RED,BLACK,scale=1)
 
-draw_static()
-draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
-draw_datetime("--/--","--:--"); draw_status(False)
+draw_sw_logo()
 
 vp=ve=vt=-1; ultimo_rx=0; buf=""
 poll=select.poll(); poll.register(sys.stdin,select.POLLIN)
