@@ -119,6 +119,9 @@ def draw_work_screen(d):
     bono  = str(d.get('bono', ''))[:14]
     pkgs  = d.get('paquetes', [])[:5]
 
+    # Borrar el area de titulo + contenido para que no queden restos del panel de stats
+    rect(0, Y_TITLE, 240, Y_SEP2 - Y_TITLE, BLACK)
+
     # Carro numero (el dato mas importante) — escala 2, pocas letras
     text(4, Y_TITLE, ('C-' + carro).ljust(8), WHITE, BLACK, scale=2)
     text(4, Y_DATE,  bono.ljust(18),           YELLOW, BLACK, scale=1)
