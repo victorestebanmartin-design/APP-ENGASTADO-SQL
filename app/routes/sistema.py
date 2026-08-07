@@ -315,13 +315,17 @@ def api_display():
 
 @bp.route('/api/esp32/ip', methods=['GET'])
 def api_esp32_ip():
-    """Devuelve la última IP registrada del ESP32."""
+    """Devuelve la última IP registrada del ESP32 (con CORS para app local)."""
     try:
         ip_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_ip.txt')
+        ip = None
         if os.path.exists(ip_file):
             with open(ip_file) as f:
-                return jsonify({'ip': f.read().strip()})
-        return jsonify({'ip': None})
+                ip = f.read().strip() or None
+        from flask import make_response
+        resp = make_response(jsonify({'ip': ip}))
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
     except Exception as e:
         return error_interno(e)
 

@@ -37,9 +37,11 @@ let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concur
 let _esp32Ip = null;
 (async () => {
     try {
-        const r = await fetch('/api/esp32/ip');
+        // Leer desde PA donde el ESP32 registra su IP al hacer poll
+        const r = await fetch('https://viktor85.pythonanywhere.com/api/esp32/ip');
         const d = await r.json();
         _esp32Ip = d.ip || null;
+        if (_esp32Ip) console.log('[ESP32] display en:', _esp32Ip);
     } catch (_) {}
 })();
 
