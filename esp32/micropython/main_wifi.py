@@ -114,32 +114,39 @@ def draw_wifi_bar():
         text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
 def draw_work_screen(d):
-    """Pantalla de trabajo: bono + carro + paquetes (desde push del modal)."""
-    bono  = str(d.get('bono', ''))[:22]
+    """Pantalla de trabajo — sin fill completo, linea a linea para ser rapido con WiFi."""
+    bono  = str(d.get('bono', ''))[:20]
     carro = str(d.get('carro', ''))
     orden = str(d.get('orden', ''))[:26]
-    pkgs  = d.get('paquetes', [])[:13]
+    pkgs  = d.get('paquetes', [])[:5]  # 5 por pagina como el modal
 
-    rect(0, 0, 240, 278, BLACK)
-    # Cabecera
-    text(4,  4, 'BONO: ' + bono,  YELLOW, BLACK, scale=1)
-    text(4, 17, orden,             LGRAY,  BLACK, scale=1)
-    hline(0, 30, 240, DGRAY)
-    # Carro grande
-    text(4, 36, 'CARRO', LGRAY, BLACK, scale=2)
-    text(100, 32, carro, WHITE, BLACK, scale=3)
-    hline(0, 66, 240, DGRAY)
-    # Lista de paquetes
-    y = 70
+    # Cabecera: texto de ancho fijo (bg=BLACK sobreescribe contenido previo)
+    text(4,  4, ('BONO: ' + bono).ljust(24),  YELLOW, BLACK, scale=1)
+    text(4, 14, orden.ljust(26),               LGRAY,  BLACK, scale=1)
+    hline(0, 25, 240, DGRAY)
+    text(4, 29, 'CARRO'.ljust(10),             LGRAY,  BLACK, scale=2)
+    text(130, 27, carro.ljust(4),              WHITE,  BLACK, scale=3)
+    hline(0, 53, 240, DGRAY)
+
+    # 5 filas de paquetes (5 × 14px)
+    y = 56
     for p in pkgs:
-        etiq = str(p.get('etiqueta', '')) if p.get('etiqueta') is not None else ''
-        cod  = str(p.get('cod',  ''))[:13]
-        elem = str(p.get('elem', ''))[:8]
+        etiq  = str(p.get('etiqueta') or '').rjust(5)
+        cod   = str(p.get('cod',  '') or '')[:11]
+        elem  = str(p.get('elem', '') or '')[:8]
         color = LGRAY if p.get('bloqueado') else WHITE
-        fila = (etiq.rjust(3) + ' ' + cod + ' ' + elem)[:26]
+        fila  = (etiq + ' ' + cod + ' ' + elem).ljust(26)[:26]
         text(4, y, fila, color, BLACK, scale=1)
         y += 14
+
+    # Limpiar filas sobrantes si la pagina anterior tenia mas
+    while y < 130:
+        text(4, y, ' ' * 26, BLACK, BLACK, scale=1)
+        y += 14
+
+    hline(0, 132, 240, DGRAY)
     draw_wifi_bar()
+    print("draw_work OK carro", carro, len(pkgs), "pkgs")
 
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
