@@ -33,6 +33,29 @@ let paquetesActuales = []; // Paquetes del carro actual
 let gruposEtiquetasCache = null; // Cache de grupos de etiquetas
 let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concurrente)
 
+// ── Push a pantalla ESP32 (red local, sin firewall) ──────────────────────────
+let _esp32Ip = null;
+(async () => {
+    try {
+        const r = await fetch('/api/esp32/ip');
+        const d = await r.json();
+        _esp32Ip = d.ip || null;
+    } catch (_) {}
+})();
+
+async function pushToESP32(data) {
+    if (!_esp32Ip) return;
+    try {
+        await fetch(`http://${_esp32Ip}/push`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+            signal: AbortSignal.timeout(2000)
+        });
+    } catch (_) { /* silencioso si el ESP32 no responde */ }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Liberar la sesión si el operario cierra o refresca la pestaña
 window.addEventListener('beforeunload', function() {
     if (sesionActualId) {

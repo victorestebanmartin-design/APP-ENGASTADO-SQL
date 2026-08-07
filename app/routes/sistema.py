@@ -291,6 +291,13 @@ def api_stats():
 def api_display():
     """Panel ESP32 — público pero limitado en datos (no expone información sensible)."""
     try:
+        # Guardar IP del ESP32 para que el JS pueda hacer push directo
+        esp32_ip = request.args.get('esp32_ip')
+        if esp32_ip:
+            ip_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_ip.txt')
+            with open(ip_file, 'w') as f:
+                f.write(esp32_ip.strip())
+
         orden_repo = OrdenRepository(db)
         stats = orden_repo.obtener_estadisticas_por_estado()
         from datetime import datetime
@@ -302,6 +309,19 @@ def api_display():
             'hora':  ahora.strftime('%H:%M'),
             'fecha': ahora.strftime('%d/%m'),
         })
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/ip', methods=['GET'])
+def api_esp32_ip():
+    """Devuelve la última IP registrada del ESP32."""
+    try:
+        ip_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_ip.txt')
+        if os.path.exists(ip_file):
+            with open(ip_file) as f:
+                return jsonify({'ip': f.read().strip()})
+        return jsonify({'ip': None})
     except Exception as e:
         return error_interno(e)
 

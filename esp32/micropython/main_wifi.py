@@ -112,10 +112,33 @@ def draw_wifi_bar():
         rect(4, Y_WIFI+4, 8, 8, RED)            # punto rojo = sin WiFi
         text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
-def draw_connect_screen(msg):
-    rect(0,0,240,320,BLACK)
-    text(4,140,"Conectando WiFi...",LGRAY,BLACK,scale=1)
-    text(4,158,msg[:26],YELLOW,BLACK,scale=1)
+def draw_work_screen(d):
+    """Pantalla de trabajo: bono + carro + paquetes (desde push del modal)."""
+    bono  = str(d.get('bono', ''))[:22]
+    carro = str(d.get('carro', ''))
+    orden = str(d.get('orden', ''))[:26]
+    pkgs  = d.get('paquetes', [])[:13]
+
+    rect(0, 0, 240, 278, BLACK)
+    # Cabecera
+    text(4,  4, 'BONO: ' + bono,  YELLOW, BLACK, scale=1)
+    text(4, 17, orden,             LGRAY,  BLACK, scale=1)
+    hline(0, 30, 240, DGRAY)
+    # Carro grande
+    text(4, 36, 'CARRO', LGRAY, BLACK, scale=2)
+    text(100, 32, carro, WHITE, BLACK, scale=3)
+    hline(0, 66, 240, DGRAY)
+    # Lista de paquetes
+    y = 70
+    for p in pkgs:
+        etiq = str(p.get('etiqueta', '')) if p.get('etiqueta') is not None else ''
+        cod  = str(p.get('cod',  ''))[:13]
+        elem = str(p.get('elem', ''))[:8]
+        color = LGRAY if p.get('bloqueado') else WHITE
+        fila = (etiq.rjust(3) + ' ' + cod + ' ' + elem)[:26]
+        text(4, y, fila, color, BLACK, scale=1)
+        y += 14
+    draw_wifi_bar()
 
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
@@ -125,7 +148,8 @@ def http_get(host, port, path):
         s = socket.socket()
         s.settimeout(8)
         s.connect(addr)
-        req = f"GET {path} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+        # Incluir IP propia para que Flask la registre
+        req = f"GET {path}?esp32_ip={wifi_ip} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
         s.send(req.encode())
         resp = b""
         while True:
@@ -140,6 +164,38 @@ def http_get(host, port, path):
     except Exception as e:
         print("HTTP error:", e)
         return None
+
+# ── Servidor HTTP para recibir push del modal (browser → ESP32) ───────────────
+def _start_push_server(port=80):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('0.0.0.0', port))
+    s.listen(2)
+    s.setblocking(False)
+    return s
+
+def _check_push(srv):
+    """Non-blocking: acepta una conexion HTTP y devuelve el JSON body o None."""
+    try:
+        conn, _ = srv.accept()
+        conn.settimeout(2)
+        req = b''
+        try:
+            while True:
+                d = conn.recv(512)
+                if not d: break
+                req += d
+                if len(req) > 4096: break
+        except: pass
+        conn.send(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\n\r\n{"ok":true}')
+        conn.close()
+        idx = req.find(b'\r\n\r\n')
+        if idx >= 0:
+            body = req[idx+4:]
+            if body:
+                return json.loads(body)
+    except: pass
+    return None
 
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def conectar_wifi():
@@ -170,40 +226,54 @@ conectado = conectar_wifi()   # WiFi DESPUES de dibujar el panel
 draw_wifi_bar()               # actualizar indicador con IP o error
 draw_status("OK" if conectado else "Sin WiFi", GREEN if conectado else RED)
 
+# Servidor HTTP push (browser → ESP32 directo en red local)
+push_srv = _start_push_server(80) if conectado else None
+
 vp=ve=vt=-1
 ultimo_ok = 0
+ultimo_poll = time.ticks_ms() - INTERVAL * 1000  # forzar poll inmediato
 
 while True:
+    # ── Push inmediato desde modal del navegador ─────────────────────
+    if push_srv:
+        push_data = _check_push(push_srv)
+        if push_data:
+            draw_work_screen(push_data)
+            ultimo_ok = time.ticks_ms()
+
+    # ── Poll periódico a Flask ────────────────────────────────────────
     if not conectado:
         time.sleep(5)
         conectado = conectar_wifi()
         if conectado:
+            push_srv = _start_push_server(80)
             draw_panel()
             draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
         continue
 
-    body = http_get(HOST_IP, PORT, "/api/display")
-    if body:
-        try:
-            d = json.loads(body)
-            np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
-            hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
-            if np!=vp: vp=np; draw_num(Y_ROW1,YELLOW,vp)
-            if ne!=ve: ve=ne; draw_num(Y_ROW2,ORANGE,ve)
-            if nt!=vt: vt=nt; draw_num(Y_ROW3,GREEN,vt)
-            draw_datetime(fecha,hora)
-            draw_status("OK  "+hora,GREEN)
+    if time.ticks_diff(time.ticks_ms(), ultimo_poll) >= INTERVAL * 1000:
+        ultimo_poll = time.ticks_ms()
+        body = http_get(HOST_IP, PORT, "/api/display")
+        if body:
+            try:
+                d = json.loads(body)
+                np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
+                hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
+                # Solo actualizar panel si NO hay datos de trabajo activos
+                if np!=vp or ne!=ve or nt!=vt:
+                    vp=np; ve=ne; vt=nt
+                    draw_panel()
+                    draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
+                    draw_datetime(fecha,hora)
+                draw_status("OK  "+hora,GREEN)
+                draw_wifi_bar()
+                ultimo_ok = time.ticks_ms()
+            except Exception as ex:
+                print("JSON err:", ex)
+        else:
+            draw_status("Sin respuesta",ORANGE)
             draw_wifi_bar()
-            ultimo_ok = time.ticks_ms()
-        except Exception as ex:
-            print("JSON err:", ex)
-            draw_status("Error JSON",RED)
-    else:
-        draw_status("Sin respuesta",ORANGE)
-        draw_wifi_bar()
-        # Reconectar si llevan >60s sin respuesta
-        if ultimo_ok and time.ticks_diff(time.ticks_ms(), ultimo_ok) > 60000:
-            conectado = conectar_wifi()
+            if ultimo_ok and time.ticks_diff(time.ticks_ms(), ultimo_ok) > 60000:
+                conectado = conectar_wifi()
 
-    for _ in range(INTERVAL * 2):   # sleep en bloques de 0.5s para poder interrumpir
-        time.sleep(0.5)
+    time.sleep(0.1)  # loop rapido para capturar push

@@ -93,6 +93,19 @@ async function mostrarModalPaquetes(carro) {
     let paginaActual = paquetesOrdenados.slice(inicio, fin);
     const esUltimaPagina = fin >= total;
 
+    // Push a pantalla ESP32 (asíncrono, no bloquea el modal)
+    pushToESP32({
+        bono:  bonoActual?.nombre  || '',
+        carro: carro.carro         || '',
+        orden: carro.proyecto_nombre || '',
+        paquetes: paginaActual.map(p => ({
+            etiqueta: p.numeroEtiqueta ?? null,
+            cod:  p.cod_cable  || '',
+            elem: p.elemento   || '',
+            bloqueado: !!p.bloqueado
+        }))
+    });
+
     // ---------------------------------------------------------------
     // Bloqueo anti-carrera: registrar claim ANTES de renderizar el modal,
     // luego re-verificar por si otro puesto nos ganó milisegundos antes.
