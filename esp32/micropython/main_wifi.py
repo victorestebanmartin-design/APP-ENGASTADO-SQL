@@ -7,10 +7,9 @@
 
 import time
 import json
-import network
-import socket
 from machine import SoftSPI, Pin
 import framebuf
+# network y socket se importan tarde, tras el primer draw, para no ralentizar SoftSPI
 
 # ── CONFIG WIFI ───────────────────────────────────────────────────────────────
 SSID     = "MOVISTAR_8A70"   # nombre del hotspot del PC
@@ -32,22 +31,12 @@ def _cmd(c, d=None):
     dc(0); spi.write(bytes([c]))
     if d: dc(1); spi.write(d)
 
+# Init mínima probada funcional en arranque frío (la init 4D Systems falla en cold boot)
 _cmd(0x11); time.sleep_ms(120)
-_cmd(0xCB, b'\x39\x2C\x00\x34\x02')
-_cmd(0xCF, b'\x00\xC1\x30')
-_cmd(0xE8, b'\x85\x00\x78')
-_cmd(0xEA, b'\x00\x00')
-_cmd(0xED, b'\x64\x03\x12\x81')
-_cmd(0xF7, b'\x20')
-_cmd(0xC0, b'\x1b'); _cmd(0xC1, b'\x10')
-_cmd(0xC5, b'\x2d\x33')
-_cmd(0x36, b'\x48'); _cmd(0x3A, b'\x55')
-_cmd(0xB1, b'\x00\x1d'); _cmd(0xB6, b'\x0A\x82')
-_cmd(0xF2, b'\x00'); _cmd(0x26, b'\x01')
-_cmd(0xE0, b'\x0F\x3a\x36\x0b\x0d\x06\x4c\x91\x31\x08\x10\x04\x11\x0c\x00')
-_cmd(0xE1, b'\x00\x06\x0a\x05\x12\x09\x2c\x92\x3f\x08\x0e\x0b\x2e\x33\x0F')
-_cmd(0x29); time.sleep_ms(100)
-_cmd(0x21)
+_cmd(0x36, b'\x48')   # MADCTL MX=1 BGR=1
+_cmd(0x3A, b'\x55')   # 16-bit color
+_cmd(0x29); time.sleep_ms(50)
+_cmd(0x21)            # INVON necesario para panel IPS
 
 def _window(x0, y0, x1, y1):
     _cmd(0x2A, bytes([x0>>8, x0&0xFF, x1>>8, x1&0xFF]))
@@ -155,7 +144,6 @@ def http_get(host, port, path):
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def conectar_wifi():
     global wifi_ip
-    draw_connect_screen(SSID[:22])
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
@@ -165,23 +153,22 @@ def conectar_wifi():
             time.sleep(0.5)
     if wlan.isconnected():
         wifi_ip = wlan.ifconfig()[0]
-        rect(0,175,240,17,BLACK)
-        text(4,175,"IP: "+wifi_ip,GREEN,BLACK,scale=1)
-        time.sleep(1)
         return True
     else:
         wifi_ip = ""
-        rect(0,175,240,17,BLACK)
-        text(4,175,"Sin conexion",RED,BLACK,scale=1)
         return False
 
-# ── Arranque ───────────────────────────────────────────────────────────────────
-conectado = conectar_wifi()
+# ── Arranque: panel primero, WiFi en segundo plano ──────────────────────
 draw_panel()
 draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
 draw_datetime("--/--","--:--")
-draw_status("Iniciando..." if conectado else "Sin WiFi",LGRAY)
+draw_status("Conectando WiFi...",LGRAY)
 draw_wifi_bar()
+# Importar network DESPUÉS del primer draw para no ralentizar SoftSPI
+import network, socket
+conectado = conectar_wifi()   # WiFi DESPUES de dibujar el panel
+draw_wifi_bar()               # actualizar indicador con IP o error
+draw_status("OK" if conectado else "Sin WiFi", GREEN if conectado else RED)
 
 vp=ve=vt=-1
 ultimo_ok = 0
