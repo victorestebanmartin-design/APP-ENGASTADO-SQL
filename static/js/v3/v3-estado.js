@@ -33,28 +33,18 @@ let paquetesActuales = []; // Paquetes del carro actual
 let gruposEtiquetasCache = null; // Cache de grupos de etiquetas
 let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concurrente)
 
-// ── Push a pantalla ESP32 (red local, sin firewall) ──────────────────────────
-let _esp32Ip = null;
-(async () => {
-    try {
-        // Leer desde PA donde el ESP32 registra su IP al hacer poll
-        const r = await fetch('https://viktor85.pythonanywhere.com/api/esp32/ip');
-        const d = await r.json();
-        _esp32Ip = d.ip || null;
-        if (_esp32Ip) console.log('[ESP32] display en:', _esp32Ip);
-    } catch (_) {}
-})();
+// ── Push a pantalla ESP32 vía PA relay (funciona desde cualquier red) ────────
+const _ESP32_PA = 'https://viktor85.pythonanywhere.com';
 
 async function pushToESP32(data) {
-    if (!_esp32Ip) return;
     try {
-        await fetch(`http://${_esp32Ip}/push`, {
+        await fetch(`${_ESP32_PA}/api/esp32/push`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
-            signal: AbortSignal.timeout(2000)
+            signal: AbortSignal.timeout(3000)
         });
-    } catch (_) { /* silencioso si el ESP32 no responde */ }
+    } catch (_) { /* silencioso */ }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -330,6 +330,48 @@ def api_esp32_ip():
         return error_interno(e)
 
 
+@bp.route('/api/esp32/push', methods=['POST', 'OPTIONS'])
+def api_esp32_push():
+    """Recibe datos de trabajo desde el navegador y los almacena para que el ESP32 los recoja."""
+    if request.method == 'OPTIONS':
+        resp = current_app.make_response('')
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return resp
+    try:
+        data = request.get_json(force=True) or {}
+        push_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_current.json')
+        from datetime import datetime
+        payload = {'data': data, 'ts': datetime.now().isoformat()}
+        with open(push_file, 'w') as f:
+            json.dump(payload, f)
+        resp = current_app.make_response(jsonify({'ok': True}))
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/current', methods=['GET'])
+def api_esp32_current():
+    """Devuelve los últimos datos de trabajo enviados al ESP32 (TTL 5 min)."""
+    try:
+        push_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_current.json')
+        if not os.path.exists(push_file):
+            return jsonify({'data': None})
+        with open(push_file) as f:
+            payload = json.load(f)
+        # Expirar tras 5 minutos
+        from datetime import datetime
+        ts = datetime.fromisoformat(payload.get('ts', '2000-01-01'))
+        if (datetime.now() - ts).total_seconds() > 300:
+            return jsonify({'data': None})
+        return jsonify({'data': payload['data'], 'ts': payload['ts']})
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():

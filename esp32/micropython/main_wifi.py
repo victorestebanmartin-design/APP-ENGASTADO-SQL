@@ -14,9 +14,10 @@ import framebuf
 # ── CONFIG WIFI ───────────────────────────────────────────────────────────────
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
-HOST_IP  = "viktor85.pythonanywhere.com"  # servidor de produccion, sin firewall
-PORT     = 80               # HTTP estandar (PythonAnywhere)
-INTERVAL = 30               # segundos entre peticiones
+HOST_IP  = "viktor85.pythonanywhere.com"
+PORT     = 80
+INTERVAL = 30          # segundos entre polls de stats generales
+PUSH_INTERVAL = 3      # segundos entre polls de pantalla de trabajo
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────
@@ -226,27 +227,32 @@ conectado = conectar_wifi()   # WiFi DESPUES de dibujar el panel
 draw_wifi_bar()               # actualizar indicador con IP o error
 draw_status("OK" if conectado else "Sin WiFi", GREEN if conectado else RED)
 
-# Servidor HTTP push (browser → ESP32 directo en red local)
-push_srv = _start_push_server(80) if conectado else None
-
+# Ya no necesitamos servidor HTTP local (usamos PA como relay)
 vp=ve=vt=-1
 ultimo_ok = 0
-ultimo_poll = time.ticks_ms() - INTERVAL * 1000  # forzar poll inmediato
+ultimo_poll  = time.ticks_ms() - INTERVAL * 1000  # forzar poll inmediato
+ultimo_push  = time.ticks_ms() - PUSH_INTERVAL * 1000
+ultimo_ts    = ""   # timestamp del último push procesado
 
 while True:
-    # ── Push inmediato desde modal del navegador ─────────────────────
-    if push_srv:
-        push_data = _check_push(push_srv)
-        if push_data:
-            draw_work_screen(push_data)
-            ultimo_ok = time.ticks_ms()
+    # ── Poll rápido: pantalla de trabajo vía PA relay (cada 3s) ──────
+    if time.ticks_diff(time.ticks_ms(), ultimo_push) >= PUSH_INTERVAL * 1000:
+        ultimo_push = time.ticks_ms()
+        body = http_get(HOST_IP, PORT, "/api/esp32/current")
+        if body:
+            try:
+                d = json.loads(body)
+                if d.get('data') and d.get('ts') != ultimo_ts:
+                    ultimo_ts = d['ts']
+                    draw_work_screen(d['data'])
+                    ultimo_ok = time.ticks_ms()
+            except: pass
 
-    # ── Poll periódico a Flask ────────────────────────────────────────
+    # ── Poll periódico: stats generales (cada 30s) ────────────────────
     if not conectado:
         time.sleep(5)
         conectado = conectar_wifi()
         if conectado:
-            push_srv = _start_push_server(80)
             draw_panel()
             draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
         continue
@@ -259,8 +265,8 @@ while True:
                 d = json.loads(body)
                 np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
                 hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
-                # Solo actualizar panel si NO hay datos de trabajo activos
-                if np!=vp or ne!=ve or nt!=vt:
+                # Solo actualizar panel de stats si no hay pantalla de trabajo activa
+                if not ultimo_ts and (np!=vp or ne!=ve or nt!=vt):
                     vp=np; ve=ne; vt=nt
                     draw_panel()
                     draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
@@ -276,4 +282,4 @@ while True:
             if ultimo_ok and time.ticks_diff(time.ticks_ms(), ultimo_ok) > 60000:
                 conectado = conectar_wifi()
 
-    time.sleep(0.1)  # loop rapido para capturar push
+    time.sleep(0.1)
