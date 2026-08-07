@@ -13,10 +13,10 @@ from machine import SoftSPI, Pin
 import framebuf
 
 # ── CONFIG WIFI ───────────────────────────────────────────────────────────────
-SSID     = "NombreHotspot"   # nombre del hotspot del PC
-PASSWORD = "Contraseña"      # contraseña del hotspot
-HOST_IP  = "192.168.137.1"   # IP del PC con hotspot Windows (defecto)
-PORT     = 5000              # puerto Flask local
+SSID     = "MOVISTAR_8A70"   # nombre del hotspot del PC
+PASSWORD = "tnADEofvTsc8MNGj6PSK"      # contraseña del hotspot
+HOST_IP  = "192.168.1.46"   # IP del PC con hotspot Windows (defecto)
+PORT     = 5001              # puerto Flask local
 INTERVAL = 30                # segundos entre peticiones
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,8 @@ BLACK=0x0000; WHITE=0xFFFF; YELLOW=0xFFE0; ORANGE=0xFD20
 GREEN=0x07E0; RED=0xF800; DGRAY=0x4208; LGRAY=0x8410
 
 Y_TITLE=6; Y_DATE=36; Y_SEP1=54; Y_ROW1=68; Y_ROW2=132; Y_ROW3=196
-Y_SEP2=254; Y_STATUS=262
+Y_SEP2=254; Y_STATUS=262; Y_WIFI=282
+wifi_ip = ""  # IP asignada al conectar
 
 def draw_panel():
     rect(0,0,240,320,BLACK)
@@ -111,6 +112,16 @@ def draw_datetime(fecha, hora):
 
 def draw_status(msg, color):
     rect(0,Y_STATUS,240,17,BLACK); text(4,Y_STATUS,msg,color,BLACK,scale=1)
+
+def draw_wifi_bar():
+    """Barra inferior con indicador visual de conexión WiFi."""
+    rect(0, Y_WIFI, 240, 20, BLACK)
+    if wifi_ip:
+        rect(4, Y_WIFI+4, 8, 8, GREEN)          # punto verde = conectado
+        text(16, Y_WIFI+2, "WiFi "+wifi_ip, GREEN, BLACK, scale=1)
+    else:
+        rect(4, Y_WIFI+4, 8, 8, RED)            # punto rojo = sin WiFi
+        text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
 def draw_connect_screen(msg):
     rect(0,0,240,320,BLACK)
@@ -143,21 +154,23 @@ def http_get(host, port, path):
 
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def conectar_wifi():
+    global wifi_ip
     draw_connect_screen(SSID[:22])
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
         wlan.connect(SSID, PASSWORD)
-        for _ in range(20):           # esperar hasta 10s
+        for _ in range(20):
             if wlan.isconnected(): break
             time.sleep(0.5)
     if wlan.isconnected():
-        ip = wlan.ifconfig()[0]
+        wifi_ip = wlan.ifconfig()[0]
         rect(0,175,240,17,BLACK)
-        text(4,175,"IP: "+ip,GREEN,BLACK,scale=1)
+        text(4,175,"IP: "+wifi_ip,GREEN,BLACK,scale=1)
         time.sleep(1)
         return True
     else:
+        wifi_ip = ""
         rect(0,175,240,17,BLACK)
         text(4,175,"Sin conexion",RED,BLACK,scale=1)
         return False
@@ -168,6 +181,7 @@ draw_panel()
 draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
 draw_datetime("--/--","--:--")
 draw_status("Iniciando..." if conectado else "Sin WiFi",LGRAY)
+draw_wifi_bar()
 
 vp=ve=vt=-1
 ultimo_ok = 0
@@ -192,12 +206,14 @@ while True:
             if nt!=vt: vt=nt; draw_num(Y_ROW3,GREEN,vt)
             draw_datetime(fecha,hora)
             draw_status("OK  "+hora,GREEN)
+            draw_wifi_bar()
             ultimo_ok = time.ticks_ms()
         except Exception as ex:
             print("JSON err:", ex)
             draw_status("Error JSON",RED)
     else:
         draw_status("Sin respuesta",ORANGE)
+        draw_wifi_bar()
         # Reconectar si llevan >60s sin respuesta
         if ultimo_ok and time.ticks_diff(time.ticks_ms(), ultimo_ok) > 60000:
             conectado = conectar_wifi()
