@@ -210,17 +210,29 @@ def api_actualizar_sistema():
         if r_pull.returncode != 0:
             return jsonify({'success': False, 'message': f'Error en git pull: {r_pull.stderr.strip()}'})
 
-        # Actualizar dependencias si es necesario
+        # Actualizar dependencias si es necesario. El pip del venv del proyecto
+        # solo existe en instalaciones locales; en PythonAnywhere (venv externo)
+        # se usa el pip del interprete que ejecuta la app. Un fallo aqui NO debe
+        # abortar la actualizacion: el pull ya esta aplicado.
         pip_output = ''
         if req_cambia:
-            pip_exe = os.path.join(base_dir, 'venv', 'Scripts', 'pip.exe')
-            if not os.path.exists(pip_exe):
-                pip_exe = os.path.join(base_dir, 'venv', 'bin', 'pip')
-            r_pip = subprocess.run(
-                [pip_exe, 'install', '-r', os.path.join(base_dir, 'requirements.txt'), '-q'],
-                capture_output=True, text=True, timeout=120
-            )
-            pip_output = ' | Dependencias actualizadas.' if r_pip.returncode == 0 else ' | ⚠️ Error al actualizar dependencias.'
+            pip_cmd = None
+            for cand in (os.path.join(base_dir, 'venv', 'Scripts', 'pip.exe'),
+                         os.path.join(base_dir, 'venv', 'bin', 'pip')):
+                if os.path.exists(cand):
+                    pip_cmd = [cand]
+                    break
+            if pip_cmd is None:
+                pip_cmd = [sys.executable, '-m', 'pip']
+            try:
+                r_pip = subprocess.run(
+                    pip_cmd + ['install', '-r', os.path.join(base_dir, 'requirements.txt'), '-q'],
+                    capture_output=True, text=True, timeout=300
+                )
+                pip_output = (' | Dependencias actualizadas.' if r_pip.returncode == 0
+                              else ' | ⚠️ Dependencias NO actualizadas (ejecuta a mano: pip install -r requirements.txt).')
+            except Exception:
+                pip_output = ' | ⚠️ Dependencias NO actualizadas (ejecuta a mano: pip install -r requirements.txt).'
 
         # Commit nuevo tras el pull
         r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
