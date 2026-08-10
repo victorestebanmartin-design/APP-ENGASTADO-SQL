@@ -17,6 +17,8 @@
 #       * pulsacion LARGA (1s) -> "me llevo mis paquetes": la lista del operario
 #         mostrado desaparece y la pantalla queda para el siguiente. Vuelve a
 #         aparecer sola cuando ese operario envie contenido nuevo.
+#       * si tras el "ENTREGADO" SIGUES aguantando hasta los 3s -> deshacer:
+#         recupera a todos los operarios que se hubieran llevado sus paquetes.
 #   - Los paquetes bloqueados salen en gris con "BLOQUEADO" y debajo el
 #     puesto/maquina que los esta trabajando.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
@@ -44,6 +46,8 @@ PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # pulsacion larga del boton de operario = "me llevo mis paquetes"
+RECUP_PRESS_MS = 3000  # si tras el "ENTREGADO" se sigue aguantando hasta aqui: deshacer
+                       # (recupera a TODOS los operarios ocultos)
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
 # pantalla se identifica sola en el servidor (por su MAC) y el carro se le
@@ -310,6 +314,22 @@ def llevar_operario():
         work_pkgs = []
         draw_idle()
 
+def recuperar_operarios():
+    """Deshacer el 'me los llevo': recupera a TODOS los operarios ocultos.
+
+    Se dispara siguiendo con el boton aguantado hasta RECUP_PRESS_MS. Vacia
+    'ocultos' y fuerza un poll inmediato, que redibuja con la lista completa.
+    """
+    global work_fp, ultimo_poll
+    if not ocultos:
+        return
+    ocultos.clear()
+    work_fp = ""
+    ultimo_poll = time.ticks_ms() - POLL_INTERVAL * 1000  # poll inmediato
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(150, "RECUPERADO", YELLOW, BLACK, scale=2)
+    time.sleep_ms(600)
+
 def _filtrar_ocultos(ops):
     """Quita de la lista a los operarios ocultos (se llevaron sus paquetes)
     mientras su contenido no cambie; contenido nuevo los re-muestra."""
@@ -452,6 +472,7 @@ btn_op_prev  = 1
 btn_op_last  = 0
 btn_op_t0    = 0
 btn_op_armado = False
+btn_op_recup  = False
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 intentos_wifi = 0
 
@@ -479,19 +500,32 @@ while True:
     if b2 == 0 and btn_op_prev == 1 and time.ticks_diff(now, btn_op_last) > 250:
         # Flanco de bajada: armar y esperar a ver si es corta o larga
         btn_op_t0 = now
-        btn_op_armado = en_work_mode
+        btn_op_armado = en_work_mode or bool(ocultos)
     if b2 == 0 and btn_op_armado and time.ticks_diff(now, btn_op_t0) >= LONG_PRESS_MS:
         # Sigue apretado tras LONG_PRESS_MS: pulsacion larga
         btn_op_armado = False
         btn_op_last = now
         ultimo_avance = now
-        llevar_operario()
-    if b2 == 1 and btn_op_prev == 0 and btn_op_armado:
-        # Soltado antes del umbral: pulsacion corta
-        btn_op_armado = False
+        if en_work_mode:
+            btn_op_recup = True   # si sigue aguantando hasta RECUP_PRESS_MS, deshace
+            llevar_operario()
+        else:
+            # En reposo con ocultos pendientes: larga = recuperarlos
+            recuperar_operarios()
+    if b2 == 0 and btn_op_recup and time.ticks_diff(now, btn_op_t0) >= RECUP_PRESS_MS:
+        # Aguantado hasta el umbral de deshacer: recuperar ocultos
+        btn_op_recup = False
         btn_op_last = now
         ultimo_avance = now
-        next_operario()
+        recuperar_operarios()
+    if b2 == 1 and btn_op_prev == 0:
+        if btn_op_armado:
+            # Soltado antes del umbral: pulsacion corta
+            btn_op_armado = False
+            btn_op_last = now
+            ultimo_avance = now
+            next_operario()
+        btn_op_recup = False
     btn_op_prev = b2
 
     # ── Rotacion automatica de paquetes (sin boton) ───────────────────
