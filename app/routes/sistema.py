@@ -238,12 +238,25 @@ def api_actualizar_sistema():
         r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
         commit_nuevo = r_new.stdout.strip()
 
-        # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero
+        # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero.
+        # En PythonAnywhere el reinicio se hace tocando el fichero WSGI de
+        # /var/www (equivale al boton Reload de la pestaña Web); matar el
+        # proceso alli NO recarga el codigo. En local, run.bat detecta el
+        # codigo de salida 42 y relanza el servidor.
+        import glob as _glob
+        wsgi_pa = _glob.glob('/var/www/*_wsgi.py')
         import threading
         def _reiniciar():
             import time, os
             time.sleep(2)
-            os._exit(42)  # Código 42 → run.bat lo detecta y relanza el servidor
+            if wsgi_pa:
+                for w in wsgi_pa:
+                    try:
+                        os.utime(w, None)
+                    except Exception:
+                        pass
+            else:
+                os._exit(42)  # Código 42 → run.bat lo detecta y relanza el servidor
         threading.Thread(target=_reiniciar, daemon=True).start()
 
         return jsonify({
@@ -678,6 +691,15 @@ def deploy_pull():
             [git, 'reset', '--hard', 'origin/main'],
             capture_output=True, text=True, cwd=project_dir, timeout=30
         )
+        # En PythonAnywhere, recargar la web app tocando el WSGI (como el
+        # boton Reload); sin esto el codigo nuevo no entra en funcionamiento.
+        if result.returncode == 0:
+            import glob as _glob
+            for w in _glob.glob('/var/www/*_wsgi.py'):
+                try:
+                    os.utime(w, None)
+                except Exception:
+                    pass
         return jsonify({
             'success': result.returncode == 0,
             'stdout': result.stdout.strip(),
