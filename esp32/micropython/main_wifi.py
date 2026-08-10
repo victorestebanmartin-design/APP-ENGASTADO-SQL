@@ -400,6 +400,12 @@ while True:
 
     # ── Pulsador de operario (pines 1-2): siguiente operario en ciclo ──
     b2 = btn_op.value()
+    if b2 != btn_op_prev:
+        # Test de cableado: cuadrado amarillo junto a la barra WiFi mientras
+        # el pulsador este apretado. Si al pulsar no aparece, la senal no
+        # llega al GPIO configurado en BTN_OP_PIN.
+        rect(226, Y_WIFI + 4, 10, 10, YELLOW if b2 == 0 else BLACK)
+        print("BTN_OP:", "pulsado" if b2 == 0 else "soltado")
     if en_work_mode and b2 == 0 and btn_op_prev == 1 and time.ticks_diff(now, btn_op_last) > 250:
         btn_op_last = now
         ultimo_avance = now
