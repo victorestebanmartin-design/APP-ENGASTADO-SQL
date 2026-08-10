@@ -373,12 +373,72 @@ def _esp32_device_id(raw):
     return re.sub(r'[^A-Za-z0-9]', '', str(raw or ''))[:32]
 
 
+ESP32_TTL_S = 3600           # los datos de un operario expiran a los 60 min
+ESP32_MAX_OPS = 8            # operarios simultaneos maximos por canal
+
+
+def _esp32_op_key(data):
+    """Clave del operario dentro del canal ('' si el push no trae operario)."""
+    return str(data.get('operario') or '').strip()[:24]
+
+
+def _esp32_ts_viva(ts_str):
+    from datetime import datetime as _dt, timezone
+    try:
+        ts = _dt.fromisoformat(ts_str or '2000-01-01')
+    except Exception:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (_dt.now(timezone.utc) - ts).total_seconds() <= ESP32_TTL_S
+
+
+def _esp32_load_ops(path):
+    """Lee un canal y devuelve su dict {operario: {'data':..., 'ts':...}}.
+
+    Soporta el formato antiguo de un solo escritor ({'data':..., 'ts':...}).
+    Descarta entradas expiradas o con 'clear'.
+    """
+    try:
+        with open(path) as f:
+            payload = json.load(f)
+    except Exception:
+        return {}
+    if isinstance(payload.get('ops'), dict):
+        ops = payload['ops']
+    elif isinstance(payload.get('data'), dict):
+        ops = {_esp32_op_key(payload['data']): {'data': payload['data'], 'ts': payload.get('ts', '')}}
+    else:
+        return {}
+    return {k: v for k, v in ops.items()
+            if isinstance(v, dict) and isinstance(v.get('data'), dict)
+            and not v['data'].get('clear') and _esp32_ts_viva(v.get('ts'))}
+
+
+def _esp32_write_channel(path, data, ts):
+    """Aplica un push (o clear) de UN operario sobre el canal, sin pisar al resto."""
+    ops = _esp32_load_ops(path)
+    op = _esp32_op_key(data)
+    if data.get('clear'):
+        ops.pop(op, None)
+    else:
+        ops[op] = {'data': data, 'ts': ts}
+        # Limite de seguridad: si hay demasiados, caen los mas antiguos
+        while len(ops) > ESP32_MAX_OPS:
+            ops.pop(min(ops, key=lambda k: ops[k].get('ts', '')))
+    with open(path, 'w') as f:
+        json.dump({'ops': ops}, f)
+
+
 @bp.route('/api/esp32/push', methods=['POST', 'OPTIONS'])
 def api_esp32_push():
     """Recibe datos de trabajo desde el navegador y los almacena para que el ESP32 los recoja.
 
     Si el payload trae 'carro', se escribe ademas en el canal de ese carro:
     las pantallas con CARRO_ASIGNADO solo leen su canal y no ven otros carros.
+    Cada operario ('operario' en el payload) tiene su propia entrada dentro del
+    canal: dos operarios trabajando el mismo carro no se pisan, y la pantalla
+    puede rotar entre ellos con su pulsador.
     """
     if request.method == 'OPTIONS':
         resp = current_app.make_response('')
@@ -389,12 +449,10 @@ def api_esp32_push():
     try:
         data = request.get_json(force=True) or {}
         from datetime import datetime
-        payload = {'data': data, 'ts': datetime.now().isoformat()}
-        with open(_esp32_file(), 'w') as f:
-            json.dump(payload, f)
+        ts = datetime.now().isoformat()
+        _esp32_write_channel(_esp32_file(), data, ts)
         if data.get('carro'):
-            with open(_esp32_file(data['carro']), 'w') as f:
-                json.dump(payload, f)
+            _esp32_write_channel(_esp32_file(data['carro']), data, ts)
         resp = current_app.make_response(jsonify({'ok': True}))
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
@@ -409,6 +467,10 @@ def api_esp32_current():
     Con ?id=<device_id> la pantalla queda registrada (aparece en Admin →
     Display Carro) y, si tiene carro asignado desde Admin, lee su canal.
     Con ?carro=X fuerza el canal de ese carro (config manual en la pantalla).
+
+    Respuesta: 'ops' es la lista de operarios activos del canal (ordenada por
+    nombre), cada uno con sus paquetes; 'data'/'ts' repiten el push mas
+    reciente por compatibilidad con firmware antiguo.
     """
     try:
         carro = request.args.get('carro')
@@ -423,21 +485,14 @@ def api_esp32_current():
             if dev.get('carro'):
                 carro = dev['carro']
 
-        push_file = _esp32_file(carro)
         extra = {'carro_asignado': carro or ''}
-        if not os.path.exists(push_file):
-            return jsonify({'data': None, **extra})
-        with open(push_file) as f:
-            payload = json.load(f)
-        # Expirar tras 60 minutos
-        from datetime import datetime as _dt, timezone
-        ts = _dt.fromisoformat(payload.get('ts', '2000-01-01'))
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        age = (_dt.now(timezone.utc) - ts).total_seconds()
-        if age > 3600:
-            return jsonify({'data': None, **extra})
-        return jsonify({'data': payload['data'], 'ts': payload['ts'], **extra})
+        ops_dict = _esp32_load_ops(_esp32_file(carro))
+        if not ops_dict:
+            return jsonify({'data': None, 'ops': [], **extra})
+        ops = [{'operario': k, 'data': v['data'], 'ts': v.get('ts', '')}
+               for k, v in sorted(ops_dict.items())]
+        ultimo = max(ops, key=lambda o: o['ts'])
+        return jsonify({'data': ultimo['data'], 'ts': ultimo['ts'], 'ops': ops, **extra})
     except Exception as e:
         return error_interno(e)
 

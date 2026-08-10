@@ -30,8 +30,54 @@ def test_clear_limpia_su_canal_y_el_global(client):
     client.post('/api/esp32/push', json={'carro': 'A2', 'paquetes': [{'etiqueta': 1, 'elem': 'E1'}]})
     client.post('/api/esp32/push', json={'clear': True, 'carro': 'A2'})
 
-    assert client.get('/api/esp32/current?carro=A2').get_json()['data'] == {'clear': True, 'carro': 'A2'}
-    assert client.get('/api/esp32/current').get_json()['data'] == {'clear': True, 'carro': 'A2'}
+    assert client.get('/api/esp32/current?carro=A2').get_json()['data'] is None
+    assert client.get('/api/esp32/current').get_json()['data'] is None
+
+
+def test_dos_operarios_mismo_carro_no_se_pisan(client):
+    # Dos operarios (dos PCs) trabajando el MISMO carro
+    client.post('/api/esp32/push', json={
+        'carro': '1', 'operario': 'VICTOR',
+        'paquetes': [{'etiqueta': 1, 'elem': 'V1'}]})
+    client.post('/api/esp32/push', json={
+        'carro': '1', 'operario': 'ANA',
+        'paquetes': [{'etiqueta': 2, 'elem': 'A1'}]})
+
+    d = client.get('/api/esp32/current?carro=1').get_json()
+    # El canal conserva a AMBOS, ordenados por nombre, cada uno con sus paquetes
+    ops = d['ops']
+    assert [o['operario'] for o in ops] == ['ANA', 'VICTOR']
+    assert ops[0]['data']['paquetes'][0]['elem'] == 'A1'
+    assert ops[1]['data']['paquetes'][0]['elem'] == 'V1'
+    # Compatibilidad con firmware antiguo: 'data' es el push mas reciente
+    assert d['data']['operario'] == 'ANA'
+
+    # Un re-push de VICTOR actualiza SU entrada sin tocar la de ANA
+    client.post('/api/esp32/push', json={
+        'carro': '1', 'operario': 'VICTOR',
+        'paquetes': [{'etiqueta': 3, 'elem': 'V2'}]})
+    ops = client.get('/api/esp32/current?carro=1').get_json()['ops']
+    assert [o['operario'] for o in ops] == ['ANA', 'VICTOR']
+    assert ops[1]['data']['paquetes'][0]['elem'] == 'V2'
+
+
+def test_clear_de_un_operario_deja_al_otro(client):
+    client.post('/api/esp32/push', json={
+        'carro': '1', 'operario': 'VICTOR', 'paquetes': [{'etiqueta': 1, 'elem': 'V1'}]})
+    client.post('/api/esp32/push', json={
+        'carro': '1', 'operario': 'ANA', 'paquetes': [{'etiqueta': 2, 'elem': 'A1'}]})
+
+    # VICTOR cierra su modal → clear con su nombre
+    client.post('/api/esp32/push', json={'clear': True, 'carro': '1', 'operario': 'VICTOR'})
+
+    d = client.get('/api/esp32/current?carro=1').get_json()
+    assert [o['operario'] for o in d['ops']] == ['ANA']
+    assert d['data']['operario'] == 'ANA'
+
+    # ANA tambien cierra → canal vacio
+    client.post('/api/esp32/push', json={'clear': True, 'carro': '1', 'operario': 'ANA'})
+    d = client.get('/api/esp32/current?carro=1').get_json()
+    assert d['data'] is None and d['ops'] == []
 
 
 def test_pantalla_se_registra_y_admin_le_asigna_carro(client, admin_client):

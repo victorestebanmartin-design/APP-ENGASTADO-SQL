@@ -57,7 +57,7 @@ window.addEventListener('beforeunload', function() {
         // porque un fetch normal se cancela al cerrar la pestaña)
         const carro = (typeof carrosDelBono !== 'undefined' && carrosDelBono[carroActualIndex]?.carro) || '';
         navigator.sendBeacon(`${_ESP32_PA}/api/esp32/push`,
-            new Blob([JSON.stringify({ clear: true, carro })], { type: 'application/json' }));
+            new Blob([JSON.stringify({ clear: true, carro, operario: operarioActual || '' })], { type: 'application/json' }));
     }
 });
 

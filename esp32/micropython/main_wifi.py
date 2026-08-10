@@ -9,6 +9,10 @@
 #     asignado (orden + codigo) y su lista de paquetes.
 #   - Muestra UN paquete a la vez, con la etiqueta bien grande, y va rotando
 #     automaticamente cada AUTO_ADVANCE_S segundos. NO hace falta cablear nada.
+#   - Si VARIOS operarios trabajan el mismo carro (cada uno desde su PC), la
+#     pantalla recibe la lista de todos: muestra el NOMBRE del operario debajo
+#     del carro y un contador "1/2" a la derecha. El pulsador entre los pines
+#     1 y 2 (BTN_OP) salta a los paquetes del siguiente operario, en ciclo.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
 #     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
 #     el pin queda en pull-up interno y no afecta en nada.
@@ -54,6 +58,13 @@ SPI_BAUD   = 20_000_000
 # Pines OCUPADOS por el display: 4, 7, 12, 13, 14, 21. Evita tambien los de
 # strapping del S3 (0, 3, 45, 46).
 BUTTON_PIN = 5
+
+# Pulsador de CAMBIO DE OPERARIO: cableado entre los pines 1 y 2 (sin GND).
+# El pin 2 se pone como salida a nivel bajo y hace de GND; el pin 1 lee con
+# pull-up interno (pulsado = 0). Cada pulsacion muestra los paquetes del
+# siguiente operario que este trabajando este carro, en ciclo.
+BTN_OP_PIN = 1
+BTN_OP_GND = 2
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────
@@ -135,8 +146,8 @@ BLACK=0x0000; WHITE=0xFFFF; YELLOW=0xFFE0; ORANGE=0xFD20
 GREEN=0x07E0; RED=0xF800; DGRAY=0x4208; LGRAY=0x8410
 
 # ── Layout ────────────────────────────────────────────────────────────────────
-Y_CARRO=6; Y_ORDEN=38; Y_SEP1=60
-PKG_Y0=66; PKG_ETIQ=78; PKG_TAG=170; PKG_ELEM=196; PKG_COD=218; PKG_Y1=250
+Y_CARRO=4; Y_OPER=30; Y_ORDEN=50; Y_SEP1=68
+PKG_Y0=72; PKG_ETIQ=82; PKG_TAG=170; PKG_ELEM=196; PKG_COD=218; PKG_Y1=250
 Y_SEP2=252; Y_FOOT=260; Y_WIFI=296
 
 wifi_ip = ""
@@ -172,18 +183,28 @@ def draw_idle(msg=None):
     draw_wifi_bar()
 
 # ── Estado de trabajo ─────────────────────────────────────────────────────────
-work_pkgs  = []    # lista de paquetes del carro actual
+work_ops   = []    # operarios activos en el carro: [{'operario':.., 'data':..}, ..]
+op_idx     = 0     # operario mostrado (el pulsador BTN_OP rota entre ellos)
+work_pkgs  = []    # lista de paquetes del operario mostrado
 work_idx   = 0     # paquete mostrado
 work_fp    = ""    # huella del contenido (para ignorar re-pushes identicos)
 
-def draw_work_header(d):
-    """Cabecera fija del carro: se dibuja una sola vez por carro nuevo."""
+def draw_work_header(d, operario='', oi=0, on=1):
+    """Cabecera fija del carro + operario: se redibuja al cambiar carro/operario."""
     carro = str(d.get('carro', ''))[:8]
     orden = str(d.get('orden', '') or d.get('bono', ''))[:13]
     rect(0, 0, 240, PKG_Y0, BLACK)
     rect(0, Y_SEP2, 240, 320-Y_SEP2, BLACK)
     text(4, Y_CARRO, 'CARRO ' + carro, WHITE,  BLACK, scale=3)
-    text(4, Y_ORDEN, orden,            YELLOW, BLACK, scale=2)
+    # Nombre del operario que esta engastando, debajo del carro
+    op = str(operario or '')[:10]
+    if op:
+        text(4, Y_OPER, op, GREEN, BLACK, scale=2)
+    if on > 1:
+        # Contador de operarios "1/2" a la derecha: hay mas, rota con BTN_OP
+        s = "%d/%d" % (oi + 1, on)
+        text(240 - len(s)*18 - 4, Y_OPER, s, LGRAY, BLACK, scale=2)
+    text(4, Y_ORDEN, orden, YELLOW, BLACK, scale=2)
     hline(0, Y_SEP1, 240, DGRAY)
     hline(0, Y_SEP2, 240, DGRAY)
     draw_wifi_bar()
@@ -224,10 +245,48 @@ def next_package():
     work_idx = (work_idx + 1) % len(work_pkgs)
     draw_package()
 
-def _fingerprint(d):
+def mostrar_operario():
+    """Carga los paquetes del operario op_idx y redibuja cabecera + paquete."""
+    global work_pkgs, work_idx
+    o = work_ops[op_idx]
+    d = o.get('data') or {}
+    work_pkgs = d.get('paquetes', [])[:40]
+    if work_idx >= len(work_pkgs):
+        work_idx = 0
+    draw_work_header(d, o.get('operario', ''), op_idx, len(work_ops))
+    draw_package()
+
+def next_operario():
+    """Pulsador BTN_OP: salta a los paquetes del siguiente operario, en ciclo."""
+    global op_idx, work_idx
+    if len(work_ops) < 2: return
+    op_idx = (op_idx + 1) % len(work_ops)
+    work_idx = 0
+    mostrar_operario()
+
+def _fp_op(o):
+    d = o.get('data') or {}
     pkgs = d.get('paquetes', [])
-    return "%s|%s|%s" % (d.get('carro'), d.get('orden'),
-                         ",".join(str(p.get('etiqueta')) + str(p.get('elem')) for p in pkgs))
+    return "%s|%s|%s|%s" % (o.get('operario', ''), d.get('carro'), d.get('orden'),
+                            ",".join(str(p.get('etiqueta')) + str(p.get('elem')) + ('B' if p.get('bloqueado') else '') for p in pkgs))
+
+def _fingerprint(ops):
+    return "||".join(_fp_op(o) for o in ops)
+
+def _parse_ops(d):
+    """Lista de operarios activos de la respuesta del servidor.
+
+    Formato nuevo: d['ops'] = [{'operario':.., 'data':..}, ..]. Si el servidor
+    fuera antiguo y no mandara 'ops', se cae al campo unico d['data'].
+    """
+    ops = d.get('ops')
+    if ops is None:
+        wdata = d.get('data')
+        if wdata and not wdata.get('clear'):
+            ops = [{'operario': wdata.get('operario') or '', 'data': wdata}]
+        else:
+            ops = []
+    return [o for o in ops if o.get('data') and not o['data'].get('clear')][:8]
 
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
@@ -306,6 +365,10 @@ def draw_estado(msg, color=LGRAY):
 # ── Arranque ──────────────────────────────────────────────────────────────────
 btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 
+# Pulsador de cambio de operario: pin 2 a nivel bajo hace de GND, pin 1 lee
+Pin(BTN_OP_GND, Pin.OUT, value=0)
+btn_op = Pin(BTN_OP_PIN, Pin.IN, Pin.PULL_UP)
+
 draw_idle("Conectando WiFi...")
 import network, socket
 conectado = conectar_wifi()
@@ -314,10 +377,11 @@ draw_idle()  # refresca con la barra WiFi actualizada
 MAX_INTENTOS_WIFI = 10   # tras estos intentos seguidos sin WiFi, reset completo de la placa
 
 ultimo_poll  = time.ticks_ms() - POLL_INTERVAL * 1000  # forzar poll inmediato
-ultimo_ts    = ""     # timestamp del último push procesado
 en_work_mode = False
 btn_prev     = 1
 btn_last_ms  = 0
+btn_op_prev  = 1
+btn_op_last  = 0
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 intentos_wifi = 0
 
@@ -333,6 +397,14 @@ while True:
         ultimo_avance = now
         next_package()
     btn_prev = b
+
+    # ── Pulsador de operario (pines 1-2): siguiente operario en ciclo ──
+    b2 = btn_op.value()
+    if en_work_mode and b2 == 0 and btn_op_prev == 1 and time.ticks_diff(now, btn_op_last) > 250:
+        btn_op_last = now
+        ultimo_avance = now
+        next_operario()
+    btn_op_prev = b2
 
     # ── Rotacion automatica de paquetes (sin boton) ───────────────────
     if en_work_mode and len(work_pkgs) > 1 and time.ticks_diff(now, ultimo_avance) >= AUTO_ADVANCE_S * 1000:
@@ -388,27 +460,35 @@ while True:
                     mi_carro = ca
                     if not en_work_mode:
                         draw_idle()
-                wdata = d.get('data')
-                if wdata and not wdata.get('clear') and d.get('ts') != ultimo_ts:
-                    ultimo_ts = d['ts']
-                    fp = _fingerprint(wdata)
-                    if fp != work_fp:
-                        # Carro/lista nuevos → cabecera + primer paquete
-                        work_fp   = fp
-                        work_pkgs = wdata.get('paquetes', [])[:40]
-                        work_idx  = 0
+                ops = _parse_ops(d)
+                fp = _fingerprint(ops)
+                if not ops:
+                    if en_work_mode:
+                        # Datos expirados o "clear" de todos → volver a reposo
+                        en_work_mode = False
+                        work_fp = ""; work_ops = []; work_pkgs = []; op_idx = 0
+                        draw_idle()
+                elif fp != work_fp:
+                    # Contenido nuevo. Si el operario mostrado sigue activo se
+                    # mantiene seleccionado (y su paquete, si su lista no cambio).
+                    prev = work_ops[op_idx] if (en_work_mode and op_idx < len(work_ops)) else None
+                    work_fp  = fp
+                    work_ops = ops
+                    op_idx   = 0
+                    if prev:
+                        for i, o in enumerate(work_ops):
+                            if o.get('operario') == prev.get('operario'):
+                                op_idx = i
+                                break
+                        if _fp_op(work_ops[op_idx]) != _fp_op(prev):
+                            work_idx = 0
+                            ultimo_avance = now
+                    else:
+                        work_idx = 0
                         ultimo_avance = now
-                        en_work_mode = True
-                        draw_work_header(wdata)
-                        draw_package()
-                        print("work OK carro", wdata.get('carro'), "pkgs", len(work_pkgs))
-                elif (not wdata or wdata.get('clear')) and en_work_mode:
-                    # Datos expirados o "clear" → volver a reposo
-                    en_work_mode = False
-                    ultimo_ts = ""
-                    work_fp = ""
-                    work_pkgs = []
-                    draw_idle()
+                    en_work_mode = True
+                    mostrar_operario()
+                    print("work OK ops", len(work_ops), "op", work_ops[op_idx].get('operario'))
             except Exception as ex:
                 print("JSON err:", ex)
 

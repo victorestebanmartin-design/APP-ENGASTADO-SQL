@@ -100,6 +100,7 @@ async function mostrarModalPaquetes(carro) {
         bono:  bonoActual?.nombre  || '',
         carro: carro.carro         || '',
         orden: carro.proyecto_nombre || '',
+        operario: operarioActual   || '',
         paquetes: paquetesOrdenados.slice(0, 40).map(p => ({
             etiqueta: p.numeroEtiqueta ?? null,
             cod:  p.cod_cable  || '',
@@ -494,7 +495,7 @@ function cerrarImagenTerminal() {
 
 async function cancelarModalPaquetes() {
     // Volver al reposo la pantalla ESP32 (limpiar pantalla de trabajo)
-    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '' });
+    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '', operario: operarioActual || '' });
     // Detener auto-refresh de bloqueos
     if (window._bloqueoInterval) {
         clearInterval(window._bloqueoInterval);

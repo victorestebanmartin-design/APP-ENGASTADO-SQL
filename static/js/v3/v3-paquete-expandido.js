@@ -390,7 +390,7 @@ async function paqueteCompletado() {
     }
 
     // Carro terminado (completo o parcial): limpiar su pantalla ESP32
-    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '' });
+    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '', operario: operarioActual || '' });
 
     setTimeout(() => {
         document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
