@@ -21,6 +21,11 @@
 #         recupera a todos los operarios que se hubieran llevado sus paquetes.
 #   - Los paquetes bloqueados salen en gris con "BLOQUEADO" y debajo el
 #     puesto/maquina que los esta trabajando.
+#   - ZUMBADOR opcional en el pad 3 de la extensora (GPIO18, ver BUZZER_PIN):
+#     pip de arranque, pip al cambiar de operario, pip-pip al ENTREGADO,
+#     piiip al RECUPERADO, melodia cuando llegan paquetes estando en reposo
+#     y tic corto cuando se actualiza el contenido. Sin zumbador soldado no
+#     afecta en nada.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
 #     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
 #     el pin queda en pull-up interno y no afecta en nada.
@@ -78,6 +83,13 @@ BTN_OP_PIN = 17
 # Solo si el pulsador NO va a un GND real: pon aqui un GPIO libre y ese pin
 # se pondra como salida a nivel bajo para hacer de GND. Con None no se toca.
 BTN_OP_GND = None
+
+# Zumbador: patilla + al pad 3 de la extensora (GPIO18), patilla - a GND.
+# None = sin zumbador (todo funciona igual, en silencio).
+BUZZER_PIN = 18
+# False = zumbador ACTIVO de 3.3V (suena solo al dar tension, lo normal).
+# True  = piezo PASIVO: el tono se genera por PWM (pitidos con distinta nota).
+BUZZER_PASIVO = False
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────
@@ -157,6 +169,44 @@ def text_center(y, s, fg, bg, scale=1):
 
 BLACK=0x0000; WHITE=0xFFFF; YELLOW=0xFFE0; ORANGE=0xFD20
 GREEN=0x07E0; RED=0xF800; DGRAY=0x4208; LGRAY=0x8410
+
+# ── Zumbador ──────────────────────────────────────────────────────────────────
+_bz = None
+if BUZZER_PIN is not None:
+    try:
+        if BUZZER_PASIVO:
+            from machine import PWM
+            _bz = PWM(Pin(BUZZER_PIN), freq=2400, duty_u16=0)
+        else:
+            _bz = Pin(BUZZER_PIN, Pin.OUT, value=0)
+    except Exception as e:
+        print("Buzzer no disponible:", e)
+
+def beep(ms=60, freq=2400):
+    """Un pitido bloqueante de ms milisegundos. Sin zumbador no hace nada."""
+    if _bz is None: return
+    try:
+        if BUZZER_PASIVO:
+            _bz.freq(freq); _bz.duty_u16(32768)
+            time.sleep_ms(ms)
+            _bz.duty_u16(0)
+        else:
+            _bz(1); time.sleep_ms(ms); _bz(0)
+    except Exception:
+        pass
+
+def beeps(patron):
+    """patron: lista de (ms_sonando, ms_silencio[, frecuencia])."""
+    for p in patron:
+        beep(p[0], p[2] if len(p) > 2 else 2400)
+        if p[1]: time.sleep_ms(p[1])
+
+# El "idioma" de la pantalla: cada evento tiene su sonido reconocible
+def bip_cambio():     beeps([(40, 0)])                                        # pip: otro operario
+def bip_entregado():  beeps([(80, 80), (80, 0)])                              # pip-pip: me los llevo
+def bip_recuperado(): beeps([(300, 0, 1800)])                                 # piiip grave: deshecho
+def bip_nuevos():     beeps([(60, 60, 2000), (60, 60, 2400), (100, 0, 2900)]) # melodia: paquetes nuevos
+def bip_update():     beeps([(25, 0)])                                        # tic: contenido actualizado
 
 # ── Layout ────────────────────────────────────────────────────────────────────
 Y_CARRO=4; Y_OPER=30; Y_ORDEN=50; Y_SEP1=68
@@ -283,6 +333,7 @@ def next_operario():
     op_idx = (op_idx + 1) % len(work_ops)
     work_idx = 0
     mostrar_operario()
+    bip_cambio()
 
 # Operarios que "se llevaron" sus paquetes (pulsacion larga): nombre -> huella
 # de la lista que se llevaron. Mientras su contenido no cambie no se muestran;
@@ -302,7 +353,8 @@ def llevar_operario():
     text_center(140, "ENTREGADO", GREEN, BLACK, scale=3)
     if nombre:
         text_center(180, nombre[:13], WHITE, BLACK, scale=2)
-    time.sleep_ms(800)
+    bip_entregado()
+    time.sleep_ms(600)
     work_fp = _fingerprint(work_ops)
     work_idx = 0
     if work_ops:
@@ -328,7 +380,8 @@ def recuperar_operarios():
     ultimo_poll = time.ticks_ms() - POLL_INTERVAL * 1000  # poll inmediato
     rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
     text_center(150, "RECUPERADO", YELLOW, BLACK, scale=2)
-    time.sleep_ms(600)
+    bip_recuperado()
+    time.sleep_ms(400)
 
 def _filtrar_ocultos(ops):
     """Quita de la lista a los operarios ocultos (se llevaron sus paquetes)
@@ -456,6 +509,8 @@ btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 if BTN_OP_GND is not None:
     Pin(BTN_OP_GND, Pin.OUT, value=0)
 btn_op = Pin(BTN_OP_PIN, Pin.IN, Pin.PULL_UP)
+
+beep(60)   # pip de arranque: confirma que el zumbador esta vivo tras flashear
 
 draw_idle("Conectando WiFi...")
 import network, socket
@@ -610,6 +665,12 @@ while True:
                         ultimo_avance = now
                     en_work_mode = True
                     mostrar_operario()
+                    # Aviso sonoro: melodia si llegan paquetes estando en reposo,
+                    # tic corto si solo se actualiza el contenido en trabajo
+                    if prev is None:
+                        bip_nuevos()
+                    else:
+                        bip_update()
                     print("work OK ops", len(work_ops), "op", work_ops[op_idx].get('operario'))
             except Exception as ex:
                 print("JSON err:", ex)
