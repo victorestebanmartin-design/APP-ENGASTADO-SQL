@@ -1,28 +1,55 @@
-# main_wifi.py — Panel COJOsw vía WiFi (sin cable USB)
+# main_wifi.py — Pantalla de carro COJOsw vía WiFi (gen4-ESP32-24, ILI9341 240x320)
 # Subir con: mpremote connect COM5 cp esp32\micropython\main_wifi.py :main.py + reset
 #
 # ANTES DE SUBIR: ajusta SSID, PASSWORD y HOST_IP abajo.
-# Activa el hotspot móvil del PC: Configuración → Sistema → Hotspot móvil
-# El PC tendrá la IP 192.168.137.1 por defecto con hotspot Windows.
+#
+# Modo de uso:
+#   - En reposo muestra "Esperando carro..." con el estado WiFi.
+#   - Al abrir el modal de paquetes en el navegador, el ESP32 recibe el carro
+#     asignado (orden + codigo) y su lista de paquetes.
+#   - Muestra UN paquete a la vez, con la etiqueta bien grande.
+#   - El boton fisico (BUTTON_PIN -> GND) pasa al siguiente paquete.
+#
+# Rendimiento: SPI por hardware (20 MHz) en vez de SoftSPI (~500 kHz bit-bang).
+# Un clear de pantalla completa pasa de varios segundos a ~60 ms, y el texto se
+# renderiza por filas en vez de pixel a pixel. Si el SPI hardware fallara en tu
+# placa, pon USE_HW_SPI = False para volver al modo lento pero seguro.
 
 import time
 import json
-from machine import SoftSPI, Pin
+from machine import SPI, SoftSPI, Pin
 import framebuf
-# network y socket se importan tarde, tras el primer draw, para no ralentizar SoftSPI
+# network y socket se importan tarde, tras el primer draw
 
-# ── CONFIG WIFI ───────────────────────────────────────────────────────────────
+# ── CONFIG ────────────────────────────────────────────────────────────────────
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
 HOST_IP  = "viktor85.pythonanywhere.com"
 PORT     = 80
-INTERVAL = 30          # segundos entre polls de stats generales
-PUSH_INTERVAL = 3      # segundos entre polls de pantalla de trabajo
+POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
+
+USE_HW_SPI = True      # False = SoftSPI lento (solo si el HW SPI diera problemas)
+SPI_BAUD   = 20_000_000
+
+# Boton: entre BUTTON_PIN y GND (pull-up interno, pulsado = 0).
+# Pines OCUPADOS por el display: 4, 7, 12, 13, 14, 21. Evita tambien los de
+# strapping del S3 (0, 3, 45, 46). Cualquier otro GPIO libre del conector vale.
+BUTTON_PIN = 5
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────
-Pin(4, Pin.OUT, value=1)
-spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+Pin(4, Pin.OUT, value=1)   # backlight ON
+
+if USE_HW_SPI:
+    try:
+        # ESP32-S3: cualquier pin es ruteable al SPI hardware via GPIO matrix
+        spi = SPI(1, baudrate=SPI_BAUD, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+    except Exception as e:
+        print("HW SPI fallo, uso SoftSPI:", e)
+        spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+else:
+    spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+
 dc  = Pin(21, Pin.OUT, value=0)
 rst = Pin(7,  Pin.OUT, value=1)
 
@@ -47,101 +74,131 @@ def _window(x0, y0, x1, y1):
 def rect(x, y, w, h, color):
     _window(x, y, x+w-1, y+h-1)
     hi, lo = color>>8, color&0xFF
-    chunk = bytes([hi, lo]*64); dc(1)
+    chunk = bytes([hi, lo]*256); dc(1)
     n = w*h
-    while n >= 64: spi.write(chunk); n -= 64
+    while n >= 256: spi.write(chunk); n -= 256
     if n: spi.write(bytes([hi, lo]*n))
 
 def hline(x, y, w, color): rect(x, y, w, 1, color)
 
+# ── Texto escalado, renderizado por filas (rapido) ────────────────────────────
+_glyph = bytearray(8)
+_gfb   = framebuf.FrameBuffer(_glyph, 8, 8, framebuf.MONO_VLSB)
+
 def char_big(x, y, ch, fg, bg, scale):
-    buf = bytearray(8)
-    fb  = framebuf.FrameBuffer(buf, 8, 8, framebuf.MONO_VLSB)
-    fb.fill(0); fb.text(ch, 0, 0, 1)
-    cw = 8*scale; ch_h = 8*scale
-    pixels = bytearray(cw*ch_h*2)
-    fh, fl = fg>>8, fg&0xFF; bh, bl = bg>>8, bg&0xFF
-    for row in range(8):
-        for col in range(8):
-            on = (buf[col] >> row) & 1
-            hi = fh if on else bh; lo = fl if on else bl
-            for sy in range(scale):
-                for sx in range(scale):
-                    idx = ((row*scale+sy)*cw + col*scale+sx)*2
-                    pixels[idx]=hi; pixels[idx+1]=lo
-    _window(x, y, x+cw-1, y+ch_h-1); dc(1); spi.write(pixels)
+    _gfb.fill(0); _gfb.text(ch, 0, 0, 1)
+    cw = 8*scale
+    _window(x, y, x+cw-1, y+cw-1)
+    dc(1)
+    fpx = bytes([fg>>8, fg&0xFF])*scale
+    bpx = bytes([bg>>8, bg&0xFF])*scale
+    row = bytearray(cw*2)
+    s2 = scale*2
+    for r in range(8):
+        mask = 1 << r
+        pos = 0
+        for c in range(8):
+            row[pos:pos+s2] = fpx if _glyph[c] & mask else bpx
+            pos += s2
+        for _ in range(scale):
+            spi.write(row)
     return cw
 
 def text(x, y, s, fg, bg, scale=1):
     for ch in s:
         x += char_big(x, y, ch, fg, bg, scale) + scale
 
+def text_center(y, s, fg, bg, scale=1):
+    w = len(s)*9*scale - scale
+    text(max(0, (240 - w)//2), y, s, fg, bg, scale)
+
 BLACK=0x0000; WHITE=0xFFFF; YELLOW=0xFFE0; ORANGE=0xFD20
 GREEN=0x07E0; RED=0xF800; DGRAY=0x4208; LGRAY=0x8410
 
-Y_TITLE=6; Y_DATE=36; Y_SEP1=54; Y_ROW1=68; Y_ROW2=132; Y_ROW3=196
-Y_SEP2=254; Y_STATUS=262; Y_WIFI=282
-wifi_ip = ""  # IP asignada al conectar
+# ── Layout ────────────────────────────────────────────────────────────────────
+Y_CARRO=6; Y_ORDEN=38; Y_SEP1=60
+PKG_Y0=66; PKG_ETIQ=78; PKG_TAG=170; PKG_ELEM=196; PKG_COD=218; PKG_Y1=250
+Y_SEP2=252; Y_FOOT=260; Y_WIFI=296
 
-def draw_panel():
-    rect(0,0,240,320,BLACK)
-    text(4,Y_TITLE,"ENGASTADO",WHITE,BLACK,scale=2)
-    hline(0,Y_SEP1,240,DGRAY); hline(0,Y_SEP2,240,DGRAY)
-    text(4,Y_ROW1+6,"PENDIENTES",YELLOW,BLACK,scale=2)
-    text(4,Y_ROW2+6,"EN PROCESO",ORANGE,BLACK,scale=2)
-    text(4,Y_ROW3+6,"TERMINADAS",GREEN,BLACK,scale=2)
-
-def draw_num(y, color, val):
-    s = "--" if val < 0 else str(val)
-    rect(155, y, 82, 42, BLACK)
-    x = 234 - len(s)*27
-    text(x, y+4, s, color, BLACK, scale=3)
-
-def draw_datetime(fecha, hora):
-    rect(0,Y_DATE,240,17,BLACK); text(4,Y_DATE,fecha+"  "+hora,LGRAY,BLACK,scale=1)
-
-def draw_status(msg, color):
-    rect(0,Y_STATUS,240,17,BLACK); text(4,Y_STATUS,msg,color,BLACK,scale=1)
+wifi_ip = ""
 
 def draw_wifi_bar():
-    """Barra inferior con indicador visual de conexión WiFi."""
     rect(0, Y_WIFI, 240, 20, BLACK)
     if wifi_ip:
-        rect(4, Y_WIFI+4, 8, 8, GREEN)          # punto verde = conectado
+        rect(4, Y_WIFI+4, 8, 8, GREEN)
         text(16, Y_WIFI+2, "WiFi "+wifi_ip, GREEN, BLACK, scale=1)
     else:
-        rect(4, Y_WIFI+4, 8, 8, RED)            # punto rojo = sin WiFi
+        rect(4, Y_WIFI+4, 8, 8, RED)
         text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
-def draw_work_screen(d):
-    """Pantalla de trabajo: cabecera con Carro + Orden y en el centro los paquetes."""
-    carro = str(d.get('carro', ''))[:8]
-    orden = str(d.get('orden', '') or d.get('bono', ''))[:18]
-    pkgs  = d.get('paquetes', [])[:5]
-
-    # Borrar todo el area util (desde titulo hasta separador inferior)
-    rect(0, Y_TITLE, 240, Y_SEP2 - Y_TITLE, BLACK)
-
-    # ── Cabecera ────────────────────────────────────────────────
-    text(4, Y_TITLE, 'CARRO ' + carro, WHITE, BLACK, scale=2)
-    text(4, Y_DATE,  orden,            YELLOW, BLACK, scale=1)
-    hline(0, Y_SEP1, 240, DGRAY)
-
-    # ── Paquetes (centro): etiqueta grande + elemento ───────────
-    y = Y_ROW1
-    if not pkgs:
-        text(4, y, 'Sin paquetes', LGRAY, BLACK, scale=1)
-    for p in pkgs:
-        etiq  = str(p.get('etiqueta') if p.get('etiqueta') not in (None, '') else '-')[:4]
-        elem  = str(p.get('elem') or p.get('cod') or '')[:16]
-        color = LGRAY if p.get('bloqueado') else WHITE
-        # numero de etiqueta a escala 2 (grande) + elemento a escala 1 debajo
-        text(4, y, '#' + etiq, ORANGE if not p.get('bloqueado') else LGRAY, BLACK, scale=2)
-        text(4, y + 18, elem, color, BLACK, scale=1)
-        y += 36
-
+def draw_idle(msg="Esperando carro..."):
+    """Pantalla de reposo: sin contadores, solo identidad y estado."""
+    rect(0, 0, 240, 320, BLACK)
+    text_center(60,  "COJOsw",    WHITE,  BLACK, scale=4)
+    text_center(110, "ENGASTADO", ORANGE, BLACK, scale=2)
+    hline(20, 150, 200, DGRAY)
+    text_center(170, msg, LGRAY, BLACK, scale=1)
     draw_wifi_bar()
-    print("work OK carro", carro, "pkgs", len(pkgs))
+
+# ── Estado de trabajo ─────────────────────────────────────────────────────────
+work_pkgs  = []    # lista de paquetes del carro actual
+work_idx   = 0     # paquete mostrado
+work_fp    = ""    # huella del contenido (para ignorar re-pushes identicos)
+
+def draw_work_header(d):
+    """Cabecera fija del carro: se dibuja una sola vez por carro nuevo."""
+    carro = str(d.get('carro', ''))[:8]
+    orden = str(d.get('orden', '') or d.get('bono', ''))[:13]
+    rect(0, 0, 240, PKG_Y0, BLACK)
+    rect(0, Y_SEP2, 240, 320-Y_SEP2, BLACK)
+    text(4, Y_CARRO, 'CARRO ' + carro, WHITE,  BLACK, scale=3)
+    text(4, Y_ORDEN, orden,            YELLOW, BLACK, scale=2)
+    hline(0, Y_SEP1, 240, DGRAY)
+    hline(0, Y_SEP2, 240, DGRAY)
+    text(150, Y_FOOT+18, "BOTON = SIG.", DGRAY, BLACK, scale=1)
+    draw_wifi_bar()
+
+def draw_progress():
+    rect(0, Y_FOOT, 240, 18, BLACK)
+    text(4, Y_FOOT, "%d/%d" % (work_idx+1, len(work_pkgs)), LGRAY, BLACK, scale=2)
+    text(150, Y_FOOT+18, "BOTON = SIG.", DGRAY, BLACK, scale=1)
+
+def draw_package():
+    """Dibuja SOLO la zona central con el paquete actual (redibujado parcial)."""
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    if not work_pkgs:
+        text_center(140, "Sin paquetes", LGRAY, BLACK, scale=2)
+        rect(0, Y_FOOT, 240, 18, BLACK)
+        return
+    p = work_pkgs[work_idx]
+    etiq = str(p.get('etiqueta') if p.get('etiqueta') not in (None, '') else '-')[:4]
+    elem = str(p.get('elem') or '')[:13]
+    cod  = str(p.get('cod')  or '')[:13]
+    bloq = bool(p.get('bloqueado'))
+
+    # Etiqueta gigante, auto-escalada al ancho (1-2 chars → x10, 3 → x8, 4 → x6)
+    s = max(2, min(10, 232 // (9*len(etiq))))
+    y = PKG_ETIQ + (80 - 8*s)//2
+    color = LGRAY if bloq else ORANGE
+    text_center(y, etiq, color, BLACK, scale=s)
+
+    if bloq:
+        text_center(PKG_TAG, "BLOQUEADO", RED, BLACK, scale=2)
+    text_center(PKG_ELEM, elem, WHITE, BLACK, scale=2)
+    if cod and cod != elem:
+        text_center(PKG_COD, cod, LGRAY, BLACK, scale=2)
+    draw_progress()
+
+def next_package():
+    global work_idx
+    if not work_pkgs: return
+    work_idx = (work_idx + 1) % len(work_pkgs)
+    draw_package()
+
+def _fingerprint(d):
+    pkgs = d.get('paquetes', [])
+    return "%s|%s|%s" % (d.get('carro'), d.get('orden'),
+                         ",".join(str(p.get('etiqueta')) + str(p.get('elem')) for p in pkgs))
 
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
@@ -151,7 +208,6 @@ def http_get(host, port, path):
         s = socket.socket()
         s.settimeout(8)
         s.connect(addr)
-        # Incluir IP propia para que Flask la registre
         req = f"GET {path}?esp32_ip={wifi_ip} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
         s.send(req.encode())
         resp = b""
@@ -160,45 +216,12 @@ def http_get(host, port, path):
             if not chunk: break
             resp += chunk
         s.close()
-        # Separar header y body
         idx = resp.find(b"\r\n\r\n")
         if idx < 0: return None
         return resp[idx+4:].decode('utf-8', 'ignore')
     except Exception as e:
         print("HTTP error:", e)
         return None
-
-# ── Servidor HTTP para recibir push del modal (browser → ESP32) ───────────────
-def _start_push_server(port=80):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('0.0.0.0', port))
-    s.listen(2)
-    s.setblocking(False)
-    return s
-
-def _check_push(srv):
-    """Non-blocking: acepta una conexion HTTP y devuelve el JSON body o None."""
-    try:
-        conn, _ = srv.accept()
-        conn.settimeout(2)
-        req = b''
-        try:
-            while True:
-                d = conn.recv(512)
-                if not d: break
-                req += d
-                if len(req) > 4096: break
-        except: pass
-        conn.send(b'HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\n\r\n{"ok":true}')
-        conn.close()
-        idx = req.find(b'\r\n\r\n')
-        if idx >= 0:
-            body = req[idx+4:]
-            if body:
-                return json.loads(body)
-    except: pass
-    return None
 
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def conectar_wifi():
@@ -217,82 +240,65 @@ def conectar_wifi():
         wifi_ip = ""
         return False
 
-# ── Arranque: panel primero, WiFi en segundo plano ──────────────────────
-draw_panel()
-draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
-draw_datetime("--/--","--:--")
-draw_status("Conectando WiFi...",LGRAY)
-draw_wifi_bar()
-# Importar network DESPUÉS del primer draw para no ralentizar SoftSPI
-import network, socket
-conectado = conectar_wifi()   # WiFi DESPUES de dibujar el panel
-draw_wifi_bar()               # actualizar indicador con IP o error
-draw_status("OK" if conectado else "Sin WiFi", GREEN if conectado else RED)
+# ── Arranque ──────────────────────────────────────────────────────────────────
+btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 
-vp=ve=vt=-1
-ultimo_ok    = 0
-ultimo_poll  = time.ticks_ms() - INTERVAL * 1000  # forzar stats inmediato
-ultimo_push  = time.ticks_ms()                      # esperar 3s antes de 1er push poll
-ultimo_ts    = ""   # timestamp del último push procesado
-en_work_mode = False  # True mientras la pantalla de trabajo está activa
+draw_idle("Conectando WiFi...")
+import network, socket
+conectado = conectar_wifi()
+draw_idle()  # refresca con la barra WiFi actualizada
+
+ultimo_poll  = time.ticks_ms() - POLL_INTERVAL * 1000  # forzar poll inmediato
+ultimo_ts    = ""     # timestamp del último push procesado
+en_work_mode = False
+btn_prev     = 1
+btn_last_ms  = 0
 
 while True:
-    # ── Poll rápido: pantalla de trabajo vía PA (cada 3s) ─────────────
-    if time.ticks_diff(time.ticks_ms(), ultimo_push) >= PUSH_INTERVAL * 1000:
-        ultimo_push = time.ticks_ms()
+    now = time.ticks_ms()
+
+    # ── Boton: flanco de bajada con debounce de 200ms ─────────────────
+    b = btn.value()
+    if en_work_mode and b == 0 and btn_prev == 1 and time.ticks_diff(now, btn_last_ms) > 200:
+        btn_last_ms = now
+        next_package()
+    btn_prev = b
+
+    # ── Reconexion WiFi ───────────────────────────────────────────────
+    if not conectado and time.ticks_diff(now, ultimo_poll) >= 5000:
+        ultimo_poll = now
+        conectado = conectar_wifi()
+        if not en_work_mode:
+            draw_idle()
+
+    # ── Poll de trabajo (cada 3s) ─────────────────────────────────────
+    elif conectado and time.ticks_diff(now, ultimo_poll) >= POLL_INTERVAL * 1000:
+        ultimo_poll = now
         body = http_get(HOST_IP, PORT, "/api/esp32/current")
         if body:
             try:
                 d = json.loads(body)
                 wdata = d.get('data')
                 if wdata and not wdata.get('clear') and d.get('ts') != ultimo_ts:
-                    # Nuevo dato de trabajo → mostrar pantalla de trabajo
                     ultimo_ts = d['ts']
-                    en_work_mode = True
-                    draw_work_screen(wdata)
-                    ultimo_ok = time.ticks_ms()
+                    fp = _fingerprint(wdata)
+                    if fp != work_fp:
+                        # Carro/lista nuevos → cabecera + primer paquete
+                        work_fp   = fp
+                        work_pkgs = wdata.get('paquetes', [])[:40]
+                        work_idx  = 0
+                        en_work_mode = True
+                        draw_work_header(wdata)
+                        draw_package()
+                        print("work OK carro", wdata.get('carro'), "pkgs", len(work_pkgs))
                 elif (not wdata or wdata.get('clear')) and en_work_mode:
-                    # Datos expirados o "clear" → volver al panel
+                    # Datos expirados o "clear" → volver a reposo
                     en_work_mode = False
                     ultimo_ts = ""
-                    draw_panel()
-                    draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
-            except: pass
-
-    # ── Poll periódico: stats generales (cada 30s) ────────────────────
-    if not conectado:
-        time.sleep(5)
-        conectado = conectar_wifi()
-        if conectado:
-            draw_panel()
-            draw_num(Y_ROW1,YELLOW,-1); draw_num(Y_ROW2,ORANGE,-1); draw_num(Y_ROW3,GREEN,-1)
-        continue
-
-    if time.ticks_diff(time.ticks_ms(), ultimo_poll) >= INTERVAL * 1000:
-        ultimo_poll = time.ticks_ms()
-        body = http_get(HOST_IP, PORT, "/api/display")
-        if body:
-            try:
-                d = json.loads(body)
-                np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
-                hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
-                if not en_work_mode:
-                    if np!=vp or ne!=ve or nt!=vt:
-                        vp=np; ve=ne; vt=nt
-                        draw_panel()
-                        draw_num(Y_ROW1,YELLOW,vp); draw_num(Y_ROW2,ORANGE,ve); draw_num(Y_ROW3,GREEN,vt)
-                        draw_datetime(fecha,hora)
-                else:
-                    vp=np; ve=ne; vt=nt  # guardar valores para cuando vuelva al panel
-                draw_status("OK  "+hora,GREEN)
-                draw_wifi_bar()
-                ultimo_ok = time.ticks_ms()
+                    work_fp = ""
+                    work_pkgs = []
+                    draw_idle()
             except Exception as ex:
                 print("JSON err:", ex)
-        else:
-            draw_status("Sin respuesta",ORANGE)
-            draw_wifi_bar()
-            if ultimo_ok and time.ticks_diff(time.ticks_ms(), ultimo_ok) > 60000:
-                conectado = conectar_wifi()
 
-    time.sleep(0.1)
+    time.sleep_ms(20)

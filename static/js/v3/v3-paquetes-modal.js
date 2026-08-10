@@ -93,12 +93,14 @@ async function mostrarModalPaquetes(carro) {
     let paginaActual = paquetesOrdenados.slice(inicio, fin);
     const esUltimaPagina = fin >= total;
 
-    // Push a pantalla ESP32 (asíncrono, no bloquea el modal)
+    // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
+    // Se envía la lista COMPLETA del carro (no solo la página visible): el
+    // ESP32 los muestra de uno en uno y avanza con su botón físico.
     pushToESP32({
         bono:  bonoActual?.nombre  || '',
         carro: carro.carro         || '',
         orden: carro.proyecto_nombre || '',
-        paquetes: paginaActual.map(p => ({
+        paquetes: paquetesOrdenados.slice(0, 40).map(p => ({
             etiqueta: p.numeroEtiqueta ?? null,
             cod:  p.cod_cable  || '',
             elem: p.elemento   || '',
