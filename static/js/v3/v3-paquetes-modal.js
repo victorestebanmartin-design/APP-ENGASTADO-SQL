@@ -150,7 +150,8 @@ async function mostrarModalPaquetes(carro) {
             etiqueta: p.numeroEtiqueta ?? null,
             cod:  p.cod_cable  || '',
             elem: p.elemento   || '',
-            bloqueado: !!p.bloqueado
+            bloqueado: !!p.bloqueado,
+            por: p.bloqueado_por || ''
         }))
     });
 

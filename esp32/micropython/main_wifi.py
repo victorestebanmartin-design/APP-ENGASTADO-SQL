@@ -12,8 +12,13 @@
 #   - Si VARIOS operarios trabajan el mismo carro (cada uno desde su PC), la
 #     pantalla recibe la lista de todos: muestra el NOMBRE del operario debajo
 #     del carro y un contador "1/2" a la derecha. El pulsador de la extensora
-#     (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN) salta a los paquetes del
-#     siguiente operario, en ciclo.
+#     (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN):
+#       * pulsacion CORTA  -> salta a los paquetes del siguiente operario
+#       * pulsacion LARGA (1s) -> "me llevo mis paquetes": la lista del operario
+#         mostrado desaparece y la pantalla queda para el siguiente. Vuelve a
+#         aparecer sola cuando ese operario envie contenido nuevo.
+#   - Los paquetes bloqueados salen en gris con "BLOQUEADO" y debajo el
+#     puesto/maquina que los esta trabajando.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
 #     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
 #     el pin queda en pull-up interno y no afecta en nada.
@@ -38,6 +43,7 @@ HOST_IP  = "viktor85.pythonanywhere.com"
 PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
+LONG_PRESS_MS = 1000   # pulsacion larga del boton de operario = "me llevo mis paquetes"
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
 # pantalla se identifica sola en el servidor (por su MAC) y el carro se le
@@ -237,6 +243,13 @@ def draw_package():
 
     if bloq:
         text_center(PKG_TAG, "BLOQUEADO", RED, BLACK, scale=2)
+        por = str(p.get('por') or '')[:13]
+        if por:
+            # Puesto/maquina que esta trabajando este paquete
+            text_center(PKG_ELEM, por, YELLOW, BLACK, scale=2)
+            text_center(PKG_COD, elem, LGRAY, BLACK, scale=2)
+            draw_progress()
+            return
     text_center(PKG_ELEM, elem, WHITE, BLACK, scale=2)
     if cod and cod != elem:
         text_center(PKG_COD, cod, LGRAY, BLACK, scale=2)
@@ -260,18 +273,69 @@ def mostrar_operario():
     draw_package()
 
 def next_operario():
-    """Pulsador BTN_OP: salta a los paquetes del siguiente operario, en ciclo."""
+    """Pulsacion corta: salta a los paquetes del siguiente operario, en ciclo."""
     global op_idx, work_idx
     if len(work_ops) < 2: return
     op_idx = (op_idx + 1) % len(work_ops)
     work_idx = 0
     mostrar_operario()
 
+# Operarios que "se llevaron" sus paquetes (pulsacion larga): nombre -> huella
+# de la lista que se llevaron. Mientras su contenido no cambie no se muestran;
+# en cuanto envian contenido nuevo reaparecen solos.
+ocultos = {}
+
+def llevar_operario():
+    """Pulsacion larga: el operario mostrado se lleva sus paquetes y su lista
+    deja de mostrarse, dejando la pantalla para el siguiente operario."""
+    global work_ops, op_idx, work_idx, work_fp, work_pkgs, en_work_mode
+    if not work_ops: return
+    o = work_ops.pop(op_idx)
+    nombre = o.get('operario', '')
+    ocultos[nombre] = _fp_op(o)
+    # Confirmacion visual breve
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(140, "ENTREGADO", GREEN, BLACK, scale=3)
+    if nombre:
+        text_center(180, nombre[:13], WHITE, BLACK, scale=2)
+    time.sleep_ms(800)
+    work_fp = _fingerprint(work_ops)
+    work_idx = 0
+    if work_ops:
+        op_idx = op_idx % len(work_ops)
+        mostrar_operario()
+    else:
+        en_work_mode = False
+        op_idx = 0
+        work_pkgs = []
+        draw_idle()
+
+def _filtrar_ocultos(ops):
+    """Quita de la lista a los operarios ocultos (se llevaron sus paquetes)
+    mientras su contenido no cambie; contenido nuevo los re-muestra."""
+    vivos = []
+    nombres = set()
+    for o in ops:
+        n = o.get('operario', '')
+        nombres.add(n)
+        if ocultos.get(n) == _fp_op(o):
+            continue
+        if n in ocultos:
+            del ocultos[n]
+        vivos.append(o)
+    # Olvidar ocultos de operarios que ya no estan en el canal
+    for n in list(ocultos):
+        if n not in nombres:
+            del ocultos[n]
+    return vivos
+
 def _fp_op(o):
     d = o.get('data') or {}
     pkgs = d.get('paquetes', [])
     return "%s|%s|%s|%s" % (o.get('operario', ''), d.get('carro'), d.get('orden'),
-                            ",".join(str(p.get('etiqueta')) + str(p.get('elem')) + ('B' if p.get('bloqueado') else '') for p in pkgs))
+                            ",".join(str(p.get('etiqueta')) + str(p.get('elem'))
+                                     + ('B' + str(p.get('por') or '') if p.get('bloqueado') else '')
+                                     for p in pkgs))
 
 def _fingerprint(ops):
     return "||".join(_fp_op(o) for o in ops)
@@ -386,6 +450,8 @@ btn_prev     = 1
 btn_last_ms  = 0
 btn_op_prev  = 1
 btn_op_last  = 0
+btn_op_t0    = 0
+btn_op_armado = False
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 intentos_wifi = 0
 
@@ -402,7 +468,7 @@ while True:
         next_package()
     btn_prev = b
 
-    # ── Pulsador de operario (pines 1-2): siguiente operario en ciclo ──
+    # ── Pulsador de operario: corta = siguiente, larga = "me los llevo" ──
     b2 = btn_op.value()
     if b2 != btn_op_prev:
         # Test de cableado: cuadrado amarillo junto a la barra WiFi mientras
@@ -410,7 +476,19 @@ while True:
         # llega al GPIO configurado en BTN_OP_PIN.
         rect(226, Y_WIFI + 4, 10, 10, YELLOW if b2 == 0 else BLACK)
         print("BTN_OP:", "pulsado" if b2 == 0 else "soltado")
-    if en_work_mode and b2 == 0 and btn_op_prev == 1 and time.ticks_diff(now, btn_op_last) > 250:
+    if b2 == 0 and btn_op_prev == 1 and time.ticks_diff(now, btn_op_last) > 250:
+        # Flanco de bajada: armar y esperar a ver si es corta o larga
+        btn_op_t0 = now
+        btn_op_armado = en_work_mode
+    if b2 == 0 and btn_op_armado and time.ticks_diff(now, btn_op_t0) >= LONG_PRESS_MS:
+        # Sigue apretado tras LONG_PRESS_MS: pulsacion larga
+        btn_op_armado = False
+        btn_op_last = now
+        ultimo_avance = now
+        llevar_operario()
+    if b2 == 1 and btn_op_prev == 0 and btn_op_armado:
+        # Soltado antes del umbral: pulsacion corta
+        btn_op_armado = False
         btn_op_last = now
         ultimo_avance = now
         next_operario()
@@ -470,7 +548,7 @@ while True:
                     mi_carro = ca
                     if not en_work_mode:
                         draw_idle()
-                ops = _parse_ops(d)
+                ops = _filtrar_ocultos(_parse_ops(d))
                 fp = _fingerprint(ops)
                 if not ops:
                     if en_work_mode:
