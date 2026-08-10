@@ -389,6 +389,9 @@ async function paqueteCompletado() {
         console.error('Error al guardar progreso del carro:', error);
     }
 
+    // Carro terminado (completo o parcial): limpiar su pantalla ESP32
+    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '' });
+
     setTimeout(() => {
         document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
         const _me2 = document.getElementById('modal-engaste');

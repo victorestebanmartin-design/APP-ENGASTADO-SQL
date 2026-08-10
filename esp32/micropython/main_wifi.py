@@ -32,6 +32,12 @@ PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 
+# Carro asignado a ESTA pantalla. Si lo dejas vacio ("") la pantalla es
+# "generica": muestra cualquier carro que se abra en el navegador (como antes).
+# Si pones el nombre del carro (ej. "1", "A2"...) SOLO recibira los paquetes
+# de ese carro — asi cada carro puede llevar su propia pantalla.
+CARRO_ASIGNADO = ""
+
 USE_HW_SPI = True      # False = SoftSPI lento (solo si el HW SPI diera problemas)
 SPI_BAUD   = 20_000_000
 
@@ -136,13 +142,20 @@ def draw_wifi_bar():
         rect(4, Y_WIFI+4, 8, 8, RED)
         text(16, Y_WIFI+2, "Sin WiFi", RED, BLACK, scale=1)
 
-def draw_idle(msg="Esperando carro..."):
+def draw_idle(msg=None):
     """Pantalla de reposo: sin contadores, solo identidad y estado."""
+    if msg is None:
+        msg = "Esperando paquetes..." if CARRO_ASIGNADO else "Esperando carro..."
     rect(0, 0, 240, 320, BLACK)
-    text_center(60,  "COJOsw",    WHITE,  BLACK, scale=4)
-    text_center(110, "ENGASTADO", ORANGE, BLACK, scale=2)
-    hline(20, 150, 200, DGRAY)
-    text_center(170, msg, LGRAY, BLACK, scale=1)
+    text_center(40,  "COJOsw",    WHITE,  BLACK, scale=4)
+    text_center(90,  "ENGASTADO", ORANGE, BLACK, scale=2)
+    hline(20, 120, 200, DGRAY)
+    if CARRO_ASIGNADO:
+        # Identificar la pantalla: este es MI carro
+        text_center(140, "CARRO", LGRAY, BLACK, scale=2)
+        s = max(3, min(8, 232 // (9*len(CARRO_ASIGNADO))))
+        text_center(170, CARRO_ASIGNADO, YELLOW, BLACK, scale=s)
+    text_center(250, msg, LGRAY, BLACK, scale=1)
     draw_wifi_bar()
 
 # ── Estado de trabajo ─────────────────────────────────────────────────────────
@@ -211,7 +224,8 @@ def http_get(host, port, path):
         s = socket.socket()
         s.settimeout(8)
         s.connect(addr)
-        req = f"GET {path}?esp32_ip={wifi_ip} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+        sep = '&' if '?' in path else '?'
+        req = f"GET {path}{sep}esp32_ip={wifi_ip} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
         s.send(req.encode())
         resp = b""
         while True:
@@ -284,7 +298,10 @@ while True:
     # ── Poll de trabajo (cada 3s) ─────────────────────────────────────
     elif conectado and time.ticks_diff(now, ultimo_poll) >= POLL_INTERVAL * 1000:
         ultimo_poll = now
-        body = http_get(HOST_IP, PORT, "/api/esp32/current")
+        ruta = "/api/esp32/current"
+        if CARRO_ASIGNADO:
+            ruta += "?carro=" + CARRO_ASIGNADO
+        body = http_get(HOST_IP, PORT, ruta)
         if body:
             try:
                 d = json.loads(body)

@@ -493,8 +493,8 @@ function cerrarImagenTerminal() {
 }
 
 async function cancelarModalPaquetes() {
-    // Volver al panel ESP32 (limpiar pantalla de trabajo)
-    pushToESP32({ clear: true });
+    // Volver al reposo la pantalla ESP32 (limpiar pantalla de trabajo)
+    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '' });
     // Detener auto-refresh de bloqueos
     if (window._bloqueoInterval) {
         clearInterval(window._bloqueoInterval);

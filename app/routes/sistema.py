@@ -330,9 +330,22 @@ def api_esp32_ip():
         return error_interno(e)
 
 
+def _esp32_file(carro=None):
+    """Ruta del fichero de datos ESP32: global o el canal de un carro concreto."""
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    if carro:
+        slug = re.sub(r'[^A-Za-z0-9_-]', '_', str(carro))[:24]
+        return os.path.join(base, 'esp32_current_%s.json' % slug)
+    return os.path.join(base, 'esp32_current.json')
+
+
 @bp.route('/api/esp32/push', methods=['POST', 'OPTIONS'])
 def api_esp32_push():
-    """Recibe datos de trabajo desde el navegador y los almacena para que el ESP32 los recoja."""
+    """Recibe datos de trabajo desde el navegador y los almacena para que el ESP32 los recoja.
+
+    Si el payload trae 'carro', se escribe ademas en el canal de ese carro:
+    las pantallas con CARRO_ASIGNADO solo leen su canal y no ven otros carros.
+    """
     if request.method == 'OPTIONS':
         resp = current_app.make_response('')
         resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -341,11 +354,13 @@ def api_esp32_push():
         return resp
     try:
         data = request.get_json(force=True) or {}
-        push_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_current.json')
         from datetime import datetime
         payload = {'data': data, 'ts': datetime.now().isoformat()}
-        with open(push_file, 'w') as f:
+        with open(_esp32_file(), 'w') as f:
             json.dump(payload, f)
+        if data.get('carro'):
+            with open(_esp32_file(data['carro']), 'w') as f:
+                json.dump(payload, f)
         resp = current_app.make_response(jsonify({'ok': True}))
         resp.headers['Access-Control-Allow-Origin'] = '*'
         return resp
@@ -355,9 +370,12 @@ def api_esp32_push():
 
 @bp.route('/api/esp32/current', methods=['GET'])
 def api_esp32_current():
-    """Devuelve los últimos datos de trabajo enviados al ESP32 (TTL 5 min)."""
+    """Devuelve los últimos datos de trabajo enviados al ESP32 (TTL 60 min).
+
+    Con ?carro=X devuelve solo el canal de ese carro (pantalla asignada).
+    """
     try:
-        push_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_current.json')
+        push_file = _esp32_file(request.args.get('carro'))
         if not os.path.exists(push_file):
             return jsonify({'data': None})
         with open(push_file) as f:

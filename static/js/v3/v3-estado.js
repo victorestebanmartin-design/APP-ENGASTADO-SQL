@@ -53,6 +53,11 @@ window.addEventListener('beforeunload', function() {
     if (sesionActualId) {
         navigator.sendBeacon('/api/sesion/liberar',
             JSON.stringify({ sesion_id: sesionActualId }));
+        // Limpiar tambien la pantalla ESP32 del carro en curso (sendBeacon
+        // porque un fetch normal se cancela al cerrar la pestaña)
+        const carro = (typeof carrosDelBono !== 'undefined' && carrosDelBono[carroActualIndex]?.carro) || '';
+        navigator.sendBeacon(`${_ESP32_PA}/api/esp32/push`,
+            new Blob([JSON.stringify({ clear: true, carro })], { type: 'application/json' }));
     }
 });
 
