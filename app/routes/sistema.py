@@ -463,6 +463,97 @@ def api_esp32_devices():
         return error_interno(e)
 
 
+@bp.route('/api/esp32/puertos', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_puertos():
+    """Puertos serie (USB) detectados en el equipo que ejecuta ESTE servidor.
+
+    Solo tiene sentido en la app local (run.bat) con la pantalla conectada
+    por USB; en PythonAnywhere la lista siempre estará vacía.
+    """
+    try:
+        try:
+            from serial.tools import list_ports
+        except ImportError:
+            return jsonify({'puertos': [], 'aviso': 'pyserial no está instalado en este servidor (pip install pyserial mpremote)'})
+        puertos = [{'puerto': p.device, 'descripcion': p.description or ''} for p in list_ports.comports()]
+        # SSID actual del firmware, para prellenar el formulario
+        fw = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython', 'main_wifi.py')
+        ssid = ''
+        try:
+            with open(fw, encoding='utf-8') as f:
+                m = re.search(r'^SSID\s*=\s*["\'](.*)["\']', f.read(), re.M)
+                if m:
+                    ssid = m.group(1)
+        except Exception:
+            pass
+        return jsonify({'puertos': puertos, 'ssid_actual': ssid})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/flash_usb', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_flash_usb():
+    """Sube esp32/micropython/main_wifi.py como main.py a la pantalla por USB.
+
+    Usa mpremote contra el puerto indicado. Opcionalmente parchea SSID y
+    PASSWORD del WiFi antes de subir (sin tocar el fichero del repo).
+    Solo funciona en el servidor local con la pantalla conectada por USB.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        puerto = str(data.get('puerto', '')).strip()
+        if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
+            return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
+
+        proyecto = os.path.dirname(current_app.root_path)
+        fw = os.path.join(proyecto, 'esp32', 'micropython', 'main_wifi.py')
+        if not os.path.exists(fw):
+            return jsonify({'success': False, 'message': 'No se encuentra esp32/micropython/main_wifi.py'})
+
+        with open(fw, encoding='utf-8') as f:
+            contenido = f.read()
+        ssid = str(data.get('ssid', '')).strip()
+        password = str(data.get('password', ''))
+        if ssid:
+            contenido = re.sub(r'^SSID\s*=.*$', 'SSID     = %r' % ssid, contenido, count=1, flags=re.M)
+        if password:
+            contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, contenido, count=1, flags=re.M)
+
+        # Copia temporal (posiblemente parcheada) que es la que se sube
+        base = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
+        tmp_fw = os.path.join(base, '_fw_upload_tmp.py')
+        with open(tmp_fw, 'w', encoding='utf-8') as f:
+            f.write(contenido)
+
+        def mpremote(*args):
+            return subprocess.run(
+                [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
+                capture_output=True, text=True, timeout=90)
+
+        try:
+            r = mpremote('cp', tmp_fw, ':main.py')
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout or '').strip()
+                if 'No module named' in err:
+                    return jsonify({'success': False, 'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote  (o actualiza dependencias)'})
+                return jsonify({'success': False, 'message': ('Error al copiar: ' + err)[-400:] or 'Error al copiar (¿puerto ocupado por otro programa?)'})
+            mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
+        finally:
+            try:
+                os.remove(tmp_fw)
+            except OSError:
+                pass
+
+        cambios = ' (WiFi actualizado)' if (ssid or password) else ''
+        return jsonify({'success': True, 'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout: comprueba que la pantalla está conectada a ese puerto y que ningún otro programa (monitor serie, mpremote...) lo está usando.'})
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/esp32/devices/<device_id>', methods=['POST', 'DELETE'])
 @requiere_pin_admin
 def api_esp32_device_update(device_id):

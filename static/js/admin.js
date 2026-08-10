@@ -1340,9 +1340,70 @@ async function eliminarDisplay(id) {
     }
 }
 
+// ── Subir firmware por USB ──────────────────────────────────────────────────
+
+async function cargarPuertosUSB() {
+    const sel = document.getElementById('usb-puerto');
+    if (!sel) return;
+    try {
+        const resp = await fetch('/api/esp32/puertos');
+        const d = await resp.json();
+        const puertos = d.puertos || [];
+        if (puertos.length === 0) {
+            sel.innerHTML = `<option value="">— sin puertos detectados —</option>`;
+            if (d.aviso) _usbMsg('⚠️ ' + d.aviso, true);
+        } else {
+            sel.innerHTML = puertos.map(p =>
+                `<option value="${_dispEsc(p.puerto)}">${_dispEsc(p.puerto)}${p.descripcion ? ' — ' + _dispEsc(p.descripcion) : ''}</option>`
+            ).join('');
+        }
+        const ssid = document.getElementById('usb-ssid');
+        if (ssid && !ssid.value && d.ssid_actual) ssid.placeholder = `WiFi SSID (vacío = mantener "${d.ssid_actual}")`;
+    } catch (e) {
+        _usbMsg('❌ No se pudieron listar los puertos', true);
+    }
+}
+
+function _usbMsg(texto, esError) {
+    const el = document.getElementById('usb-msg');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    el.textContent = texto;
+}
+
+async function flashUSB() {
+    const puerto = document.getElementById('usb-puerto')?.value;
+    if (!puerto) { _usbMsg('Selecciona un puerto (pulsa 🔄 Buscar puertos con la pantalla conectada)', true); return; }
+    const btn = document.getElementById('usb-flash-btn');
+    btn.disabled = true;
+    const txtOriginal = btn.textContent;
+    btn.textContent = '⏳ Subiendo... (no desconectes la pantalla)';
+    _usbMsg('Subiendo firmware por ' + puerto + '...');
+    try {
+        const resp = await fetch('/api/esp32/flash_usb', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                puerto: puerto,
+                ssid: document.getElementById('usb-ssid')?.value || '',
+                password: document.getElementById('usb-pass')?.value || ''
+            })
+        });
+        const d = await resp.json();
+        _usbMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+    } catch (e) {
+        _usbMsg('❌ Error de conexión con el servidor', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = txtOriginal;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('displays-lista')) return;
     cargarDisplays();
+    cargarPuertosUSB();
     // Refresco automático mientras la sección está visible (estado online/offline).
     // No refrescar si el admin está editando un campo de la tabla.
     setInterval(() => {

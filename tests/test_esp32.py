@@ -72,6 +72,23 @@ def test_gestion_de_pantallas_requiere_admin(client):
     assert r.status_code in (301, 302, 401, 403)
 
 
+def test_flash_usb_requiere_admin_y_valida_puerto(client, admin_client):
+    # Sin sesion admin: fuera
+    assert client.post('/api/esp32/flash_usb', json={'puerto': 'COM5'}).status_code in (301, 302, 401, 403)
+    assert client.get('/api/esp32/puertos').status_code in (301, 302, 401, 403)
+
+    # Puerto con caracteres raros: rechazado antes de tocar nada
+    r = admin_client.post('/api/esp32/flash_usb', json={'puerto': 'COM5; rm -rf /'})
+    assert r.status_code == 400
+    r = admin_client.post('/api/esp32/flash_usb', json={})
+    assert r.status_code == 400
+
+    # Listado de puertos responde (vacio o no, segun el equipo)
+    r = admin_client.get('/api/esp32/puertos')
+    assert r.status_code == 200
+    assert 'puertos' in r.get_json()
+
+
 def test_carro_con_caracteres_raros_no_escapa_de_data(client, app):
     import os
     r = client.post('/api/esp32/push', json={'carro': '../evil', 'paquetes': []})
