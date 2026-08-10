@@ -93,22 +93,6 @@ async function mostrarModalPaquetes(carro) {
     let paginaActual = paquetesOrdenados.slice(inicio, fin);
     const esUltimaPagina = fin >= total;
 
-    // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
-    // Se envía la lista COMPLETA del carro (no solo la página visible): el
-    // ESP32 los muestra de uno en uno y avanza con su botón físico.
-    pushToESP32({
-        bono:  bonoActual?.nombre  || '',
-        carro: carro.carro         || '',
-        orden: carro.proyecto_nombre || '',
-        operario: operarioActual   || '',
-        paquetes: paquetesOrdenados.slice(0, 40).map(p => ({
-            etiqueta: p.numeroEtiqueta ?? null,
-            cod:  p.cod_cable  || '',
-            elem: p.elemento   || '',
-            bloqueado: !!p.bloqueado
-        }))
-    });
-
     // ---------------------------------------------------------------
     // Bloqueo anti-carrera: registrar claim ANTES de renderizar el modal,
     // luego re-verificar por si otro puesto nos ganó milisegundos antes.
@@ -152,6 +136,24 @@ async function mostrarModalPaquetes(carro) {
             } catch (e) { /* silencioso */ }
         }
     }
+
+    // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
+    // Se envía SOLO la página visible del modal (los mismos 5 que ve el
+    // operario), con los bloqueos ya re-verificados. Al pasar de página el
+    // modal se re-renderiza y se re-envía el grupo siguiente.
+    pushToESP32({
+        bono:  bonoActual?.nombre  || '',
+        carro: carro.carro         || '',
+        orden: carro.proyecto_nombre || '',
+        operario: operarioActual   || '',
+        paquetes: paginaActual.map(p => ({
+            etiqueta: p.numeroEtiqueta ?? null,
+            cod:  p.cod_cable  || '',
+            elem: p.elemento   || '',
+            bloqueado: !!p.bloqueado
+        }))
+    });
+
     const totalPaginas = Math.ceil(total / PAQUETES_POR_PAGINA);
     const paginaNum = paginaPaquetes + 1;
 
