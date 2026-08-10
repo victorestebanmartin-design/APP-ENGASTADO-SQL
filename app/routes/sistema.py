@@ -339,6 +339,28 @@ def _esp32_file(carro=None):
     return os.path.join(base, 'esp32_current.json')
 
 
+def _esp32_devices_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'esp32_devices.json')
+
+
+def _esp32_load_devices():
+    try:
+        with open(_esp32_devices_file()) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _esp32_save_devices(devs):
+    with open(_esp32_devices_file(), 'w') as f:
+        json.dump(devs, f)
+
+
+def _esp32_device_id(raw):
+    return re.sub(r'[^A-Za-z0-9]', '', str(raw or ''))[:32]
+
+
 @bp.route('/api/esp32/push', methods=['POST', 'OPTIONS'])
 def api_esp32_push():
     """Recibe datos de trabajo desde el navegador y los almacena para que el ESP32 los recoja.
@@ -372,23 +394,95 @@ def api_esp32_push():
 def api_esp32_current():
     """Devuelve los últimos datos de trabajo enviados al ESP32 (TTL 60 min).
 
-    Con ?carro=X devuelve solo el canal de ese carro (pantalla asignada).
+    Con ?id=<device_id> la pantalla queda registrada (aparece en Admin →
+    Display Carro) y, si tiene carro asignado desde Admin, lee su canal.
+    Con ?carro=X fuerza el canal de ese carro (config manual en la pantalla).
     """
     try:
-        push_file = _esp32_file(request.args.get('carro'))
+        carro = request.args.get('carro')
+        dev_id = _esp32_device_id(request.args.get('id'))
+        if dev_id:
+            devs = _esp32_load_devices()
+            dev = devs.setdefault(dev_id, {})
+            dev['ip'] = request.args.get('esp32_ip') or dev.get('ip', '')
+            dev['last_seen'] = datetime.now().isoformat()
+            _esp32_save_devices(devs)
+            # La asignacion del Admin manda sobre la config local de la pantalla
+            if dev.get('carro'):
+                carro = dev['carro']
+
+        push_file = _esp32_file(carro)
+        extra = {'carro_asignado': carro or ''}
         if not os.path.exists(push_file):
-            return jsonify({'data': None})
+            return jsonify({'data': None, **extra})
         with open(push_file) as f:
             payload = json.load(f)
         # Expirar tras 60 minutos
-        from datetime import datetime, timezone, timedelta
-        ts = datetime.fromisoformat(payload.get('ts', '2000-01-01'))
+        from datetime import datetime as _dt, timezone
+        ts = _dt.fromisoformat(payload.get('ts', '2000-01-01'))
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        age = (_dt.now(timezone.utc) - ts).total_seconds()
         if age > 3600:
-            return jsonify({'data': None})
-        return jsonify({'data': payload['data'], 'ts': payload['ts']})
+            return jsonify({'data': None, **extra})
+        return jsonify({'data': payload['data'], 'ts': payload['ts'], **extra})
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== ADMIN: DISPLAY CARRO ====================
+
+@bp.route('/api/esp32/devices', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_devices():
+    """Lista las pantallas ESP32 detectadas y los carros existentes (Admin)."""
+    try:
+        devs = _esp32_load_devices()
+        ahora = datetime.now()
+        out = []
+        for did, d in sorted(devs.items()):
+            online = False
+            try:
+                online = (ahora - datetime.fromisoformat(d.get('last_seen', ''))).total_seconds() < 15
+            except Exception:
+                pass
+            out.append({
+                'id': did,
+                'nombre': d.get('nombre', ''),
+                'carro': d.get('carro', ''),
+                'ip': d.get('ip', ''),
+                'last_seen': d.get('last_seen', ''),
+                'online': online,
+            })
+        try:
+            carros = [c.get('numero') for c in CarroRepository(db).obtener_todos_carros()]
+        except Exception:
+            carros = []
+        return jsonify({'devices': out, 'carros': carros})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/devices/<device_id>', methods=['POST', 'DELETE'])
+@requiere_pin_admin
+def api_esp32_device_update(device_id):
+    """Asigna nombre/carro a una pantalla, o la olvida (DELETE)."""
+    try:
+        dev_id = _esp32_device_id(device_id)
+        devs = _esp32_load_devices()
+        if request.method == 'DELETE':
+            devs.pop(dev_id, None)
+            _esp32_save_devices(devs)
+            return jsonify({'ok': True})
+        if dev_id not in devs:
+            return jsonify({'error': 'Pantalla no encontrada'}), 404
+        data = request.get_json(force=True) or {}
+        if 'nombre' in data:
+            devs[dev_id]['nombre'] = str(data['nombre'])[:30]
+        if 'carro' in data:
+            devs[dev_id]['carro'] = str(data['carro'])[:24].strip()
+        _esp32_save_devices(devs)
+        return jsonify({'ok': True, 'device': devs[dev_id]})
     except Exception as e:
         return error_interno(e)
 

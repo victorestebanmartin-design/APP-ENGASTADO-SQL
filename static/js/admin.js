@@ -1216,3 +1216,141 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 // ============================================================================
+// DISPLAY CARRO — pantallas ESP32 asignadas a carros
+// ============================================================================
+
+const _dispInputStyle = 'padding:7px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;';
+
+function _dispEsc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+}
+
+function _dispMsg(texto, esError) {
+    const el = document.getElementById('displays-msg');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 4000);
+}
+
+async function cargarDisplays() {
+    const cont = document.getElementById('displays-lista');
+    if (!cont) return;
+    try {
+        const resp = await fetch('/api/esp32/devices');
+        const d = await resp.json();
+        const devs = d.devices || [];
+        const carros = d.carros || [];
+        if (devs.length === 0) {
+            cont.innerHTML = '<p class="instruccion">Todavía no se ha detectado ninguna pantalla.<br>' +
+                'Enciende una pantalla con el firmware actualizado y aparecerá aquí sola en unos segundos.</p>';
+            return;
+        }
+        const filaOpts = (asignado) => {
+            let html = '<option value="">— sin asignar (genérica) —</option>';
+            let visto = false;
+            for (const n of carros) {
+                const sel = String(asignado) === String(n);
+                if (sel) visto = true;
+                html += `<option value="${_dispEsc(n)}" ${sel ? 'selected' : ''}>Carro ${_dispEsc(n)}</option>`;
+            }
+            // Carro asignado que ya no existe en la lista: conservarlo visible
+            if (asignado && !visto) html += `<option value="${_dispEsc(asignado)}" selected>Carro ${_dispEsc(asignado)}</option>`;
+            return html;
+        };
+        cont.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                <thead><tr style="text-align:left;color:#94a3b8;">
+                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th>
+                    <th>Carro asignado</th><th>Última señal</th><th></th>
+                </tr></thead>
+                <tbody>` + devs.map(dev => `
+                <tr style="border-top:1px solid #334155;">
+                    <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>15s)'}">${dev.online ? '🟢' : '🔴'}</td>
+                    <td><input id="disp-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Pantalla..." style="${_dispInputStyle}width:130px;"></td>
+                    <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
+                    <td style="font-family:monospace;">${_dispEsc(dev.ip) || '—'}</td>
+                    <td><select id="disp-carro-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.carro)}</select></td>
+                    <td style="color:#94a3b8;">${dev.last_seen ? _dispEsc(dev.last_seen.replace('T', ' ').slice(0, 19)) : '—'}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn-primary" onclick="guardarDisplay('${dev.id}')" title="Guardar nombre y carro">💾 Guardar</button>
+                        <button class="btn-secondary" onclick="probarDisplay('${dev.id}')" title="Enviar mensaje de prueba a la pantalla">📡 Probar</button>
+                        <button class="btn-secondary" onclick="eliminarDisplay('${dev.id}')" title="Olvidar esta pantalla">🗑️</button>
+                    </td>
+                </tr>`).join('') + `
+                </tbody>
+            </table>`;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">Error cargando las pantallas. Reintenta con 🔄 Actualizar.</p>';
+    }
+}
+
+async function guardarDisplay(id) {
+    const nombre = document.getElementById(`disp-nombre-${id}`)?.value ?? '';
+    const carro = document.getElementById(`disp-carro-${id}`)?.value ?? '';
+    try {
+        const resp = await fetch(`/api/esp32/devices/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, carro })
+        });
+        if (!resp.ok) throw new Error();
+        _dispMsg(carro ? `✅ Guardado: pantalla asignada al carro ${carro}` : '✅ Guardado: pantalla genérica');
+        cargarDisplays();
+    } catch (e) {
+        _dispMsg('❌ No se pudo guardar', true);
+    }
+}
+
+async function probarDisplay(id) {
+    // Envía un push de prueba al canal que use esta pantalla (su carro asignado
+    // o el canal genérico) y lo limpia solo a los 12 segundos.
+    const carro = document.getElementById(`disp-carro-${id}`)?.value ?? '';
+    const nombre = document.getElementById(`disp-nombre-${id}`)?.value || ('ID ' + id.slice(-4));
+    try {
+        await fetch('/api/esp32/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                carro: carro,
+                orden: 'PRUEBA DESDE ADMIN',
+                paquetes: [{ etiqueta: 'OK', elem: nombre, cod: 'Prueba de pantalla' }]
+            })
+        });
+        _dispMsg(`📡 Prueba enviada — mira la pantalla ${nombre} (se borra en 12s)`);
+        setTimeout(() => {
+            fetch('/api/esp32/push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear: true, carro: carro })
+            }).catch(() => {});
+        }, 12000);
+    } catch (e) {
+        _dispMsg('❌ No se pudo enviar la prueba', true);
+    }
+}
+
+async function eliminarDisplay(id) {
+    if (!confirm('¿Olvidar esta pantalla? Si sigue encendida volverá a aparecer sola (sin carro asignado).')) return;
+    try {
+        await fetch(`/api/esp32/devices/${id}`, { method: 'DELETE' });
+        cargarDisplays();
+    } catch (e) {
+        _dispMsg('❌ No se pudo eliminar', true);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('displays-lista')) return;
+    cargarDisplays();
+    // Refresco automático mientras la sección está visible (estado online/offline).
+    // No refrescar si el admin está editando un campo de la tabla.
+    setInterval(() => {
+        if (!document.getElementById('sec-displays')?.classList.contains('active')) return;
+        if (document.activeElement && String(document.activeElement.id).startsWith('disp-')) return;
+        cargarDisplays();
+    }, 10000);
+});
+
+
+// ============================================================================

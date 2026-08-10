@@ -34,6 +34,44 @@ def test_clear_limpia_su_canal_y_el_global(client):
     assert client.get('/api/esp32/current').get_json()['data'] == {'clear': True, 'carro': 'A2'}
 
 
+def test_pantalla_se_registra_y_admin_le_asigna_carro(client, admin_client):
+    # La pantalla hace poll con su id → queda registrada
+    d = client.get('/api/esp32/current?id=aabbccdd1122&esp32_ip=192.168.1.47').get_json()
+    assert d['carro_asignado'] == ''
+
+    # El admin la ve en la lista con su IP
+    lista = admin_client.get('/api/esp32/devices').get_json()
+    dev = next(x for x in lista['devices'] if x['id'] == 'aabbccdd1122')
+    assert dev['ip'] == '192.168.1.47' and dev['online']
+
+    # El admin le asigna nombre y carro
+    r = admin_client.post('/api/esp32/devices/aabbccdd1122',
+                          json={'nombre': 'Pantalla lado A', 'carro': '3'})
+    assert r.status_code == 200
+
+    # Se publica trabajo del carro 3 y de otro carro
+    client.post('/api/esp32/push', json={'carro': '3', 'paquetes': [{'etiqueta': 5, 'elem': 'E5'}]})
+    client.post('/api/esp32/push', json={'carro': '8', 'paquetes': [{'etiqueta': 9, 'elem': 'E9'}]})
+
+    # La pantalla ahora lee SOLO el canal de su carro y sabe su asignacion
+    d = client.get('/api/esp32/current?id=aabbccdd1122').get_json()
+    assert d['carro_asignado'] == '3'
+    assert d['data']['carro'] == '3'
+
+    # DELETE la olvida
+    admin_client.delete('/api/esp32/devices/aabbccdd1122')
+    lista = admin_client.get('/api/esp32/devices').get_json()
+    assert all(x['id'] != 'aabbccdd1122' for x in lista['devices'])
+
+
+def test_gestion_de_pantallas_requiere_admin(client):
+    # Sin sesion de admin: redirige a la pantalla de PIN
+    r = client.get('/api/esp32/devices')
+    assert r.status_code in (301, 302, 401, 403)
+    r = client.post('/api/esp32/devices/aabbccdd1122', json={'carro': '1'})
+    assert r.status_code in (301, 302, 401, 403)
+
+
 def test_carro_con_caracteres_raros_no_escapa_de_data(client, app):
     import os
     r = client.post('/api/esp32/push', json={'carro': '../evil', 'paquetes': []})
