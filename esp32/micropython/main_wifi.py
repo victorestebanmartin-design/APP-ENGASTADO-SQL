@@ -254,21 +254,54 @@ def http_get(host, port, path):
         return None
 
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
-def conectar_wifi():
-    global wifi_ip
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    if not wlan.isconnected():
-        wlan.connect(SSID, PASSWORD)
-        for _ in range(20):
-            if wlan.isconnected(): break
-            time.sleep(0.5)
-    if wlan.isconnected():
-        wifi_ip = wlan.ifconfig()[0]
-        return True
-    else:
-        wifi_ip = ""
+def wifi_conectada():
+    """True si la WiFi sigue realmente conectada. Nunca lanza excepcion."""
+    try:
+        return network.WLAN(network.STA_IF).isconnected()
+    except Exception:
         return False
+
+def conectar_wifi():
+    """UN intento de conexion (bloquea ~12s max). Nunca lanza excepcion.
+
+    Si falla, apaga la radio: el driver WiFi del ESP32 se puede quedar
+    colgado tras un intento fallido (sobre todo en arranque frio) y solo
+    se recupera reiniciando la interfaz.
+    """
+    global wifi_ip
+    try:
+        wlan = network.WLAN(network.STA_IF)
+        wlan.active(True)
+        if not wlan.isconnected():
+            try:
+                wlan.disconnect()
+            except Exception:
+                pass
+            wlan.connect(SSID, PASSWORD)
+            for _ in range(24):
+                if wlan.isconnected():
+                    break
+                time.sleep(0.5)
+        if wlan.isconnected():
+            wifi_ip = wlan.ifconfig()[0]
+            return True
+        wlan.active(False)
+        time.sleep_ms(300)
+    except Exception as e:
+        print("WiFi err:", e)
+        try:
+            network.WLAN(network.STA_IF).active(False)
+            time.sleep_ms(300)
+        except Exception:
+            pass
+    wifi_ip = ""
+    return False
+
+def draw_estado(msg, color=LGRAY):
+    """Repinta solo la linea de estado del reposo (sin redibujar la pantalla)."""
+    rect(0, 250, 240, 12, BLACK)
+    text_center(250, msg, color, BLACK, scale=1)
+    draw_wifi_bar()
 
 # ── Arranque ──────────────────────────────────────────────────────────────────
 btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
@@ -278,14 +311,19 @@ import network, socket
 conectado = conectar_wifi()
 draw_idle()  # refresca con la barra WiFi actualizada
 
+MAX_INTENTOS_WIFI = 10   # tras estos intentos seguidos sin WiFi, reset completo de la placa
+
 ultimo_poll  = time.ticks_ms() - POLL_INTERVAL * 1000  # forzar poll inmediato
 ultimo_ts    = ""     # timestamp del último push procesado
 en_work_mode = False
 btn_prev     = 1
 btn_last_ms  = 0
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
+intentos_wifi = 0
 
+# El bucle NUNCA debe morir: cualquier excepcion se registra y se sigue.
 while True:
+  try:
     now = time.ticks_ms()
 
     # ── Boton opcional: flanco de bajada con debounce de 200ms ────────
@@ -301,12 +339,38 @@ while True:
         ultimo_avance = now
         next_package()
 
-    # ── Reconexion WiFi ───────────────────────────────────────────────
+    # ── Deteccion de perdida de WiFi ──────────────────────────────────
+    if conectado and not wifi_conectada():
+        conectado = False
+        wifi_ip = ""
+        intentos_wifi = 0
+        print("WiFi perdida")
+        if en_work_mode:
+            draw_wifi_bar()
+        else:
+            draw_estado("WiFi perdida, reconectando...", ORANGE)
+
+    # ── Reconexion WiFi: reintenta PARA SIEMPRE cada ~5s ──────────────
     if not conectado and time.ticks_diff(now, ultimo_poll) >= 5000:
         ultimo_poll = now
-        conectado = conectar_wifi()
+        intentos_wifi += 1
         if not en_work_mode:
-            draw_idle()
+            draw_estado("Buscando WiFi... intento %d" % intentos_wifi, ORANGE)
+        conectado = conectar_wifi()
+        if conectado:
+            intentos_wifi = 0
+            # Sincronizar YA con la app (poll inmediato en la proxima vuelta)
+            ultimo_poll = time.ticks_ms() - POLL_INTERVAL * 1000
+            if en_work_mode:
+                draw_wifi_bar()
+            else:
+                draw_idle()
+        elif intentos_wifi >= MAX_INTENTOS_WIFI:
+            # La radio puede quedarse colgada; un reset limpio la recupera
+            if not en_work_mode:
+                draw_estado("Sin WiFi: reiniciando pantalla...", RED)
+            time.sleep(1)
+            machine.reset()
 
     # ── Poll de trabajo (cada 3s) ─────────────────────────────────────
     elif conectado and time.ticks_diff(now, ultimo_poll) >= POLL_INTERVAL * 1000:
@@ -349,3 +413,6 @@ while True:
                 print("JSON err:", ex)
 
     time.sleep_ms(20)
+  except Exception as ex:
+    print("loop err:", ex)
+    time.sleep_ms(500)
