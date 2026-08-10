@@ -11,8 +11,9 @@
 #     automaticamente cada AUTO_ADVANCE_S segundos. NO hace falta cablear nada.
 #   - Si VARIOS operarios trabajan el mismo carro (cada uno desde su PC), la
 #     pantalla recibe la lista de todos: muestra el NOMBRE del operario debajo
-#     del carro y un contador "1/2" a la derecha. El pulsador entre los pines
-#     1 y 2 (BTN_OP) salta a los paquetes del siguiente operario, en ciclo.
+#     del carro y un contador "1/2" a la derecha. El pulsador de la extensora
+#     (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN) salta a los paquetes del
+#     siguiente operario, en ciclo.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
 #     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
 #     el pin queda en pull-up interno y no afecta en nada.
@@ -59,12 +60,14 @@ SPI_BAUD   = 20_000_000
 # strapping del S3 (0, 3, 45, 46).
 BUTTON_PIN = 5
 
-# Pulsador de CAMBIO DE OPERARIO: cableado entre los pines 1 y 2 (sin GND).
-# El pin 2 se pone como salida a nivel bajo y hace de GND; el pin 1 lee con
-# pull-up interno (pulsado = 0). Cada pulsacion muestra los paquetes del
-# siguiente operario que este trabajando este carro, en ciclo.
-BTN_OP_PIN = 1
-BTN_OP_GND = 2
+# Pulsador de CAMBIO DE OPERARIO: en la extensora FFC va entre el pad 1
+# (GND) y el pad 2, que corresponde al GPIO17 del ESP32-S3. Lee con pull-up
+# interno (pulsado = 0). Cada pulsacion muestra los paquetes del siguiente
+# operario que este trabajando este carro, en ciclo.
+BTN_OP_PIN = 17
+# Solo si el pulsador NO va a un GND real: pon aqui un GPIO libre y ese pin
+# se pondra como salida a nivel bajo para hacer de GND. Con None no se toca.
+BTN_OP_GND = None
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Pines display ─────────────────────────────────────────────────────────────
@@ -365,8 +368,9 @@ def draw_estado(msg, color=LGRAY):
 # ── Arranque ──────────────────────────────────────────────────────────────────
 btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 
-# Pulsador de cambio de operario: pin 2 a nivel bajo hace de GND, pin 1 lee
-Pin(BTN_OP_GND, Pin.OUT, value=0)
+# Pulsador de cambio de operario (BTN_OP_PIN -> GND, pull-up interno)
+if BTN_OP_GND is not None:
+    Pin(BTN_OP_GND, Pin.OUT, value=0)
 btn_op = Pin(BTN_OP_PIN, Pin.IN, Pin.PULL_UP)
 
 draw_idle("Conectando WiFi...")
