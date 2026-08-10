@@ -7,8 +7,11 @@
 #   - En reposo muestra "Esperando carro..." con el estado WiFi.
 #   - Al abrir el modal de paquetes en el navegador, el ESP32 recibe el carro
 #     asignado (orden + codigo) y su lista de paquetes.
-#   - Muestra UN paquete a la vez, con la etiqueta bien grande.
-#   - El boton fisico (BUTTON_PIN -> GND) pasa al siguiente paquete.
+#   - Muestra UN paquete a la vez, con la etiqueta bien grande, y va rotando
+#     automaticamente cada AUTO_ADVANCE_S segundos. NO hace falta cablear nada.
+#   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
+#     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
+#     el pin queda en pull-up interno y no afecta en nada.
 #
 # Rendimiento: SPI por hardware (20 MHz) en vez de SoftSPI (~500 kHz bit-bang).
 # Un clear de pantalla completa pasa de varios segundos a ~60 ms, y el texto se
@@ -27,13 +30,15 @@ PASSWORD = "tnADEofvTsc8MNGj6PSK"
 HOST_IP  = "viktor85.pythonanywhere.com"
 PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
+AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 
 USE_HW_SPI = True      # False = SoftSPI lento (solo si el HW SPI diera problemas)
 SPI_BAUD   = 20_000_000
 
-# Boton: entre BUTTON_PIN y GND (pull-up interno, pulsado = 0).
+# Boton OPCIONAL (no hace falta para funcionar): entre BUTTON_PIN y GND
+# (pull-up interno, pulsado = 0). Sin nada cableado el pin lee siempre 1.
 # Pines OCUPADOS por el display: 4, 7, 12, 13, 14, 21. Evita tambien los de
-# strapping del S3 (0, 3, 45, 46). Cualquier otro GPIO libre del conector vale.
+# strapping del S3 (0, 3, 45, 46).
 BUTTON_PIN = 5
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -155,13 +160,11 @@ def draw_work_header(d):
     text(4, Y_ORDEN, orden,            YELLOW, BLACK, scale=2)
     hline(0, Y_SEP1, 240, DGRAY)
     hline(0, Y_SEP2, 240, DGRAY)
-    text(150, Y_FOOT+18, "BOTON = SIG.", DGRAY, BLACK, scale=1)
     draw_wifi_bar()
 
 def draw_progress():
     rect(0, Y_FOOT, 240, 18, BLACK)
     text(4, Y_FOOT, "%d/%d" % (work_idx+1, len(work_pkgs)), LGRAY, BLACK, scale=2)
-    text(150, Y_FOOT+18, "BOTON = SIG.", DGRAY, BLACK, scale=1)
 
 def draw_package():
     """Dibuja SOLO la zona central con el paquete actual (redibujado parcial)."""
@@ -253,16 +256,23 @@ ultimo_ts    = ""     # timestamp del último push procesado
 en_work_mode = False
 btn_prev     = 1
 btn_last_ms  = 0
+ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 
 while True:
     now = time.ticks_ms()
 
-    # ── Boton: flanco de bajada con debounce de 200ms ─────────────────
+    # ── Boton opcional: flanco de bajada con debounce de 200ms ────────
     b = btn.value()
     if en_work_mode and b == 0 and btn_prev == 1 and time.ticks_diff(now, btn_last_ms) > 200:
         btn_last_ms = now
+        ultimo_avance = now
         next_package()
     btn_prev = b
+
+    # ── Rotacion automatica de paquetes (sin boton) ───────────────────
+    if en_work_mode and len(work_pkgs) > 1 and time.ticks_diff(now, ultimo_avance) >= AUTO_ADVANCE_S * 1000:
+        ultimo_avance = now
+        next_package()
 
     # ── Reconexion WiFi ───────────────────────────────────────────────
     if not conectado and time.ticks_diff(now, ultimo_poll) >= 5000:
@@ -287,6 +297,7 @@ while True:
                         work_fp   = fp
                         work_pkgs = wdata.get('paquetes', [])[:40]
                         work_idx  = 0
+                        ultimo_avance = now
                         en_work_mode = True
                         draw_work_header(wdata)
                         draw_package()
