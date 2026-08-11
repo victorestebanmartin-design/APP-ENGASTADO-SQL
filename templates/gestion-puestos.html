@@ -827,21 +827,6 @@
                     paquetes. El botón 8 está reservado para OK/confirmar.
                 </small>
             </div>
-            <div class="p-form-group">
-                <label for="puesto-tag">Tarjeta NFC del puesto</label>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <input type="text" id="puesto-tag" placeholder="Sin tarjeta" style="flex:1;min-width:150px;">
-                    <button type="button" class="btn btn-secondary" id="btn-capturar-tag"
-                            onclick="capturarTagPuesto()">📡 Capturar</button>
-                    <button type="button" class="btn btn-secondary" onclick="quitarTagPuesto()">Quitar</button>
-                </div>
-                <small style="display:block;margin-top:6px;color:var(--text-muted);font-size:0.78rem;">
-                    Alternativa al botón: el operario pasa su tarjeta por el lector del carro.
-                    Pulsa <strong>Capturar</strong> y acerca la tarjeta al lector de cualquier
-                    carro; el UID se rellena solo. Un puesto puede tener botón, tarjeta o ambos.
-                </small>
-                <div id="tag-captura-estado" style="margin-top:6px;font-size:0.8rem;display:none;"></div>
-            </div>
         </div>
         <div class="p-modal-footer">
             <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>

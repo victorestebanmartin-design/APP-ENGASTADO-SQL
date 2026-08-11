@@ -81,9 +81,7 @@ function mostrarListaPuestos(puestos) {
                             ⚙️ ${puesto.maquinas ? puesto.maquinas.length : 0} máquinas
                         </span>
                         <span class="stat" title="Cómo se identifica este puesto en la pantalla del carro">
-                            ${puesto.boton ? `🔘 Botón ${puesto.boton}` : ''}
-                            ${puesto.tag_uid ? `🏷️ ${puesto.tag_uid}` : ''}
-                            ${!puesto.boton && !puesto.tag_uid ? '⚪ Sin identificar' : ''}
+                            ${puesto.boton ? `🔘 Botón ${puesto.boton}` : '⚪ Sin botón'}
                         </span>
                         <span class="stat-status ${puesto.activo ? 'activo' : 'inactivo'}">
                             ${puesto.activo ? '✅ Activo' : '❌ Inactivo'}
@@ -122,13 +120,11 @@ function mostrarModalPuesto(puestoId = null) {
         if (puesto) {
             document.getElementById('puesto-nombre').value = puesto.nombre;
             document.getElementById('puesto-descripcion').value = puesto.descripcion || '';
-            document.getElementById('puesto-tag').value = puesto.tag_uid || '';
         }
     } else {
         titulo.textContent = 'Nuevo Puesto';
         document.getElementById('puesto-nombre').value = '';
         document.getElementById('puesto-descripcion').value = '';
-        document.getElementById('puesto-tag').value = '';
     }
     
     modal.dataset.editId = puestoId || '';
@@ -232,8 +228,7 @@ async function guardarPuesto() {
             body: JSON.stringify({
                 nombre: nombre,
                 descripcion: descripcion,
-                boton: boton === '' ? null : parseInt(boton, 10),
-                tag_uid: (document.getElementById('puesto-tag')?.value || '').trim() || null
+                boton: boton === '' ? null : parseInt(boton, 10)
             })
         });
         
