@@ -1,11 +1,13 @@
-"""Tarjeta NFC por puesto: alternativa al pulsador de la pantalla del carro."""
+"""Normalización de UID de tarjeta NFC y captura desde el carro (para Admin).
+
+La tarjeta identifica al OPERARIO, no al puesto (ver tests/test_operarios_tag.py
+para la asignación); aquí solo queda lo genérico: la función de normalización
+y la ruta de captura /api/esp32/ultimo-tag que usa tanto Admin → Operarios
+como, en su día, Admin → Puestos.
+"""
 import pytest
 
 from app.routes.puestos import normalizar_tag_uid
-
-
-def _un_puesto(client, n=0):
-    return client.get('/api/puestos').get_json()['puestos'][n]
 
 
 # ── Normalización del UID ─────────────────────────────────────────────────
@@ -31,63 +33,6 @@ def test_normalizar_uid(crudo, esperado):
 ])
 def test_uid_invalido(malo):
     assert normalizar_tag_uid(malo) is None
-
-
-# ── Asignación ────────────────────────────────────────────────────────────
-
-def test_puestos_nacen_sin_tarjeta(client):
-    assert _un_puesto(client).get('tag_uid') is None
-
-
-def test_asignar_tarjeta(admin_client, client):
-    p = _un_puesto(client)
-    r = admin_client.put(f'/api/puestos/{p["id"]}', json={'tag_uid': 'a1:b2:c3:d4'})
-    assert r.get_json()['success'], r.get_json()
-
-    # Se guarda normalizado
-    assert next(x for x in client.get('/api/puestos').get_json()['puestos']
-                if x['id'] == p['id'])['tag_uid'] == 'A1B2C3D4'
-
-
-def test_quitar_la_tarjeta(admin_client, client):
-    p = _un_puesto(client)
-    admin_client.put(f'/api/puestos/{p["id"]}', json={'tag_uid': 'A1B2C3D4'})
-    assert admin_client.put(f'/api/puestos/{p["id"]}', json={'tag_uid': None}).get_json()['success']
-
-    assert next(x for x in client.get('/api/puestos').get_json()['puestos']
-                if x['id'] == p['id'])['tag_uid'] is None
-
-
-def test_una_tarjeta_no_puede_estar_en_dos_puestos(admin_client, client):
-    puestos = client.get('/api/puestos').get_json()['puestos']
-    a, b = puestos[0], puestos[1]
-
-    assert admin_client.put(f'/api/puestos/{a["id"]}', json={'tag_uid': 'A1B2C3D4'}).get_json()['success']
-
-    # Da igual el formato en el que se escriba: es la misma tarjeta
-    r = admin_client.put(f'/api/puestos/{b["id"]}', json={'tag_uid': 'a1:b2:c3:d4'})
-    assert r.status_code == 409
-    assert a['nombre'] in r.get_json()['message']
-
-
-def test_uid_invalido_da_400(admin_client, client):
-    p = _un_puesto(client)
-    assert admin_client.put(f'/api/puestos/{p["id"]}', json={'tag_uid': 'NOSOYHEX'}).status_code == 400
-
-
-def test_un_puesto_puede_tener_boton_y_tarjeta(admin_client, client):
-    p = _un_puesto(client)
-    assert admin_client.put(f'/api/puestos/{p["id"]}',
-                            json={'boton': 2, 'tag_uid': 'A1B2C3D4'}).get_json()['success']
-    actual = next(x for x in client.get('/api/puestos').get_json()['puestos']
-                  if x['id'] == p['id'])
-    assert actual['boton'] == 2
-    assert actual['tag_uid'] == 'A1B2C3D4'
-
-
-def test_asignar_tarjeta_requiere_admin(client):
-    p = _un_puesto(client)
-    assert client.put(f'/api/puestos/{p["id"]}', json={'tag_uid': 'A1B2C3D4'}).status_code == 401
 
 
 # ── Alta desde el carro (capturar tag) ────────────────────────────────────
