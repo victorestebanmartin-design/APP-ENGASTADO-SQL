@@ -127,6 +127,19 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_terminal ON sesiones_trabajo(terminal_codigo)")
     conn.commit()
 
+    # Migración: columna boton en puestos (pulsador de la pantalla del carro)
+    cur.execute("PRAGMA table_info(puestos)")
+    p_cols = {row[1] for row in cur.fetchall()}
+    if p_cols and 'boton' not in p_cols:
+        cur.execute("ALTER TABLE puestos ADD COLUMN boton INTEGER")
+        conn.commit()
+    if p_cols:
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_boton ON puestos(boton)
+            WHERE boton IS NOT NULL AND activo = 1
+        """)
+        conn.commit()
+
     # Migración: tabla operario_logins (login exclusivo de operarios en engastado)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS operario_logins (

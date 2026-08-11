@@ -173,11 +173,18 @@ CREATE TABLE puestos (
     nombre TEXT NOT NULL,
     descripcion TEXT,
     activo INTEGER DEFAULT 1,
+    -- Boton de la pantalla del carro (1-7) con el que el operario de este
+    -- puesto se identifica al llegar. NULL = puesto sin boton asignado.
+    boton INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_puestos_activo ON puestos(activo) WHERE activo = 1;
+
+-- Un boton solo puede pertenecer a un puesto activo
+CREATE UNIQUE INDEX idx_puestos_boton ON puestos(boton)
+    WHERE boton IS NOT NULL AND activo = 1;
 
 -- =====================================================
 -- TABLA: maquinas

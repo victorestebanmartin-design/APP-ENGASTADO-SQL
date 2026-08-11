@@ -817,6 +817,16 @@
                 <label for="puesto-descripcion">Descripción</label>
                 <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
             </div>
+            <div class="p-form-group">
+                <label for="puesto-boton">Botón en la pantalla del carro</label>
+                <select id="puesto-boton">
+                    <option value="">— Sin botón —</option>
+                </select>
+                <small style="display:block;margin-top:6px;color:var(--text-muted);font-size:0.78rem;">
+                    El operario de este puesto pulsa este botón al llegar al carro para ver sus
+                    paquetes. El botón 8 está reservado para OK/confirmar.
+                </small>
+            </div>
         </div>
         <div class="p-modal-footer">
             <button class="btn btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>

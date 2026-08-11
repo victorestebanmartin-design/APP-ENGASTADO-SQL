@@ -57,20 +57,39 @@ class PuestoRepository(BaseRepository):
             query = "SELECT * FROM puestos ORDER BY nombre"
         return self.execute_select(query)
     
-    def actualizar_puesto(self, id: str, nombre: Optional[str] = None, 
-                         descripcion: Optional[str] = None) -> bool:
-        """Actualizar información de un puesto"""
+    def obtener_puesto_por_boton(self, boton: int) -> Optional[Dict]:
+        """Puesto activo asociado a un botón de la pantalla del carro (1-7)."""
+        query = "SELECT * FROM puestos WHERE boton = :b AND activo = 1"
+        resultados = self.execute_select(query, {'b': boton})
+        return resultados[0] if resultados else None
+
+    def actualizar_puesto(self, id: str, nombre: Optional[str] = None,
+                         descripcion: Optional[str] = None,
+                         boton: Optional[int] = None,
+                         limpiar_boton: bool = False) -> bool:
+        """Actualizar información de un puesto.
+
+        boton: número de pulsador (1-7) con el que este puesto se identifica
+        en la pantalla del carro. Para quitarlo se usa limpiar_boton=True
+        (pasar boton=None significa 'no tocar el botón').
+        """
         updates = []
         params = {'id': id}
-        
+
         if nombre is not None:
             updates.append("nombre = :nombre")
             params['nombre'] = nombre
-        
+
         if descripcion is not None:
             updates.append("descripcion = :descripcion")
             params['descripcion'] = descripcion
-        
+
+        if limpiar_boton:
+            updates.append("boton = NULL")
+        elif boton is not None:
+            updates.append("boton = :boton")
+            params['boton'] = boton
+
         if not updates:
             return False
         

@@ -80,6 +80,9 @@ function mostrarListaPuestos(puestos) {
                         <span class="stat">
                             ⚙️ ${puesto.maquinas ? puesto.maquinas.length : 0} máquinas
                         </span>
+                        <span class="stat" title="Botón de la pantalla del carro con el que se identifica este puesto">
+                            ${puesto.boton ? `🔘 Botón ${puesto.boton}` : '⚪ Sin botón'}
+                        </span>
                         <span class="stat-status ${puesto.activo ? 'activo' : 'inactivo'}">
                             ${puesto.activo ? '✅ Activo' : '❌ Inactivo'}
                         </span>
@@ -97,6 +100,19 @@ function mostrarModalPuesto(puestoId = null) {
     const modal = document.getElementById('modal-puesto');
     const titulo = modal.querySelector('h3');
     
+    // Marcar en el desplegable qué botones están ya cogidos por otros puestos
+    const selBoton = document.getElementById('puesto-boton');
+    if (selBoton) {
+        const propio = puestoId ? dataPuestos.find(p => p.id === puestoId) : null;
+        selBoton.innerHTML = '<option value="">— Sin botón —</option>';
+        for (let n = 1; n <= 7; n++) {
+            const duenyo = dataPuestos.find(p => p.boton === n && p.id !== puestoId);
+            selBoton.innerHTML += `<option value="${n}" ${duenyo ? 'disabled' : ''}>`
+                + `Botón ${n}${duenyo ? ` (ocupado por ${duenyo.nombre})` : ''}</option>`;
+        }
+        selBoton.value = propio && propio.boton ? String(propio.boton) : '';
+    }
+
     if (puestoId) {
         titulo.textContent = 'Editar Puesto';
         const puesto = dataPuestos.find(p => p.id === puestoId);
@@ -120,17 +136,18 @@ function mostrarModalPuesto(puestoId = null) {
 async function guardarPuesto() {
     const nombre = document.getElementById('puesto-nombre').value.trim();
     const descripcion = document.getElementById('puesto-descripcion').value.trim();
+    const boton = document.getElementById('puesto-boton')?.value || '';
     const editId = document.getElementById('modal-puesto').dataset.editId;
-    
+
     if (!nombre) {
         alert('El nombre del puesto es obligatorio');
         return;
     }
-    
+
     try {
         const url = editId ? `/api/puestos/${editId}` : '/api/puestos';
         const method = editId ? 'PUT' : 'POST';
-        
+
         const response = await fetch(url, {
             method: method,
             headers: {
@@ -138,7 +155,8 @@ async function guardarPuesto() {
             },
             body: JSON.stringify({
                 nombre: nombre,
-                descripcion: descripcion
+                descripcion: descripcion,
+                boton: boton === '' ? null : parseInt(boton, 10)
             })
         });
         

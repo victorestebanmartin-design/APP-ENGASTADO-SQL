@@ -391,8 +391,13 @@ ESP32_MAX_OPS = 8            # operarios simultaneos maximos por canal
 
 
 def _esp32_op_key(data):
-    """Clave del operario dentro del canal ('' si el push no trae operario)."""
-    return str(data.get('operario') or '').strip()[:24]
+    """Clave de la entrada dentro del canal de un carro.
+
+    Se indexa por PUESTO: cada puesto tiene su botón en la pantalla del carro y
+    nunca hay dos operarios en el mismo puesto, así que el puesto identifica sin
+    ambigüedad. Los pushes antiguos (sin puesto) siguen entrando por operario.
+    """
+    return str(data.get('puesto_id') or data.get('operario') or '').strip()[:24]
 
 
 def _esp32_ts_viva(ts_str):
@@ -520,29 +525,35 @@ def _esp32_confirmaciones_file():
     return os.path.join(base, 'esp32_confirmaciones.json')
 
 
-def _esp32_conf_key(carro, operario):
-    return '%s|%s' % (str(carro or '').strip()[:24], str(operario or '').strip()[:24])
+def _esp32_conf_key(carro, puesto):
+    """Las confirmaciones se guardan por (carro, puesto)."""
+    return '%s|%s' % (str(carro or '').strip()[:24], str(puesto or '').strip()[:24])
 
 
 @bp.route('/api/esp32/evento', methods=['GET'])
 def api_esp32_evento():
     """Recibe un evento de los pulsadores de la pantalla ESP32.
 
-    tipo=confirmacion: pulsacion larga del pulsador 2 = el operario confirma
-    en el carro que tiene en la mano los paquetes del lote indicado. Ademas
-    del registro, actualiza esp32_confirmaciones.json, que es lo que consulta
-    el frontend (via /api/esp32/estado-carro) para desbloquear el boton
-    'Tengo estos N, empezar'.
+    tipo=confirmacion: el operario ha pulsado el botón de su puesto en el carro
+    y luego OK. El parámetro 'fase' dice qué confirmó:
+      - fase=recoger  -> tiene en la mano los paquetes del lote
+      - fase=devolver -> los ha dejado de vuelta en el carro
     tipo=confirmacion_manual: mismo efecto, pero pulsado desde el PC (la
     pantalla del carro no responde); queda registrado como manual.
+
+    Se registra en esp32_eventos.json (histórico) y la última confirmación de
+    cada (carro, puesto) en esp32_confirmaciones.json, que es lo que consulta
+    el frontend vía /api/esp32/estado-carro.
 
     Es GET (no POST) porque el firmware de la pantalla solo sabe hacer GET.
     """
     try:
         evento = {
             'tipo': (request.args.get('tipo') or '').strip()[:24],
+            'fase': (request.args.get('fase') or 'recoger').strip()[:12],
             'device_id': _esp32_device_id(request.args.get('id')),
             'carro': (request.args.get('carro') or '').strip()[:24],
+            'puesto': (request.args.get('puesto') or '').strip()[:24],
             'operario': (request.args.get('operario') or '').strip()[:24],
             'lote': (request.args.get('lote') or '').strip()[:32],
             'grupo': (request.args.get('grupo') or '').strip()[:8],
@@ -560,16 +571,19 @@ def api_esp32_evento():
             json.dump(eventos[-100:], f, ensure_ascii=False)
         current_app.logger.info('Evento ESP32: %s', evento)
 
-        # Confirmacion de lote: guardar la ultima por (carro, operario)
+        # Confirmación: guardar la última por (carro, puesto)
         if evento['tipo'] in ('confirmacion', 'confirmacion_manual'):
             try:
                 with open(_esp32_confirmaciones_file()) as f:
                     confs = json.load(f)
             except Exception:
                 confs = {}
-            confs[_esp32_conf_key(evento['carro'], evento['operario'])] = {
+            # Clave por puesto; si el push no traía puesto se cae al operario
+            clave = _esp32_conf_key(evento['carro'], evento['puesto'] or evento['operario'])
+            confs[clave] = {
                 'lote': evento['lote'], 'grupo': evento['grupo'],
-                'tipo': evento['tipo'], 'ts': evento['ts'],
+                'fase': evento['fase'], 'tipo': evento['tipo'],
+                'operario': evento['operario'], 'ts': evento['ts'],
             }
             with open(_esp32_confirmaciones_file(), 'w') as f:
                 json.dump(confs, f, ensure_ascii=False)
@@ -581,23 +595,24 @@ def api_esp32_evento():
 
 @bp.route('/api/esp32/estado-carro', methods=['GET'])
 def api_esp32_estado_carro():
-    """Estado de la pantalla de un carro, para la confirmacion fisica de lotes.
+    """Estado de la pantalla de un carro, para la confirmación física.
 
-    Params: carro (obligatorio), operario (opcional).
+    Params: carro (obligatorio), puesto (recomendado; se acepta operario por
+    compatibilidad con pushes antiguos).
     Devuelve:
       - display: True si hay alguna pantalla ESP32 asignada a ese carro en Admin
-      - viva:    True si esa pantalla ha hecho poll en los ultimos 90s
-      - confirmacion: ultima confirmacion registrada de (carro, operario)
-        {lote, grupo, tipo, ts} o None si no hay ninguna.
+      - viva:    True si esa pantalla ha hecho poll en los últimos 90s
+      - confirmacion: última confirmación de (carro, puesto)
+        {lote, grupo, fase, tipo, operario, ts} o None si no hay ninguna.
 
-    El frontend bloquea el boton 'Tengo estos N, empezar' solo si display=True,
-    y lo desbloquea cuando confirmacion.lote coincide con el lote en pantalla.
+    El frontend bloquea el botón solo si display=True, y lo desbloquea cuando
+    confirmacion.lote y confirmacion.fase coinciden con lo que está pidiendo.
     """
     try:
         carro = (request.args.get('carro') or '').strip()
         if not carro:
             return jsonify({'success': False, 'message': 'carro es obligatorio'}), 400
-        operario = (request.args.get('operario') or '').strip()
+        clave = (request.args.get('puesto') or request.args.get('operario') or '').strip()
 
         display, viva = False, False
         for dev in _esp32_load_devices().values():
@@ -612,10 +627,10 @@ def api_esp32_estado_carro():
                 pass
 
         confirmacion = None
-        if operario:
+        if clave:
             try:
                 with open(_esp32_confirmaciones_file()) as f:
-                    confirmacion = json.load(f).get(_esp32_conf_key(carro, operario))
+                    confirmacion = json.load(f).get(_esp32_conf_key(carro, clave))
             except Exception:
                 confirmacion = None
 

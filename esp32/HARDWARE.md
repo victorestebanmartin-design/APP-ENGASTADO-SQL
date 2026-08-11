@@ -26,9 +26,9 @@ Numeración = pin de la faja FFC de 30 vías.
 | Pad | Señal | Función en el proyecto |
 |---|---|---|
 | 1, 21, 25, 30 | GND | Masa común (pulsadores, zumbador, EN-RST) |
-| 2 | GPIO17 | Pulsador 1 (a GND, `INPUT_PULLUP`) — operario: corta = siguiente operario, larga = deshacer (`BTN_OP_PIN`) |
+| 2, 4, 5, 6, 7, 8, 9 | GPIO17, 16, 15, 48, 47, 38, 39 | Pulsadores 1–7 (a GND, `INPUT_PULLUP`) — cada uno identifica un **puesto** (`BTN_PUESTO_PINS`) |
+| 10 | GPIO40 | Pulsador 8 — **OK / confirmar** (`BTN_OK_PIN`) |
 | 3 | GPIO18 | Zumbador (`BUZZER_PIN` en el firmware; verificar si activo/pasivo — si activo, usar transistor NPN) |
-| 4 | GPIO16 | Pulsador 2 (a GND, `INPUT_PULLUP`) — confirmación: larga = revelar y confirmar el grupo, corta = "me llevo los paquetes" (`BTN_ENT_PIN`) |
 | 22 | EN-RST | Interruptor de apagado alternativo (a GND desactiva el ESP32-S3; no confirmado si corta retroiluminación) |
 | 20 | 3.3V | Salida 3.3V disponible para el usuario (máx. recomendado 100-200mA) |
 
@@ -55,23 +55,21 @@ algo externo los deja a un nivel fijo durante el encendido la placa puede no
 arrancar o arrancar en modo raro. Para pulsadores con pull-up (reposo = 3.3V)
 suelen valer; para cargas que fijan nivel, mejor usar antes 48/47/38/39/40.
 
-## Ampliación a 8 pulsadores (plan de cableado)
+## Los 8 pulsadores
 
-Con 2 pulsadores ya montados (pads 2 y 4) quedan 6 por soldar. Los seis pads
-siguientes son GPIOs limpios (sin strapping, sin función reservada) y además
-están **todos en la misma fila** del breakout que los dos ya montados
-(pads 1–15 comparten lado), así que sale una tira ordenada.
+Montados y en uso. Los botones **1–7 identifican un puesto** (en Admin →
+Puestos se asigna a cada puesto su número) y el **8 es OK/confirmar**.
 
-| Pulsador | Pad | GPIO | Estado |
+| Pulsador | Pad | GPIO | Función |
 |---|---|---|---|
-| 1 | 2 | GPIO17 | ✅ montado — operario |
-| 2 | 4 | GPIO16 | ✅ montado — confirmación |
-| 3 | 5 | GPIO15 | por soldar |
-| 4 | 6 | GPIO48 | por soldar |
-| 5 | 7 | GPIO47 | por soldar |
-| 6 | 8 | GPIO38 | por soldar |
-| 7 | 9 | GPIO39 | por soldar |
-| 8 | 10 | GPIO40 | por soldar |
+| 1 | 2 | GPIO17 | Puesto con botón 1 |
+| 2 | 4 | GPIO16 | Puesto con botón 2 |
+| 3 | 5 | GPIO15 | Puesto con botón 3 |
+| 4 | 6 | GPIO48 | Puesto con botón 4 |
+| 5 | 7 | GPIO47 | Puesto con botón 5 |
+| 6 | 8 | GPIO38 | Puesto con botón 6 |
+| 7 | 9 | GPIO39 | Puesto con botón 7 |
+| 8 | 10 | GPIO40 | **OK** — confirma recogida o devolución |
 
 Quedan **libres de reserva** los pads 11 (GPIO6) y 12 (GPIO5) por si algún
 pulsador da problemas o hace falta un noveno. Los pads 13, 14 y 15 (GPIO3,
@@ -137,30 +135,36 @@ Ocupados por el propio módulo; el firmware los reserva y no deben tocarse:
 
 | Constante | Valor actual | Pad de la extensora |
 |---|---|---|
-| `BTN_OP_PIN` | GPIO17 | Pad 2 — pulsador 1 (operario): corta = siguiente operario, larga (1s) = deshacer |
-| `BTN_ENT_PIN` | GPIO16 | Pad 4 — pulsador 2 (confirmación): larga (1s) = revelar y confirmar el grupo (con barra de progreso), corta = "me llevo los paquetes" |
+| `BTN_PUESTO_PINS` | 17, 16, 15, 48, 47, 38, 39 | Pads 2, 4, 5, 6, 7, 8, 9 — botones 1 a 7, uno por puesto |
+| `BTN_OK_PIN` | GPIO40 | Pad 10 — botón 8, OK/confirmar |
 | `BUZZER_PIN` | GPIO18 | Pad 3 — zumbador (`BUZZER_PASIVO = False` → activo de 3.3V) |
-| `BUTTON_PIN` | GPIO5 | Pad 12 — botón genérico opcional (sin cablear actualmente) |
 
-### Confirmación física del lote
+### Ciclo de recogida y devolución
 
-El PC no deja empezar un grupo de paquetes hasta que el operario ha estado en el
-carro. El circuito completo:
+El botón identifica el **puesto**, no al operario: como nunca hay dos operarios
+en el mismo puesto, no hay ambigüedad posible. Cada puesto recibe su número en
+Admin → Puestos.
 
 1. En el PC se elige terminal y carro; el modal muestra el grupo con el botón
    **"Tengo estos N, empezar" bloqueado**.
-2. La pantalla del carro avisa (sonido de atención cada 25 s) con
-   `GRUPO n/N — MANTÉN EL BOTÓN`, **sin desvelar todavía los paquetes**.
-3. El operario mantiene el **pulsador 2** un segundo (barra de progreso en
-   pantalla). La pantalla revela los paquetes y manda
-   `GET /api/esp32/evento?tipo=confirmacion&carro=…&operario=…&lote=…`.
-4. El PC, que sondea `/api/esp32/estado-carro` cada 2 s, desbloquea el botón.
-5. Al pulsar "Siguiente grupo" se genera un lote nuevo y se repite desde el 2.
+2. La pantalla del carro lista quién tiene algo pendiente
+   (`[3] AMP-02 · RECOGER 5`) y avisa con un sonido cada 25 s.
+3. El operario pulsa el **botón de su puesto** → ve sus paquetes. Los coge y
+   pulsa **OK** → la pantalla manda
+   `GET /api/esp32/evento?tipo=confirmacion&fase=recoger&carro=…&puesto=…&lote=…`.
+4. El PC, que sondea `/api/esp32/estado-carro` cada 2 s, desbloquea el botón y
+   el operario trabaja el grupo.
+5. Al terminar el grupo (o el carro) el PC pide **DEVOLVER** y no avanza: la
+   pantalla vuelve a listar ese puesto en rojo.
+6. El operario pulsa su botón, deja los paquetes y pulsa **OK**
+   (`fase=devolver`). El PC continúa: muestra el grupo siguiente, o la pantalla
+   queda en `CARRO FINALIZADO`.
 
 Si la pantalla no responde, el PC ofrece un enlace para confirmar manualmente
 (se registra como `confirmacion_manual`): el trabajo nunca se bloquea del todo.
-Los eventos quedan en `data/esp32_eventos.json` (últimos 100) y la última
-confirmación de cada `(carro, operario)` en `data/esp32_confirmaciones.json`.
+Tampoco se bloquea si el carro no tiene pantalla asignada o el puesto no tiene
+botón. Los eventos quedan en `data/esp32_eventos.json` (últimos 100) y la última
+confirmación de cada `(carro, puesto)` en `data/esp32_confirmaciones.json`.
 
 ### Sonidos del zumbador
 
@@ -172,14 +176,13 @@ así que cada aviso se reconoce por **ritmo y textura** (`tono` = liso,
 | Evento | Patrón |
 |---|---|
 | Arranque | trino corto + nota |
-| Cambio de operario | tic seco de 22 ms |
+| Pulsas el botón de tu puesto | dos ticks rápidos |
 | Contenido actualizado | tic casi imperceptible (14 ms) |
-| Grupo esperando en el carro | tres golpes separados, se repite cada 25 s |
-| Grupo revelado y confirmado | fanfarria ascendente de tres notas |
-| "Me llevo los paquetes" | dos golpes descendentes |
-| Deshacer | trino largo y grave ("rebobinar") |
+| Alguien tiene que venir al carro | tres golpes separados, se repite cada 25 s |
+| OK a una recogida | fanfarria **ascendente** de tres notas |
+| OK a una devolución | las mismas tres notas **descendentes** ("cerrado") |
 | Llegan paquetes en reposo | melodía de cuatro notas, la llamada más larga |
-| Gesto no válido | dos zumbidos rasposos y graves |
+| Gesto no válido (puesto sin trabajo, OK a destiempo) | dos zumbidos rasposos y graves |
 
 ## Notas de la sesión
 

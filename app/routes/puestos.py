@@ -43,6 +43,10 @@ from app.routes.progreso import _crimps_por_terminal_archivo
 
 # ==================== PUESTOS Y MÁQUINAS ====================
 
+# La pantalla del carro tiene 8 pulsadores: del 1 al 7 identifican un puesto
+# (el operario pulsa el suyo al llegar) y el 8 es el de OK/confirmación.
+BOTONES_PUESTO_MAX = 7
+
 @bp.route('/api/puestos', methods=['GET'])
 def api_obtener_puestos():
     """Obtener lista de puestos con sus máquinas"""
@@ -130,8 +134,32 @@ def api_actualizar_puesto(puesto_id):
         # Actualizar
         nombre = data.get('nombre')
         descripcion = data.get('descripcion')
-        
-        if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion):
+
+        # Botón de la pantalla del carro: 1-7, o null/'' para quitarlo
+        boton, limpiar_boton = None, False
+        if 'boton' in data:
+            crudo = data.get('boton')
+            if crudo in (None, '', 0):
+                limpiar_boton = True
+            else:
+                try:
+                    boton = int(crudo)
+                except (TypeError, ValueError):
+                    return jsonify({'success': False,
+                                    'message': 'El botón debe ser un número del 1 al 7'}), 400
+                if not 1 <= boton <= BOTONES_PUESTO_MAX:
+                    return jsonify({'success': False,
+                                    'message': f'El botón debe estar entre 1 y {BOTONES_PUESTO_MAX} '
+                                               f'(el 8 es el de OK/confirmación)'}), 400
+                # Un botón solo puede estar en un puesto: avisar con nombre
+                ocupado = puesto_repo.obtener_puesto_por_boton(boton)
+                if ocupado and ocupado['id'] != puesto_id:
+                    return jsonify({'success': False,
+                                    'message': f'El botón {boton} ya está asignado al puesto '
+                                               f'"{ocupado["nombre"]}"'}), 409
+
+        if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion,
+                                         boton=boton, limpiar_boton=limpiar_boton):
             puesto_actualizado = puesto_repo.obtener_puesto(puesto_id)
             return jsonify({
                 'success': True,

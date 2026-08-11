@@ -7,12 +7,18 @@ async function mostrarPaqueteExpandido() {
     document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
 
     if (paqueteActualIndex >= batchFinIndex) {
-        if (batchFinIndex >= paquetesOrdenados.length) {
-            paqueteCompletado();
-        } else {
-            paginaPaquetes++;
-            mostrarModalPaquetes(carrosDelBono[carroActualIndex]);
-        }
+        const esFinDeCarro = batchFinIndex >= paquetesOrdenados.length;
+        // Antes de seguir hay que devolver los paquetes al carro: la pantalla
+        // del carro lo pide y el operario lo confirma allí (botón + OK).
+        pedirDevolucion(esFinDeCarro, () => {
+            if (esFinDeCarro) {
+                avisarCarroFinalizadoESP32();
+                paqueteCompletado();
+            } else {
+                paginaPaquetes++;
+                mostrarModalPaquetes(carrosDelBono[carroActualIndex]);
+            }
+        });
         return;
     }
     

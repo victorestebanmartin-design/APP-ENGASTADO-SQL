@@ -140,53 +140,35 @@ async function mostrarModalPaquetes(carro) {
     const totalPaginas = Math.ceil(total / PAQUETES_POR_PAGINA);
     const paginaNum = paginaPaquetes + 1;
 
-    // ── Confirmación física en el carro (pulsador 2 de la pantalla) ──────
-    // Cada grupo tiene un id de lote. Si el carro tiene pantalla asignada,
-    // el botón "Tengo estos N, empezar" queda bloqueado hasta que el operario
-    // confirme en el carro con la pulsación larga del pulsador (o desde el PC
-    // si la pantalla no responde). Todo queda registrado en el servidor.
+    // ── Confirmación física en el carro (botón del puesto + OK) ──────────
+    // Cada grupo tiene un id de lote. Si el carro tiene pantalla asignada y el
+    // puesto tiene botón, el botón "Tengo estos N, empezar" queda bloqueado
+    // hasta que el operario pulse en el carro el botón de su puesto y luego OK
+    // (o confirme desde el PC si la pantalla no responde).
     if (!window._loteIds) window._loteIds = {};
     const claveLote = `${carro.carro}|${paginaPaquetes}`;
     if (!window._loteIds[claveLote]) window._loteIds[claveLote] = Math.random().toString(36).slice(2, 10);
     const loteId = window._loteIds[claveLote];
     window._loteActualId = loteId;
 
-    let displayPresente = false, displayVivo = false;
-    window._loteGate = false;
-    try {
-        const rEst = await fetch(`/api/esp32/estado-carro?carro=${encodeURIComponent(carro.carro)}&operario=${encodeURIComponent(operarioActual || '')}`);
-        const est = await rEst.json();
-        if (est.success && est.display) {
-            displayPresente = true;
-            displayVivo = est.viva;
-            // Bloquear salvo que este lote ya estuviera confirmado (re-render)
-            window._loteGate = !(est.confirmacion && est.confirmacion.lote === loteId);
-        }
-    } catch (e) { /* sin pantalla localizable: no se bloquea el trabajo */ }
+    const est = await _estadoPantallaCarro(carro.carro);
+    // Sin pantalla en el carro, o sin botón asignado al puesto, no se bloquea
+    const puedeConfirmar = est.display && !!puestoSeleccionado?.boton;
+    window._loteGate = puedeConfirmar &&
+        !(est.confirmacion && est.confirmacion.lote === loteId && est.confirmacion.fase === 'recoger');
+    const displayVivo = est.viva;
 
     // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
     // Se envía SOLO la página visible del modal (los mismos 5 que ve el
-    // operario), con los bloqueos ya re-verificados. Al pasar de página el
-    // modal se re-renderiza y se re-envía el grupo siguiente. La pantalla
-    // retiene el grupo anterior hasta la pulsación larga que revela y
-    // confirma éste (campos lote/grupo/confirmar).
-    pushToESP32({
-        bono:  bonoActual?.nombre  || '',
-        carro: carro.carro         || '',
-        orden: carro.proyecto_nombre || '',
-        operario: operarioActual   || '',
+    // operario), con los bloqueos ya re-verificados. La entrada va indexada por
+    // PUESTO: la pantalla la muestra cuando se pulsa el botón de ese puesto.
+    pushToESP32(_payloadESP32(carro, {
+        fase: window._loteGate ? 'recoger' : 'trabajando',
+        lote: loteId,
         grupo: paginaNum,
         grupos: totalPaginas,
-        lote: loteId,
-        confirmar: displayPresente,
-        paquetes: paginaActual.map(p => ({
-            etiqueta: p.numeroEtiqueta ?? null,
-            cod:  p.cod_cable  || '',
-            elem: p.elemento   || '',
-            bloqueado: !!p.bloqueado,
-            por: p.bloqueado_por || ''
-        }))
-    });
+        paquetes: paginaActual
+    }));
 
     // Calcular totales globales
     let totalCables = 0, totalTerminales = 0;
@@ -293,7 +275,7 @@ async function mostrarModalPaquetes(carro) {
                 ${window._loteGate ? `
                 <div id="aviso-carro" style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:left;">
                     <div style="font-weight:bold;color:#7a5c00;font-size:1.02em;margin-bottom:4px;">🚶 Ve al carro ${carro.carro} y confirma en la pantalla</div>
-                    <div style="color:#7a5c00;font-size:0.9em;">Mantén pulsado <strong>1 segundo</strong> el botón de confirmación: la pantalla del carro te mostrará estos paquetes y aquí se desbloqueará el botón de empezar.</div>
+                    <div style="color:#7a5c00;font-size:0.9em;">Pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto) para ver estos paquetes, cógelos y pulsa <strong>OK</strong>. Aquí se desbloqueará el botón de empezar.</div>
                     <div id="aviso-carro-estado" style="margin-top:8px;color:#8a6d3b;font-size:0.85em;">${displayVivo ? '⏳ Esperando confirmación en el carro...' : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.'}</div>
                 </div>` : ''}
                 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
@@ -334,6 +316,44 @@ async function mostrarModalPaquetes(carro) {
 }
 
 /**
+ * Estado de la pantalla del carro para el puesto actual (¿hay pantalla?,
+ * ¿responde?, ¿qué fue lo último que se confirmó ahí?).
+ */
+async function _estadoPantallaCarro(carro) {
+    try {
+        const r = await fetch(`/api/esp32/estado-carro?carro=${encodeURIComponent(carro)}`
+            + `&puesto=${encodeURIComponent(puestoSeleccionado?.id || '')}`);
+        const d = await r.json();
+        if (d.success) return d;
+    } catch (e) { /* sin red: se sigue sin bloquear */ }
+    return { display: false, viva: false, confirmacion: null };
+}
+
+/**
+ * Datos que se mandan a la pantalla del carro. La entrada se indexa por puesto
+ * (puesto_id) y lleva el botón con el que el operario la abre en la pantalla.
+ */
+function _payloadESP32(carro, extra) {
+    return Object.assign({
+        bono:  bonoActual?.nombre    || '',
+        carro: carro.carro           || '',
+        orden: carro.proyecto_nombre || '',
+        operario: operarioActual     || '',
+        puesto_id: puestoSeleccionado?.id     || '',
+        puesto_nombre: puestoSeleccionado?.nombre || '',
+        boton: puestoSeleccionado?.boton      || null,
+    }, extra, {
+        paquetes: (extra.paquetes || []).map(p => ({
+            etiqueta: p.numeroEtiqueta ?? null,
+            cod:  p.cod_cable  || '',
+            elem: p.elemento   || '',
+            bloqueado: !!p.bloqueado,
+            por: p.bloqueado_por || ''
+        }))
+    });
+}
+
+/**
  * Sondear al servidor hasta que el operario confirme en la pantalla del carro.
  * Al confirmar, desbloquea el botón de empezar sin recargar el modal.
  */
@@ -344,22 +364,19 @@ function _iniciarEsperaConfirmacion(carro, loteId) {
         // Si el modal se cerró, dejar de sondear
         if (!document.getElementById('modal-paquetes')) { _pararEsperaConfirmacion(); return; }
         intentos++;
-        try {
-            const r = await fetch(`/api/esp32/estado-carro?carro=${encodeURIComponent(carro)}&operario=${encodeURIComponent(operarioActual || '')}`);
-            const d = await r.json();
-            const est = document.getElementById('aviso-carro-estado');
-            if (d.success && d.confirmacion && d.confirmacion.lote === loteId) {
-                _desbloquearBotonLote(d.confirmacion.tipo === 'confirmacion_manual');
-                return;
+        const d = await _estadoPantallaCarro(carro);
+        const est = document.getElementById('aviso-carro-estado');
+        if (d.confirmacion && d.confirmacion.lote === loteId && d.confirmacion.fase === 'recoger') {
+            _desbloquearBotonLote(d.confirmacion.tipo === 'confirmacion_manual');
+            return;
+        }
+        if (est) {
+            if (!d.viva) {
+                est.innerHTML = '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.';
+            } else {
+                est.textContent = `⏳ Esperando confirmación en el carro... (${intentos * 2}s)`;
             }
-            if (est) {
-                if (d.success && !d.viva) {
-                    est.innerHTML = '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.';
-                } else {
-                    est.textContent = `⏳ Esperando confirmación en el carro... (${intentos * 2}s)`;
-                }
-            }
-        } catch (e) { /* red intermitente: reintenta al siguiente tick */ }
+        }
     }, 2000);
 }
 
@@ -399,13 +416,146 @@ async function confirmarLoteManual(event) {
     const carro = carrosDelBono[carroActualIndex];
     if (!carro) return;
     if (!confirm(`¿Confirmas que has ido al carro ${carro.carro} y tienes estos paquetes?\n\nSe registrará como confirmación MANUAL (la pantalla del carro no respondió).`)) return;
-    try {
-        await fetch(`/api/esp32/evento?tipo=confirmacion_manual&carro=${encodeURIComponent(carro.carro)}`
-            + `&operario=${encodeURIComponent(operarioActual || '')}`
-            + `&lote=${encodeURIComponent(window._loteActualId || '')}`
-            + `&grupo=${encodeURIComponent(paginaPaquetes + 1)}`);
-    } catch (e) { /* aunque falle el registro, no bloqueamos el trabajo */ }
+    await _registrarConfirmacionManual(carro.carro, window._loteActualId, 'recoger', paginaPaquetes + 1);
     _desbloquearBotonLote(true);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  DEVOLUCIÓN DE PAQUETES AL CARRO
+//  Al acabar un grupo (o el carro) el operario tiene que llevar los paquetes
+//  de vuelta. La pantalla del carro lo pide, él pulsa el botón de su puesto,
+//  los deja y pulsa OK. Hasta entonces el PC no sigue.
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Pide la devolución del grupo recién terminado y llama a `continuar()`
+ * cuando el operario la confirma (en el carro o, si la pantalla no responde,
+ * desde el PC).
+ */
+async function pedirDevolucion(esFinDeCarro, continuar) {
+    const carro = carrosDelBono[carroActualIndex];
+    const est = carro ? await _estadoPantallaCarro(carro.carro) : { display: false };
+
+    // Sin pantalla en el carro o sin botón de puesto no hay nada que confirmar
+    if (!carro || !est.display || !puestoSeleccionado?.boton) { continuar(); return; }
+
+    const loteDev = 'dev' + Math.random().toString(36).slice(2, 9);
+    window._loteDevolucionId = loteDev;
+    window._devolucionContinuar = continuar;
+
+    // Los paquetes del grupo que se acaba de trabajar
+    const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
+    const grupo = paquetesOrdenados.slice(inicio, batchFinIndex);
+
+    pushToESP32(_payloadESP32(carro, {
+        fase: 'devolver',
+        lote: loteDev,
+        grupo: paginaPaquetes + 1,
+        grupos: Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA),
+        paquetes: grupo
+    }));
+
+    _mostrarModalDevolucion(carro, esFinDeCarro, est.viva);
+    _esperarDevolucion(carro.carro, loteDev);
+}
+
+function _mostrarModalDevolucion(carro, esFinDeCarro, displayVivo) {
+    document.getElementById('modal-devolucion')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'modal-devolucion';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);display:flex;justify-content:center;align-items:center;z-index:10500;';
+    modal.innerHTML = `
+        <div style="background:white;border-radius:15px;padding:26px 30px;max-width:560px;width:92%;text-align:center;">
+            <div style="font-size:2.6em;margin-bottom:8px;">📦↩️</div>
+            <h2 style="color:#c0392b;margin-bottom:10px;">Devuelve los paquetes al carro ${carro.carro}</h2>
+            <p style="color:#495057;font-size:1.02em;margin-bottom:16px;">
+                ${esFinDeCarro
+                    ? 'Has terminado el carro. Lleva los paquetes de vuelta antes de cerrarlo.'
+                    : 'Antes de coger el siguiente grupo, deja en el carro los que acabas de trabajar.'}
+            </p>
+            <div style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:14px 16px;text-align:left;margin-bottom:16px;">
+                <div style="font-weight:bold;color:#7a5c00;margin-bottom:4px;">🚶 En la pantalla del carro</div>
+                <div style="color:#7a5c00;font-size:0.92em;">Pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto), deja los paquetes y pulsa <strong>OK</strong>.</div>
+                <div id="devolucion-estado" style="margin-top:8px;color:#8a6d3b;font-size:0.85em;">
+                    ${displayVivo ? '⏳ Esperando la devolución en el carro...' : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.'}
+                </div>
+            </div>
+            <p style="font-size:0.82em;color:#6c757d;">¿La pantalla del carro no responde?
+                <a href="#" onclick="confirmarDevolucionManual(event)" style="color:#0d6efd;">Confirmar desde el PC</a>
+                (queda registrado como confirmación manual)</p>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+function _esperarDevolucion(carro, loteDev) {
+    _pararEsperaDevolucion();
+    let intentos = 0;
+    window._devolucionInterval = setInterval(async () => {
+        if (!document.getElementById('modal-devolucion')) { _pararEsperaDevolucion(); return; }
+        intentos++;
+        const d = await _estadoPantallaCarro(carro);
+        if (d.confirmacion && d.confirmacion.lote === loteDev && d.confirmacion.fase === 'devolver') {
+            _cerrarDevolucion();
+            return;
+        }
+        const est = document.getElementById('devolucion-estado');
+        if (est) {
+            est.innerHTML = d.viva
+                ? `⏳ Esperando la devolución en el carro... (${intentos * 2}s)`
+                : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.';
+        }
+    }, 2000);
+}
+
+function _pararEsperaDevolucion() {
+    if (window._devolucionInterval) {
+        clearInterval(window._devolucionInterval);
+        window._devolucionInterval = null;
+    }
+}
+
+function _cerrarDevolucion() {
+    _pararEsperaDevolucion();
+    document.getElementById('modal-devolucion')?.remove();
+    const seguir = window._devolucionContinuar;
+    window._devolucionContinuar = null;
+    if (typeof seguir === 'function') seguir();
+}
+
+/**
+ * Deja la pantalla del carro con el mensaje de "carro finalizado" para este
+ * puesto (no hay nada más que recoger aquí).
+ */
+function avisarCarroFinalizadoESP32() {
+    const carro = carrosDelBono[carroActualIndex];
+    if (!carro || !puestoSeleccionado?.boton) return;
+    pushToESP32(_payloadESP32(carro, {
+        fase: 'fin',
+        lote: 'fin' + Math.random().toString(36).slice(2, 7),
+        grupo: '', grupos: '',
+        paquetes: []
+    }));
+}
+
+async function confirmarDevolucionManual(event) {
+    if (event) event.preventDefault();
+    const carro = carrosDelBono[carroActualIndex];
+    if (!carro) return;
+    if (!confirm(`¿Confirmas que has devuelto los paquetes al carro ${carro.carro}?\n\nSe registrará como confirmación MANUAL (la pantalla del carro no respondió).`)) return;
+    await _registrarConfirmacionManual(carro.carro, window._loteDevolucionId, 'devolver', paginaPaquetes + 1);
+    _cerrarDevolucion();
+}
+
+/** Registra en el servidor una confirmación hecha desde el PC. */
+async function _registrarConfirmacionManual(carro, lote, fase, grupo) {
+    try {
+        await fetch(`/api/esp32/evento?tipo=confirmacion_manual&fase=${encodeURIComponent(fase)}`
+            + `&carro=${encodeURIComponent(carro)}`
+            + `&puesto=${encodeURIComponent(puestoSeleccionado?.id || '')}`
+            + `&operario=${encodeURIComponent(operarioActual || '')}`
+            + `&lote=${encodeURIComponent(lote || '')}`
+            + `&grupo=${encodeURIComponent(grupo || '')}`);
+    } catch (e) { /* aunque falle el registro, no bloqueamos el trabajo */ }
 }
 
 /**
@@ -626,6 +776,9 @@ async function cancelarModalPaquetes() {
         window._bloqueoInterval = null;
     }
     _pararEsperaConfirmacion();
+    _pararEsperaDevolucion();
+    document.getElementById('modal-devolucion')?.remove();
+    window._devolucionContinuar = null;
     window._loteGate = false;
     const modal = document.getElementById('modal-paquetes');
     if (modal) modal.remove();
