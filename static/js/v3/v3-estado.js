@@ -48,6 +48,21 @@ async function pushToESP32(data) {
         });
     } catch (_) { /* silencioso */ }
 }
+
+/**
+ * Libera este puesto de la pantalla del carro (deja de aparecer en su lista).
+ * El canal de la pantalla va indexado por puesto, así que el aviso de limpiar
+ * TIENE que llevar puesto_id: sin él no borra nada y el puesto se queda
+ * colgado como "en curso".
+ */
+function limpiarPantallaCarro(carro) {
+    pushToESP32({
+        clear: true,
+        carro: carro || '',
+        puesto_id: (typeof puestoSeleccionado !== 'undefined' && puestoSeleccionado?.id) || '',
+        operario: operarioActual || ''
+    });
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Login exclusivo de operario ──────────────────────────────────────────────
@@ -103,7 +118,11 @@ window.addEventListener('beforeunload', function() {
         // porque un fetch normal se cancela al cerrar la pestaña)
         const carro = (typeof carrosDelBono !== 'undefined' && carrosDelBono[carroActualIndex]?.carro) || '';
         navigator.sendBeacon(`${_ESP32_PA}/api/esp32/push`,
-            new Blob([JSON.stringify({ clear: true, carro, operario: operarioActual || '' })], { type: 'application/json' }));
+            new Blob([JSON.stringify({
+                clear: true, carro,
+                puesto_id: (typeof puestoSeleccionado !== 'undefined' && puestoSeleccionado?.id) || '',
+                operario: operarioActual || ''
+            })], { type: 'application/json' }));
     }
 });
 

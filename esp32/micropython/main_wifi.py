@@ -622,26 +622,41 @@ def _flush_eventos():
 def confirmar_ok():
     """Boton 8: confirmar lo que la pantalla esta pidiendo al puesto mostrado."""
     o = _op_sel()
-    if o is None or not _pide_accion(o):
+    if o is None:
+        avisar_pulsa_puesto()
+        return
+    if not _pide_accion(o):
+        # Ese puesto no tiene nada que confirmar ahora mismo
+        rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+        text_center(140, "NADA QUE", LGRAY, BLACK, scale=2)
+        text_center(170, "CONFIRMAR", LGRAY, BLACK, scale=2)
         bip_error()
+        time.sleep_ms(900)
+        mostrar_lista()
         return
     d = _d(o)
     fase = _fase_de(o)
     confirmados[_clave(o)] = _sello(o)
 
     rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
-    if fase == FASE_DEVOLVER:
+    final = fase == FASE_DEVOLVER and bool(d.get('final'))
+    if final:
+        # Era la ultima devolucion del carro: rematar con el mensaje de cierre
+        text_center(110, "DEVUELTOS", GREEN, BLACK, scale=2)
+        text_center(150, "CARRO", GREEN, BLACK, scale=3)
+        text_center(190, "FINALIZADO", GREEN, BLACK, scale=3)
+    elif fase == FASE_DEVOLVER:
         text_center(130, "DEVUELTOS", GREEN, BLACK, scale=3)
     else:
         text_center(130, "RECOGIDOS", GREEN, BLACK, scale=3)
     nombre = str(d.get('puesto_nombre') or '')[:13]
-    if nombre:
+    if nombre and not final:
         text_center(180, nombre, WHITE, BLACK, scale=2)
     if fase == FASE_DEVOLVER:
         bip_devuelto()
     else:
         bip_recogido()
-    time.sleep_ms(500)
+    time.sleep_ms(1600 if final else 500)
 
     _encolar_evento({
         'tipo': 'confirmacion',
@@ -653,7 +668,18 @@ def confirmar_ok():
         'grupo': str(d.get('grupo') or ''),
     })
     print("OK", fase, "puesto", d.get('puesto_id'), "lote", d.get('lote'))
-    draw_detalle()
+    # Confirmado = el operario ya se los ha llevado (o los ha dejado): quitar
+    # los paquetes de la pantalla y dejarla libre para el siguiente puesto.
+    mostrar_lista()
+
+def avisar_pulsa_puesto():
+    """OK pulsado sin haber elegido puesto: decir que hay que identificarse."""
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(120, "PULSA ANTES", ORANGE, BLACK, scale=2)
+    text_center(155, "TU PUESTO", ORANGE, BLACK, scale=3)
+    bip_error()
+    time.sleep_ms(1100)
+    mostrar_lista()
 
 # ── Huella del contenido ──────────────────────────────────────────────────────
 
@@ -818,12 +844,9 @@ while True:
         if en_work_mode and vista == 'detalle':
             confirmar_ok()
         elif en_work_mode:
-            # OK desde la lista: si solo hay un puesto pidiendo algo, entrar
-            pendientes = [o for o in work_ops if _pide_accion(o)]
-            if len(pendientes) == 1 and _boton_de(pendientes[0]):
-                seleccionar_puesto(_boton_de(pendientes[0]))
-            else:
-                bip_error()
+            # OK sin haberse identificado: NUNCA adivinar de quien es. Cada
+            # confirmacion tiene que llevar detras el boton de un puesto.
+            avisar_pulsa_puesto()
     btn_ok_prev = b_ok
 
     # ── Volver solo a la lista tras un rato sin tocar nada ────────────

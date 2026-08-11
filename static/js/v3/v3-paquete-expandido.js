@@ -12,8 +12,7 @@ async function mostrarPaqueteExpandido() {
         // del carro lo pide y el operario lo confirma allí (botón + OK).
         pedirDevolucion(esFinDeCarro, () => {
             if (esFinDeCarro) {
-                avisarCarroFinalizadoESP32();
-                paqueteCompletado();
+                paqueteCompletado();   // guarda progreso y libera el puesto
             } else {
                 paginaPaquetes++;
                 mostrarModalPaquetes(carrosDelBono[carroActualIndex]);
@@ -395,8 +394,8 @@ async function paqueteCompletado() {
         console.error('Error al guardar progreso del carro:', error);
     }
 
-    // Carro terminado (completo o parcial): limpiar su pantalla ESP32
-    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '', operario: operarioActual || '' });
+    // Carro terminado (completo o parcial): liberar este puesto en la pantalla
+    limpiarPantallaCarro(carrosDelBono[carroActualIndex]?.carro);
 
     setTimeout(() => {
         document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');

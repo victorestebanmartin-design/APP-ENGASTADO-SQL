@@ -470,6 +470,8 @@ async function cargarAreaTrabajoV2() {
 async function volverAPuestos() {
     document.getElementById('paso-trabajo').classList.add('hidden');
     document.getElementById('workspace-v3').classList.add('hidden');
+    // Dejar de ocupar la pantalla del carro con este puesto
+    limpiarPantallaCarro(carrosDelBono[carroActualIndex]?.carro);
     puestoSeleccionado = null;
     await cargarProgresoDelBono(bonoActual.nombre);
     await abrirModalPuesto();

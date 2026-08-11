@@ -157,8 +157,19 @@ Admin → Puestos.
 5. Al terminar el grupo (o el carro) el PC pide **DEVOLVER** y no avanza: la
    pantalla vuelve a listar ese puesto en rojo.
 6. El operario pulsa su botón, deja los paquetes y pulsa **OK**
-   (`fase=devolver`). El PC continúa: muestra el grupo siguiente, o la pantalla
-   queda en `CARRO FINALIZADO`.
+   (`fase=devolver`). El PC continúa con el grupo siguiente; si era la última
+   devolución del carro, la pantalla remata con `CARRO FINALIZADO`.
+
+Reglas de la interacción, para que no haya confirmaciones ciegas:
+
+- **OK solo vale después de pulsar el botón de un puesto.** Si se pulsa OK
+  desde la lista, la pantalla responde `PULSA ANTES TU PUESTO` y no confirma
+  nada: cada confirmación lleva detrás la identidad de un puesto.
+- **Al confirmar, los paquetes desaparecen** de la pantalla y vuelve a la lista
+  (el operario ya se los ha llevado, o los ha dejado).
+- Si el puesto mostrado no tiene nada que confirmar, dice `NADA QUE CONFIRMAR`.
+- Al salir del modal en el PC, cambiar de puesto o cerrar la pestaña, ese
+  puesto **se libera** de la pantalla y deja de aparecer en su lista.
 
 Si la pantalla no responde, el PC ofrece un enlace para confirmar manualmente
 (se registra como `confirmacion_manual`): el trabajo nunca se bloquea del todo.

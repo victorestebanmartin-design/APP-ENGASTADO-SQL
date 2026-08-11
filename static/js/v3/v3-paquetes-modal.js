@@ -449,6 +449,8 @@ async function pedirDevolucion(esFinDeCarro, continuar) {
 
     pushToESP32(_payloadESP32(carro, {
         fase: 'devolver',
+        // Con final=true la pantalla remata con "CARRO FINALIZADO" al confirmar
+        final: !!esFinDeCarro,
         lote: loteDev,
         grupo: paginaPaquetes + 1,
         grupos: Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA),
@@ -520,21 +522,6 @@ function _cerrarDevolucion() {
     const seguir = window._devolucionContinuar;
     window._devolucionContinuar = null;
     if (typeof seguir === 'function') seguir();
-}
-
-/**
- * Deja la pantalla del carro con el mensaje de "carro finalizado" para este
- * puesto (no hay nada más que recoger aquí).
- */
-function avisarCarroFinalizadoESP32() {
-    const carro = carrosDelBono[carroActualIndex];
-    if (!carro || !puestoSeleccionado?.boton) return;
-    pushToESP32(_payloadESP32(carro, {
-        fase: 'fin',
-        lote: 'fin' + Math.random().toString(36).slice(2, 7),
-        grupo: '', grupos: '',
-        paquetes: []
-    }));
 }
 
 async function confirmarDevolucionManual(event) {
@@ -704,6 +691,20 @@ function confirmarPaginaPaquetes() {
     const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
     paqueteActualIndex = inicio;
     batchFinIndex = Math.min(inicio + PAQUETES_POR_PAGINA, paquetesOrdenados.length);
+
+    // Decirle a la pantalla del carro que este puesto ya está trabajando: deja
+    // de pedir la recogida aunque la pantalla se reinicie.
+    const carroActual = carrosDelBono[carroActualIndex];
+    if (carroActual && puestoSeleccionado?.boton) {
+        pushToESP32(_payloadESP32(carroActual, {
+            fase: 'trabajando',
+            lote: window._loteActualId || '',
+            grupo: paginaPaquetes + 1,
+            grupos: Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA),
+            paquetes: paquetesOrdenados.slice(inicio, batchFinIndex)
+        }));
+    }
+
     mostrarPaqueteExpandido();
 }
 
@@ -768,8 +769,8 @@ function cerrarImagenTerminal() {
 }
 
 async function cancelarModalPaquetes() {
-    // Volver al reposo la pantalla ESP32 (limpiar pantalla de trabajo)
-    pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '', operario: operarioActual || '' });
+    // Liberar este puesto en la pantalla del carro (deja de salir "en curso")
+    limpiarPantallaCarro(carrosDelBono[carroActualIndex]?.carro);
     // Detener auto-refresh de bloqueos y la espera de confirmación del carro
     if (window._bloqueoInterval) {
         clearInterval(window._bloqueoInterval);
