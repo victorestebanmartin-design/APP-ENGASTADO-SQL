@@ -55,6 +55,49 @@ algo externo los deja a un nivel fijo durante el encendido la placa puede no
 arrancar o arrancar en modo raro. Para pulsadores con pull-up (reposo = 3.3V)
 suelen valer; para cargas que fijan nivel, mejor usar antes 48/47/38/39/40.
 
+## Ampliación a 8 pulsadores (plan de cableado)
+
+Con 2 pulsadores ya montados (pads 2 y 4) quedan 6 por soldar. Los seis pads
+siguientes son GPIOs limpios (sin strapping, sin función reservada) y además
+están **todos en la misma fila** del breakout que los dos ya montados
+(pads 1–15 comparten lado), así que sale una tira ordenada.
+
+| Pulsador | Pad | GPIO | Estado |
+|---|---|---|---|
+| 1 | 2 | GPIO17 | ✅ montado — operario |
+| 2 | 4 | GPIO16 | ✅ montado — confirmación |
+| 3 | 5 | GPIO15 | por soldar |
+| 4 | 6 | GPIO48 | por soldar |
+| 5 | 7 | GPIO47 | por soldar |
+| 6 | 8 | GPIO38 | por soldar |
+| 7 | 9 | GPIO39 | por soldar |
+| 8 | 10 | GPIO40 | por soldar |
+
+Quedan **libres de reserva** los pads 11 (GPIO6) y 12 (GPIO5) por si algún
+pulsador da problemas o hace falta un noveno. Los pads 13, 14 y 15 (GPIO3,
+GPIO45, GPIO46) se dejan como último recurso por ser de strapping.
+
+**Cableado.** Cada pulsador va entre su pad y GND, con `Pin.IN, Pin.PULL_UP`
+(reposo = 1, pulsado = 0). No hace falta resistencia externa para que funcione.
+Los 8 comparten una única línea de masa: hay GND en los pads **1, 21, 25 y 30**
+— el pad 1 está justo al lado de la tira, así que lo natural es sacar de ahí un
+hilo común a todos los pulsadores y dejar 21/25/30 libres.
+
+**En taller (recomendado si los cables pasan de ~30 cm o van cerca de las
+engastadoras).** El pull-up interno del S3 es débil (~45 kΩ) y capta ruido de
+cargas inductivas:
+
+- Un condensador de **100 nF** en paralelo con cada pulsador (entre pad y GND)
+  mata los rebotes y buena parte del ruido.
+- Opcionalmente una resistencia de **4,7–10 kΩ** de cada pad a 3.3V (pad 20),
+  en paralelo con el pull-up interno: baja la impedancia y hace la línea mucho
+  más inmune.
+- Mejor cable trenzado o con la masa acompañando a cada señal que hilos sueltos.
+
+El firmware ya hace antirrebote por software (250 ms entre pulsaciones), así que
+si los cables son cortos y limpios puedes empezar sin nada de esto y añadirlo
+solo si ves pulsaciones fantasma.
+
 ## Pines a evitar (función reservada o comparten hardware)
 
 | Pad | Señal | Motivo |
