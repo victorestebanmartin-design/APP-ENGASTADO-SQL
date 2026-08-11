@@ -1241,6 +1241,7 @@ async function cargarDisplays() {
         const d = await resp.json();
         const devs = d.devices || [];
         const carros = d.carros || [];
+        const versionSrv = d.firmware_version || '';
         if (devs.length === 0) {
             cont.innerHTML = '<p class="instruccion">Todavía no se ha detectado ninguna pantalla.<br>' +
                 'Enciende una pantalla con el firmware actualizado y aparecerá aquí sola en unos segundos.</p>';
@@ -1262,7 +1263,7 @@ async function cargarDisplays() {
             <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
                 <thead><tr style="text-align:left;color:#94a3b8;">
                     <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th><th>NFC</th>
-                    <th>Carro asignado</th><th>Última señal</th><th></th>
+                    <th>Carro asignado</th><th>Firmware</th><th>Última señal</th><th></th>
                 </tr></thead>
                 <tbody>` + devs.map(dev => `
                 <tr style="border-top:1px solid #334155;">
@@ -1274,10 +1275,20 @@ async function cargarDisplays() {
                         ${dev.nfc === 'ok' ? '🏷️ ok' : dev.nfc === 'ko' ? '<span style="color:#f87171;">⚠️ no responde</span>' : '—'}
                     </td>
                     <td><select id="disp-carro-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.carro)}</select></td>
+                    <td title="Versión del firmware de la pantalla vs la del servidor (${_dispEsc(versionSrv) || '—'})">
+                        ${!dev.fw ? '<span style="color:#64748b;">—</span>'
+                            : dev.fw === versionSrv ? `<span style="color:#4ade80;">🟢 ${_dispEsc(dev.fw)}</span>`
+                            : `<span style="color:#fbbf24;">🟠 ${_dispEsc(dev.fw)}</span>`}
+                    </td>
                     <td style="color:#94a3b8;">${dev.last_seen ? _dispEsc(dev.last_seen.replace('T', ' ').slice(0, 19)) : '—'}</td>
                     <td style="white-space:nowrap;">
                         <button class="btn-primary" onclick="guardarDisplay('${dev.id}')" title="Guardar nombre y carro">💾 Guardar</button>
                         <button class="btn-secondary" onclick="probarDisplay('${dev.id}')" title="Enviar mensaje de prueba a la pantalla">📡 Probar</button>
+                        ${dev.ota_pedido
+                            ? `<button class="btn-secondary" onclick="actualizarDisplay('${dev.id}')" title="Actualización pedida: se aplicará en el próximo poll de la pantalla">⏳ OTA pedida</button>`
+                            : (dev.fw && dev.fw !== versionSrv)
+                                ? `<button class="btn-secondary" onclick="actualizarDisplay('${dev.id}')" title="Actualizar el firmware por WiFi">⬆️ Actualizar</button>`
+                                : ''}
                         <button class="btn-secondary" onclick="eliminarDisplay('${dev.id}')" title="Olvidar esta pantalla">🗑️</button>
                     </td>
                 </tr>`).join('') + `
@@ -1302,6 +1313,19 @@ async function guardarDisplay(id) {
         cargarDisplays();
     } catch (e) {
         _dispMsg('❌ No se pudo guardar', true);
+    }
+}
+
+async function actualizarDisplay(id) {
+    if (!confirm('¿Actualizar el firmware de esta pantalla por WiFi?\n\nSe aplicará en su próximo poll (unos segundos) y la pantalla se reiniciará sola. Sus credenciales WiFi se conservan.')) return;
+    try {
+        const resp = await fetch(`/api/esp32/devices/${id}/ota`, { method: 'POST' });
+        const d = await resp.json();
+        if (!d.success) throw new Error();
+        _dispMsg(`⬆️ Actualización pedida (a ${d.version || 'la última'}). La pantalla se reiniciará en unos segundos.`);
+        cargarDisplays();
+    } catch (e) {
+        _dispMsg('❌ No se pudo pedir la actualización', true);
     }
 }
 
