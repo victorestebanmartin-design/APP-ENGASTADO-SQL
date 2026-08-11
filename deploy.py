@@ -30,7 +30,25 @@ def load_env():
                 key, _, value = line.partition("=")
                 os.environ.setdefault(key.strip(), value.strip())
 
-GIT = r"C:\Users\estebanv\AppData\Local\GitHubDesktop\app-3.5.11\resources\app\git\cmd\git.exe"
+def _find_git():
+    """Localiza git.exe: primero en PATH, luego en la última versión de GitHub Desktop."""
+    from shutil import which
+    en_path = which("git")
+    if en_path:
+        return en_path
+    base = os.path.expandvars(r"%LOCALAPPDATA%\GitHubDesktop")
+    if os.path.isdir(base):
+        apps = sorted(
+            (d for d in os.listdir(base) if d.startswith("app-")),
+            reverse=True,
+        )
+        for app in apps:
+            cand = os.path.join(base, app, "resources", "app", "git", "cmd", "git.exe")
+            if os.path.isfile(cand):
+                return cand
+    return "git"
+
+GIT = _find_git()
 
 def run(cmd, check=True):
     cmd = cmd.replace("git ", f'"{GIT}" ', 1) if cmd.startswith("git ") else cmd
