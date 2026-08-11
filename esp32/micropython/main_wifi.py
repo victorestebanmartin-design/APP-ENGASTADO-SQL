@@ -102,12 +102,15 @@ BTN_PUESTO_PINS = [17, 16, 15, 48, 47, 38, 39]
 BTN_OK_PIN = 40
 
 # ── Lector NFC (PN532 "NFC MODULE V3" en modo I2C) ───────────────────────────
-# OPCIONAL: es la alternativa comoda al boton de puesto. Cada puesto puede
-# tener una tarjeta asignada en Admin -> Puestos; pasarla por el lector hace
-# lo mismo que pulsar su boton. El OK (boton 8) sigue siendo quien confirma.
+# La tarjeta identifica al OPERARIO (no al puesto). Sirve para dos cosas:
+#   1. LOGIN: al abrir el modulo en el PC, la pantalla muestra "LOGIN / PASA TU
+#      TARJETA" con un codigo; el operario pasa su tarjeta aqui y entra.
+#   2. CONFIRMAR: en modo trabajo, pasar la tarjeta = pulsar el boton de su
+#      puesto (muestra sus paquetes); el OK (boton 8) confirma.
+# Cada operario tiene su tarjeta asignada en Admin -> Operarios. Sin lector
+# conectado no pasa nada: los pulsadores siguen funcionando igual.
 #   SDA -> pad 11 (GPIO6)    VCC -> pad 20 (3.3V)
 #   SCL -> pad 12 (GPIO5)    GND -> pad 21, 25 o 30
-# Sin lector conectado no pasa nada: los pulsadores siguen funcionando igual.
 NFC_SDA_PIN = 6        # None en cualquiera de los dos = NFC desactivado
 NFC_SCL_PIN = 5
 NFC_POLL_MS = 300      # cada cuanto se pregunta si hay una tarjeta delante
@@ -369,6 +372,30 @@ def draw_idle(msg=None):
         pass       # aun no se ha inicializado (primer draw del arranque)
     draw_wifi_bar()
 
+def draw_login(codigo):
+    """Pantalla de espera de login: el operario pasa su tarjeta para entrar.
+
+    El servidor manda un codigo corto que tambien se ve en el PC que pidio el
+    login: sirve para confirmar de un vistazo que es TU login (seguridad basica
+    por si varios PCs piden entrar a la vez)."""
+    rect(0, 0, 240, 320, BLACK)
+    text_center(24, "LOGIN", ORANGE, BLACK, scale=4)
+    hline(20, 84, 200, DGRAY)
+    text_center(104, "PASA TU", WHITE, BLACK, scale=3)
+    text_center(140, "TARJETA", WHITE, BLACK, scale=3)
+    if codigo:
+        text_center(196, "CODIGO", LGRAY, BLACK, scale=2)
+        text_center(224, str(codigo)[:6], YELLOW, BLACK, scale=4)
+    text(4, 274, "ID " + DEVICE_ID[-4:], DGRAY, BLACK, scale=1)
+    draw_wifi_bar()
+
+def draw_reposo():
+    """Reposo: banner de login si hay uno pendiente en este carro, o idle."""
+    if login_codigo:
+        draw_login(login_codigo)
+    else:
+        draw_idle()
+
 # ── Estado de trabajo ─────────────────────────────────────────────────────────
 # work_ops: lo que el servidor dice que hay ahora mismo en este carro, una
 # entrada por PUESTO: [{'operario': <clave>, 'data': {...}}, ...]
@@ -385,6 +412,11 @@ work_idx   = 0     # paquete mostrado dentro de esa lista
 
 # Lo ya confirmado en esta pantalla: clave de puesto -> "lote|fase"
 confirmados = {}
+
+# Login por tarjeta: codigo del login pendiente en este carro ('' = ninguno).
+# Lo manda el servidor en cada poll; la pantalla lo muestra en reposo.
+login_codigo = ''
+login_codigo_shown = ''   # lo que el banner de reposo tiene dibujado ahora
 
 # Fases que manda el PC en cada push
 FASE_RECOGER  = 'recoger'    # hay que coger estos paquetes del carro
@@ -423,8 +455,12 @@ def hay_pendiente():
     return any(_pide_accion(o) for o in work_ops)
 
 def _tag_de(o):
-    """UID de la tarjeta NFC de ese puesto, normalizado (hex en mayusculas)."""
-    return str(_d(o).get('tag_uid') or '').replace(':', '').replace(' ', '').upper()
+    """UID de la tarjeta del OPERARIO de esa entrada, normalizado (hex mayus).
+
+    La identidad ahora es del operario, no del puesto: el PC manda 'operario_tag'
+    en el payload. Se mantiene 'tag_uid' como respaldo por compatibilidad."""
+    raw = _d(o).get('operario_tag') or _d(o).get('tag_uid') or ''
+    return str(raw).replace(':', '').replace(' ', '').upper()
 
 def _op_por_boton(n):
     for o in work_ops:
@@ -647,12 +683,13 @@ def seleccionar_puesto(n):
     _abrir_detalle(o)
 
 def seleccionar_por_tag(uid):
-    """Pasada una tarjeta por el lector: mismo efecto que pulsar su boton.
+    """Pasada una tarjeta por el lector: mismo efecto que pulsar tu boton.
 
-    Si el UID no es de ningun puesto de este carro puede ser por dos motivos:
-    ese puesto no tiene trabajo aqui, o la tarjeta no esta dada de alta. Como
-    la pantalla no conoce la tabla de puestos, no puede distinguirlos: enseña
-    el UID (para poder darlo de alta desde Admin) y se lo cuenta al servidor.
+    La tarjeta identifica al OPERARIO. Si el UID no corresponde a ningun
+    operario con trabajo en este carro puede ser porque no tiene nada aqui o
+    porque la tarjeta no esta dada de alta. La pantalla no conoce la tabla de
+    operarios: ensena el UID (para poder darlo de alta desde Admin) y se lo
+    cuenta al servidor.
     """
     o = _op_por_tag(uid)
     if o is not None:
@@ -662,7 +699,7 @@ def seleccionar_por_tag(uid):
     text_center(110, "TARJETA", ORANGE, BLACK, scale=3)
     text_center(150, "SIN TRABAJO AQUI", ORANGE, BLACK, scale=1)
     text_center(180, uid[:20], LGRAY, BLACK, scale=2)
-    text_center(215, "Alta en Admin > Puestos", DGRAY, BLACK, scale=1)
+    text_center(215, "Alta en Admin > Operarios", DGRAY, BLACK, scale=1)
     bip_error()
     _encolar_evento({'tipo': 'tag', 'uid': uid, 'carro': str(mi_carro or '')})
     time.sleep_ms(1600)
@@ -938,7 +975,7 @@ def nfc_reintentar():
         print("NFC ->", nuevo)
         nfc_estado = nuevo
         if not en_work_mode:
-            draw_idle()
+            draw_reposo()
     else:
         nfc_estado = nuevo
 
@@ -1026,7 +1063,7 @@ while True:
                     print("NFC no responde: recuperando bus")
                     nfc_estado = 'ko'
                     if not en_work_mode:
-                        draw_idle()
+                        draw_reposo()
         else:
             nfc_fallos = 0
         if uid:
@@ -1042,11 +1079,13 @@ while True:
                 if en_work_mode:
                     seleccionar_por_tag(uid)
                 else:
-                    # En reposo no hay puestos que mostrar, pero interesa
-                    # cazar el UID para poder darlo de alta desde Admin
+                    # En reposo: cazar el UID para dar de alta operarios desde
+                    # Admin y, sobre todo, para resolver un login pendiente (el
+                    # servidor identifica al operario por su tarjeta).
                     _encolar_evento({'tipo': 'tag', 'uid': uid,
                                      'carro': str(mi_carro or '')})
                     draw_estado("Tarjeta " + uid[:14], YELLOW)
+                    login_codigo_shown = None   # el proximo poll redibuja reposo
 
     # ── Boton 8 (OK): confirmar lo que pide la pantalla ───────────────
     b_ok = btn_ok.value()
@@ -1135,12 +1174,16 @@ while True:
         if body:
             try:
                 d = json.loads(body)
+                # Codigo de login pendiente en este carro (banner de reposo)
+                login_codigo = (d.get('login') or {}).get('codigo') or ''
                 # Carro que nos asigna el servidor (Admin -> Display Carro)
                 ca = d.get('carro_asignado') or CARRO_ASIGNADO
                 if ca != mi_carro:
                     mi_carro = ca
+                    login_codigo_shown = None      # forzar redibujo de reposo
                     if not en_work_mode:
-                        draw_idle()
+                        draw_reposo()
+                        login_codigo_shown = login_codigo
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
                 if not ops:
@@ -1150,7 +1193,12 @@ while True:
                         work_fp = ""; work_ops = []; work_pkgs = []
                         vista = 'lista'; sel_clave = ''
                         confirmados.clear()
-                        draw_idle()
+                        draw_reposo()
+                        login_codigo_shown = login_codigo
+                    elif login_codigo_shown != login_codigo:
+                        # En reposo: aparecio/cambio/desaparecio el login pendiente
+                        draw_reposo()
+                        login_codigo_shown = login_codigo
                 elif fp != work_fp:
                     # Contenido nuevo del servidor
                     habia = en_work_mode
