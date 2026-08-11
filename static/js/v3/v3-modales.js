@@ -190,6 +190,14 @@ function _mostrarCodigoLogin(codigo) {
 function _activarOperario(nombre) {
     operarioActual = nombre;
 
+    // Cargar la tarjeta NFC del operario: es como se identifica luego en el
+    // carro para confirmar recoger/devolver (además del botón del puesto).
+    operarioTagUid = null;
+    fetch('/api/operarios').then(r => r.json()).then(data => {
+        const op = (data.operarios || []).find(o => o.nombre === nombre);
+        operarioTagUid = (op && op.tag_uid) || null;
+    }).catch(() => {});
+
     // Ocultar modal de operario
     const modal = document.getElementById('modal-operario');
     if (modal) modal.classList.add('hidden');

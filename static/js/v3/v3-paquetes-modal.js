@@ -316,17 +316,18 @@ async function mostrarModalPaquetes(carro) {
     }
 }
 
-/** ¿Puede este puesto identificarse en la pantalla del carro? */
+/** ¿Hay forma de confirmar en la pantalla del carro?
+ *  Ahora la identidad es del OPERARIO (su tarjeta) o del puesto (su botón). */
 function _puestoSeIdentifica() {
-    return !!(puestoSeleccionado?.boton || puestoSeleccionado?.tag_uid);
+    return !!(operarioTagUid || puestoSeleccionado?.boton);
 }
 
-/** Cómo decirle al operario que se identifique, según lo que tenga asignado. */
+/** Cómo decirle al operario que se identifique en el carro. */
 function _comoIdentificarse() {
-    if (puestoSeleccionado?.tag_uid && puestoSeleccionado?.boton) {
+    if (operarioTagUid && puestoSeleccionado?.boton) {
         return `pasa tu <strong>tarjeta</strong> (o pulsa el <strong>botón ${puestoSeleccionado.boton}</strong>)`;
     }
-    if (puestoSeleccionado?.tag_uid) return 'pasa tu <strong>tarjeta</strong> por el lector';
+    if (operarioTagUid) return 'pasa tu <strong>tarjeta</strong> por el lector';
     return `pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto)`;
 }
 
@@ -357,7 +358,9 @@ function _payloadESP32(carro, extra) {
         puesto_id: puestoSeleccionado?.id     || '',
         puesto_nombre: puestoSeleccionado?.nombre || '',
         boton: puestoSeleccionado?.boton      || null,
-        tag_uid: puestoSeleccionado?.tag_uid  || '',
+        // Tarjeta del OPERARIO: la pantalla la empareja con la lectura del lector
+        // para saber quién confirma (recoger/devolver), sin depender del puesto.
+        operario_tag: operarioTagUid          || '',
     }, extra, {
         paquetes: (extra.paquetes || []).map(p => ({
             etiqueta: p.numeroEtiqueta ?? null,

@@ -10,6 +10,7 @@
 // Operario identificado en esta sesión
 let operarioActual = null;
 let operarioLoginId = null;   // ID del login exclusivo en servidor (null si no hay)
+let operarioTagUid = null;    // tarjeta NFC del operario (para confirmar en el carro)
 let _latidoOperarioTimer = null;
 
 // Login por tarjeta (lector compartido en el carro)
