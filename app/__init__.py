@@ -127,6 +127,23 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_terminal ON sesiones_trabajo(terminal_codigo)")
     conn.commit()
 
+    # Migración: tabla operario_logins (login exclusivo de operarios en engastado)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operario_logins (
+            id TEXT PRIMARY KEY,
+            operario_nombre TEXT NOT NULL,
+            timestamp_login TEXT NOT NULL DEFAULT (datetime('now')),
+            ultimo_latido TEXT NOT NULL DEFAULT (datetime('now')),
+            activo INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_operario_logins_activo ON operario_logins(activo)")
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_operario_logins_nombre_activo
+        ON operario_logins(operario_nombre) WHERE activo = 1
+    """)
+    conn.commit()
+
     # Migración: tabla terminales_imagenes (iconos/fotos de cada terminal)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS terminales_imagenes (

@@ -171,6 +171,14 @@
                             <p class="instruccion">Cargando...</p>
                         </div>
                     </div>
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🟢 Dentro del módulo ahora</h2>
+                        <p class="instruccion">Operarios logeados en el módulo de engastado. Si un puesto se quedó colgado, libera su login para que el operario pueda volver a entrar.</p>
+                        <div id="op-logins-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
+                        <button class="btn-secondary" style="margin-top:10px;" onclick="cargarLoginsAdmin()">🔄 Actualizar</button>
+                    </div>
                 </section>
 
 
@@ -583,6 +591,50 @@
             });
     }
 
+    // Logins activos (quién está dentro del módulo de engastado)
+    function cargarLoginsAdmin() {
+        fetch('/api/operarios/logins')
+            .then(r => r.json())
+            .then(data => {
+                const cont = document.getElementById('op-logins-container');
+                if (!cont) return;
+                if (!data.logins || data.logins.length === 0) {
+                    cont.innerHTML = '<p class="instruccion">Nadie está dentro del módulo ahora mismo.</p>';
+                    return;
+                }
+                const filas = data.logins.map(l => `
+                    <tr>
+                        <td>${l.operario}</td>
+                        <td>${(l.desde || '').replace('T', ' ').slice(0, 16)}</td>
+                        <td>
+                            <button onclick="liberarLoginAdmin('${l.id}')" class="btn-accion-del" title="Liberar login">🚪 Liberar</button>
+                        </td>
+                    </tr>`).join('');
+                cont.innerHTML = `
+                    <div class="tabla-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Operario</th>
+                                    <th>Dentro desde</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filas}</tbody>
+                        </table>
+                    </div>`;
+            });
+    }
+
+    function liberarLoginAdmin(id) {
+        if (!confirm('¿Liberar este login? El operario podrá volver a entrar desde cualquier puesto.')) return;
+        fetch(`/api/operarios/logins/${id}/liberar`, { method: 'POST' })
+            .then(r => r.json()).then(data => {
+                if (data.success) { _opMsg('Login liberado.', 'ok'); cargarLoginsAdmin(); }
+                else _opMsg(data.message || data.error || 'Error.', 'error');
+            });
+    }
+
     function crearOperario() {
         const input = document.getElementById('op-nuevo-nombre');
         const msg = document.getElementById('op-msg');
@@ -772,6 +824,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         cargarOperariosAdmin();
+        cargarLoginsAdmin();
         cargarSelectsBonos();
     });
     </script>

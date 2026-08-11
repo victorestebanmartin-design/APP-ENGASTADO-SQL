@@ -9,6 +9,8 @@
 
 // Operario identificado en esta sesión
 let operarioActual = null;
+let operarioLoginId = null;   // ID del login exclusivo en servidor (null si no hay)
+let _latidoOperarioTimer = null;
 
 // Caché para los modales de navegación
 let _puestosCache = [];
@@ -48,8 +50,52 @@ async function pushToESP32(data) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Login exclusivo de operario ──────────────────────────────────────────────
+// Latido periódico para que el servidor sepa que este operario sigue dentro.
+// Si el login caducó (p.ej. el PC se quedó dormido), se intenta recuperar;
+// si otro puesto ya entró con el mismo nombre, se expulsa a este.
+function _iniciarLatidoOperario() {
+    if (_latidoOperarioTimer) clearInterval(_latidoOperarioTimer);
+    _latidoOperarioTimer = setInterval(async () => {
+        if (!operarioLoginId) return;
+        try {
+            const r = await fetch('/api/operarios/login/latido', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_id: operarioLoginId })
+            });
+            const data = await r.json();
+            if (data.success || !data.expirado) return;
+
+            // El login caducó: intentar re-logearse con el mismo nombre
+            const r2 = await fetch('/api/operarios/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nombre: operarioActual })
+            });
+            const data2 = await r2.json();
+            if (data2.success) {
+                operarioLoginId = data2.login_id;
+            } else {
+                // Otro puesto entró con este operario mientras tanto
+                clearInterval(_latidoOperarioTimer);
+                _latidoOperarioTimer = null;
+                operarioLoginId = null;
+                alert(`Otro puesto ha entrado como ${operarioActual}. Vuelve a identificarte.`);
+                location.reload();
+            }
+        } catch (_) { /* sin red: reintentará en el próximo latido */ }
+    }, 45000);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Liberar la sesión si el operario cierra o refresca la pestaña
 window.addEventListener('beforeunload', function() {
+    if (operarioLoginId) {
+        // Cerrar el login exclusivo del operario en el servidor
+        navigator.sendBeacon('/api/operarios/logout',
+            new Blob([JSON.stringify({ login_id: operarioLoginId })], { type: 'application/json' }));
+    }
     if (sesionActualId) {
         navigator.sendBeacon('/api/sesion/liberar',
             JSON.stringify({ sesion_id: sesionActualId }));

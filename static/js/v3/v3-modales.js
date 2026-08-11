@@ -2,18 +2,46 @@
 // Parte del antiguo main-v3.js (troceado sin cambios de código).
 // Los ficheros v3-*.js comparten el ámbito global y se cargan en orden desde index-v3.html.
 
-function confirmarOperario() {
+async function confirmarOperario() {
     const input = document.getElementById('input-operario');
     const errorDiv = document.getElementById('modal-operario-error');
     const valor = input ? input.value.trim() : '';
 
     if (!valor) {
+        errorDiv.textContent = 'Selecciona tu operario de la lista.';
         errorDiv.classList.remove('hidden');
         input.focus();
         return;
     }
 
     errorDiv.classList.add('hidden');
+
+    // Login exclusivo: el servidor rechaza si el operario ya está dentro
+    // del módulo desde otro puesto.
+    const btn = document.querySelector('.btn-confirmar-operario');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await fetch('/api/operarios/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre: valor })
+        });
+        const data = await r.json();
+        if (!data.success) {
+            errorDiv.textContent = data.error || 'No se pudo entrar con ese operario.';
+            errorDiv.classList.remove('hidden');
+            input.focus();
+            return;
+        }
+        operarioLoginId = data.login_id;
+        _iniciarLatidoOperario();
+    } catch (_) {
+        // Sin respuesta del servidor: dejar pasar para no bloquear el trabajo
+        operarioLoginId = null;
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+
     sessionStorage.setItem('operario_actual', valor);
     _activarOperario(valor);
 }
