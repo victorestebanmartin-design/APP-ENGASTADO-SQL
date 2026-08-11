@@ -60,3 +60,11 @@ def test_devices_incluye_fw_y_version(client, admin_client):
     assert d['firmware_version'] == _version_servidor(client)
     dev = next(x for x in d['devices'] if x['id'] == 'aabbcc')
     assert dev['fw'] == 'vieja-0.0'
+
+
+def test_current_siempre_manda_version_servidor(client):
+    # La pantalla necesita la version del servidor SIEMPRE (no solo con OTA
+    # pedida) para pintar en reposo si esta al dia.
+    ver = _version_servidor(client)
+    d = client.get('/api/esp32/current?id=aabbcc&fw=vieja-0.0').get_json()
+    assert d['fw_server'] == ver

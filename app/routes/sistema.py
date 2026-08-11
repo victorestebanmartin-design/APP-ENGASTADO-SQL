@@ -500,6 +500,7 @@ def api_esp32_current():
         carro = request.args.get('carro')
         dev_id = _esp32_device_id(request.args.get('id'))
         ota = None
+        version_srv = _esp32_firmware_version()   # para que la pantalla sepa si esta al dia
         if dev_id:
             devs = _esp32_load_devices()
             dev = devs.setdefault(dev_id, {})
@@ -516,7 +517,6 @@ def api_esp32_current():
             # OTA: si Admin lo pidio y la version no coincide, ofrecer la
             # actualizacion; si ya coincide, dar por hecha y limpiar.
             if dev.get('ota_pedido'):
-                version_srv = _esp32_firmware_version()
                 if fw and version_srv and fw == version_srv:
                     dev['ota_pedido'] = False
                 else:
@@ -542,7 +542,8 @@ def api_esp32_current():
             except Exception:
                 pass
 
-        extra = {'carro_asignado': carro or '', 'login': login_banner, 'ota': ota}
+        extra = {'carro_asignado': carro or '', 'login': login_banner, 'ota': ota,
+                 'fw_server': version_srv}
         ops_dict = _esp32_load_ops(_esp32_file(carro))
         if not ops_dict:
             return jsonify({'data': None, 'ops': [], **extra})

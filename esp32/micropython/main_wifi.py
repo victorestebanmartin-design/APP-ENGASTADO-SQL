@@ -55,7 +55,7 @@ import framebuf
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-11a"
+FW_VERSION = "2026-08-11b"
 
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
@@ -64,6 +64,7 @@ PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
+OTA_HOLD_MS = 5000     # mantener OK (boton 8) 5s EN REPOSO = actualizar por WiFi
 AVISO_PENDIENTE_S = 25 # cada cuanto recuerda con un pitido que hay un grupo
                        # esperando a que alguien vaya al carro a confirmarlo
 AVISO_MAX = 6          # y cuantas veces como mucho: pasados estos avisos se
@@ -363,15 +364,23 @@ def draw_idle(msg=None):
         text_center(140, "CARRO", LGRAY, BLACK, scale=2)
         s = max(3, min(8, 232 // (9*len(mi_carro))))
         text_center(170, mi_carro, YELLOW, BLACK, scale=s)
-    text_center(250, msg, LGRAY, BLACK, scale=1)
-    text(4, 274, "ID " + DEVICE_ID[-4:], DGRAY, BLACK, scale=1)
+    text_center(244, msg, LGRAY, BLACK, scale=1)
+    # Estado del firmware: verde al dia, rojo desactualizada (OK 5s para actualizar)
+    try:
+        if _desactualizada():
+            text_center(262, "ACTUALIZAR: OK 5s", RED, BLACK, scale=1)
+        else:
+            text_center(262, "Firmware al dia", GREEN, BLACK, scale=1)
+    except NameError:
+        pass
+    text(4, 284, "ID " + DEVICE_ID[-4:], DGRAY, BLACK, scale=1)
     # Estado del lector NFC: poder verlo de un vistazo evita tener que
     # enchufar el cable serie para saber si el lector va o no.
     try:
         if nfc_estado == 'ok':
-            text(120, 274, "NFC ok", GREEN, BLACK, scale=1)
+            text(120, 284, "NFC ok", GREEN, BLACK, scale=1)
         elif nfc_estado == 'ko':
-            text(120, 274, "NFC no responde", RED, BLACK, scale=1)
+            text(120, 284, "NFC no responde", RED, BLACK, scale=1)
     except NameError:
         pass       # aun no se ha inicializado (primer draw del arranque)
     draw_wifi_bar()
@@ -421,6 +430,14 @@ confirmados = {}
 # Lo manda el servidor en cada poll; la pantalla lo muestra en reposo.
 login_codigo = ''
 login_codigo_shown = ''   # lo que el banner de reposo tiene dibujado ahora
+
+# Version que anuncia el servidor: para pintar en reposo si estamos al dia.
+fw_servidor = ''
+fw_servidor_shown = ''
+
+def _desactualizada():
+    """True si el servidor anuncia una version distinta a la que corre aqui."""
+    return bool(fw_servidor) and fw_servidor != FW_VERSION
 
 # Fases que manda el PC en cada push
 FASE_RECOGER  = 'recoger'    # hay que coger estos paquetes del carro
@@ -1031,6 +1048,27 @@ def hacer_ota(ota):
     time.sleep_ms(700)
     machine.reset()
 
+def actualizar_por_ok():
+    """OTA lanzado a mano desde reposo (pulsacion larga de OK, boton 8).
+    Pide el manifiesto al servidor y aplica el OTA; si no hay novedad o red,
+    avisa y vuelve a reposo."""
+    rect(0, 0, 240, 320, BLACK)
+    text_center(130, "BUSCANDO", ORANGE, BLACK, scale=2)
+    text_center(165, "ACTUALIZACION", ORANGE, BLACK, scale=2)
+    body = http_get(HOST_IP, PORT, "/api/esp32/firmware/version")
+    info = None
+    if body:
+        try:
+            info = json.loads(body)
+        except Exception:
+            info = None
+    if info and (info.get('version') or '') and info.get('version') != FW_VERSION:
+        hacer_ota({'files': info.get('files') or [], 'version': info.get('version')})
+    else:
+        _ota_fallo("sin novedad" if info else "sin red")
+    if not en_work_mode:
+        draw_reposo()
+
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def wifi_conectada():
     """True si la WiFi sigue realmente conectada. Nunca lanza excepcion."""
@@ -1141,6 +1179,9 @@ btns_armado  = [False] * len(BTN_PUESTO_PINS)
 avisos_dados = 0                  # recordatorios sonoros ya dados de este estado
 btn_ok_prev  = 1
 btn_ok_last  = 0
+btn_ok_t0    = 0                  # inicio de la pulsacion de OK (para la larga)
+btn_ok_ota_hecho = False          # ya se lanzo el OTA en esta pulsacion larga
+btn_ok_hold_shown = -1            # segundo mostrado en la cuenta atras (-1 = ninguno)
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 ultimo_envio  = 0                 # ultimo intento de mandar eventos pendientes
 ultimo_aviso  = 0                 # ultimo recordatorio sonoro de accion pendiente
@@ -1242,6 +1283,28 @@ while True:
     if b_ok != btn_ok_prev:
         rect(212 - 6*12, Y_WIFI + 4, 10, 10, GREEN if b_ok == 0 else BLACK)
         print("BTN_OK:", "pulsado" if b_ok == 0 else "soltado")
+        if b_ok == 0:
+            btn_ok_t0 = now
+            btn_ok_ota_hecho = False
+            btn_ok_hold_shown = -1
+        elif btn_ok_hold_shown >= 0 and not en_work_mode:
+            btn_ok_hold_shown = -1
+            draw_reposo()          # soltado antes de los 5s: restaurar reposo
+    # Pulsacion LARGA de OK, SOLO en reposo y con firmware desactualizado:
+    # actualizar por WiFi. Nunca en modo trabajo (ahi OK solo confirma).
+    if b_ok == 0 and not en_work_mode and not login_codigo \
+            and _desactualizada() and not btn_ok_ota_hecho:
+        falta = OTA_HOLD_MS - time.ticks_diff(now, btn_ok_t0)
+        if falta <= 0:
+            btn_ok_ota_hecho = True
+            btn_ok_hold_shown = -1
+            actualizar_por_ok()
+        else:
+            seg = falta // 1000 + 1
+            if seg != btn_ok_hold_shown:
+                btn_ok_hold_shown = seg
+                rect(0, 262, 240, 18, BLACK)
+                text_center(262, "ACTUALIZAR EN %d" % seg, ORANGE, BLACK, scale=1)
     if b_ok == 0 and btn_ok_prev == 1 and time.ticks_diff(now, btn_ok_last) > 250:
         btn_ok_last = now
         ultima_accion = now
@@ -1332,6 +1395,8 @@ while True:
                     hacer_ota(_ota)
                 # Codigo de login pendiente en este carro (banner de reposo)
                 login_codigo = (d.get('login') or {}).get('codigo') or ''
+                # Version del servidor: para el estado de firmware en reposo
+                fw_servidor = d.get('fw_server') or ''
                 # Carro que nos asigna el servidor (Admin -> Display Carro)
                 ca = d.get('carro_asignado') or CARRO_ASIGNADO
                 if ca != mi_carro:
@@ -1340,6 +1405,7 @@ while True:
                     if not en_work_mode:
                         draw_reposo()
                         login_codigo_shown = login_codigo
+                        fw_servidor_shown = fw_servidor
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
                 if not ops:
@@ -1351,10 +1417,12 @@ while True:
                         confirmados.clear()
                         draw_reposo()
                         login_codigo_shown = login_codigo
-                    elif login_codigo_shown != login_codigo:
-                        # En reposo: aparecio/cambio/desaparecio el login pendiente
+                        fw_servidor_shown = fw_servidor
+                    elif login_codigo_shown != login_codigo or fw_servidor_shown != fw_servidor:
+                        # En reposo: cambio el login pendiente o el estado de firmware
                         draw_reposo()
                         login_codigo_shown = login_codigo
+                        fw_servidor_shown = fw_servidor
                 elif fp != work_fp:
                     # Contenido nuevo del servidor
                     habia = en_work_mode
