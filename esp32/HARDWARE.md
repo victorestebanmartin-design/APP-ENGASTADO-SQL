@@ -26,9 +26,9 @@ Numeración = pin de la faja FFC de 30 vías.
 | Pad | Señal | Función en el proyecto |
 |---|---|---|
 | 1, 21, 25, 30 | GND | Masa común (pulsadores, zumbador, EN-RST) |
-| 2 | GPIO17 | Pulsador 1 (a GND, `INPUT_PULLUP`) — operario: corta = siguiente operario, larga = deshacer entregas (`BTN_OP_PIN`) |
+| 2 | GPIO17 | Pulsador 1 (a GND, `INPUT_PULLUP`) — operario: corta = siguiente operario, larga = deshacer (`BTN_OP_PIN`) |
 | 3 | GPIO18 | Zumbador (`BUZZER_PIN` en el firmware; verificar si activo/pasivo — si activo, usar transistor NPN) |
-| 4 | GPIO16 | Pulsador 2 (a GND, `INPUT_PULLUP`) — entrega: corta = "me llevo los paquetes", larga = confirmar entrega-devolución (`BTN_ENT_PIN`) |
+| 4 | GPIO16 | Pulsador 2 (a GND, `INPUT_PULLUP`) — confirmación: larga = revelar y confirmar el grupo, corta = "me llevo los paquetes" (`BTN_ENT_PIN`) |
 | 22 | EN-RST | Interruptor de apagado alternativo (a GND desactiva el ESP32-S3; no confirmado si corta retroiluminación) |
 | 20 | 3.3V | Salida 3.3V disponible para el usuario (máx. recomendado 100-200mA) |
 
@@ -94,10 +94,49 @@ Ocupados por el propio módulo; el firmware los reserva y no deben tocarse:
 
 | Constante | Valor actual | Pad de la extensora |
 |---|---|---|
-| `BTN_OP_PIN` | GPIO17 | Pad 2 — pulsador 1 (operario): corta = siguiente operario, larga (1s) = deshacer entregas/devoluciones |
-| `BTN_ENT_PIN` | GPIO16 | Pad 4 — pulsador 2 (entrega): corta = "me llevo los paquetes" (ENTREGADO), larga (1s) = entrega-devolución (DEVUELTO + evento `/api/esp32/evento` al servidor, pendiente de vincular con la liberación de bloqueos) |
+| `BTN_OP_PIN` | GPIO17 | Pad 2 — pulsador 1 (operario): corta = siguiente operario, larga (1s) = deshacer |
+| `BTN_ENT_PIN` | GPIO16 | Pad 4 — pulsador 2 (confirmación): larga (1s) = revelar y confirmar el grupo (con barra de progreso), corta = "me llevo los paquetes" |
 | `BUZZER_PIN` | GPIO18 | Pad 3 — zumbador (`BUZZER_PASIVO = False` → activo de 3.3V) |
 | `BUTTON_PIN` | GPIO5 | Pad 12 — botón genérico opcional (sin cablear actualmente) |
+
+### Confirmación física del lote
+
+El PC no deja empezar un grupo de paquetes hasta que el operario ha estado en el
+carro. El circuito completo:
+
+1. En el PC se elige terminal y carro; el modal muestra el grupo con el botón
+   **"Tengo estos N, empezar" bloqueado**.
+2. La pantalla del carro avisa (sonido de atención cada 25 s) con
+   `GRUPO n/N — MANTÉN EL BOTÓN`, **sin desvelar todavía los paquetes**.
+3. El operario mantiene el **pulsador 2** un segundo (barra de progreso en
+   pantalla). La pantalla revela los paquetes y manda
+   `GET /api/esp32/evento?tipo=confirmacion&carro=…&operario=…&lote=…`.
+4. El PC, que sondea `/api/esp32/estado-carro` cada 2 s, desbloquea el botón.
+5. Al pulsar "Siguiente grupo" se genera un lote nuevo y se repite desde el 2.
+
+Si la pantalla no responde, el PC ofrece un enlace para confirmar manualmente
+(se registra como `confirmacion_manual`): el trabajo nunca se bloquea del todo.
+Los eventos quedan en `data/esp32_eventos.json` (últimos 100) y la última
+confirmación de cada `(carro, operario)` en `data/esp32_confirmaciones.json`.
+
+### Sonidos del zumbador
+
+Con un zumbador **activo** la frecuencia es fija (las notas no se distinguen),
+así que cada aviso se reconoce por **ritmo y textura** (`tono` = liso,
+`trino` = cortes rápidos, suena rasposo). Con un piezo pasivo
+(`BUZZER_PASIVO = True`) los mismos patrones suenan además como melodías.
+
+| Evento | Patrón |
+|---|---|
+| Arranque | trino corto + nota |
+| Cambio de operario | tic seco de 22 ms |
+| Contenido actualizado | tic casi imperceptible (14 ms) |
+| Grupo esperando en el carro | tres golpes separados, se repite cada 25 s |
+| Grupo revelado y confirmado | fanfarria ascendente de tres notas |
+| "Me llevo los paquetes" | dos golpes descendentes |
+| Deshacer | trino largo y grave ("rebobinar") |
+| Llegan paquetes en reposo | melodía de cuatro notas, la llamada más larga |
+| Gesto no válido | dos zumbidos rasposos y graves |
 
 ## Notas de la sesión
 

@@ -12,25 +12,36 @@
 #   - Si VARIOS operarios trabajan el mismo carro (cada uno desde su PC), la
 #     pantalla recibe la lista de todos: muestra el NOMBRE del operario debajo
 #     del carro y un contador "1/2" a la derecha.
+#
+#   CONFIRMACION FISICA DEL LOTE (trazabilidad)
+#   El PC no deja empezar un grupo de paquetes hasta que el operario ha estado
+#   FISICAMENTE en el carro. El circuito es:
+#     1. En el PC se elige terminal y carro: el modal muestra el grupo pero con
+#        el boton "Tengo estos N, empezar" BLOQUEADO.
+#     2. La pantalla del carro avisa: "GRUPO n - MANTEN EL BOTON" (sin desvelar
+#        aun los paquetes) y da un aviso sonoro.
+#     3. El operario mantiene el PULSADOR 2 un segundo: la pantalla revela los
+#        paquetes del grupo y manda la confirmacion al servidor.
+#     4. El PC desbloquea el boton: el operario coge los paquetes y trabaja.
+#     5. Al pulsar "Siguiente grupo" en el PC se repite desde el paso 2.
+#   Si la pantalla del carro no responde, el PC ofrece confirmar manualmente
+#   (queda registrado como manual): nunca se bloquea el trabajo del todo.
+#
 #   - PULSADOR 1, de OPERARIO (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN):
 #       * pulsacion CORTA  -> salta a los paquetes del siguiente operario
-#       * pulsacion LARGA (1s) -> deshacer: recupera a todos los operarios
-#         que se hubieran llevado o devuelto sus paquetes.
-#   - PULSADOR 2, de ENTREGA (GND + pad 4 = GPIO16, ver BTN_ENT_PIN):
+#       * pulsacion LARGA (1s) -> deshacer: recupera a los operarios que se
+#         hubieran llevado sus paquetes.
+#   - PULSADOR 2, de CONFIRMACION (GND + pad 4 = GPIO16, ver BTN_ENT_PIN):
+#       * pulsacion LARGA (1s) -> revela el grupo pendiente y lo confirma al
+#         servidor (con barra de progreso mientras se mantiene pulsado).
 #       * pulsacion CORTA  -> "me llevo mis paquetes": la lista del operario
 #         mostrado desaparece y la pantalla queda para el siguiente. Vuelve a
 #         aparecer sola cuando ese operario envie contenido nuevo.
-#       * pulsacion LARGA (1s) -> confirmar ENTREGA-DEVOLUCION de los paquetes
-#         del operario mostrado: oculta su lista y ademas manda un evento al
-#         servidor (/api/esp32/evento), que es donde se vinculara la
-#         liberacion de los bloqueos de esos paquetes en el software.
 #   - Los paquetes bloqueados salen en gris con "BLOQUEADO" y debajo el
 #     puesto/maquina que los esta trabajando.
 #   - ZUMBADOR opcional en el pad 3 de la extensora (GPIO18, ver BUZZER_PIN):
-#     pip de arranque, pip al cambiar de operario, pip-pip al ENTREGADO,
-#     piiip al RECUPERADO, melodia cuando llegan paquetes estando en reposo
-#     y tic corto cuando se actualiza el contenido. Sin zumbador soldado no
-#     afecta en nada.
+#     cada evento tiene su patron de ritmo/textura (ver seccion Zumbador).
+#     Sin zumbador soldado no afecta en nada.
 #   - OPCIONAL: si algun dia se conecta un boton (BUTTON_PIN -> GND), cada
 #     pulsacion avanza al siguiente paquete al instante. Sin boton conectado
 #     el pin queda en pull-up interno y no afecta en nada.
@@ -56,6 +67,8 @@ PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
+AVISO_PENDIENTE_S = 25 # cada cuanto recuerda con un pitido que hay un grupo
+                       # esperando a que alguien vaya al carro a confirmarlo
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
 # pantalla se identifica sola en el servidor (por su MAC) y el carro se le
@@ -142,6 +155,12 @@ def rect(x, y, w, h, color):
     if n: spi.write(bytes([hi, lo]*n))
 
 def hline(x, y, w, color): rect(x, y, w, 1, color)
+def vline(x, y, h, color): rect(x, y, 1, h, color)
+
+def hrect(x, y, w, h, color):
+    """Rectangulo hueco (solo el borde)."""
+    hline(x, y, w, color); hline(x, y+h-1, w, color)
+    vline(x, y, h, color); vline(x+w-1, y, h, color)
 
 # ── Texto escalado, renderizado por filas (rapido) ────────────────────────────
 _glyph = bytearray(8)
@@ -189,37 +208,114 @@ if BUZZER_PIN is not None:
     except Exception as e:
         print("Buzzer no disponible:", e)
 
-def beep(ms=60, freq=2400):
-    """Un pitido bloqueante de ms milisegundos. Sin zumbador no hace nada."""
+# El zumbador ACTIVO suena siempre a su frecuencia de fabrica: pedirle notas
+# distintas no sirve de nada (todas suenan igual). Por eso los avisos se
+# distinguen por RITMO y por TEXTURA:
+#   - tono:  sonido liso y continuo
+#   - trino: cortes rapidos on/off, suena rasposo/vibrado, claramente distinto
+# Con un piezo PASIVO (BUZZER_PASIVO = True) ademas suenan las notas reales,
+# asi que los mismos patrones se convierten en pequenas melodias.
+
+def _on(freq):
+    if _bz is None: return
+    if BUZZER_PASIVO:
+        _bz.freq(freq); _bz.duty_u16(32768)
+    else:
+        _bz(1)
+
+def _off():
+    if _bz is None: return
+    if BUZZER_PASIVO:
+        _bz.duty_u16(0)
+    else:
+        _bz(0)
+
+def tono(ms, freq=2400):
+    """Sonido liso de ms milisegundos."""
     if _bz is None: return
     try:
-        if BUZZER_PASIVO:
-            _bz.freq(freq); _bz.duty_u16(32768)
-            time.sleep_ms(ms)
-            _bz.duty_u16(0)
-        else:
-            _bz(1); time.sleep_ms(ms); _bz(0)
+        _on(freq); time.sleep_ms(ms); _off()
     except Exception:
-        pass
+        try: _off()
+        except Exception: pass
 
-def beeps(patron):
-    """patron: lista de (ms_sonando, ms_silencio[, frecuencia])."""
-    for p in patron:
-        beep(p[0], p[2] if len(p) > 2 else 2400)
-        if p[1]: time.sleep_ms(p[1])
+def trino(ms, freq=2400, corte=14):
+    """Textura rasposa: el zumbador se corta cada 'corte' ms. Suena a vibrado
+    y se distingue de un tono liso incluso con zumbador activo."""
+    if _bz is None: return
+    try:
+        fin = time.ticks_add(time.ticks_ms(), ms)
+        while time.ticks_diff(fin, time.ticks_ms()) > 0:
+            _on(freq); time.sleep_ms(corte)
+            _off();    time.sleep_ms(corte)
+    except Exception:
+        try: _off()
+        except Exception: pass
 
-# El "idioma" de la pantalla: cada evento tiene su sonido reconocible
-def bip_cambio():     beeps([(40, 0)])                                        # pip: otro operario
-def bip_entregado():  beeps([(80, 80), (80, 0)])                              # pip-pip: me los llevo
-def bip_devuelto():   beeps([(80, 80), (80, 80), (220, 0, 1800)])             # pip-pip-piiip: devolucion
-def bip_recuperado(): beeps([(300, 0, 1800)])                                 # piiip grave: deshecho
-def bip_nuevos():     beeps([(60, 60, 2000), (60, 60, 2400), (100, 0, 2900)]) # melodia: paquetes nuevos
-def bip_update():     beeps([(25, 0)])                                        # tic: contenido actualizado
+def pausa(ms):
+    if ms: time.sleep_ms(ms)
+
+# Notas (solo se oyen con piezo pasivo; con el activo marcan el ritmo)
+_DO=2093; _MI=2637; _SOL=3136; _DO8=4186; _LA=1760; _FA=1397
+
+def beep(ms=60, freq=2400):
+    """Compatibilidad: un pitido suelto."""
+    tono(ms, freq)
+
+# ── El "idioma" de la pantalla ────────────────────────────────────────────────
+# Cada evento tiene un patron reconocible sin mirar la pantalla.
+
+def bip_arranque():
+    """Arranque: trino corto + nota. 'La pantalla esta viva'."""
+    trino(90, _MI); pausa(40); tono(110, _SOL)
+
+def bip_cambio():
+    """Cambio de operario: tic seco, discreto (suena muchas veces)."""
+    tono(22, _SOL)
+
+def bip_update():
+    """Contenido actualizado: casi imperceptible."""
+    tono(14, _DO8)
+
+def bip_atencion():
+    """Hay un grupo esperando a que vayas al carro: llamada insistente pero
+    corta. Tres golpes iguales y separados; se oye desde lejos."""
+    for _ in range(3):
+        tono(70, _SOL); pausa(90)
+
+def bip_revelado():
+    """Grupo revelado y confirmado (pulsacion larga en el carro): fanfarria
+    ascendente de tres notas. Es el sonido 'bueno' del sistema."""
+    tono(70, _DO); pausa(35)
+    tono(70, _MI); pausa(35)
+    tono(190, _SOL)
+
+def bip_entregado():
+    """Me llevo mis paquetes: dos golpes descendentes, cierre limpio."""
+    tono(150, _SOL); pausa(60); tono(90, _DO)
+
+def bip_recuperado():
+    """Deshacer: trino largo y grave, suena a 'rebobinar'."""
+    trino(280, _LA, 20)
+
+def bip_nuevos():
+    """Llegan paquetes estando en reposo: la llamada mas larga y llamativa."""
+    tono(60, _DO); pausa(45)
+    tono(60, _MI); pausa(45)
+    tono(60, _SOL); pausa(45)
+    tono(240, _DO8)
+
+def bip_error():
+    """Gesto no valido (p.ej. pulsar cuando no hay nada que revelar):
+    dos zumbidos rasposos y graves, inconfundiblemente 'no'."""
+    trino(90, _FA, 22); pausa(70); trino(90, _FA, 22)
 
 # ── Layout ────────────────────────────────────────────────────────────────────
 Y_CARRO=4; Y_OPER=30; Y_ORDEN=50; Y_SEP1=68
 PKG_Y0=72; PKG_ETIQ=82; PKG_TAG=170; PKG_ELEM=196; PKG_COD=218; PKG_Y1=250
 Y_SEP2=252; Y_FOOT=260; Y_WIFI=296
+# Pantalla de "grupo pendiente de confirmar en el carro"
+PEND_GRUPO=88; PEND_NUM=130; PEND_MSG=166; PEND_MSG2=190; HOLD_Y=218
 
 wifi_ip = ""
 
@@ -323,8 +419,55 @@ def next_package():
     work_idx = (work_idx + 1) % len(work_pkgs)
     draw_package()
 
+# ── Confirmacion fisica del lote ──────────────────────────────────────────────
+# El PC manda cada grupo con un 'lote' (id unico) y confirmar=True. Hasta que
+# el operario no mantenga pulsado el pulsador 2 EN EL CARRO, la pantalla no
+# desvela los paquetes y el PC no deja empezar. confirmados guarda el ultimo
+# lote confirmado de cada operario: nombre -> lote.
+confirmados = {}
+
+def _lote_de(o):
+    return str((o.get('data') or {}).get('lote') or '')
+
+def _pendiente(o):
+    """True si este operario tiene un grupo esperando confirmacion en el carro."""
+    d = o.get('data') or {}
+    if not d.get('confirmar'):
+        return False
+    lote = str(d.get('lote') or '')
+    if not lote:
+        return False
+    return confirmados.get(o.get('operario', '')) != lote
+
+def hay_pendiente():
+    return bool(work_ops) and _pendiente(work_ops[op_idx])
+
+def draw_hold_bar(frac):
+    """Barra que se llena mientras se mantiene pulsado el pulsador 2."""
+    rect(20, HOLD_Y, 200, 16, BLACK)
+    hrect(20, HOLD_Y, 200, 16, DGRAY)
+    ancho = int(196 * max(0.0, min(1.0, frac)))
+    if ancho > 0:
+        rect(22, HOLD_Y + 2, ancho, 12, GREEN)
+
+def draw_pendiente(d):
+    """Grupo aun sin desvelar: dice que hay que ir al carro y mantener el boton."""
+    n = len(d.get('paquetes', []) or [])
+    grupo = str(d.get('grupo') or '')
+    grupos = str(d.get('grupos') or '')
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    if grupo:
+        titulo = "GRUPO " + grupo + ("/" + grupos if grupos and grupos != '1' else "")
+        text_center(PEND_GRUPO, titulo, YELLOW, BLACK, scale=3)
+    text_center(PEND_NUM, "%d PAQUETE%s" % (n, "S" if n != 1 else ""), WHITE, BLACK, scale=2)
+    text_center(PEND_MSG, "MANTEN EL BOTON", ORANGE, BLACK, scale=2)
+    text_center(PEND_MSG2, "PARA VERLOS", ORANGE, BLACK, scale=2)
+    draw_hold_bar(0)
+    rect(0, Y_FOOT, 240, 18, BLACK)
+
 def mostrar_operario():
-    """Carga los paquetes del operario op_idx y redibuja cabecera + paquete."""
+    """Dibuja lo que toca del operario op_idx: el grupo pendiente de confirmar
+    o, si ya esta confirmado, sus paquetes."""
     global work_pkgs, work_idx
     o = work_ops[op_idx]
     d = o.get('data') or {}
@@ -332,7 +475,10 @@ def mostrar_operario():
     if work_idx >= len(work_pkgs):
         work_idx = 0
     draw_work_header(d, o.get('operario', ''), op_idx, len(work_ops))
-    draw_package()
+    if _pendiente(o):
+        draw_pendiente(d)
+    else:
+        draw_package()
 
 def next_operario():
     """Pulsacion corta: salta a los paquetes del siguiente operario, en ciclo."""
@@ -342,6 +488,51 @@ def next_operario():
     work_idx = 0
     mostrar_operario()
     bip_cambio()
+
+# Eventos que hay que contarle al servidor. Se mandan desde el bucle principal
+# (no en el momento del pulsador) para que la pantalla nunca se congele si la
+# WiFi esta caida: se reintentan hasta que salen.
+eventos_pend = []
+
+def _encolar_evento(tipo, carro, operario, lote, grupo):
+    eventos_pend.append((tipo, carro, operario, lote, grupo))
+    while len(eventos_pend) > 10:
+        eventos_pend.pop(0)
+
+def _flush_eventos():
+    """Intenta mandar los eventos encolados. Para al primer fallo de red."""
+    while eventos_pend:
+        tipo, carro, operario, lote, grupo = eventos_pend[0]
+        r = http_get(HOST_IP, PORT,
+                     "/api/esp32/evento?tipo=" + tipo + "&id=" + DEVICE_ID
+                     + "&carro=" + _urlenc(carro) + "&operario=" + _urlenc(operario)
+                     + "&lote=" + _urlenc(lote) + "&grupo=" + _urlenc(grupo))
+        if r is None:
+            return False
+        eventos_pend.pop(0)
+    return True
+
+def confirmar_lote():
+    """Pulsacion larga del pulsador 2: el operario esta en el carro, se le
+    desvelan los paquetes del grupo y se avisa al servidor para que el PC le
+    deje empezar."""
+    if not work_ops:
+        return
+    o = work_ops[op_idx]
+    d = o.get('data') or {}
+    nombre = o.get('operario', '')
+    lote = _lote_de(o)
+    confirmados[nombre] = lote
+    # Barra llena + destello de confirmacion antes de desvelar
+    draw_hold_bar(1.0)
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(150, "CONFIRMADO", GREEN, BLACK, scale=3)
+    bip_revelado()
+    time.sleep_ms(450)
+    _encolar_evento("confirmacion", str(d.get('carro', '') or ''), nombre,
+                    lote, str(d.get('grupo') or ''))
+    mostrar_operario()
+    print("CONFIRMADO lote", lote, "op", nombre)
 
 # Operarios que "se llevaron" o devolvieron sus paquetes: nombre -> huella
 # de la lista que se llevaron. Mientras su contenido no cambie no se muestran;
@@ -390,29 +581,9 @@ def _urlenc(s):
                 out += '%%%02X' % b
     return out
 
-def entregar_devolucion():
-    """Pulsacion LARGA del pulsador 2: confirmar la ENTREGA-DEVOLUCION de los
-    paquetes del operario mostrado. Oculta su lista (como el 'me los llevo')
-    y ademas manda un evento al servidor; ahi es donde el software vinculara
-    la liberacion de los bloqueos de esos paquetes."""
-    if not work_ops:
-        return
-    o = work_ops[op_idx]
-    d = o.get('data') or {}
-    nombre = o.get('operario', '')
-    carro = str(d.get('carro', '') or '')
-    _ocultar_operario_actual("DEVUELTO", bip_devuelto)
-    # Aviso al servidor (best effort: sin red la pantalla sigue igual)
-    try:
-        http_get(HOST_IP, PORT, "/api/esp32/evento?tipo=devolucion&id=" + DEVICE_ID
-                 + "&carro=" + _urlenc(carro) + "&operario=" + _urlenc(nombre))
-    except Exception as ex:
-        print("evento err:", ex)
-    print("DEVOLUCION:", nombre, carro)
-
 def recuperar_operarios():
     """Deshacer (pulsacion larga del pulsador 1): recupera a TODOS los
-    operarios ocultos (llevados o devueltos).
+    operarios que se llevaron sus paquetes.
 
     Vacia 'ocultos' y fuerza un poll inmediato, que redibuja con la lista
     completa.
@@ -450,10 +621,13 @@ def _filtrar_ocultos(ops):
 def _fp_op(o):
     d = o.get('data') or {}
     pkgs = d.get('paquetes', [])
-    return "%s|%s|%s|%s" % (o.get('operario', ''), d.get('carro'), d.get('orden'),
-                            ",".join(str(p.get('etiqueta')) + str(p.get('elem'))
-                                     + ('B' + str(p.get('por') or '') if p.get('bloqueado') else '')
-                                     for p in pkgs))
+    # El lote entra en la huella: un grupo nuevo siempre redibuja (y vuelve a
+    # pedir confirmacion) aunque por casualidad traiga los mismos paquetes.
+    return "%s|%s|%s|%s|%s" % (o.get('operario', ''), d.get('carro'), d.get('orden'),
+                               d.get('lote') or '',
+                               ",".join(str(p.get('etiqueta')) + str(p.get('elem'))
+                                        + ('B' + str(p.get('por') or '') if p.get('bloqueado') else '')
+                                        for p in pkgs))
 
 def _fingerprint(ops):
     return "||".join(_fp_op(o) for o in ops)
@@ -558,7 +732,7 @@ btn_op = Pin(BTN_OP_PIN, Pin.IN, Pin.PULL_UP)
 # Pulsador 2: entrega (BTN_ENT_PIN -> GND, pull-up interno)
 btn_ent = Pin(BTN_ENT_PIN, Pin.IN, Pin.PULL_UP)
 
-beep(60)   # pip de arranque: confirma que el zumbador esta vivo tras flashear
+bip_arranque()   # confirma que el zumbador esta vivo tras flashear
 
 draw_idle("Conectando WiFi...")
 import network, socket
@@ -579,7 +753,10 @@ btn_ent_prev  = 1
 btn_ent_last  = 0
 btn_ent_t0    = 0
 btn_ent_armado = False
+btn_ent_barra  = -1   # ultimo % dibujado en la barra de mantener pulsado
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
+ultimo_envio  = 0                 # ultimo intento de mandar eventos pendientes
+ultimo_aviso  = 0                 # ultimo recordatorio sonoro de grupo pendiente
 intentos_wifi = 0
 
 # El bucle NUNCA debe morir: cualquier excepcion se registra y se sigue.
@@ -622,7 +799,7 @@ while True:
             next_operario()
     btn_op_prev = b2
 
-    # ── Pulsador 2 (entrega): corta = me los llevo, larga = devolucion ─
+    # ── Pulsador 2: larga = revelar/confirmar grupo, corta = me los llevo ─
     b3 = btn_ent.value()
     if b3 != btn_ent_prev:
         # Test de cableado: cuadrado verde (a la izquierda del amarillo del
@@ -634,23 +811,53 @@ while True:
         # Flanco de bajada: armar y esperar a ver si es corta o larga
         btn_ent_t0 = now
         btn_ent_armado = en_work_mode
+        btn_ent_barra = -1
+    if b3 == 0 and btn_ent_armado and hay_pendiente():
+        # Mientras se mantiene, llenar la barra: se ve cuanto falta
+        pct = min(100, 100 * time.ticks_diff(now, btn_ent_t0) // LONG_PRESS_MS)
+        if pct - btn_ent_barra >= 8:
+            btn_ent_barra = pct
+            draw_hold_bar(pct / 100.0)
     if b3 == 0 and btn_ent_armado and time.ticks_diff(now, btn_ent_t0) >= LONG_PRESS_MS:
-        # Sigue apretado tras LONG_PRESS_MS: larga = entrega-devolucion
+        # Sigue apretado tras LONG_PRESS_MS: larga
         btn_ent_armado = False
         btn_ent_last = now
         ultimo_avance = now
-        entregar_devolucion()
+        if hay_pendiente():
+            confirmar_lote()          # revelar el grupo y avisar al PC
+        else:
+            bip_error()               # no hay nada pendiente que revelar
     if b3 == 1 and btn_ent_prev == 0:
         if btn_ent_armado:
-            # Soltado antes del umbral: corta = "me llevo mis paquetes"
+            # Soltado antes del umbral: corta
             btn_ent_armado = False
             btn_ent_last = now
             ultimo_avance = now
-            llevar_operario()
+            if hay_pendiente():
+                # Aun sin confirmar: recordar que hay que MANTENERLO pulsado
+                btn_ent_barra = -1
+                draw_hold_bar(0)
+                bip_error()
+            else:
+                llevar_operario()     # "me llevo mis paquetes"
     btn_ent_prev = b3
 
+    # ── Eventos pendientes de contar al servidor (reintento cada 3s) ──
+    if eventos_pend and conectado and time.ticks_diff(now, ultimo_envio) >= 3000:
+        ultimo_envio = now
+        _flush_eventos()
+
+    # ── Recordatorio sonoro: hay un grupo esperando en el carro ───────
+    if en_work_mode and hay_pendiente():
+        if time.ticks_diff(now, ultimo_aviso) >= AVISO_PENDIENTE_S * 1000:
+            ultimo_aviso = now
+            bip_atencion()
+
     # ── Rotacion automatica de paquetes (sin boton) ───────────────────
-    if en_work_mode and len(work_pkgs) > 1 and time.ticks_diff(now, ultimo_avance) >= AUTO_ADVANCE_S * 1000:
+    # Con un grupo sin confirmar no hay nada que rotar: los paquetes siguen
+    # tapados hasta que alguien vaya al carro.
+    if en_work_mode and not hay_pendiente() and len(work_pkgs) > 1 \
+            and time.ticks_diff(now, ultimo_avance) >= AUTO_ADVANCE_S * 1000:
         ultimo_avance = now
         next_package()
 
@@ -731,9 +938,14 @@ while True:
                         ultimo_avance = now
                     en_work_mode = True
                     mostrar_operario()
-                    # Aviso sonoro: melodia si llegan paquetes estando en reposo,
-                    # tic corto si solo se actualiza el contenido en trabajo
-                    if prev is None:
+                    # Aviso sonoro segun lo que ha pasado:
+                    #  - grupo esperando confirmacion en el carro -> llamada
+                    #  - paquetes nuevos estando en reposo        -> melodia
+                    #  - simple actualizacion de contenido        -> tic
+                    if hay_pendiente():
+                        ultimo_aviso = now
+                        bip_atencion()
+                    elif prev is None:
                         bip_nuevos()
                     else:
                         bip_update()

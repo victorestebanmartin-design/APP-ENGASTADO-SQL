@@ -74,9 +74,9 @@ def test_operarios_crud(client):
     assert r.get_json()['success']
 
 
-def test_esp32_evento_devolucion(client):
-    """El pulsador 2 de la pantalla registra eventos de entrega-devolución."""
-    r = client.get('/api/esp32/evento?tipo=devolucion&id=abc123&carro=2&operario=PEPE')
+def test_esp32_evento_registra_pulsaciones(client):
+    """Los pulsadores de la pantalla registran eventos (ver test_esp32_confirmacion)."""
+    r = client.get('/api/esp32/evento?tipo=confirmacion&id=abc123&carro=2&operario=PEPE&lote=l1')
     assert r.get_json()['success']
 
     # Sin tipo → 400

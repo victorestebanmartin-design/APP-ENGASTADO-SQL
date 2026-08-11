@@ -137,15 +137,48 @@ async function mostrarModalPaquetes(carro) {
         }
     }
 
+    const totalPaginas = Math.ceil(total / PAQUETES_POR_PAGINA);
+    const paginaNum = paginaPaquetes + 1;
+
+    // ── Confirmación física en el carro (pulsador 2 de la pantalla) ──────
+    // Cada grupo tiene un id de lote. Si el carro tiene pantalla asignada,
+    // el botón "Tengo estos N, empezar" queda bloqueado hasta que el operario
+    // confirme en el carro con la pulsación larga del pulsador (o desde el PC
+    // si la pantalla no responde). Todo queda registrado en el servidor.
+    if (!window._loteIds) window._loteIds = {};
+    const claveLote = `${carro.carro}|${paginaPaquetes}`;
+    if (!window._loteIds[claveLote]) window._loteIds[claveLote] = Math.random().toString(36).slice(2, 10);
+    const loteId = window._loteIds[claveLote];
+    window._loteActualId = loteId;
+
+    let displayPresente = false, displayVivo = false;
+    window._loteGate = false;
+    try {
+        const rEst = await fetch(`/api/esp32/estado-carro?carro=${encodeURIComponent(carro.carro)}&operario=${encodeURIComponent(operarioActual || '')}`);
+        const est = await rEst.json();
+        if (est.success && est.display) {
+            displayPresente = true;
+            displayVivo = est.viva;
+            // Bloquear salvo que este lote ya estuviera confirmado (re-render)
+            window._loteGate = !(est.confirmacion && est.confirmacion.lote === loteId);
+        }
+    } catch (e) { /* sin pantalla localizable: no se bloquea el trabajo */ }
+
     // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
     // Se envía SOLO la página visible del modal (los mismos 5 que ve el
     // operario), con los bloqueos ya re-verificados. Al pasar de página el
-    // modal se re-renderiza y se re-envía el grupo siguiente.
+    // modal se re-renderiza y se re-envía el grupo siguiente. La pantalla
+    // retiene el grupo anterior hasta la pulsación larga que revela y
+    // confirma éste (campos lote/grupo/confirmar).
     pushToESP32({
         bono:  bonoActual?.nombre  || '',
         carro: carro.carro         || '',
         orden: carro.proyecto_nombre || '',
         operario: operarioActual   || '',
+        grupo: paginaNum,
+        grupos: totalPaginas,
+        lote: loteId,
+        confirmar: displayPresente,
         paquetes: paginaActual.map(p => ({
             etiqueta: p.numeroEtiqueta ?? null,
             cod:  p.cod_cable  || '',
@@ -154,9 +187,6 @@ async function mostrarModalPaquetes(carro) {
             por: p.bloqueado_por || ''
         }))
     });
-
-    const totalPaginas = Math.ceil(total / PAQUETES_POR_PAGINA);
-    const paginaNum = paginaPaquetes + 1;
 
     // Calcular totales globales
     let totalCables = 0, totalTerminales = 0;
@@ -260,13 +290,20 @@ async function mostrarModalPaquetes(carro) {
                         : libresEnPagina > 0 ? `Pon estos ${libresEnPagina} paquete${libresEnPagina!==1?'s':''} en tu zona de trabajo.` : 'Todos los paquetes de esta página están en uso por otro puesto.'
                     }
                 </p>
+                ${window._loteGate ? `
+                <div id="aviso-carro" style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:left;">
+                    <div style="font-weight:bold;color:#7a5c00;font-size:1.02em;margin-bottom:4px;">🚶 Ve al carro ${carro.carro} y confirma en la pantalla</div>
+                    <div style="color:#7a5c00;font-size:0.9em;">Mantén pulsado <strong>1 segundo</strong> el botón de confirmación: la pantalla del carro te mostrará estos paquetes y aquí se desbloqueará el botón de empezar.</div>
+                    <div id="aviso-carro-estado" style="margin-top:8px;color:#8a6d3b;font-size:0.85em;">${displayVivo ? '⏳ Esperando confirmación en el carro...' : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.'}</div>
+                </div>` : ''}
                 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
                     <button onclick="cancelarModalPaquetes()" style="padding:12px 24px;font-size:1em;background:#6c757d;color:white;border:none;border-radius:8px;cursor:pointer;">&#10060; Cancelar</button>
-                    <button id="btn-confirmar-paquetes" onclick="confirmarPaginaPaquetes()" style="padding:12px 32px;font-size:1.1em;background:${libresEnPagina === 0 ? '#6c757d' : '#0d6efd'};color:white;border:none;border-radius:8px;cursor:pointer;font-weight:bold;">
-                        ${libresEnPagina === 0 ? '⏭️ Continuar (todo en uso) →' : libresEnPagina > 1 ? `✅ Tengo estos ${libresEnPagina}, empezar →` : '✅ Tengo este paquete, empezar →'}
+                    <button id="btn-confirmar-paquetes" onclick="confirmarPaginaPaquetes()" ${window._loteGate ? 'disabled' : ''} style="padding:12px 32px;font-size:1.1em;background:${window._loteGate ? '#adb5bd' : (libresEnPagina === 0 ? '#6c757d' : '#0d6efd')};color:white;border:none;border-radius:8px;cursor:${window._loteGate ? 'not-allowed' : 'pointer'};font-weight:bold;">
+                        ${window._loteGate ? '🔒 Confirma en el carro para empezar' : (libresEnPagina === 0 ? '⏭️ Continuar (todo en uso) →' : libresEnPagina > 1 ? `✅ Tengo estos ${libresEnPagina}, empezar →` : '✅ Tengo este paquete, empezar →')}
                     </button>
                 </div>
-                ${bloqueadosEnPagina > 0 ? `<p id="bloqueos-estado" style="margin-top:12px;color:#6c757d;font-size:0.88em;">⏳ Comprobando si se liberan paquetes bloqueados...</p>` : `<p style="margin-top:12px;color:#6c757d;font-size:0.88em;">💡 Pulsa <strong>Enter</strong> para confirmar.</p>`}
+                ${window._loteGate ? `<p style="margin-top:10px;font-size:0.82em;color:#6c757d;">¿La pantalla del carro no responde? <a href="#" onclick="confirmarLoteManual(event)" style="color:#0d6efd;">Confirmar desde el PC</a> (queda registrado como confirmación manual)</p>`
+                : bloqueadosEnPagina > 0 ? `<p id="bloqueos-estado" style="margin-top:12px;color:#6c757d;font-size:0.88em;">⏳ Comprobando si se liberan paquetes bloqueados...</p>` : `<p style="margin-top:12px;color:#6c757d;font-size:0.88em;">💡 Pulsa <strong>Enter</strong> para confirmar.</p>`}
             </div>
         </div>
     `;
@@ -276,6 +313,7 @@ async function mostrarModalPaquetes(carro) {
     window._confirmarEnterHandler = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            if (window._loteGate) return;   // aún sin confirmar en el carro
             document.removeEventListener('keypress', window._confirmarEnterHandler);
             window._confirmarEnterHandler = null;
             confirmarPaginaPaquetes();
@@ -283,11 +321,91 @@ async function mostrarModalPaquetes(carro) {
     };
     document.addEventListener('keypress', window._confirmarEnterHandler);
 
+    // Esperar la confirmación física en el carro (pulsador de la pantalla)
+    if (window._loteGate) {
+        _iniciarEsperaConfirmacion(carro.carro, loteId);
+    }
+
     // Auto-refresh de bloqueos cada 5s si hay paquetes bloqueados en esta página
     if (bloqueadosEnPagina > 0) {
         if (window._bloqueoInterval) clearInterval(window._bloqueoInterval);
         window._bloqueoInterval = setInterval(() => actualizarBloqueos(), 5000);
     }
+}
+
+/**
+ * Sondear al servidor hasta que el operario confirme en la pantalla del carro.
+ * Al confirmar, desbloquea el botón de empezar sin recargar el modal.
+ */
+function _iniciarEsperaConfirmacion(carro, loteId) {
+    _pararEsperaConfirmacion();
+    let intentos = 0;
+    window._confirmInterval = setInterval(async () => {
+        // Si el modal se cerró, dejar de sondear
+        if (!document.getElementById('modal-paquetes')) { _pararEsperaConfirmacion(); return; }
+        intentos++;
+        try {
+            const r = await fetch(`/api/esp32/estado-carro?carro=${encodeURIComponent(carro)}&operario=${encodeURIComponent(operarioActual || '')}`);
+            const d = await r.json();
+            const est = document.getElementById('aviso-carro-estado');
+            if (d.success && d.confirmacion && d.confirmacion.lote === loteId) {
+                _desbloquearBotonLote(d.confirmacion.tipo === 'confirmacion_manual');
+                return;
+            }
+            if (est) {
+                if (d.success && !d.viva) {
+                    est.innerHTML = '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.';
+                } else {
+                    est.textContent = `⏳ Esperando confirmación en el carro... (${intentos * 2}s)`;
+                }
+            }
+        } catch (e) { /* red intermitente: reintenta al siguiente tick */ }
+    }, 2000);
+}
+
+function _pararEsperaConfirmacion() {
+    if (window._confirmInterval) {
+        clearInterval(window._confirmInterval);
+        window._confirmInterval = null;
+    }
+}
+
+function _desbloquearBotonLote(manual) {
+    _pararEsperaConfirmacion();
+    window._loteGate = false;
+    const btn = document.getElementById('btn-confirmar-paquetes');
+    const aviso = document.getElementById('aviso-carro');
+    if (aviso) {
+        aviso.style.background = '#d1e7dd';
+        aviso.style.borderColor = '#198754';
+        aviso.innerHTML = manual
+            ? '<div style="font-weight:bold;color:#0f5132;">✅ Confirmado desde el PC (registrado como manual)</div>'
+            : '<div style="font-weight:bold;color:#0f5132;">✅ Confirmado en el carro — ya puedes empezar</div>';
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.style.cursor = 'pointer';
+        _actualizarBotonConfirmarModal();   // recupera texto y color normales
+        btn.focus();
+    }
+}
+
+/**
+ * Salida de emergencia: la pantalla del carro no responde y el operario
+ * confirma desde el PC. Queda registrado en el servidor como manual.
+ */
+async function confirmarLoteManual(event) {
+    if (event) event.preventDefault();
+    const carro = carrosDelBono[carroActualIndex];
+    if (!carro) return;
+    if (!confirm(`¿Confirmas que has ido al carro ${carro.carro} y tienes estos paquetes?\n\nSe registrará como confirmación MANUAL (la pantalla del carro no respondió).`)) return;
+    try {
+        await fetch(`/api/esp32/evento?tipo=confirmacion_manual&carro=${encodeURIComponent(carro.carro)}`
+            + `&operario=${encodeURIComponent(operarioActual || '')}`
+            + `&lote=${encodeURIComponent(window._loteActualId || '')}`
+            + `&grupo=${encodeURIComponent(paginaPaquetes + 1)}`);
+    } catch (e) { /* aunque falle el registro, no bloqueamos el trabajo */ }
+    _desbloquearBotonLote(true);
 }
 
 /**
@@ -393,6 +511,9 @@ function _actualizarBotonConfirmarModal() {
 }
 
 function confirmarPaginaPaquetes() {
+    // Sin confirmación física en el carro no se empieza el grupo
+    if (window._loteGate) return;
+    _pararEsperaConfirmacion();
     const modal = document.getElementById('modal-paquetes');
     if (modal) modal.remove();
     if (window._confirmarEnterHandler) {
@@ -499,11 +620,13 @@ function cerrarImagenTerminal() {
 async function cancelarModalPaquetes() {
     // Volver al reposo la pantalla ESP32 (limpiar pantalla de trabajo)
     pushToESP32({ clear: true, carro: carrosDelBono[carroActualIndex]?.carro || '', operario: operarioActual || '' });
-    // Detener auto-refresh de bloqueos
+    // Detener auto-refresh de bloqueos y la espera de confirmación del carro
     if (window._bloqueoInterval) {
         clearInterval(window._bloqueoInterval);
         window._bloqueoInterval = null;
     }
+    _pararEsperaConfirmacion();
+    window._loteGate = false;
     const modal = document.getElementById('modal-paquetes');
     if (modal) modal.remove();
     if (window._confirmarEnterHandler) {
