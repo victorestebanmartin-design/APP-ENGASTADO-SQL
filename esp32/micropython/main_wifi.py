@@ -53,6 +53,10 @@ import framebuf
 # network y socket se importan tarde, tras el primer draw
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
+# Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
+# para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
+FW_VERSION = "2026-08-11a"
+
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
 HOST_IP  = "viktor85.pythonanywhere.com"

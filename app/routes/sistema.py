@@ -499,15 +499,29 @@ def api_esp32_current():
     try:
         carro = request.args.get('carro')
         dev_id = _esp32_device_id(request.args.get('id'))
+        ota = None
         if dev_id:
             devs = _esp32_load_devices()
             dev = devs.setdefault(dev_id, {})
             dev['ip'] = request.args.get('esp32_ip') or dev.get('ip', '')
             dev['last_seen'] = datetime.now().isoformat()
+            # Version de firmware que reporta la pantalla
+            fw = (request.args.get('fw') or '').strip()[:24]
+            if fw:
+                dev['fw'] = fw
             # Estado del lector NFC de esa pantalla: off (sin lector), ok, ko
             nfc = (request.args.get('nfc') or '').strip()[:4]
             if nfc in ('off', 'ok', 'ko'):
                 dev['nfc'] = nfc
+            # OTA: si Admin lo pidio y la version no coincide, ofrecer la
+            # actualizacion; si ya coincide, dar por hecha y limpiar.
+            if dev.get('ota_pedido'):
+                version_srv = _esp32_firmware_version()
+                if fw and version_srv and fw == version_srv:
+                    dev['ota_pedido'] = False
+                else:
+                    ota = {'update': True, 'version': version_srv,
+                           'files': _esp32_firmware_manifest()}
             _esp32_save_devices(devs)
             # La asignacion del Admin manda sobre la config local de la pantalla
             if dev.get('carro'):
@@ -528,7 +542,7 @@ def api_esp32_current():
             except Exception:
                 pass
 
-        extra = {'carro_asignado': carro or '', 'login': login_banner}
+        extra = {'carro_asignado': carro or '', 'login': login_banner, 'ota': ota}
         ops_dict = _esp32_load_ops(_esp32_file(carro))
         if not ops_dict:
             return jsonify({'data': None, 'ops': [], **extra})
@@ -775,6 +789,7 @@ def api_esp32_devices():
     try:
         devs = _esp32_load_devices()
         ahora = datetime.now()
+        version_srv = _esp32_firmware_version()
         out = []
         for did, d in sorted(devs.items()):
             online = False
@@ -790,12 +805,14 @@ def api_esp32_devices():
                 'last_seen': d.get('last_seen', ''),
                 'online': online,
                 'nfc': d.get('nfc', ''),
+                'fw': d.get('fw', ''),
+                'ota_pedido': bool(d.get('ota_pedido')),
             })
         try:
             carros = [c.get('numero') for c in CarroRepository(db).obtener_todos_carros()]
         except Exception:
             carros = []
-        return jsonify({'devices': out, 'carros': carros})
+        return jsonify({'devices': out, 'carros': carros, 'firmware_version': version_srv})
     except Exception as e:
         return error_interno(e)
 
@@ -928,6 +945,104 @@ def api_esp32_device_update(device_id):
             devs[dev_id]['carro'] = str(data['carro'])[:24].strip()
         _esp32_save_devices(devs)
         return jsonify({'ok': True, 'device': devs[dev_id]})
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== OTA FIRMWARE ESP32 (WiFi) ====================
+#
+# Actualiza el firmware de APLICACION (main.py + libs) por WiFi, sin USB. NO
+# toca el firmware MicroPython (.bin), que sigue por USB. La pantalla ya sondea
+# /api/esp32/current cada 3s; cuando Admin pide una actualizacion, la respuesta
+# lleva el manifiesto y la pantalla se descarga los ficheros por
+# /api/esp32/firmware/file, los verifica (sha256) y se reinicia. Preserva sus
+# propias credenciales WiFi (las reinyecta en el main.py descargado).
+
+def _esp32_firmware_files():
+    """Ficheros del firmware de aplicacion: (nombre_destino, ruta_absoluta).
+
+    'main.py' se sirve desde main_wifi.py del repo; el resto son los lib/*.py.
+    """
+    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
+    files = [('main.py', os.path.join(base, 'main_wifi.py'))]
+    lib_dir = os.path.join(base, 'lib')
+    if os.path.isdir(lib_dir):
+        for nombre in sorted(os.listdir(lib_dir)):
+            if nombre.endswith('.py'):
+                files.append((nombre, os.path.join(lib_dir, nombre)))
+    return files
+
+
+def _esp32_firmware_version():
+    """Version declarada en FW_VERSION dentro de main_wifi.py ('' si no hay)."""
+    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
+    try:
+        with open(os.path.join(base, 'main_wifi.py'), encoding='utf-8') as f:
+            m = re.search(r'^FW_VERSION\s*=\s*["\'](.*?)["\']', f.read(), re.M)
+            return m.group(1) if m else ''
+    except Exception:
+        return ''
+
+
+def _esp32_firmware_manifest():
+    """Lista [{name, sha256, size}] de los ficheros del firmware disponible."""
+    manifest = []
+    for nombre, ruta in _esp32_firmware_files():
+        try:
+            with open(ruta, 'rb') as f:
+                data = f.read()
+        except Exception:
+            continue
+        manifest.append({'name': nombre,
+                         'sha256': hashlib.sha256(data).hexdigest(),
+                         'size': len(data)})
+    return manifest
+
+
+@bp.route('/api/esp32/firmware/version', methods=['GET'])
+def api_esp32_firmware_version():
+    """Version y manifiesto del firmware de aplicacion disponible en el servidor."""
+    try:
+        return jsonify({'version': _esp32_firmware_version(),
+                        'files': _esp32_firmware_manifest()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/firmware/file', methods=['GET'])
+def api_esp32_firmware_file():
+    """Sirve un fichero del firmware (bytes crudos) para el OTA de la pantalla."""
+    try:
+        nombre = (request.args.get('name') or '').strip()
+        # Whitelist estricta: el nombre debe coincidir con uno del manifiesto,
+        # asi que no cabe ningun path traversal.
+        rutas = {n: r for n, r in _esp32_firmware_files()}
+        ruta = rutas.get(nombre)
+        if not ruta or not os.path.exists(ruta):
+            return jsonify({'success': False, 'message': 'Fichero no válido'}), 404
+        with open(ruta, 'rb') as f:
+            data = f.read()
+        resp = current_app.make_response(data)
+        resp.headers['Content-Type'] = 'application/octet-stream'
+        resp.headers['Content-Length'] = str(len(data))
+        resp.headers['X-SHA256'] = hashlib.sha256(data).hexdigest()
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/devices/<device_id>/ota', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_device_ota(device_id):
+    """Pide a una pantalla que se actualice por WiFi en su proximo poll."""
+    try:
+        dev_id = _esp32_device_id(device_id)
+        devs = _esp32_load_devices()
+        if dev_id not in devs:
+            return jsonify({'success': False, 'message': 'Pantalla no encontrada'}), 404
+        devs[dev_id]['ota_pedido'] = True
+        _esp32_save_devices(devs)
+        return jsonify({'success': True, 'version': _esp32_firmware_version()})
     except Exception as e:
         return error_interno(e)
 
