@@ -109,6 +109,20 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_operarios_activo ON operarios(activo)")
     conn.commit()
 
+    # Migración: tarjeta NFC por operario (login por tarjeta y confirmaciones
+    # en el carro identificadas por operario, no por puesto).
+    cur.execute("PRAGMA table_info(operarios)")
+    op_cols = {row[1] for row in cur.fetchall()}
+    if op_cols and 'tag_uid' not in op_cols:
+        cur.execute("ALTER TABLE operarios ADD COLUMN tag_uid TEXT")
+        conn.commit()
+    if op_cols:
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_operarios_tag ON operarios(tag_uid)
+            WHERE tag_uid IS NOT NULL AND activo = 1
+        """)
+        conn.commit()
+
     # Migración: tabla sesiones_trabajo (bloqueo de paquetes concurrente)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sesiones_trabajo (

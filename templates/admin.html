@@ -551,6 +551,11 @@
                                 onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
                         </td>
                         <td>
+                            <span id="op-tag-${op.id}" style="font-family:monospace;color:${op.tag_uid ? '#f1f5f9' : '#64748b'};">${op.tag_uid ? '🏷️ ' + op.tag_uid : 'Sin tarjeta'}</span>
+                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Asignar tarjeta acercándola al lector del carro" style="margin-left:6px;">📡</button>
+                            ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta" style="margin-left:4px;">🗑️</button>` : ''}
+                        </td>
+                        <td>
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
                         </td>
                         <td style="white-space:nowrap;">
@@ -573,6 +578,7 @@
                             <thead>
                                 <tr>
                                     <th>Nombre</th>
+                                    <th>Tarjeta NFC</th>
                                     <th>Estado</th>
                                     <th>Acciones</th>
                                 </tr>
@@ -707,6 +713,67 @@
         el.style.display = 'block';
         el.style.color = tipo === 'ok' ? '#22c55e' : '#ef4444';
         setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    // ── Asignar tarjeta NFC a un operario acercándola al lector del carro ──
+    let _opCapturaTimer = null;
+    function _pararCapturaTagOperario() {
+        if (_opCapturaTimer) { clearInterval(_opCapturaTimer); _opCapturaTimer = null; }
+    }
+
+    async function capturarTagOperario(id) {
+        _pararCapturaTagOperario();
+        const span = document.getElementById('op-tag-' + id);
+        if (span) { span.textContent = '📡 Acerca la tarjeta al lector...'; span.style.color = '#3b82f6'; }
+        // Solo valen lecturas posteriores a este momento.
+        let ignorar = null;
+        try {
+            const d = await (await fetch('/api/esp32/ultimo-tag')).json();
+            if (d.success && d.tag) ignorar = d.tag.ts;
+        } catch (e) { /* si falla, se acepta la primera lectura */ }
+        let restantes = 30;
+        _opCapturaTimer = setInterval(async () => {
+            restantes -= 2;
+            if (restantes <= 0) {
+                _pararCapturaTagOperario();
+                _opMsg('No se leyó ninguna tarjeta. Vuelve a intentarlo.', 'error');
+                cargarOperariosAdmin();
+                return;
+            }
+            try {
+                const d = await (await fetch('/api/esp32/ultimo-tag')).json();
+                if (d.success && d.tag && d.tag.uid && d.tag.ts !== ignorar) {
+                    _pararCapturaTagOperario();
+                    _guardarTagOperario(id, d.tag.uid);
+                }
+            } catch (e) { /* red intermitente: se reintenta */ }
+        }, 2000);
+    }
+
+    function _guardarTagOperario(id, uid) {
+        fetch(`/api/operarios/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag_uid: uid })
+        }).then(r => r.json()).then(data => {
+            if (data.success) { _opMsg(`Tarjeta ${uid} asignada.`, 'ok'); }
+            else _opMsg(data.error || 'Error al asignar la tarjeta.', 'error');
+            cargarOperariosAdmin();
+        });
+    }
+
+    function quitarTagOperario(id) {
+        if (!confirm('¿Quitar la tarjeta de este operario?')) return;
+        _pararCapturaTagOperario();
+        fetch(`/api/operarios/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag_uid: null })
+        }).then(r => r.json()).then(data => {
+            if (data.success) { _opMsg('Tarjeta quitada.', 'ok'); }
+            else _opMsg(data.error || 'Error.', 'error');
+            cargarOperariosAdmin();
+        });
     }
 
     // ──────────────────────────────────────────────────────────────

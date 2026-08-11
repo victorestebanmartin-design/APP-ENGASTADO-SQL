@@ -42,16 +42,23 @@ from app.routes.base import (
 
 # ==================== OPERARIOS ====================
 
+def _operario_por_tag(conn, tag_uid):
+    """Operario activo asociado a esa tarjeta NFC, o None."""
+    return conn.execute(text(
+        "SELECT id, nombre FROM operarios WHERE tag_uid = :t AND activo = 1"
+    ), {'t': tag_uid}).fetchone()
+
+
 @bp.route('/api/operarios', methods=['GET'])
 def api_operarios_get():
     """Listar operarios activos"""
     try:
         with db.engine.connect() as conn:
             rows = conn.execute(text(
-                "SELECT id, nombre, activo, created_at FROM operarios ORDER BY nombre"
+                "SELECT id, nombre, activo, created_at, tag_uid FROM operarios ORDER BY nombre"
             )).fetchall()
         return jsonify({'success': True, 'operarios': [
-            {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3]}
+            {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3], 'tag_uid': r[4]}
             for r in rows
         ]})
     except Exception as e:
@@ -80,18 +87,50 @@ def api_operarios_create():
 
 @bp.route('/api/operarios/<op_id>', methods=['PUT'])
 def api_operarios_update(op_id):
-    """Actualizar nombre de operario"""
+    """Actualizar operario: nombre y/o su tarjeta NFC."""
     try:
+        from app.routes.puestos import normalizar_tag_uid
         data = request.get_json() or {}
-        nombre = (data.get('nombre') or '').strip()
-        if not nombre:
-            return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+
+        # Tarjeta NFC del operario: UID en hex, o null/'' para quitarla.
+        tag_uid, tocar_tag, limpiar_tag = None, False, False
+        if 'tag_uid' in data:
+            tocar_tag = True
+            crudo = data.get('tag_uid')
+            if crudo in (None, ''):
+                limpiar_tag = True
+            else:
+                tag_uid = normalizar_tag_uid(crudo)
+                if tag_uid is None:
+                    return jsonify({'success': False,
+                                    'error': 'El UID de la tarjeta no es válido '
+                                             '(se espera hexadecimal, de 4 a 10 bytes)'}), 400
+
+        # Si solo se toca la tarjeta, el nombre no es obligatorio.
+        nombre = None
+        if 'nombre' in data or not tocar_tag:
+            nombre = (data.get('nombre') or '').strip()
+            if not nombre:
+                return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+
         with db.engine.connect() as conn:
-            conn.execute(text(
-                "UPDATE operarios SET nombre=:nombre WHERE id=:id"
-            ), {'nombre': nombre, 'id': op_id})
+            if tocar_tag and not limpiar_tag:
+                ocupado = _operario_por_tag(conn, tag_uid)
+                if ocupado and ocupado[0] != op_id:
+                    return jsonify({'success': False,
+                                    'error': f'Esa tarjeta ya está asignada a '
+                                             f'"{ocupado[1]}"'}), 409
+            if nombre is not None:
+                conn.execute(text("UPDATE operarios SET nombre=:nombre WHERE id=:id"),
+                             {'nombre': nombre, 'id': op_id})
+            if tocar_tag:
+                conn.execute(text("UPDATE operarios SET tag_uid=:t WHERE id=:id"),
+                             {'t': None if limpiar_tag else tag_uid, 'id': op_id})
             conn.commit()
         return jsonify({'success': True})
+    except IntegrityError:
+        return jsonify({'success': False,
+                        'error': 'Esa tarjeta ya está asignada a otro operario'}), 409
     except Exception as e:
         return error_interno(e)
 
