@@ -174,27 +174,8 @@ def api_actualizar_puesto(puesto_id):
                                     'message': f'El botón {boton} ya está asignado al puesto '
                                                f'"{ocupado["nombre"]}"'}), 409
 
-        # Tarjeta NFC: UID en hex, o null/'' para quitarla
-        tag_uid, limpiar_tag = None, False
-        if 'tag_uid' in data:
-            crudo = data.get('tag_uid')
-            if crudo in (None, ''):
-                limpiar_tag = True
-            else:
-                tag_uid = normalizar_tag_uid(crudo)
-                if tag_uid is None:
-                    return jsonify({'success': False,
-                                    'message': 'El UID de la tarjeta no es válido '
-                                               '(se espera hexadecimal, de 4 a 10 bytes)'}), 400
-                ocupado = puesto_repo.obtener_puesto_por_tag(tag_uid)
-                if ocupado and ocupado['id'] != puesto_id:
-                    return jsonify({'success': False,
-                                    'message': f'Esa tarjeta ya está asignada al puesto '
-                                               f'"{ocupado["nombre"]}"'}), 409
-
         if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion,
-                                         boton=boton, limpiar_boton=limpiar_boton,
-                                         tag_uid=tag_uid, limpiar_tag=limpiar_tag):
+                                         boton=boton, limpiar_boton=limpiar_boton):
             puesto_actualizado = puesto_repo.obtener_puesto(puesto_id)
             return jsonify({
                 'success': True,
