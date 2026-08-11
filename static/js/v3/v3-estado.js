@@ -38,7 +38,19 @@ let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concur
 // ── Push a pantalla ESP32 vía PA relay (funciona desde cualquier red) ────────
 const _ESP32_PA = 'https://viktor85.pythonanywhere.com';
 
+// Último envío real (no "clear"): se repite cada minuto como latido para que
+// el servidor sepa que este puesto sigue vivo. Sin latido, el servidor lo
+// caduca en unos minutos y desaparece de la pantalla del carro.
+let _esp32UltimoPayload = null;
+let _esp32LatidoTimer = null;
+const _ESP32_LATIDO_MS = 60000;
+
 async function pushToESP32(data) {
+    // Recordar el último estado para poder repetirlo como latido
+    if (data && !data.clear) {
+        _esp32UltimoPayload = data;
+        _arrancarLatidoESP32();
+    }
     try {
         await fetch(`${_ESP32_PA}/api/esp32/push`, {
             method: 'POST',
@@ -49,6 +61,28 @@ async function pushToESP32(data) {
     } catch (_) { /* silencioso */ }
 }
 
+function _arrancarLatidoESP32() {
+    if (_esp32LatidoTimer) return;
+    _esp32LatidoTimer = setInterval(() => {
+        if (!_esp32UltimoPayload) return;
+        // Re-enviar tal cual: solo refresca la marca de tiempo en el servidor
+        fetch(`${_ESP32_PA}/api/esp32/push`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_esp32UltimoPayload),
+            signal: AbortSignal.timeout(3000)
+        }).catch(() => {});
+    }, _ESP32_LATIDO_MS);
+}
+
+function _pararLatidoESP32() {
+    if (_esp32LatidoTimer) {
+        clearInterval(_esp32LatidoTimer);
+        _esp32LatidoTimer = null;
+    }
+    _esp32UltimoPayload = null;
+}
+
 /**
  * Libera este puesto de la pantalla del carro (deja de aparecer en su lista).
  * El canal de la pantalla va indexado por puesto, así que el aviso de limpiar
@@ -56,6 +90,7 @@ async function pushToESP32(data) {
  * colgado como "en curso".
  */
 function limpiarPantallaCarro(carro) {
+    _pararLatidoESP32();
     pushToESP32({
         clear: true,
         carro: carro || '',

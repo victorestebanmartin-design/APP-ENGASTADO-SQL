@@ -5,6 +5,7 @@ carro pulsa el botón de su puesto, ve sus paquetes y confirma con OK: primero
 la RECOGIDA (fase=recoger) y, al terminar el grupo, la DEVOLUCIÓN
 (fase=devolver). Hasta cada confirmación el PC no deja avanzar.
 """
+import os
 
 
 def _registrar_pantalla(client, dev_id='aabbcc'):
@@ -116,3 +117,65 @@ def test_evento_requiere_tipo(client):
 def test_evento_sin_fase_asume_recogida(client):
     client.get('/api/esp32/evento?tipo=confirmacion&carro=3&puesto=puesto_001&lote=x')
     assert _estado(client)['confirmacion']['fase'] == 'recoger'
+
+
+# ── Liberar un puesto colgado ─────────────────────────────────────────────
+
+def _push(client, carro='3', puesto='puesto_001', fase='recoger'):
+    return client.post('/api/esp32/push', json={
+        'carro': carro, 'puesto_id': puesto, 'puesto_nombre': 'AMP-01',
+        'operario': 'PEPE', 'boton': 1, 'fase': fase, 'lote': 'l1',
+        'paquetes': [{'etiqueta': 1, 'elem': 'E1'}]
+    })
+
+
+def _puestos_en_pantalla(client, carro='3'):
+    ops = client.get(f'/api/esp32/current?carro={carro}').get_json()['ops']
+    return [o['data'].get('puesto_id') for o in ops]
+
+
+def test_el_puesto_aparece_en_el_canal_del_carro(client):
+    _push(client)
+    assert _puestos_en_pantalla(client) == ['puesto_001']
+
+
+def test_liberar_saca_al_puesto_de_la_pantalla(client):
+    """Salida de emergencia: mantener pulsado el botón del puesto en el carro."""
+    _push(client)
+    r = client.get('/api/esp32/evento?tipo=liberar&carro=3&puesto=puesto_001&operario=PEPE')
+    assert r.get_json()['success']
+    assert _puestos_en_pantalla(client) == []
+
+
+def test_liberar_solo_afecta_a_ese_puesto(client):
+    _push(client, puesto='puesto_001')
+    _push(client, puesto='puesto_002')
+    client.get('/api/esp32/evento?tipo=liberar&carro=3&puesto=puesto_001')
+    assert _puestos_en_pantalla(client) == ['puesto_002']
+
+
+def test_clear_con_puesto_id_libera(client):
+    """Al cancelar el modal el navegador manda clear CON puesto_id."""
+    _push(client)
+    client.post('/api/esp32/push', json={'clear': True, 'carro': '3',
+                                         'puesto_id': 'puesto_001', 'operario': 'PEPE'})
+    assert _puestos_en_pantalla(client) == []
+
+
+def test_entrada_sin_latido_caduca(client, app):
+    """Sin latido del PC, la entrada desaparece pasado el TTL."""
+    import json as _json
+    from datetime import datetime, timedelta
+    from app.routes import sistema
+
+    _push(client)
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_current_3.json')
+    with open(ruta) as f:
+        payload = _json.load(f)
+    viejo = (datetime.now() - timedelta(seconds=sistema.ESP32_TTL_S + 60)).isoformat()
+    for v in payload['ops'].values():
+        v['ts'] = viejo
+    with open(ruta, 'w') as f:
+        _json.dump(payload, f)
+
+    assert _puestos_en_pantalla(client) == []

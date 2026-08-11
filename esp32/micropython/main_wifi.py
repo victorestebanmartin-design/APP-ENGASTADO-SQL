@@ -62,6 +62,9 @@ AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al 
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
 AVISO_PENDIENTE_S = 25 # cada cuanto recuerda con un pitido que hay un grupo
                        # esperando a que alguien vaya al carro a confirmarlo
+AVISO_MAX = 6          # y cuantas veces como mucho: pasados estos avisos se
+                       # calla (el aviso sigue en pantalla). Sin tope, un
+                       # puesto colgado dejaria el zumbador pitando sin fin.
 VOLVER_LISTA_S = 30    # sin tocar nada, el detalle de un puesto vuelve solo a
                        # la lista (deja la pantalla libre para el siguiente)
 
@@ -672,6 +675,40 @@ def confirmar_ok():
     # los paquetes de la pantalla y dejarla libre para el siguiente puesto.
     mostrar_lista()
 
+def liberar_puesto(n):
+    """Pulsacion LARGA de un boton de puesto: soltar ese puesto del carro.
+
+    Salida de emergencia para un puesto que se quedo colgado (el PC se cerro
+    de golpe, se fue la red al cancelar...). Lo quita de la pantalla y se lo
+    dice al servidor para que no vuelva en el siguiente poll.
+    """
+    global work_ops, work_fp
+    o = _op_por_boton(n)
+    if o is None:
+        bip_error()
+        return
+    d = _d(o)
+    _encolar_evento({
+        'tipo': 'liberar',
+        'carro': str(d.get('carro', '') or ''),
+        'puesto': str(d.get('puesto_id') or ''),
+        'operario': str(d.get('operario') or ''),
+    })
+    confirmados.pop(_clave(o), None)
+    work_ops = [x for x in work_ops if x is not o]
+    work_fp = _fingerprint(work_ops)
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(130, "PUESTO %d" % n, YELLOW, BLACK, scale=3)
+    text_center(175, "LIBERADO", YELLOW, BLACK, scale=2)
+    bip_devuelto()
+    time.sleep_ms(1000)
+    print("LIBERADO puesto", d.get('puesto_id'))
+    if work_ops:
+        mostrar_lista()
+    else:
+        globals()['en_work_mode'] = False
+        mostrar_lista()
+
 def avisar_pulsa_puesto():
     """OK pulsado sin haber elegido puesto: decir que hay que identificarse."""
     rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
@@ -803,6 +840,9 @@ ultimo_poll  = time.ticks_ms() - POLL_INTERVAL * 1000  # forzar poll inmediato
 en_work_mode = False
 btns_prev    = [1] * len(BTN_PUESTO_PINS)   # estado anterior de cada boton 1-7
 btns_last    = [0] * len(BTN_PUESTO_PINS)   # ultimo flanco (antirrebote)
+btns_t0      = [0] * len(BTN_PUESTO_PINS)   # inicio de la pulsacion en curso
+btns_armado  = [False] * len(BTN_PUESTO_PINS)
+avisos_dados = 0                  # recordatorios sonoros ya dados de este estado
 btn_ok_prev  = 1
 btn_ok_last  = 0
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
@@ -816,7 +856,7 @@ while True:
   try:
     now = time.ticks_ms()
 
-    # ── Botones 1-7: cada uno abre el detalle de SU puesto ────────────
+    # ── Botones 1-7: corta = ver mi puesto, larga = liberarlo ─────────
     for i, bp_ in enumerate(btns_puesto):
         bv = bp_.value()
         if bv != btns_prev[i]:
@@ -825,10 +865,24 @@ while True:
             rect(226 - i*12, Y_WIFI + 4, 10, 10, YELLOW if bv == 0 else BLACK)
             print("BTN", i + 1, "pulsado" if bv == 0 else "soltado")
         if bv == 0 and btns_prev[i] == 1 and time.ticks_diff(now, btns_last[i]) > 250:
+            # Flanco de bajada: armar y esperar a ver si es corta o larga
+            btns_t0[i] = now
+            btns_armado[i] = en_work_mode
+            ultima_accion = now
+        if bv == 0 and btns_armado[i] and time.ticks_diff(now, btns_t0[i]) >= LONG_PRESS_MS:
+            # Mantenido: liberar ese puesto (se quedo colgado)
+            btns_armado[i] = False
             btns_last[i] = now
             ultima_accion = now
             ultimo_avance = now
-            if en_work_mode:
+            liberar_puesto(i + 1)
+        if bv == 1 and btns_prev[i] == 0:
+            if btns_armado[i]:
+                # Soltado antes del umbral: abrir el detalle de ese puesto
+                btns_armado[i] = False
+                btns_last[i] = now
+                ultima_accion = now
+                ultimo_avance = now
                 seleccionar_puesto(i + 1)
         btns_prev[i] = bv
 
@@ -861,9 +915,13 @@ while True:
         _flush_eventos()
 
     # ── Recordatorio sonoro: alguien tiene que venir al carro ─────────
-    if en_work_mode and hay_pendiente():
+    # Con tope: si nadie viene, deja de sonar. El aviso sigue en pantalla,
+    # pero un zumbador pitando sin parar en el taller es insufrible (y si algo
+    # se queda colgado, no puede convertirse en una mosca eterna).
+    if en_work_mode and hay_pendiente() and avisos_dados < AVISO_MAX:
         if time.ticks_diff(now, ultimo_aviso) >= AVISO_PENDIENTE_S * 1000:
             ultimo_aviso = now
+            avisos_dados += 1
             bip_atencion()
 
     # ── Rotacion automatica de paquetes del puesto que se esta viendo ─
@@ -951,9 +1009,12 @@ while True:
                         draw_detalle()
                     else:
                         mostrar_lista()
-                    # Aviso sonoro segun lo que ha pasado
+                    # Aviso sonoro segun lo que ha pasado. Estado nuevo =
+                    # vuelve a contar desde cero el tope de recordatorios.
+                    avisos_dados = 0
                     if hay_pendiente() and not antes_pendiente:
                         ultimo_aviso = now
+                        avisos_dados = 1
                         bip_atencion()
                     elif not habia:
                         bip_nuevos()

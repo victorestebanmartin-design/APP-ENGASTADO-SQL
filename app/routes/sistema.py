@@ -386,8 +386,14 @@ def _esp32_device_id(raw):
     return re.sub(r'[^A-Za-z0-9]', '', str(raw or ''))[:32]
 
 
-ESP32_TTL_S = 3600           # los datos de un operario expiran a los 60 min
-ESP32_MAX_OPS = 8            # operarios simultaneos maximos por canal
+# Cada puesto presente en un carro caduca solo si su PC deja de dar señales.
+# El navegador re-envía sus datos cada ESP32_KEEPALIVE_S mientras el operario
+# sigue en el módulo; si cierra la web, se va o se le cuelga el PC, la entrada
+# desaparece de la pantalla del carro en cuanto pasa el TTL (en vez de quedarse
+# colgada "en curso" durante una hora).
+ESP32_TTL_S = 240            # 4 min sin noticias del PC = puesto liberado
+ESP32_KEEPALIVE_S = 60       # cada cuánto re-envía el navegador (informativo)
+ESP32_MAX_OPS = 8            # puestos simultáneos máximos por canal
 
 
 def _esp32_op_key(data):
@@ -570,6 +576,17 @@ def api_esp32_evento():
         with open(_esp32_eventos_file(), 'w') as f:
             json.dump(eventos[-100:], f, ensure_ascii=False)
         current_app.logger.info('Evento ESP32: %s', evento)
+
+        # Liberar: sacar ese puesto del carro sin esperar al TTL. Es la salida
+        # de emergencia física para un puesto que se quedó colgado (PC cerrado
+        # de golpe, sin red al cancelar...).
+        if evento['tipo'] == 'liberar' and evento['puesto']:
+            borrado = {'clear': True, 'puesto_id': evento['puesto'],
+                       'operario': evento['operario']}
+            _esp32_write_channel(_esp32_file(), borrado, evento['ts'])
+            if evento['carro']:
+                _esp32_write_channel(_esp32_file(evento['carro']), borrado, evento['ts'])
+            return jsonify({'success': True})
 
         # Confirmación: guardar la última por (carro, puesto)
         if evento['tipo'] in ('confirmacion', 'confirmacion_manual'):

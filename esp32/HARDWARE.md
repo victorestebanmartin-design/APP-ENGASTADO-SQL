@@ -171,6 +171,26 @@ Reglas de la interacción, para que no haya confirmaciones ciegas:
 - Al salir del modal en el PC, cambiar de puesto o cerrar la pestaña, ese
   puesto **se libera** de la pantalla y deja de aparecer en su lista.
 
+### Cómo se liberan los puestos colgados
+
+Un puesto ocupa un hueco en la pantalla del carro solo mientras su PC da
+señales de vida. Hay tres redes de seguridad, de la más suave a la más bruta:
+
+1. **Salida limpia.** Cancelar el modal, volver a puestos, terminar el carro o
+   cerrar la pestaña liberan el puesto al instante.
+2. **Caducidad automática.** El navegador re-envía su estado cada 60 s como
+   latido (`ESP32_KEEPALIVE_S`). Si deja de hacerlo — PC apagado de golpe, sin
+   red, pestaña muerta — el servidor descarta esa entrada a los **4 minutos**
+   (`ESP32_TTL_S`) y desaparece sola de la pantalla.
+3. **A mano, desde el carro.** **Mantener pulsado 1 segundo** el botón de un
+   puesto lo libera en el acto: la pantalla dice `PUESTO n LIBERADO` y avisa al
+   servidor (`tipo=liberar`). Es la salida de emergencia cuando algo se queda
+   colgado y no quieres esperar.
+
+El recordatorio sonoro de "ven al carro" suena como mucho `AVISO_MAX` veces (6)
+y luego se calla; el aviso sigue en pantalla. Así un estado colgado nunca deja
+el zumbador pitando sin fin.
+
 Si la pantalla no responde, el PC ofrece un enlace para confirmar manualmente
 (se registra como `confirmacion_manual`): el trabajo nunca se bloquea del todo.
 Tampoco se bloquea si el carro no tiene pantalla asignada o el puesto no tiene
@@ -194,6 +214,34 @@ así que cada aviso se reconoce por **ritmo y textura** (`tono` = liso,
 | OK a una devolución | las mismas tres notas **descendentes** ("cerrado") |
 | Llegan paquetes en reposo | melodía de cuatro notas, la llamada más larga |
 | Gesto no válido (puesto sin trabajo, OK a destiempo) | dos zumbidos rasposos y graves |
+
+## Problemas conocidos
+
+### El zumbador "hace de mosca" con la placa apagada
+
+Zumbido flojo y continuo cuando se apaga la pantalla con el interruptor. **No
+es software**: si el ESP32-S3 está en reset, ningún programa puede tocar el
+pin. Es el pin del zumbador quedándose **flotante**.
+
+Un zumbador activo cableado GPIO18 → patilla +, GND → patilla −, se alimenta
+del propio GPIO. Cuando el S3 entra en reset (interruptor en el pad 22,
+**EN-RST**), el chip suelta todos sus pines y los deja en alta impedancia,
+pero **la placa sigue alimentada a 5V**: la patilla del zumbador queda al aire
+recogiendo fugas y ruido, y suena ese mosquito.
+
+Para confirmar que es esto: al accionar el interruptor, **¿se queda la pantalla
+encendida?** Si el retroiluminado sigue dando luz, la placa sigue alimentada y
+el interruptor es el de EN-RST — entonces es exactamente este caso.
+
+Dos arreglos, cualquiera vale:
+
+- **Resistencia de 10 kΩ entre GPIO18 (pad 3) y GND.** Mantiene la patilla a
+  masa siempre que el ESP32 no la esté empujando activamente. Es la solución
+  estándar y no afecta al funcionamiento normal (el GPIO empuja de sobra
+  contra 10 kΩ).
+- **Mover el interruptor al hilo VBUS** del cable USB-C, para cortar la
+  alimentación de verdad en vez de solo poner el chip en reset. Sin 5V el
+  zumbador no puede sonar.
 
 ## Notas de la sesión
 
