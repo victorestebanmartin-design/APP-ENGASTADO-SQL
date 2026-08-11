@@ -504,6 +504,10 @@ def api_esp32_current():
             dev = devs.setdefault(dev_id, {})
             dev['ip'] = request.args.get('esp32_ip') or dev.get('ip', '')
             dev['last_seen'] = datetime.now().isoformat()
+            # Estado del lector NFC de esa pantalla: off (sin lector), ok, ko
+            nfc = (request.args.get('nfc') or '').strip()[:4]
+            if nfc in ('off', 'ok', 'ko'):
+                dev['nfc'] = nfc
             _esp32_save_devices(devs)
             # La asignacion del Admin manda sobre la config local de la pantalla
             if dev.get('carro'):
@@ -721,6 +725,7 @@ def api_esp32_devices():
                 'ip': d.get('ip', ''),
                 'last_seen': d.get('last_seen', ''),
                 'online': online,
+                'nfc': d.get('nfc', ''),
             })
         try:
             carros = [c.get('numero') for c in CarroRepository(db).obtener_todos_carros()]

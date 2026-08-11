@@ -179,3 +179,34 @@ def test_entrada_sin_latido_caduca(client, app):
         _json.dump(payload, f)
 
     assert _puestos_en_pantalla(client) == []
+
+
+# ── Estado del lector NFC de cada pantalla ────────────────────────────────
+
+def test_pantalla_reporta_estado_del_lector(client, admin_client):
+    """La pantalla manda &nfc=ok|ko|off en cada poll y Admin lo muestra."""
+    client.get('/api/esp32/current?id=aabbcc&nfc=ok')
+    dev = next(d for d in admin_client.get('/api/esp32/devices').get_json()['devices']
+               if d['id'] == 'aabbcc')
+    assert dev['nfc'] == 'ok'
+
+    # Si el lector se cuelga, la pantalla pasa a reportar 'ko'
+    client.get('/api/esp32/current?id=aabbcc&nfc=ko')
+    dev = next(d for d in admin_client.get('/api/esp32/devices').get_json()['devices']
+               if d['id'] == 'aabbcc')
+    assert dev['nfc'] == 'ko'
+
+
+def test_estado_nfc_invalido_se_ignora(client, admin_client):
+    client.get('/api/esp32/current?id=aabbcc&nfc=ok')
+    client.get('/api/esp32/current?id=aabbcc&nfc=basura')
+    dev = next(d for d in admin_client.get('/api/esp32/devices').get_json()['devices']
+               if d['id'] == 'aabbcc')
+    assert dev['nfc'] == 'ok'      # se queda el último válido
+
+
+def test_pantalla_sin_lector_no_reporta_nfc(client, admin_client):
+    client.get('/api/esp32/current?id=ddeeff')
+    dev = next(d for d in admin_client.get('/api/esp32/devices').get_json()['devices']
+               if d['id'] == 'ddeeff')
+    assert dev['nfc'] == ''

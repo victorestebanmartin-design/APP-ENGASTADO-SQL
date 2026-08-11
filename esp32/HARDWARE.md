@@ -278,31 +278,70 @@ así que cada aviso se reconoce por **ritmo y textura** (`tono` = liso,
 
 ## Problemas conocidos
 
-### El zumbador "hace de mosca" con la placa apagada
+### El interruptor no apaga: zumbador de mosca y lector encendido
 
-Zumbido flojo y continuo cuando se apaga la pantalla con el interruptor. **No
-es software**: si el ESP32-S3 está en reset, ningún programa puede tocar el
-pin. Es el pin del zumbador quedándose **flotante**.
+Tres síntomas que son **el mismo problema**: al apagar con el interruptor, el
+zumbador se queda sonando como una mosca, el LED del lector NFC sigue
+encendido, y el lector puede quedarse colgado hasta la siguiente vez.
 
-Un zumbador activo cableado GPIO18 → patilla +, GND → patilla −, se alimenta
-del propio GPIO. Cuando el S3 entra en reset (interruptor en el pad 22,
-**EN-RST**), el chip suelta todos sus pines y los deja en alta impedancia,
-pero **la placa sigue alimentada a 5V**: la patilla del zumbador queda al aire
-recogiendo fugas y ruido, y suena ese mosquito.
+La causa: el interruptor está en el pad 22 (**EN-RST**), que **no corta la
+corriente** — solo mantiene el ESP32-S3 en reset mientras el resto de la placa
+sigue alimentada. De ahí salen los tres:
 
-Para confirmar que es esto: al accionar el interruptor, **¿se queda la pantalla
-encendida?** Si el retroiluminado sigue dando luz, la placa sigue alimentada y
-el interruptor es el de EN-RST — entonces es exactamente este caso.
+- Con el S3 en reset, sus pines quedan en alta impedancia. El pin del zumbador
+  se queda al aire recogiendo ruido → mosquito. **Ningún software puede
+  evitarlo**: cuando el chip está en reset no hay programa que valga.
+- El PN532 sigue con 3.3V → su LED sigue encendido.
+- Y lo peor: **el lector no se resetea cuando el ESP32 sí**. Si se quedó
+  colgado a media trama, sigue colgado tras reiniciar la pantalla.
 
-Dos arreglos, cualquiera vale:
+**Comprobación de un segundo:** apaga y mira la pantalla. ¿Se queda con luz de
+fondo (gris claro) o negra del todo?
 
-- **Resistencia de 10 kΩ entre GPIO18 (pad 3) y GND.** Mantiene la patilla a
-  masa siempre que el ESP32 no la esté empujando activamente. Es la solución
-  estándar y no afecta al funcionamiento normal (el GPIO empuja de sobra
-  contra 10 kΩ).
-- **Mover el interruptor al hilo VBUS** del cable USB-C, para cortar la
-  alimentación de verdad en vez de solo poner el chip en reset. Sin 5V el
-  zumbador no puede sonar.
+- **Con luz** → confirmado, es este caso. **Mueve el interruptor al hilo VBUS**
+  del cable USB-C. Un solo cambio y desaparecen los tres síntomas: sin 5V el
+  zumbador no puede sonar, el lector se apaga de verdad y arranca limpio a la
+  vez que el ESP32.
+- **Negra del todo** → el interruptor sí corta VBUS, y entonces el lector se
+  está realimentando por las líneas de I2C (SDA/SCL con pull-ups hacia su VCC),
+  que es un clásico. Aliméntalo del mismo punto que se corta, o pon un diodo
+  Schottky en su VCC.
+
+Si no quieres tocar el interruptor, el parche para el zumbador es una
+**resistencia de 10 kΩ entre GPIO18 (pad 3) y GND**: mantiene la patilla a masa
+siempre que el ESP32 no la esté empujando. No afecta al funcionamiento normal
+(el GPIO empuja de sobra contra 10 kΩ). Pero no arregla lo del lector.
+
+### El lector NFC lee una vez y se cuelga
+
+Si al leer una tarjeta se reinicia la pantalla, es **caída de tensión**: el
+PN532 pega un pico de ~100 mA al levantar el campo RF, y el pad 20 (3.3V) está
+recomendado hasta 100–200 mA con el TFT y la WiFi ya tirando.
+
+1. **Condensador de 100 µF electrolítico + 100 nF cerámico** entre VCC y GND,
+   **pegados al módulo**. Es el arreglo estándar para los picos del campo RF y
+   suele bastar.
+2. **Alimentar VCC desde 5V** en vez del pad 20 (el módulo V3 lleva su propio
+   regulador). Los pads 26–29 son "5V IN"; comprueba con el polímetro que
+   llevan los 5V del USB antes de usarlos como fuente.
+3. Si aun así se cuelga, cablear el **RSTPDN** del PN532 a un GPIO para que el
+   firmware pueda resetearlo por hardware. Cuesta un pulsador: el 7 (pad 9,
+   GPIO39) es el candidato. **No usar los pads 13/14/15** (GPIO3/45/46): son de
+   strapping y el pull-up del RSTPDN los dejaría altos en el arranque, que es
+   justo lo que puede impedir que la placa arranque.
+
+Por software el lector ya no se abandona nunca: si deja de responder, la
+pantalla recupera el bus I2C y reintenta cada 10 s indefinidamente (igual que
+hace con la WiFi). Y se ve el estado sin cable serie — ver más abajo.
+
+### Saber si el lector va, sin enchufar el cable serie
+
+- **En la pantalla de reposo**, junto al `ID xxxx`: `NFC ok` en verde o
+  `NFC no responde` en rojo. Sin lector configurado no aparece nada.
+- **En Admin → Display Carro**, columna NFC de cada pantalla.
+
+Para desactivarlo del todo y quedarse solo con los pulsadores, pon
+`NFC_SDA_PIN = None` en `main_wifi.py`.
 
 ## Notas de la sesión
 

@@ -108,10 +108,14 @@ BTN_OK_PIN = 40
 #   SDA -> pad 11 (GPIO6)    VCC -> pad 20 (3.3V)
 #   SCL -> pad 12 (GPIO5)    GND -> pad 21, 25 o 30
 # Sin lector conectado no pasa nada: los pulsadores siguen funcionando igual.
-NFC_SDA_PIN = 6
+NFC_SDA_PIN = 6        # None en cualquiera de los dos = NFC desactivado
 NFC_SCL_PIN = 5
 NFC_POLL_MS = 300      # cada cuanto se pregunta si hay una tarjeta delante
 NFC_REPETIR_MS = 3000  # ignorar la misma tarjeta si sigue apoyada en el lector
+NFC_REINTENTO_S = 10   # si el lector no responde, cada cuanto se reintenta
+NFC_FALLOS_MAX = 5     # lecturas fallidas seguidas antes de darlo por colgado
+                       # y recuperar el bus I2C. El lector NUNCA se abandona:
+                       # si lo enchufas con la pantalla en marcha, entra solo.
 
 # Zumbador: patilla + al pad 3 de la extensora (GPIO18), patilla - a GND.
 # None = sin zumbador (todo funciona igual, en silencio).
@@ -354,6 +358,15 @@ def draw_idle(msg=None):
         text_center(170, mi_carro, YELLOW, BLACK, scale=s)
     text_center(250, msg, LGRAY, BLACK, scale=1)
     text(4, 274, "ID " + DEVICE_ID[-4:], DGRAY, BLACK, scale=1)
+    # Estado del lector NFC: poder verlo de un vistazo evita tener que
+    # enchufar el cable serie para saber si el lector va o no.
+    try:
+        if nfc_estado == 'ok':
+            text(120, 274, "NFC ok", GREEN, BLACK, scale=1)
+        elif nfc_estado == 'ko':
+            text(120, 274, "NFC no responde", RED, BLACK, scale=1)
+    except NameError:
+        pass       # aun no se ha inicializado (primer draw del arranque)
     draw_wifi_bar()
 
 # ── Estado de trabajo ─────────────────────────────────────────────────────────
@@ -892,17 +905,42 @@ def draw_estado(msg, color=LGRAY):
 btns_puesto = [Pin(p, Pin.IN, Pin.PULL_UP) for p in BTN_PUESTO_PINS]
 btn_ok      = Pin(BTN_OK_PIN, Pin.IN, Pin.PULL_UP)
 
-# Lector NFC: totalmente opcional. Si no esta cableado, o el modulo no
-# responde, se sigue sin el (los pulsadores hacen lo mismo).
+# ── Lector NFC: opcional y supervisado ───────────────────────────────────────
+# Totalmente opcional: sin lector, los pulsadores hacen lo mismo. Y si esta
+# pero se cuelga, NO se abandona: se reintenta cada NFC_REINTENTO_S para
+# siempre, igual que se hace con la WiFi. Un lector muerto hasta reflashear no
+# es aceptable en produccion.
+#   'off' = desactivado por configuracion
+#   'ok'  = responde
+#   'ko'  = deberia estar ahi pero no contesta (se sigue reintentando)
 nfc = None
+nfc_estado = 'off'
+nfc_fallos = 0
+
 if NFC_SDA_PIN is not None and NFC_SCL_PIN is not None:
     try:
         from pn532_i2c import PN532
         nfc = PN532(sda=NFC_SDA_PIN, scl=NFC_SCL_PIN)
-        print("NFC PN532 listo, firmware", nfc.version)
+        nfc_estado = 'ok' if nfc.reiniciar() else 'ko'
+        print("NFC:", nfc_estado, nfc.version)
     except Exception as e:
-        nfc = None
+        nfc, nfc_estado = None, 'off'
         print("Sin lector NFC:", e)
+
+def nfc_reintentar():
+    """Vuelve a levantar el lector (recupera el bus I2C y lo reconfigura)."""
+    global nfc_estado, nfc_fallos
+    if nfc is None:
+        return
+    nfc_fallos = 0
+    nuevo = 'ok' if nfc.reiniciar() else 'ko'
+    if nuevo != nfc_estado:
+        print("NFC ->", nuevo)
+        nfc_estado = nuevo
+        if not en_work_mode:
+            draw_idle()
+    else:
+        nfc_estado = nuevo
 
 bip_arranque()   # confirma que el zumbador esta vivo tras flashear
 
@@ -966,10 +1004,31 @@ while True:
                 seleccionar_puesto(i + 1)
         btns_prev[i] = bv
 
+    # ── Lector NFC caido: reintentar (para siempre, como con la WiFi) ─
+    if nfc is not None and nfc_estado == 'ko' \
+            and time.ticks_diff(now, ultimo_nfc) >= NFC_REINTENTO_S * 1000:
+        ultimo_nfc = now
+        nfc_reintentar()
+
     # ── Lector NFC: pasar la tarjeta = pulsar el boton de tu puesto ───
-    if nfc is not None and time.ticks_diff(now, ultimo_nfc) >= NFC_POLL_MS:
+    elif nfc is not None and nfc_estado == 'ok' \
+            and time.ticks_diff(now, ultimo_nfc) >= NFC_POLL_MS:
         ultimo_nfc = now
         uid = nfc.leer_uid(timeout_ms=80)
+        if uid is None:
+            # No hay tarjeta... o el modulo se ha colgado. Solo tras varios
+            # fallos seguidos se comprueba de verdad (un ping por lectura
+            # seria carisimo, y no leer nada es lo normal).
+            nfc_fallos += 1
+            if nfc_fallos >= NFC_FALLOS_MAX:
+                nfc_fallos = 0
+                if not nfc.vivo():
+                    print("NFC no responde: recuperando bus")
+                    nfc_estado = 'ko'
+                    if not en_work_mode:
+                        draw_idle()
+        else:
+            nfc_fallos = 0
         if uid:
             # Ignorar la misma tarjeta si se queda apoyada en el lector
             repetida = (uid == nfc_uid_prev and
@@ -1069,7 +1128,7 @@ while True:
     # ── Poll de trabajo (cada 3s) ─────────────────────────────────────
     elif conectado and time.ticks_diff(now, ultimo_poll) >= POLL_INTERVAL * 1000:
         ultimo_poll = now
-        ruta = "/api/esp32/current?id=" + DEVICE_ID
+        ruta = "/api/esp32/current?id=" + DEVICE_ID + "&nfc=" + nfc_estado
         if CARRO_ASIGNADO:
             ruta += "&carro=" + CARRO_ASIGNADO
         body = http_get(HOST_IP, PORT, ruta)

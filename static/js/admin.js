@@ -1261,7 +1261,7 @@ async function cargarDisplays() {
         cont.innerHTML = `
             <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
                 <thead><tr style="text-align:left;color:#94a3b8;">
-                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th>
+                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th><th>NFC</th>
                     <th>Carro asignado</th><th>Última señal</th><th></th>
                 </tr></thead>
                 <tbody>` + devs.map(dev => `
@@ -1270,6 +1270,9 @@ async function cargarDisplays() {
                     <td><input id="disp-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Pantalla..." style="${_dispInputStyle}width:130px;"></td>
                     <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
                     <td style="font-family:monospace;">${_dispEsc(dev.ip) || '—'}</td>
+                    <td title="${dev.nfc === 'ok' ? 'Lector NFC respondiendo' : dev.nfc === 'ko' ? 'Lector NFC cableado pero sin responder' : 'Esta pantalla no tiene lector NFC'}">
+                        ${dev.nfc === 'ok' ? '🏷️ ok' : dev.nfc === 'ko' ? '<span style="color:#f87171;">⚠️ no responde</span>' : '—'}
+                    </td>
                     <td><select id="disp-carro-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.carro)}</select></td>
                     <td style="color:#94a3b8;">${dev.last_seen ? _dispEsc(dev.last_seen.replace('T', ' ').slice(0, 19)) : '—'}</td>
                     <td style="white-space:nowrap;">
