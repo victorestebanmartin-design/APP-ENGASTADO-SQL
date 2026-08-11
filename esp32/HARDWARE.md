@@ -26,9 +26,9 @@ Numeración = pin de la faja FFC de 30 vías.
 | Pad | Señal | Función en el proyecto |
 |---|---|---|
 | 1, 21, 25, 30 | GND | Masa común (pulsadores, zumbador, EN-RST) |
-| 2 | GPIO17 | Pulsador 1 (a GND, `INPUT_PULLUP`) — cambio de operario (`BTN_OP_PIN` en el firmware) |
+| 2 | GPIO17 | Pulsador 1 (a GND, `INPUT_PULLUP`) — operario: corta = siguiente operario, larga = deshacer entregas (`BTN_OP_PIN`) |
 | 3 | GPIO18 | Zumbador (`BUZZER_PIN` en el firmware; verificar si activo/pasivo — si activo, usar transistor NPN) |
-| 4 | GPIO16 | Pulsador 2 (a GND, `INPUT_PULLUP`) — cableado, **aún sin uso en el firmware** |
+| 4 | GPIO16 | Pulsador 2 (a GND, `INPUT_PULLUP`) — entrega: corta = "me llevo los paquetes", larga = confirmar entrega-devolución (`BTN_ENT_PIN`) |
 | 22 | EN-RST | Interruptor de apagado alternativo (a GND desactiva el ESP32-S3; no confirmado si corta retroiluminación) |
 | 20 | 3.3V | Salida 3.3V disponible para el usuario (máx. recomendado 100-200mA) |
 
@@ -94,7 +94,8 @@ Ocupados por el propio módulo; el firmware los reserva y no deben tocarse:
 
 | Constante | Valor actual | Pad de la extensora |
 |---|---|---|
-| `BTN_OP_PIN` | GPIO17 | Pad 2 — pulsador de cambio de operario |
+| `BTN_OP_PIN` | GPIO17 | Pad 2 — pulsador 1 (operario): corta = siguiente operario, larga (1s) = deshacer entregas/devoluciones |
+| `BTN_ENT_PIN` | GPIO16 | Pad 4 — pulsador 2 (entrega): corta = "me llevo los paquetes" (ENTREGADO), larga (1s) = entrega-devolución (DEVUELTO + evento `/api/esp32/evento` al servidor, pendiente de vincular con la liberación de bloqueos) |
 | `BUZZER_PIN` | GPIO18 | Pad 3 — zumbador (`BUZZER_PASIVO = False` → activo de 3.3V) |
 | `BUTTON_PIN` | GPIO5 | Pad 12 — botón genérico opcional (sin cablear actualmente) |
 

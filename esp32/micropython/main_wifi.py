@@ -11,14 +11,19 @@
 #     automaticamente cada AUTO_ADVANCE_S segundos. NO hace falta cablear nada.
 #   - Si VARIOS operarios trabajan el mismo carro (cada uno desde su PC), la
 #     pantalla recibe la lista de todos: muestra el NOMBRE del operario debajo
-#     del carro y un contador "1/2" a la derecha. El pulsador de la extensora
-#     (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN):
+#     del carro y un contador "1/2" a la derecha.
+#   - PULSADOR 1, de OPERARIO (pad 1 = GND, pad 2 = GPIO17, ver BTN_OP_PIN):
 #       * pulsacion CORTA  -> salta a los paquetes del siguiente operario
-#       * pulsacion LARGA (1s) -> "me llevo mis paquetes": la lista del operario
+#       * pulsacion LARGA (1s) -> deshacer: recupera a todos los operarios
+#         que se hubieran llevado o devuelto sus paquetes.
+#   - PULSADOR 2, de ENTREGA (GND + pad 4 = GPIO16, ver BTN_ENT_PIN):
+#       * pulsacion CORTA  -> "me llevo mis paquetes": la lista del operario
 #         mostrado desaparece y la pantalla queda para el siguiente. Vuelve a
 #         aparecer sola cuando ese operario envie contenido nuevo.
-#       * si tras el "ENTREGADO" SIGUES aguantando hasta los 3s -> deshacer:
-#         recupera a todos los operarios que se hubieran llevado sus paquetes.
+#       * pulsacion LARGA (1s) -> confirmar ENTREGA-DEVOLUCION de los paquetes
+#         del operario mostrado: oculta su lista y ademas manda un evento al
+#         servidor (/api/esp32/evento), que es donde se vinculara la
+#         liberacion de los bloqueos de esos paquetes en el software.
 #   - Los paquetes bloqueados salen en gris con "BLOQUEADO" y debajo el
 #     puesto/maquina que los esta trabajando.
 #   - ZUMBADOR opcional en el pad 3 de la extensora (GPIO18, ver BUZZER_PIN):
@@ -50,9 +55,7 @@ HOST_IP  = "viktor85.pythonanywhere.com"
 PORT     = 80
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
-LONG_PRESS_MS = 1000   # pulsacion larga del boton de operario = "me llevo mis paquetes"
-RECUP_PRESS_MS = 3000  # si tras el "ENTREGADO" se sigue aguantando hasta aqui: deshacer
-                       # (recupera a TODOS los operarios ocultos)
+LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
 # pantalla se identifica sola en el servidor (por su MAC) y el carro se le
@@ -75,14 +78,18 @@ SPI_BAUD   = 20_000_000
 # strapping del S3 (0, 3, 45, 46).
 BUTTON_PIN = 5
 
-# Pulsador de CAMBIO DE OPERARIO: en la extensora FFC va entre el pad 1
-# (GND) y el pad 2, que corresponde al GPIO17 del ESP32-S3. Lee con pull-up
-# interno (pulsado = 0). Cada pulsacion muestra los paquetes del siguiente
-# operario que este trabajando este carro, en ciclo.
+# PULSADOR 1, de OPERARIO: en la extensora FFC va entre el pad 1 (GND) y el
+# pad 2, que corresponde al GPIO17 del ESP32-S3. Lee con pull-up interno
+# (pulsado = 0). Corta = siguiente operario; larga = deshacer entregas.
 BTN_OP_PIN = 17
 # Solo si el pulsador NO va a un GND real: pon aqui un GPIO libre y ese pin
 # se pondra como salida a nivel bajo para hacer de GND. Con None no se toca.
 BTN_OP_GND = None
+
+# PULSADOR 2, de ENTREGA: entre un GND y el pad 4 de la extensora, que
+# corresponde al GPIO16 (pull-up interno, pulsado = 0).
+# Corta = "me llevo mis paquetes"; larga = confirmar entrega-devolucion.
+BTN_ENT_PIN = 16
 
 # Zumbador: patilla + al pad 3 de la extensora (GPIO18), patilla - a GND.
 # None = sin zumbador (todo funciona igual, en silencio).
@@ -204,6 +211,7 @@ def beeps(patron):
 # El "idioma" de la pantalla: cada evento tiene su sonido reconocible
 def bip_cambio():     beeps([(40, 0)])                                        # pip: otro operario
 def bip_entregado():  beeps([(80, 80), (80, 0)])                              # pip-pip: me los llevo
+def bip_devuelto():   beeps([(80, 80), (80, 80), (220, 0, 1800)])             # pip-pip-piiip: devolucion
 def bip_recuperado(): beeps([(300, 0, 1800)])                                 # piiip grave: deshecho
 def bip_nuevos():     beeps([(60, 60, 2000), (60, 60, 2400), (100, 0, 2900)]) # melodia: paquetes nuevos
 def bip_update():     beeps([(25, 0)])                                        # tic: contenido actualizado
@@ -335,14 +343,14 @@ def next_operario():
     mostrar_operario()
     bip_cambio()
 
-# Operarios que "se llevaron" sus paquetes (pulsacion larga): nombre -> huella
+# Operarios que "se llevaron" o devolvieron sus paquetes: nombre -> huella
 # de la lista que se llevaron. Mientras su contenido no cambie no se muestran;
 # en cuanto envian contenido nuevo reaparecen solos.
 ocultos = {}
 
-def llevar_operario():
-    """Pulsacion larga: el operario mostrado se lleva sus paquetes y su lista
-    deja de mostrarse, dejando la pantalla para el siguiente operario."""
+def _ocultar_operario_actual(titulo, bip_fn):
+    """Saca de pantalla al operario mostrado (pasa a 'ocultos') con una
+    confirmacion visual, y muestra al siguiente operario o vuelve a reposo."""
     global work_ops, op_idx, work_idx, work_fp, work_pkgs, en_work_mode
     if not work_ops: return
     o = work_ops.pop(op_idx)
@@ -350,10 +358,10 @@ def llevar_operario():
     ocultos[nombre] = _fp_op(o)
     # Confirmacion visual breve
     rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
-    text_center(140, "ENTREGADO", GREEN, BLACK, scale=3)
+    text_center(140, titulo, GREEN, BLACK, scale=3)
     if nombre:
         text_center(180, nombre[:13], WHITE, BLACK, scale=2)
-    bip_entregado()
+    bip_fn()
     time.sleep_ms(600)
     work_fp = _fingerprint(work_ops)
     work_idx = 0
@@ -366,11 +374,48 @@ def llevar_operario():
         work_pkgs = []
         draw_idle()
 
-def recuperar_operarios():
-    """Deshacer el 'me los llevo': recupera a TODOS los operarios ocultos.
+def llevar_operario():
+    """Pulsacion CORTA del pulsador 2: el operario mostrado se lleva sus
+    paquetes y su lista deja de mostrarse, dejando la pantalla al siguiente."""
+    _ocultar_operario_actual("ENTREGADO", bip_entregado)
 
-    Se dispara siguiendo con el boton aguantado hasta RECUP_PRESS_MS. Vacia
-    'ocultos' y fuerza un poll inmediato, que redibuja con la lista completa.
+def _urlenc(s):
+    """Percent-encoding minimo para meter texto en una query string."""
+    out = ""
+    for ch in str(s):
+        if ('a' <= ch <= 'z') or ('A' <= ch <= 'Z') or ('0' <= ch <= '9') or ch in '-_.':
+            out += ch
+        else:
+            for b in ch.encode('utf-8'):
+                out += '%%%02X' % b
+    return out
+
+def entregar_devolucion():
+    """Pulsacion LARGA del pulsador 2: confirmar la ENTREGA-DEVOLUCION de los
+    paquetes del operario mostrado. Oculta su lista (como el 'me los llevo')
+    y ademas manda un evento al servidor; ahi es donde el software vinculara
+    la liberacion de los bloqueos de esos paquetes."""
+    if not work_ops:
+        return
+    o = work_ops[op_idx]
+    d = o.get('data') or {}
+    nombre = o.get('operario', '')
+    carro = str(d.get('carro', '') or '')
+    _ocultar_operario_actual("DEVUELTO", bip_devuelto)
+    # Aviso al servidor (best effort: sin red la pantalla sigue igual)
+    try:
+        http_get(HOST_IP, PORT, "/api/esp32/evento?tipo=devolucion&id=" + DEVICE_ID
+                 + "&carro=" + _urlenc(carro) + "&operario=" + _urlenc(nombre))
+    except Exception as ex:
+        print("evento err:", ex)
+    print("DEVOLUCION:", nombre, carro)
+
+def recuperar_operarios():
+    """Deshacer (pulsacion larga del pulsador 1): recupera a TODOS los
+    operarios ocultos (llevados o devueltos).
+
+    Vacia 'ocultos' y fuerza un poll inmediato, que redibuja con la lista
+    completa.
     """
     global work_fp, ultimo_poll
     if not ocultos:
@@ -505,10 +550,13 @@ def draw_estado(msg, color=LGRAY):
 # ── Arranque ──────────────────────────────────────────────────────────────────
 btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
 
-# Pulsador de cambio de operario (BTN_OP_PIN -> GND, pull-up interno)
+# Pulsador 1: operario (BTN_OP_PIN -> GND, pull-up interno)
 if BTN_OP_GND is not None:
     Pin(BTN_OP_GND, Pin.OUT, value=0)
 btn_op = Pin(BTN_OP_PIN, Pin.IN, Pin.PULL_UP)
+
+# Pulsador 2: entrega (BTN_ENT_PIN -> GND, pull-up interno)
+btn_ent = Pin(BTN_ENT_PIN, Pin.IN, Pin.PULL_UP)
 
 beep(60)   # pip de arranque: confirma que el zumbador esta vivo tras flashear
 
@@ -527,7 +575,10 @@ btn_op_prev  = 1
 btn_op_last  = 0
 btn_op_t0    = 0
 btn_op_armado = False
-btn_op_recup  = False
+btn_ent_prev  = 1
+btn_ent_last  = 0
+btn_ent_t0    = 0
+btn_ent_armado = False
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 intentos_wifi = 0
 
@@ -544,7 +595,7 @@ while True:
         next_package()
     btn_prev = b
 
-    # ── Pulsador de operario: corta = siguiente, larga = "me los llevo" ──
+    # ── Pulsador 1 (operario): corta = siguiente, larga = deshacer ────
     b2 = btn_op.value()
     if b2 != btn_op_prev:
         # Test de cableado: cuadrado amarillo junto a la barra WiFi mientras
@@ -557,31 +608,46 @@ while True:
         btn_op_t0 = now
         btn_op_armado = en_work_mode or bool(ocultos)
     if b2 == 0 and btn_op_armado and time.ticks_diff(now, btn_op_t0) >= LONG_PRESS_MS:
-        # Sigue apretado tras LONG_PRESS_MS: pulsacion larga
+        # Sigue apretado tras LONG_PRESS_MS: larga = deshacer entregas
         btn_op_armado = False
-        btn_op_last = now
-        ultimo_avance = now
-        if en_work_mode:
-            btn_op_recup = True   # si sigue aguantando hasta RECUP_PRESS_MS, deshace
-            llevar_operario()
-        else:
-            # En reposo con ocultos pendientes: larga = recuperarlos
-            recuperar_operarios()
-    if b2 == 0 and btn_op_recup and time.ticks_diff(now, btn_op_t0) >= RECUP_PRESS_MS:
-        # Aguantado hasta el umbral de deshacer: recuperar ocultos
-        btn_op_recup = False
         btn_op_last = now
         ultimo_avance = now
         recuperar_operarios()
     if b2 == 1 and btn_op_prev == 0:
         if btn_op_armado:
-            # Soltado antes del umbral: pulsacion corta
+            # Soltado antes del umbral: corta = siguiente operario
             btn_op_armado = False
             btn_op_last = now
             ultimo_avance = now
             next_operario()
-        btn_op_recup = False
     btn_op_prev = b2
+
+    # ── Pulsador 2 (entrega): corta = me los llevo, larga = devolucion ─
+    b3 = btn_ent.value()
+    if b3 != btn_ent_prev:
+        # Test de cableado: cuadrado verde (a la izquierda del amarillo del
+        # pulsador 1) mientras este apretado. Si no aparece, la senal no
+        # llega al GPIO configurado en BTN_ENT_PIN.
+        rect(212, Y_WIFI + 4, 10, 10, GREEN if b3 == 0 else BLACK)
+        print("BTN_ENT:", "pulsado" if b3 == 0 else "soltado")
+    if b3 == 0 and btn_ent_prev == 1 and time.ticks_diff(now, btn_ent_last) > 250:
+        # Flanco de bajada: armar y esperar a ver si es corta o larga
+        btn_ent_t0 = now
+        btn_ent_armado = en_work_mode
+    if b3 == 0 and btn_ent_armado and time.ticks_diff(now, btn_ent_t0) >= LONG_PRESS_MS:
+        # Sigue apretado tras LONG_PRESS_MS: larga = entrega-devolucion
+        btn_ent_armado = False
+        btn_ent_last = now
+        ultimo_avance = now
+        entregar_devolucion()
+    if b3 == 1 and btn_ent_prev == 0:
+        if btn_ent_armado:
+            # Soltado antes del umbral: corta = "me llevo mis paquetes"
+            btn_ent_armado = False
+            btn_ent_last = now
+            ultimo_avance = now
+            llevar_operario()
+    btn_ent_prev = b3
 
     # ── Rotacion automatica de paquetes (sin boton) ───────────────────
     if en_work_mode and len(work_pkgs) > 1 and time.ticks_diff(now, ultimo_avance) >= AUTO_ADVANCE_S * 1000:

@@ -510,6 +510,48 @@ def api_esp32_current():
         return error_interno(e)
 
 
+def _esp32_eventos_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'esp32_eventos.json')
+
+
+@bp.route('/api/esp32/evento', methods=['GET'])
+def api_esp32_evento():
+    """Recibe un evento de los pulsadores de la pantalla ESP32.
+
+    Hoy lo manda la pulsacion larga del pulsador 2 (tipo=devolucion): el
+    operario confirma la entrega-devolucion de sus paquetes. De momento solo
+    se registra (data/esp32_eventos.json, ultimos 100); aqui es donde se
+    vinculara la liberacion de los bloqueos de esos paquetes en el software.
+
+    Es GET (no POST) porque el firmware de la pantalla solo sabe hacer GET.
+    """
+    try:
+        evento = {
+            'tipo': (request.args.get('tipo') or '').strip()[:24],
+            'device_id': _esp32_device_id(request.args.get('id')),
+            'carro': (request.args.get('carro') or '').strip()[:24],
+            'operario': (request.args.get('operario') or '').strip()[:24],
+            'ts': datetime.now().isoformat(),
+        }
+        if not evento['tipo']:
+            return jsonify({'success': False, 'message': 'tipo es obligatorio'}), 400
+        try:
+            with open(_esp32_eventos_file()) as f:
+                eventos = json.load(f)
+        except Exception:
+            eventos = []
+        eventos.append(evento)
+        with open(_esp32_eventos_file(), 'w') as f:
+            json.dump(eventos[-100:], f, ensure_ascii=False)
+        current_app.logger.info('Evento ESP32: %s', evento)
+        # TODO: cuando se vincule con los bloqueos, aqui se llamara a
+        # SesionTrabajoRepository para liberar los paquetes del operario.
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== ADMIN: DISPLAY CARRO ====================
 
 @bp.route('/api/esp32/devices', methods=['GET'])

@@ -72,3 +72,12 @@ def test_operarios_crud(client):
 
     r = client.delete(f'/api/operarios/{op_id}')
     assert r.get_json()['success']
+
+
+def test_esp32_evento_devolucion(client):
+    """El pulsador 2 de la pantalla registra eventos de entrega-devolución."""
+    r = client.get('/api/esp32/evento?tipo=devolucion&id=abc123&carro=2&operario=PEPE')
+    assert r.get_json()['success']
+
+    # Sin tipo → 400
+    assert client.get('/api/esp32/evento').status_code == 400
