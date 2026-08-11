@@ -101,6 +101,18 @@ BTN_PUESTO_PINS = [17, 16, 15, 48, 47, 38, 39]
 # (que has recogido los paquetes, o que los has devuelto).
 BTN_OK_PIN = 40
 
+# ── Lector NFC (PN532 "NFC MODULE V3" en modo I2C) ───────────────────────────
+# OPCIONAL: es la alternativa comoda al boton de puesto. Cada puesto puede
+# tener una tarjeta asignada en Admin -> Puestos; pasarla por el lector hace
+# lo mismo que pulsar su boton. El OK (boton 8) sigue siendo quien confirma.
+#   SDA -> pad 11 (GPIO6)    VCC -> pad 20 (3.3V)
+#   SCL -> pad 12 (GPIO5)    GND -> pad 21, 25 o 30
+# Sin lector conectado no pasa nada: los pulsadores siguen funcionando igual.
+NFC_SDA_PIN = 6
+NFC_SCL_PIN = 5
+NFC_POLL_MS = 300      # cada cuanto se pregunta si hay una tarjeta delante
+NFC_REPETIR_MS = 3000  # ignorar la misma tarjeta si sigue apoyada en el lector
+
 # Zumbador: patilla + al pad 3 de la extensora (GPIO18), patilla - a GND.
 # None = sin zumbador (todo funciona igual, en silencio).
 BUZZER_PIN = 18
@@ -354,7 +366,7 @@ work_fp    = ""    # huella del contenido (para ignorar re-pushes identicos)
 
 # Vista actual: 'lista' (que puestos tienen algo) o 'detalle' (un puesto)
 vista      = 'lista'
-sel_boton  = 0     # boton del puesto que se esta mirando en detalle (0 = ninguno)
+sel_clave  = ''    # puesto que se esta mirando en detalle ('' = ninguno)
 work_pkgs  = []    # paquetes del puesto mostrado en detalle
 work_idx   = 0     # paquete mostrado dentro de esa lista
 
@@ -397,14 +409,33 @@ def hay_pendiente():
     """True si algun puesto del carro espera una accion fisica."""
     return any(_pide_accion(o) for o in work_ops)
 
+def _tag_de(o):
+    """UID de la tarjeta NFC de ese puesto, normalizado (hex en mayusculas)."""
+    return str(_d(o).get('tag_uid') or '').replace(':', '').replace(' ', '').upper()
+
 def _op_por_boton(n):
     for o in work_ops:
         if _boton_de(o) == n:
             return o
     return None
 
+def _op_por_tag(uid):
+    if not uid:
+        return None
+    for o in work_ops:
+        if _tag_de(o) == uid:
+            return o
+    return None
+
 def _op_sel():
-    return _op_por_boton(sel_boton) if sel_boton else None
+    """El puesto que se esta viendo en detalle. Se guarda por clave de puesto y
+    no por numero de boton: con tarjeta NFC puede no haber boton."""
+    if not sel_clave:
+        return None
+    for o in work_ops:
+        if _clave(o) == sel_clave:
+            return o
+    return None
 
 # ── Dibujo: cabecera comun ────────────────────────────────────────────────────
 
@@ -432,7 +463,10 @@ def draw_lista():
     rect(0, 0, 240, 320, BLACK)
     text(4, Y_CARRO, 'CARRO ' + str(mi_carro or '')[:8], WHITE, BLACK, scale=3)
     hline(0, Y_SEP1, 240, DGRAY)
-    text_center(LISTA_TIT, "PULSA TU PUESTO", ORANGE, BLACK, scale=2)
+    if nfc is not None:
+        text_center(LISTA_TIT, "PASA TU TARJETA", ORANGE, BLACK, scale=2)
+    else:
+        text_center(LISTA_TIT, "PULSA TU PUESTO", ORANGE, BLACK, scale=2)
 
     # Los que piden accion primero: son los que tienen que venir
     ops = sorted(work_ops, key=lambda o: (not _pide_accion(o), _boton_de(o)))
@@ -453,10 +487,12 @@ def draw_lista():
         else:
             etiq, color = "en curso", DGRAY
 
-        # Recuadro del numero de boton
+        # Como se identifica ese puesto: numero de boton, o tarjeta NFC
+        hrect(4, y - 2, 26, 24, color)
         if n:
-            hrect(4, y - 2, 26, 24, color)
             text(10, y + 2, str(n), color, BLACK, scale=2)
+        elif _tag_de(o):
+            text(10, y + 4, "NFC", color, BLACK, scale=1)
         text(36, y + 2, nombre, WHITE if color != DGRAY else LGRAY, BLACK, scale=2)
         text(36, y + 22, etiq + ("" if fase == FASE_FIN else " %d" % npk),
              color, BLACK, scale=1)
@@ -562,33 +598,62 @@ def next_package():
 # ── Navegacion ────────────────────────────────────────────────────────────────
 
 def mostrar_lista():
-    global vista, sel_boton, work_pkgs
+    global vista, sel_clave, work_pkgs
     vista = 'lista'
-    sel_boton = 0
+    sel_clave = ''
     work_pkgs = []
     if work_ops:
         draw_lista()
     else:
         draw_idle()
 
-def seleccionar_puesto(n):
-    """Pulsado el boton n (1-7): mostrar lo de ese puesto, si tiene algo."""
-    global vista, sel_boton, work_idx
-    o = _op_por_boton(n)
-    if o is None:
-        # Ese puesto no tiene nada en este carro: decirlo y volver a la lista
-        rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
-        text_center(130, "PUESTO %d" % n, LGRAY, BLACK, scale=3)
-        text_center(175, "sin trabajo aqui", LGRAY, BLACK, scale=2)
-        bip_error()
-        time.sleep_ms(900)
-        mostrar_lista()
-        return
+def _abrir_detalle(o):
+    """Muestra lo de ese puesto. Da igual si se identifico con boton o tarjeta."""
+    global vista, sel_clave, work_idx
     vista = 'detalle'
-    sel_boton = n
+    sel_clave = _clave(o)
     work_idx = 0
     draw_detalle()
     bip_seleccion()
+
+def _sin_trabajo_aqui(titulo):
+    """Ese puesto existe pero no tiene nada en este carro."""
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(130, titulo, LGRAY, BLACK, scale=3)
+    text_center(175, "sin trabajo aqui", LGRAY, BLACK, scale=2)
+    bip_error()
+    time.sleep_ms(900)
+    mostrar_lista()
+
+def seleccionar_puesto(n):
+    """Pulsado el boton n (1-7): mostrar lo de ese puesto, si tiene algo."""
+    o = _op_por_boton(n)
+    if o is None:
+        _sin_trabajo_aqui("PUESTO %d" % n)
+        return
+    _abrir_detalle(o)
+
+def seleccionar_por_tag(uid):
+    """Pasada una tarjeta por el lector: mismo efecto que pulsar su boton.
+
+    Si el UID no es de ningun puesto de este carro puede ser por dos motivos:
+    ese puesto no tiene trabajo aqui, o la tarjeta no esta dada de alta. Como
+    la pantalla no conoce la tabla de puestos, no puede distinguirlos: enseña
+    el UID (para poder darlo de alta desde Admin) y se lo cuenta al servidor.
+    """
+    o = _op_por_tag(uid)
+    if o is not None:
+        _abrir_detalle(o)
+        return
+    rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
+    text_center(110, "TARJETA", ORANGE, BLACK, scale=3)
+    text_center(150, "SIN TRABAJO AQUI", ORANGE, BLACK, scale=1)
+    text_center(180, uid[:20], LGRAY, BLACK, scale=2)
+    text_center(215, "Alta en Admin > Puestos", DGRAY, BLACK, scale=1)
+    bip_error()
+    _encolar_evento({'tipo': 'tag', 'uid': uid, 'carro': str(mi_carro or '')})
+    time.sleep_ms(1600)
+    mostrar_lista()
 
 # ── Eventos hacia el servidor ─────────────────────────────────────────────────
 # Se mandan desde el bucle principal (no en el momento del pulsador) para que
@@ -827,6 +892,18 @@ def draw_estado(msg, color=LGRAY):
 btns_puesto = [Pin(p, Pin.IN, Pin.PULL_UP) for p in BTN_PUESTO_PINS]
 btn_ok      = Pin(BTN_OK_PIN, Pin.IN, Pin.PULL_UP)
 
+# Lector NFC: totalmente opcional. Si no esta cableado, o el modulo no
+# responde, se sigue sin el (los pulsadores hacen lo mismo).
+nfc = None
+if NFC_SDA_PIN is not None and NFC_SCL_PIN is not None:
+    try:
+        from pn532_i2c import PN532
+        nfc = PN532(sda=NFC_SDA_PIN, scl=NFC_SCL_PIN)
+        print("NFC PN532 listo, firmware", nfc.version)
+    except Exception as e:
+        nfc = None
+        print("Sin lector NFC:", e)
+
 bip_arranque()   # confirma que el zumbador esta vivo tras flashear
 
 draw_idle("Conectando WiFi...")
@@ -849,6 +926,9 @@ ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 ultimo_envio  = 0                 # ultimo intento de mandar eventos pendientes
 ultimo_aviso  = 0                 # ultimo recordatorio sonoro de accion pendiente
 ultima_accion = time.ticks_ms()   # ultima pulsacion (para volver solo a la lista)
+ultimo_nfc    = 0                 # ultima consulta al lector NFC
+nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
+nfc_uid_ts    = 0                 # cuando se leyo
 intentos_wifi = 0
 
 # El bucle NUNCA debe morir: cualquier excepcion se registra y se sigue.
@@ -885,6 +965,29 @@ while True:
                 ultimo_avance = now
                 seleccionar_puesto(i + 1)
         btns_prev[i] = bv
+
+    # ── Lector NFC: pasar la tarjeta = pulsar el boton de tu puesto ───
+    if nfc is not None and time.ticks_diff(now, ultimo_nfc) >= NFC_POLL_MS:
+        ultimo_nfc = now
+        uid = nfc.leer_uid(timeout_ms=80)
+        if uid:
+            # Ignorar la misma tarjeta si se queda apoyada en el lector
+            repetida = (uid == nfc_uid_prev and
+                        time.ticks_diff(now, nfc_uid_ts) < NFC_REPETIR_MS)
+            nfc_uid_prev = uid
+            nfc_uid_ts = now
+            if not repetida:
+                print("NFC:", uid)
+                ultima_accion = now
+                ultimo_avance = now
+                if en_work_mode:
+                    seleccionar_por_tag(uid)
+                else:
+                    # En reposo no hay puestos que mostrar, pero interesa
+                    # cazar el UID para poder darlo de alta desde Admin
+                    _encolar_evento({'tipo': 'tag', 'uid': uid,
+                                     'carro': str(mi_carro or '')})
+                    draw_estado("Tarjeta " + uid[:14], YELLOW)
 
     # ── Boton 8 (OK): confirmar lo que pide la pantalla ───────────────
     b_ok = btn_ok.value()
@@ -986,7 +1089,7 @@ while True:
                         # Datos expirados o "clear" de todos → volver a reposo
                         en_work_mode = False
                         work_fp = ""; work_ops = []; work_pkgs = []
-                        vista = 'lista'; sel_boton = 0
+                        vista = 'lista'; sel_clave = ''
                         confirmados.clear()
                         draw_idle()
                 elif fp != work_fp:

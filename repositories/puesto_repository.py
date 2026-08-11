@@ -63,15 +63,26 @@ class PuestoRepository(BaseRepository):
         resultados = self.execute_select(query, {'b': boton})
         return resultados[0] if resultados else None
 
+    def obtener_puesto_por_tag(self, tag_uid: str) -> Optional[Dict]:
+        """Puesto activo asociado a una tarjeta NFC (UID en hex)."""
+        query = "SELECT * FROM puestos WHERE tag_uid = :t AND activo = 1"
+        resultados = self.execute_select(query, {'t': tag_uid})
+        return resultados[0] if resultados else None
+
     def actualizar_puesto(self, id: str, nombre: Optional[str] = None,
                          descripcion: Optional[str] = None,
                          boton: Optional[int] = None,
-                         limpiar_boton: bool = False) -> bool:
+                         limpiar_boton: bool = False,
+                         tag_uid: Optional[str] = None,
+                         limpiar_tag: bool = False) -> bool:
         """Actualizar información de un puesto.
 
-        boton: número de pulsador (1-7) con el que este puesto se identifica
-        en la pantalla del carro. Para quitarlo se usa limpiar_boton=True
-        (pasar boton=None significa 'no tocar el botón').
+        boton:   número de pulsador (1-7) con el que este puesto se identifica
+                 en la pantalla del carro.
+        tag_uid: UID de su tarjeta NFC, la otra forma de identificarse.
+
+        En ambos casos, para quitar el valor se usa el flag limpiar_*
+        (pasar None significa 'no tocar ese campo').
         """
         updates = []
         params = {'id': id}
@@ -89,6 +100,12 @@ class PuestoRepository(BaseRepository):
         elif boton is not None:
             updates.append("boton = :boton")
             params['boton'] = boton
+
+        if limpiar_tag:
+            updates.append("tag_uid = NULL")
+        elif tag_uid is not None:
+            updates.append("tag_uid = :tag_uid")
+            params['tag_uid'] = tag_uid
 
         if not updates:
             return False

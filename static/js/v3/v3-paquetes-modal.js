@@ -152,8 +152,9 @@ async function mostrarModalPaquetes(carro) {
     window._loteActualId = loteId;
 
     const est = await _estadoPantallaCarro(carro.carro);
-    // Sin pantalla en el carro, o sin botón asignado al puesto, no se bloquea
-    const puedeConfirmar = est.display && !!puestoSeleccionado?.boton;
+    // Sin pantalla en el carro, o sin forma de identificarse (ni botón ni
+    // tarjeta), no se bloquea: el operario no podría confirmar allí.
+    const puedeConfirmar = est.display && _puestoSeIdentifica();
     window._loteGate = puedeConfirmar &&
         !(est.confirmacion && est.confirmacion.lote === loteId && est.confirmacion.fase === 'recoger');
     const displayVivo = est.viva;
@@ -275,7 +276,7 @@ async function mostrarModalPaquetes(carro) {
                 ${window._loteGate ? `
                 <div id="aviso-carro" style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:left;">
                     <div style="font-weight:bold;color:#7a5c00;font-size:1.02em;margin-bottom:4px;">🚶 Ve al carro ${carro.carro} y confirma en la pantalla</div>
-                    <div style="color:#7a5c00;font-size:0.9em;">Pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto) para ver estos paquetes, cógelos y pulsa <strong>OK</strong>. Aquí se desbloqueará el botón de empezar.</div>
+                    <div style="color:#7a5c00;font-size:0.9em;">En la pantalla del carro, ${_comoIdentificarse()} para ver estos paquetes, cógelos y pulsa <strong>OK</strong>. Aquí se desbloqueará el botón de empezar.</div>
                     <div id="aviso-carro-estado" style="margin-top:8px;color:#8a6d3b;font-size:0.85em;">${displayVivo ? '⏳ Esperando confirmación en el carro...' : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.'}</div>
                 </div>` : ''}
                 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
@@ -315,6 +316,20 @@ async function mostrarModalPaquetes(carro) {
     }
 }
 
+/** ¿Puede este puesto identificarse en la pantalla del carro? */
+function _puestoSeIdentifica() {
+    return !!(puestoSeleccionado?.boton || puestoSeleccionado?.tag_uid);
+}
+
+/** Cómo decirle al operario que se identifique, según lo que tenga asignado. */
+function _comoIdentificarse() {
+    if (puestoSeleccionado?.tag_uid && puestoSeleccionado?.boton) {
+        return `pasa tu <strong>tarjeta</strong> (o pulsa el <strong>botón ${puestoSeleccionado.boton}</strong>)`;
+    }
+    if (puestoSeleccionado?.tag_uid) return 'pasa tu <strong>tarjeta</strong> por el lector';
+    return `pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto)`;
+}
+
 /**
  * Estado de la pantalla del carro para el puesto actual (¿hay pantalla?,
  * ¿responde?, ¿qué fue lo último que se confirmó ahí?).
@@ -342,6 +357,7 @@ function _payloadESP32(carro, extra) {
         puesto_id: puestoSeleccionado?.id     || '',
         puesto_nombre: puestoSeleccionado?.nombre || '',
         boton: puestoSeleccionado?.boton      || null,
+        tag_uid: puestoSeleccionado?.tag_uid  || '',
     }, extra, {
         paquetes: (extra.paquetes || []).map(p => ({
             etiqueta: p.numeroEtiqueta ?? null,
@@ -436,8 +452,9 @@ async function pedirDevolucion(esFinDeCarro, continuar) {
     const carro = carrosDelBono[carroActualIndex];
     const est = carro ? await _estadoPantallaCarro(carro.carro) : { display: false };
 
-    // Sin pantalla en el carro o sin botón de puesto no hay nada que confirmar
-    if (!carro || !est.display || !puestoSeleccionado?.boton) { continuar(); return; }
+    // Sin pantalla en el carro, o sin forma de identificarse, no hay nada que
+    // confirmar allí: seguir sin bloquear
+    if (!carro || !est.display || !_puestoSeIdentifica()) { continuar(); return; }
 
     const loteDev = 'dev' + Math.random().toString(36).slice(2, 9);
     window._loteDevolucionId = loteDev;
@@ -477,7 +494,7 @@ function _mostrarModalDevolucion(carro, esFinDeCarro, displayVivo) {
             </p>
             <div style="background:#fff3cd;border:2px solid #ffc107;border-radius:10px;padding:14px 16px;text-align:left;margin-bottom:16px;">
                 <div style="font-weight:bold;color:#7a5c00;margin-bottom:4px;">🚶 En la pantalla del carro</div>
-                <div style="color:#7a5c00;font-size:0.92em;">Pulsa el <strong>botón ${puestoSeleccionado?.boton}</strong> (tu puesto), deja los paquetes y pulsa <strong>OK</strong>.</div>
+                <div style="color:#7a5c00;font-size:0.92em;">${_comoIdentificarse().charAt(0).toUpperCase() + _comoIdentificarse().slice(1)}, deja los paquetes y pulsa <strong>OK</strong>.</div>
                 <div id="devolucion-estado" style="margin-top:8px;color:#8a6d3b;font-size:0.85em;">
                     ${displayVivo ? '⏳ Esperando la devolución en el carro...' : '⚠️ La pantalla del carro no responde (sin conexión). Puedes confirmar desde el PC.'}
                 </div>

@@ -536,6 +536,11 @@ def _esp32_conf_key(carro, puesto):
     return '%s|%s' % (str(carro or '').strip()[:24], str(puesto or '').strip()[:24])
 
 
+def _esp32_tags_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'esp32_tags.json')
+
+
 @bp.route('/api/esp32/evento', methods=['GET'])
 def api_esp32_evento():
     """Recibe un evento de los pulsadores de la pantalla ESP32.
@@ -563,6 +568,7 @@ def api_esp32_evento():
             'operario': (request.args.get('operario') or '').strip()[:24],
             'lote': (request.args.get('lote') or '').strip()[:32],
             'grupo': (request.args.get('grupo') or '').strip()[:8],
+            'uid': re.sub(r'[^0-9A-Fa-f]', '', request.args.get('uid') or '')[:20].upper(),
             'ts': datetime.now().isoformat(),
         }
         if not evento['tipo']:
@@ -576,6 +582,15 @@ def api_esp32_evento():
         with open(_esp32_eventos_file(), 'w') as f:
             json.dump(eventos[-100:], f, ensure_ascii=False)
         current_app.logger.info('Evento ESP32: %s', evento)
+
+        # Tarjeta NFC leída en el carro que no corresponde a ningún puesto de
+        # los que hay ahí. Se guarda como "última tarjeta vista" para que Admin
+        # pueda darla de alta acercándola al lector (ver /api/esp32/ultimo-tag).
+        if evento['tipo'] == 'tag' and evento['uid']:
+            with open(_esp32_tags_file(), 'w') as f:
+                json.dump({'uid': evento['uid'], 'device_id': evento['device_id'],
+                           'carro': evento['carro'], 'ts': evento['ts']}, f)
+            return jsonify({'success': True})
 
         # Liberar: sacar ese puesto del carro sin esperar al TTL. Es la salida
         # de emergencia física para un puesto que se quedó colgado (PC cerrado
@@ -606,6 +621,32 @@ def api_esp32_evento():
                 json.dump(confs, f, ensure_ascii=False)
 
         return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/ultimo-tag', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_ultimo_tag():
+    """Última tarjeta NFC leída en un carro y no reconocida.
+
+    Es lo que usa Admin → Puestos para dar de alta una tarjeta: pulsas
+    "Capturar tag", vas al carro, la pasas por el lector y el campo se rellena.
+    Devuelve también la antigüedad en segundos para que Admin descarte lecturas
+    viejas y no asigne por error una tarjeta de hace una hora.
+    """
+    try:
+        try:
+            with open(_esp32_tags_file()) as f:
+                tag = json.load(f)
+        except Exception:
+            return jsonify({'success': True, 'tag': None})
+        try:
+            edad = (datetime.now() - datetime.fromisoformat(tag.get('ts') or '')).total_seconds()
+        except Exception:
+            edad = None
+        tag['edad_s'] = int(edad) if edad is not None else None
+        return jsonify({'success': True, 'tag': tag})
     except Exception as e:
         return error_interno(e)
 
@@ -760,6 +801,22 @@ def api_esp32_flash_usb():
                 capture_output=True, text=True, timeout=90)
 
         try:
+            # Módulos auxiliares (driver del lector NFC, etc.) antes del main:
+            # si algo falla, la pantalla no arranca con un main que importa lo
+            # que no está.
+            libs = []
+            lib_dir = os.path.join(proyecto, 'esp32', 'micropython', 'lib')
+            if os.path.isdir(lib_dir):
+                for nombre in sorted(os.listdir(lib_dir)):
+                    if not nombre.endswith('.py'):
+                        continue
+                    r = mpremote('cp', os.path.join(lib_dir, nombre), ':' + nombre)
+                    if r.returncode != 0:
+                        err = (r.stderr or r.stdout or '').strip()
+                        return jsonify({'success': False,
+                                        'message': (f'Error al copiar {nombre}: ' + err)[-400:]})
+                    libs.append(nombre)
+
             r = mpremote('cp', tmp_fw, ':main.py')
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
@@ -774,7 +831,8 @@ def api_esp32_flash_usb():
                 pass
 
         cambios = ' (WiFi actualizado)' if (ssid or password) else ''
-        return jsonify({'success': True, 'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.'})
+        extra = f' Módulos: {", ".join(libs)}.' if libs else ''
+        return jsonify({'success': True, 'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.{extra}'})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout: comprueba que la pantalla está conectada a ese puerto y que ningún otro programa (monitor serie, mpremote...) lo está usando.'})
     except Exception as e:

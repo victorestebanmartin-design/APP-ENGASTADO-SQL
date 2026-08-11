@@ -29,6 +29,7 @@ Numeración = pin de la faja FFC de 30 vías.
 | 2, 4, 5, 6, 7, 8, 9 | GPIO17, 16, 15, 48, 47, 38, 39 | Pulsadores 1–7 (a GND, `INPUT_PULLUP`) — cada uno identifica un **puesto** (`BTN_PUESTO_PINS`) |
 | 10 | GPIO40 | Pulsador 8 — **OK / confirmar** (`BTN_OK_PIN`) |
 | 3 | GPIO18 | Zumbador (`BUZZER_PIN` en el firmware; verificar si activo/pasivo — si activo, usar transistor NPN) |
+| 11, 12 | GPIO6, GPIO5 | Lector NFC PN532 por I2C: SDA y SCL (`NFC_SDA_PIN`, `NFC_SCL_PIN`) |
 | 22 | EN-RST | Interruptor de apagado alternativo (a GND desactiva el ESP32-S3; no confirmado si corta retroiluminación) |
 | 20 | 3.3V | Salida 3.3V disponible para el usuario (máx. recomendado 100-200mA) |
 
@@ -71,9 +72,69 @@ Puestos se asigna a cada puesto su número) y el **8 es OK/confirmar**.
 | 7 | 9 | GPIO39 | Puesto con botón 7 |
 | 8 | 10 | GPIO40 | **OK** — confirma recogida o devolución |
 
-Quedan **libres de reserva** los pads 11 (GPIO6) y 12 (GPIO5) por si algún
-pulsador da problemas o hace falta un noveno. Los pads 13, 14 y 15 (GPIO3,
-GPIO45, GPIO46) se dejan como último recurso por ser de strapping.
+Los pads 11 y 12 los ocupa ahora el lector NFC (ver más abajo). Quedan como
+último recurso los pads 13, 14 y 15 (GPIO3, GPIO45, GPIO46), por ser de
+strapping.
+
+## Lector NFC (PN532 "NFC MODULE V3")
+
+Alternativa cómoda al botón de puesto: cada puesto puede tener una tarjeta
+asignada en Admin → Puestos, y pasarla por el lector hace lo mismo que pulsar
+su botón. **El botón 8 (OK) sigue siendo quien confirma.** Los dos caminos
+conviven: un puesto puede tener botón, tarjeta o ambos.
+
+El módulo va en **modo I2C** — los dos micro-interruptores según la tabla que
+viene serigrafiada en la propia placa (trae impresas las combinaciones
+I2C / SPI / HSU).
+
+| Señal PN532 | Pad | GPIO |
+|---|---|---|
+| SDA | 11 | GPIO6 |
+| SCL | 12 | GPIO5 |
+| VCC | 20 (3.3V) | — |
+| GND | 21, 25 o 30 | — |
+
+El lector es **opcional en el firmware**: si no está conectado o no responde, se
+registra por consola y todo lo demás funciona igual (misma filosofía que el
+zumbador). Con lector, la pantalla de lista dice `PASA TU TARJETA` en vez de
+`PULSA TU PUESTO`.
+
+Tres avisos de montaje:
+
+- **Alimentación.** El PN532 pega picos de ~100 mA al levantar el campo RF y el
+  pad 20 está recomendado hasta 100–200 mA. Si la pantalla se reinicia al leer,
+  alimentar VCC desde los 5V del USB en lugar del pad 20 (el módulo V3 lleva su
+  propio regulador y admite 3.3–5V).
+- **El carro es metálico.** Una antena NFC pegada a chapa pierde casi todo el
+  alcance. Montar el módulo sobre un separador de plástico de 1–2 cm, o con una
+  lámina de ferrita entre antena y metal.
+- **Separar de la pantalla.** Dejar unos centímetros entre la antena y el TFT.
+
+### Alta de tarjetas
+
+No hay que escribir nada en la tarjeta: se usa su UID de fábrica. En
+Admin → Puestos, al editar un puesto, pulsa **Capturar**, acerca la tarjeta al
+lector de cualquier carro y el UID aparece solo (la pantalla manda al servidor
+las tarjetas que no reconoce, y Admin sondea `/api/esp32/ultimo-tag`). Solo se
+aceptan lecturas de los últimos 30 segundos, para no asignar por error una
+tarjeta que alguien pasó antes.
+
+Una tarjeta sin asignar leída en un carro muestra `TARJETA SIN TRABAJO AQUI` con
+su UID en pantalla — que es justo lo que hay que copiar si se prefiere teclearlo
+a mano.
+
+### Ficheros del firmware
+
+El driver vive en `esp32/micropython/lib/pn532_i2c.py` y se sube a la raíz del
+sistema de ficheros de la pantalla. El flasheo desde Admin (`/api/esp32/flash_usb`)
+copia automáticamente todos los `.py` de esa carpeta **antes** de `main.py`. A
+mano sería:
+
+```
+mpremote connect COM5 cp esp32/micropython/lib/pn532_i2c.py :
+mpremote connect COM5 cp esp32/micropython/main_wifi.py :main.py
+mpremote connect COM5 reset
+```
 
 **Cableado.** Cada pulsador va entre su pad y GND, con `Pin.IN, Pin.PULL_UP`
 (reposo = 1, pulsado = 0). No hace falta resistencia externa para que funcione.
@@ -149,8 +210,8 @@ Admin → Puestos.
    **"Tengo estos N, empezar" bloqueado**.
 2. La pantalla del carro lista quién tiene algo pendiente
    (`[3] AMP-02 · RECOGER 5`) y avisa con un sonido cada 25 s.
-3. El operario pulsa el **botón de su puesto** → ve sus paquetes. Los coge y
-   pulsa **OK** → la pantalla manda
+3. El operario **pasa su tarjeta** por el lector (o pulsa el **botón de su
+   puesto**) → ve sus paquetes. Los coge y pulsa **OK** → la pantalla manda
    `GET /api/esp32/evento?tipo=confirmacion&fase=recoger&carro=…&puesto=…&lote=…`.
 4. El PC, que sondea `/api/esp32/estado-carro` cada 2 s, desbloquea el botón y
    el operario trabaja el grupo.
@@ -162,7 +223,7 @@ Admin → Puestos.
 
 Reglas de la interacción, para que no haya confirmaciones ciegas:
 
-- **OK solo vale después de pulsar el botón de un puesto.** Si se pulsa OK
+- **OK solo vale después de identificarse** (tarjeta o botón). Si se pulsa OK
   desde la lista, la pantalla responde `PULSA ANTES TU PUESTO` y no confirma
   nada: cada confirmación lleva detrás la identidad de un puesto.
 - **Al confirmar, los paquetes desaparecen** de la pantalla y vuelve a la lista

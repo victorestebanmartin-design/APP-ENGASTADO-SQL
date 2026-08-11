@@ -47,6 +47,22 @@ from app.routes.progreso import _crimps_por_terminal_archivo
 # (el operario pulsa el suyo al llegar) y el 8 es el de OK/confirmación.
 BOTONES_PUESTO_MAX = 7
 
+
+def normalizar_tag_uid(crudo):
+    """Deja un UID de tarjeta NFC en forma canónica: hex en mayúsculas y sin
+    separadores. Devuelve '' si viene vacío, o None si no es un UID válido.
+
+    Los UID de las tarjetas van de 4 bytes (MIFARE Classic) a 10 (algunas
+    NTAG), y los lectores los escriben de mil formas: 'a1:b2:c3:d4',
+    'A1 B2 C3 D4', 'a1b2c3d4'. Todas acaban igual aquí.
+    """
+    uid = re.sub(r'[\s:.-]', '', str(crudo or '')).upper()
+    if not uid:
+        return ''
+    if not re.fullmatch(r'[0-9A-F]{8,20}', uid) or len(uid) % 2:
+        return None
+    return uid
+
 @bp.route('/api/puestos', methods=['GET'])
 def api_obtener_puestos():
     """Obtener lista de puestos con sus máquinas"""
@@ -158,8 +174,27 @@ def api_actualizar_puesto(puesto_id):
                                     'message': f'El botón {boton} ya está asignado al puesto '
                                                f'"{ocupado["nombre"]}"'}), 409
 
+        # Tarjeta NFC: UID en hex, o null/'' para quitarla
+        tag_uid, limpiar_tag = None, False
+        if 'tag_uid' in data:
+            crudo = data.get('tag_uid')
+            if crudo in (None, ''):
+                limpiar_tag = True
+            else:
+                tag_uid = normalizar_tag_uid(crudo)
+                if tag_uid is None:
+                    return jsonify({'success': False,
+                                    'message': 'El UID de la tarjeta no es válido '
+                                               '(se espera hexadecimal, de 4 a 10 bytes)'}), 400
+                ocupado = puesto_repo.obtener_puesto_por_tag(tag_uid)
+                if ocupado and ocupado['id'] != puesto_id:
+                    return jsonify({'success': False,
+                                    'message': f'Esa tarjeta ya está asignada al puesto '
+                                               f'"{ocupado["nombre"]}"'}), 409
+
         if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion,
-                                         boton=boton, limpiar_boton=limpiar_boton):
+                                         boton=boton, limpiar_boton=limpiar_boton,
+                                         tag_uid=tag_uid, limpiar_tag=limpiar_tag):
             puesto_actualizado = puesto_repo.obtener_puesto(puesto_id)
             return jsonify({
                 'success': True,

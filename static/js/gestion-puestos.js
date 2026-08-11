@@ -80,8 +80,10 @@ function mostrarListaPuestos(puestos) {
                         <span class="stat">
                             ⚙️ ${puesto.maquinas ? puesto.maquinas.length : 0} máquinas
                         </span>
-                        <span class="stat" title="Botón de la pantalla del carro con el que se identifica este puesto">
-                            ${puesto.boton ? `🔘 Botón ${puesto.boton}` : '⚪ Sin botón'}
+                        <span class="stat" title="Cómo se identifica este puesto en la pantalla del carro">
+                            ${puesto.boton ? `🔘 Botón ${puesto.boton}` : ''}
+                            ${puesto.tag_uid ? `🏷️ ${puesto.tag_uid}` : ''}
+                            ${!puesto.boton && !puesto.tag_uid ? '⚪ Sin identificar' : ''}
                         </span>
                         <span class="stat-status ${puesto.activo ? 'activo' : 'inactivo'}">
                             ${puesto.activo ? '✅ Activo' : '❌ Inactivo'}
@@ -113,21 +115,95 @@ function mostrarModalPuesto(puestoId = null) {
         selBoton.value = propio && propio.boton ? String(propio.boton) : '';
     }
 
+    _pararCapturaTag();
     if (puestoId) {
         titulo.textContent = 'Editar Puesto';
         const puesto = dataPuestos.find(p => p.id === puestoId);
         if (puesto) {
             document.getElementById('puesto-nombre').value = puesto.nombre;
             document.getElementById('puesto-descripcion').value = puesto.descripcion || '';
+            document.getElementById('puesto-tag').value = puesto.tag_uid || '';
         }
     } else {
         titulo.textContent = 'Nuevo Puesto';
         document.getElementById('puesto-nombre').value = '';
         document.getElementById('puesto-descripcion').value = '';
+        document.getElementById('puesto-tag').value = '';
     }
     
     modal.dataset.editId = puestoId || '';
     modal.classList.add('active');
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  CAPTURA DE TARJETA NFC
+//  Se pulsa "Capturar", se acerca la tarjeta al lector de cualquier carro y
+//  el UID aparece en el campo. La pantalla manda al servidor las tarjetas que
+//  no reconoce; aquí solo se sondea la última.
+// ──────────────────────────────────────────────────────────────────────
+
+let _capturaTagTimer = null;
+const CAPTURA_TAG_SEGUNDOS = 30;
+
+function _estadoTag(texto, color) {
+    const el = document.getElementById('tag-captura-estado');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = color;
+    el.style.display = texto ? 'block' : 'none';
+}
+
+function _pararCapturaTag() {
+    if (_capturaTagTimer) {
+        clearInterval(_capturaTagTimer);
+        _capturaTagTimer = null;
+    }
+    const btn = document.getElementById('btn-capturar-tag');
+    if (btn) { btn.disabled = false; btn.textContent = '📡 Capturar'; }
+    _estadoTag('', '');
+}
+
+async function capturarTagPuesto() {
+    if (_capturaTagTimer) { _pararCapturaTag(); return; }   // segundo clic = cancelar
+
+    const btn = document.getElementById('btn-capturar-tag');
+    if (btn) { btn.textContent = '⏹️ Cancelar'; }
+    _estadoTag('📡 Acerca la tarjeta al lector de un carro...', '#0d6efd');
+
+    // Solo valen lecturas posteriores a este momento: así no se asigna por
+    // error una tarjeta que alguien pasó hace un rato.
+    let restantes = CAPTURA_TAG_SEGUNDOS;
+    let ignorar = null;
+    try {
+        const r = await fetch('/api/esp32/ultimo-tag');
+        const d = await r.json();
+        if (d.success && d.tag) ignorar = d.tag.ts;
+    } catch (e) { /* si falla, se acepta la primera lectura que llegue */ }
+
+    _capturaTagTimer = setInterval(async () => {
+        restantes -= 2;
+        if (restantes <= 0) {
+            _pararCapturaTag();
+            _estadoTag('⌛ No se leyó ninguna tarjeta. Vuelve a intentarlo.', '#dc3545');
+            return;
+        }
+        try {
+            const r = await fetch('/api/esp32/ultimo-tag');
+            const d = await r.json();
+            if (d.success && d.tag && d.tag.uid && d.tag.ts !== ignorar) {
+                document.getElementById('puesto-tag').value = d.tag.uid;
+                _pararCapturaTag();
+                _estadoTag(`✅ Tarjeta ${d.tag.uid} leída. Guarda para asignarla.`, '#198754');
+                return;
+            }
+            _estadoTag(`📡 Acerca la tarjeta al lector... (${restantes}s)`, '#0d6efd');
+        } catch (e) { /* red intermitente: se reintenta */ }
+    }, 2000);
+}
+
+function quitarTagPuesto() {
+    _pararCapturaTag();
+    document.getElementById('puesto-tag').value = '';
 }
 
 /**
@@ -156,13 +232,15 @@ async function guardarPuesto() {
             body: JSON.stringify({
                 nombre: nombre,
                 descripcion: descripcion,
-                boton: boton === '' ? null : parseInt(boton, 10)
+                boton: boton === '' ? null : parseInt(boton, 10),
+                tag_uid: (document.getElementById('puesto-tag')?.value || '').trim() || null
             })
         });
         
         const data = await response.json();
         
         if (data.success) {
+            _pararCapturaTag();
             cerrarModal('modal-puesto');
             cargarPuestos();
             mostrarNotificacion(editId ? 'Puesto actualizado correctamente' : 'Puesto creado correctamente', 'success');

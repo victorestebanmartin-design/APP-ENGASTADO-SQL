@@ -127,16 +127,24 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_terminal ON sesiones_trabajo(terminal_codigo)")
     conn.commit()
 
-    # Migración: columna boton en puestos (pulsador de la pantalla del carro)
+    # Migración: identificación del puesto en la pantalla del carro
+    # (boton = pulsador 1-7, tag_uid = tarjeta NFC)
     cur.execute("PRAGMA table_info(puestos)")
     p_cols = {row[1] for row in cur.fetchall()}
     if p_cols and 'boton' not in p_cols:
         cur.execute("ALTER TABLE puestos ADD COLUMN boton INTEGER")
         conn.commit()
+    if p_cols and 'tag_uid' not in p_cols:
+        cur.execute("ALTER TABLE puestos ADD COLUMN tag_uid TEXT")
+        conn.commit()
     if p_cols:
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_boton ON puestos(boton)
             WHERE boton IS NOT NULL AND activo = 1
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_tag ON puestos(tag_uid)
+            WHERE tag_uid IS NOT NULL AND activo = 1
         """)
         conn.commit()
 
