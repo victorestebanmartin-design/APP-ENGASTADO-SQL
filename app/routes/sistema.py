@@ -903,12 +903,22 @@ def api_esp32_flash_usb():
                                         'message': (f'Error al copiar {nombre}: ' + err)[-400:]})
                     libs.append(nombre)
 
-            r = mpremote('cp', tmp_fw, ':main.py')
+            r = mpremote('cp', tmp_fw, ':app.py')
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
                 if 'No module named' in err:
                     return jsonify({'success': False, 'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote  (o actualiza dependencias)'})
                 return jsonify({'success': False, 'message': ('Error al copiar: ' + err)[-400:] or 'Error al copiar (¿puerto ocupado por otro programa?)'})
+
+            # Lanzador estable con autorrecuperacion (main.py). Solo se instala
+            # por USB; el OTA por WiFi actualiza app.py, no este.
+            launcher = os.path.join(proyecto, 'esp32', 'micropython', 'launcher.py')
+            if os.path.exists(launcher):
+                r = mpremote('cp', launcher, ':main.py')
+                if r.returncode != 0:
+                    err = (r.stderr or r.stdout or '').strip()
+                    return jsonify({'success': False,
+                                    'message': ('Error al copiar launcher: ' + err)[-400:]})
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
             try:
@@ -961,10 +971,12 @@ def api_esp32_device_update(device_id):
 def _esp32_firmware_files():
     """Ficheros del firmware de aplicacion: (nombre_destino, ruta_absoluta).
 
-    'main.py' se sirve desde main_wifi.py del repo; el resto son los lib/*.py.
+    'app.py' se sirve desde main_wifi.py del repo; el resto son los lib/*.py.
+    El lanzador (main.py) NO entra en el OTA: se mantiene estable y solo se
+    instala por USB, para que un app.py defectuoso siempre pueda revertirse.
     """
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
-    files = [('main.py', os.path.join(base, 'main_wifi.py'))]
+    files = [('app.py', os.path.join(base, 'main_wifi.py'))]
     lib_dir = os.path.join(base, 'lib')
     if os.path.isdir(lib_dir):
         for nombre in sorted(os.listdir(lib_dir)):

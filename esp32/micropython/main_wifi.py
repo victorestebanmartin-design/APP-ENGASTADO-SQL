@@ -891,6 +891,146 @@ def http_get(host, port, path):
         print("HTTP error:", e)
         return None
 
+# ── OTA de aplicacion por WiFi ────────────────────────────────────────────────
+# Descarga app.py (+libs) del servidor, verifica sha256 y reinicia. El lanzador
+# (main.py) NO se toca: si el nuevo app.py fallara al arrancar, se revierte solo.
+
+def _marcar_arranque_ok():
+    """Pone a 0 el contador de arranques fallidos (lo lee el lanzador main.py).
+    Se llama al entrar en el bucle: probar que el fichero carga bien evita que un
+    corte de WiFi que reinicie la placa se confunda con un OTA defectuoso."""
+    try:
+        with open("boot_fails.txt", "w") as f:
+            f.write("0")
+    except Exception:
+        pass
+
+def _sha256_hex(data):
+    import uhashlib, ubinascii
+    return ubinascii.hexlify(uhashlib.sha256(data).digest()).decode()
+
+def _reinyectar_wifi(texto):
+    """Mete el SSID/PASSWORD de ESTA pantalla en el app.py descargado, para que
+    el OTA nunca cambie la red con la que ya esta conectada."""
+    lineas = texto.split("\n")
+    for i, ln in enumerate(lineas):
+        st = ln.lstrip()
+        if st.startswith("SSID") and "=" in ln:
+            lineas[i] = "SSID     = " + repr(SSID)
+        elif st.startswith("PASSWORD") and "=" in ln:
+            lineas[i] = "PASSWORD = " + repr(PASSWORD)
+    return "\n".join(lineas)
+
+def http_get_bytes(host, port, path):
+    """GET que devuelve el body como bytes crudos (para descargar el firmware)."""
+    try:
+        addr = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)[0][-1]
+        s = socket.socket()
+        s.settimeout(15)
+        s.connect(addr)
+        req = "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n" % (path, host)
+        s.send(req.encode())
+        resp = b""
+        while True:
+            chunk = s.recv(1024)
+            if not chunk:
+                break
+            resp += chunk
+        s.close()
+        idx = resp.find(b"\r\n\r\n")
+        if idx < 0:
+            return None
+        head, body = resp[:idx], resp[idx+4:]
+        clen = None
+        for line in head.split(b"\r\n"):
+            if line[:15].lower() == b"content-length:":
+                try:
+                    clen = int(line.split(b":", 1)[1].strip())
+                except Exception:
+                    clen = None
+        if clen is not None and len(body) != clen:
+            print("OTA: body incompleto", len(body), "!=", clen)
+            return None
+        return body
+    except Exception as e:
+        print("HTTP bytes error:", e)
+        return None
+
+def _ota_fallo(msg):
+    print("OTA fallo:", msg)
+    rect(0, 240, 240, 44, BLACK)
+    text_center(255, ("OTA fallo: " + msg)[:24], RED, BLACK, scale=1)
+    time.sleep_ms(1800)   # no se ha tocado nada: se sigue con el firmware actual
+
+def hacer_ota(ota):
+    """Aplica una actualizacion: descarga+verifica TODO y solo entonces
+    intercambia y reinicia. Ante cualquier fallo, no toca nada."""
+    import os
+    files = ota.get('files') or []
+    version = ota.get('version') or ''
+    if not files:
+        return
+    rect(0, 0, 240, 320, BLACK)
+    text_center(120, "ACTUALIZANDO", ORANGE, BLACK, scale=2)
+    text_center(160, "NO APAGAR", RED, BLACK, scale=2)
+    if version:
+        text_center(210, version[:18], LGRAY, BLACK, scale=1)
+
+    descargados = {}
+    for f in files:
+        nombre = f.get('name')
+        if not nombre:
+            return _ota_fallo("nombre")
+        data = http_get_bytes(HOST_IP, PORT,
+                              "/api/esp32/firmware/file?name=" + _urlenc(nombre))
+        if data is None:
+            return _ota_fallo("descarga")
+        size = f.get('size')
+        if size is not None and len(data) != size:
+            return _ota_fallo("tam " + nombre)
+        sha = f.get('sha256')
+        if sha and _sha256_hex(data) != sha:
+            return _ota_fallo("sha " + nombre)
+        if nombre == "app.py":
+            try:
+                data = _reinyectar_wifi(data.decode("utf-8")).encode("utf-8")
+            except Exception as e:
+                print("OTA reinyeccion:", e)
+        descargados[nombre] = data
+
+    # Escribir a *.new (todavia no se pisa el firmware en uso)
+    for nombre, data in descargados.items():
+        try:
+            with open(nombre + ".new", "wb") as fp:
+                fp.write(data)
+        except Exception as e:
+            print("OTA write:", e)
+            return _ota_fallo("escritura")
+
+    # Copia de seguridad del app.py actual (para el rollback del lanzador)
+    try:
+        with open("app.py", "rb") as fp:
+            actual = fp.read()
+        with open("app_prev.py", "wb") as fp:
+            fp.write(actual)
+    except OSError:
+        pass
+
+    # Intercambio: borrar el original y renombrar el .new encima
+    for nombre in descargados:
+        try:
+            os.remove(nombre)
+        except OSError:
+            pass
+        try:
+            os.rename(nombre + ".new", nombre)
+        except OSError as e:
+            print("OTA rename:", e)
+
+    text_center(250, "OK, reiniciando...", GREEN, BLACK, scale=1)
+    time.sleep_ms(700)
+    machine.reset()
+
 # ── Conectar WiFi ──────────────────────────────────────────────────────────────
 def wifi_conectada():
     """True si la WiFi sigue realmente conectada. Nunca lanza excepcion."""
@@ -1009,11 +1149,17 @@ ultimo_nfc    = 0                 # ultima consulta al lector NFC
 nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
 nfc_uid_ts    = 0                 # cuando se leyo
 intentos_wifi = 0
+arranque_marcado = False   # se pone a True tras la 1a vuelta (arranque valido)
 
 # El bucle NUNCA debe morir: cualquier excepcion se registra y se sigue.
 while True:
   try:
     now = time.ticks_ms()
+
+    # Primer ciclo completo: el fichero carga bien -> limpiar contador de fallos
+    if not arranque_marcado:
+        arranque_marcado = True
+        _marcar_arranque_ok()
 
     # ── Botones 1-7: corta = ver mi puesto, larga = liberarlo ─────────
     for i, bp_ in enumerate(btns_puesto):
@@ -1171,13 +1317,19 @@ while True:
     # ── Poll de trabajo (cada 3s) ─────────────────────────────────────
     elif conectado and time.ticks_diff(now, ultimo_poll) >= POLL_INTERVAL * 1000:
         ultimo_poll = now
-        ruta = "/api/esp32/current?id=" + DEVICE_ID + "&nfc=" + nfc_estado
+        ruta = "/api/esp32/current?id=" + DEVICE_ID + "&nfc=" + nfc_estado + "&fw=" + FW_VERSION
         if CARRO_ASIGNADO:
             ruta += "&carro=" + CARRO_ASIGNADO
         body = http_get(HOST_IP, PORT, ruta)
         if body:
             try:
                 d = json.loads(body)
+                # OTA por WiFi: si el servidor ofrece otra version, actualizar
+                # y reiniciar (hacer_ota no retorna si tiene exito).
+                _ota = d.get('ota')
+                if _ota and _ota.get('update') and _ota.get('version') \
+                        and _ota.get('version') != FW_VERSION:
+                    hacer_ota(_ota)
                 # Codigo de login pendiente en este carro (banner de reposo)
                 login_codigo = (d.get('login') or {}).get('codigo') or ''
                 # Carro que nos asigna el servidor (Admin -> Display Carro)
