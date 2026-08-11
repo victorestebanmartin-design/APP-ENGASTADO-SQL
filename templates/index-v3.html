@@ -16,17 +16,36 @@
             <div class="modal-operario-header">
                 <div class="modal-operario-icon">⚡</div>
                 <h2>Sistema de Engastado V3.0</h2>
-                <p>Identifícate para acceder</p>
+                <p>Identifícate con tu tarjeta para acceder</p>
             </div>
             <div class="modal-operario-body">
-                <label for="input-operario">Operario</label>
-                <select id="input-operario">
-                    <option value="">— Seleccionar operario —</option>
-                </select>
-                <div id="modal-operario-error" class="modal-operario-error hidden">Selecciona tu operario de la lista.</div>
-            </div>
-            <div class="modal-operario-footer">
-                <button onclick="confirmarOperario()" class="btn-confirmar-operario">Entrar al módulo</button>
+                <!-- Login por tarjeta -->
+                <div id="login-tarjeta">
+                    <div id="login-selector-lector" class="hidden" style="margin-bottom:14px;">
+                        <label for="login-lector">Lector del carro</label>
+                        <select id="login-lector" onchange="cambiarLectorLogin()"></select>
+                    </div>
+                    <div id="login-tarjeta-estado" style="text-align:center;padding:18px 8px;">
+                        <div style="font-size:2.6em;line-height:1;margin-bottom:10px;">📇</div>
+                        <div id="login-tarjeta-msg" style="font-size:1.05em;color:#334155;">Buscando lector…</div>
+                        <div id="login-tarjeta-codigo" class="hidden" style="margin-top:12px;">
+                            <div style="font-size:0.85em;color:#64748b;">Código de seguridad (compruébalo en la pantalla del carro)</div>
+                            <div id="login-codigo-valor" style="font-size:2.2em;font-weight:bold;letter-spacing:6px;color:#0d6efd;font-family:monospace;">----</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Respaldo manual (si el lector no funciona) -->
+                <details id="login-manual" style="margin-top:8px;">
+                    <summary style="cursor:pointer;color:#6c757d;font-size:0.9em;text-align:center;">¿El lector no responde? Entrar manualmente</summary>
+                    <div style="margin-top:12px;">
+                        <label for="input-operario">Operario</label>
+                        <select id="input-operario">
+                            <option value="">— Seleccionar operario —</option>
+                        </select>
+                        <div id="modal-operario-error" class="modal-operario-error hidden">Selecciona tu operario de la lista.</div>
+                        <button onclick="confirmarOperario()" class="btn-confirmar-operario" style="margin-top:10px;width:100%;">Entrar al módulo</button>
+                    </div>
+                </details>
             </div>
         </div>
     </div>

@@ -513,7 +513,22 @@ def api_esp32_current():
             if dev.get('carro'):
                 carro = dev['carro']
 
-        extra = {'carro_asignado': carro or ''}
+        # Banner de login: si hay una petición de login pendiente en este carro,
+        # la pantalla muestra "Esperando login" con el código de seguridad.
+        login_banner = None
+        if carro:
+            try:
+                with db.engine.connect() as conn:
+                    r = conn.execute(text(
+                        "SELECT codigo FROM login_requests "
+                        "WHERE carro=:c AND estado='pendiente'"
+                    ), {'c': carro}).fetchone()
+                if r:
+                    login_banner = {'esperando': True, 'codigo': r[0]}
+            except Exception:
+                pass
+
+        extra = {'carro_asignado': carro or '', 'login': login_banner}
         ops_dict = _esp32_load_ops(_esp32_file(carro))
         if not ops_dict:
             return jsonify({'data': None, 'ops': [], **extra})
@@ -521,6 +536,46 @@ def api_esp32_current():
                for k, v in sorted(ops_dict.items())]
         ultimo = max(ops, key=lambda o: o['ts'])
         return jsonify({'data': ultimo['data'], 'ts': ultimo['ts'], 'ops': ops, **extra})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/lectores', methods=['GET'])
+def api_esp32_lectores():
+    """Carros que tienen una pantalla con lector NFC (para el login por tarjeta).
+
+    El módulo de engastado usa esto para saber a qué carro pedir el login. Si
+    hay un solo lector lo elige solo; si hay varios, deja elegir.
+    """
+    try:
+        lectores = []
+        ahora = datetime.now()
+        for dev in _esp32_load_devices().values():
+            carro = (dev.get('carro') or '').strip()
+            if not carro:
+                continue
+            online = False
+            try:
+                visto = datetime.fromisoformat(dev.get('last_seen'))
+                online = (ahora - visto).total_seconds() <= 30
+            except Exception:
+                pass
+            lectores.append({
+                'carro': carro,
+                'nfc': dev.get('nfc', 'off'),
+                'online': online,
+                'last_seen': dev.get('last_seen', ''),
+            })
+        # Un carro puede tener varias pantallas registradas: quedarnos con la
+        # mejor entrada por carro (online y con lector NFC primero).
+        mejor = {}
+        for lec in lectores:
+            prev = mejor.get(lec['carro'])
+            rank = (lec['online'], lec['nfc'] == 'ok')
+            if prev is None or rank > (prev['online'], prev['nfc'] == 'ok'):
+                mejor[lec['carro']] = lec
+        return jsonify({'success': True,
+                        'lectores': sorted(mejor.values(), key=lambda x: x['carro'])})
     except Exception as e:
         return error_interno(e)
 
@@ -587,13 +642,22 @@ def api_esp32_evento():
             json.dump(eventos[-100:], f, ensure_ascii=False)
         current_app.logger.info('Evento ESP32: %s', evento)
 
-        # Tarjeta NFC leída en el carro que no corresponde a ningún puesto de
-        # los que hay ahí. Se guarda como "última tarjeta vista" para que Admin
-        # pueda darla de alta acercándola al lector (ver /api/esp32/ultimo-tag).
+        # Tarjeta NFC leída en el carro. Se guarda como "última tarjeta vista"
+        # (para alta desde Admin) y, si hay un login pendiente en ese carro,
+        # se resuelve identificando al operario por su tarjeta.
         if evento['tipo'] == 'tag' and evento['uid']:
             with open(_esp32_tags_file(), 'w') as f:
                 json.dump({'uid': evento['uid'], 'device_id': evento['device_id'],
                            'carro': evento['carro'], 'ts': evento['ts']}, f)
+            try:
+                from app.routes.operarios import resolver_login_por_tag
+                with db.engine.connect() as conn:
+                    res = resolver_login_por_tag(conn, evento['carro'], evento['uid'])
+                    conn.commit()
+                if res:
+                    return jsonify({'success': True, 'login': res})
+            except Exception:
+                current_app.logger.exception('Fallo resolviendo login por tarjeta')
             return jsonify({'success': True})
 
         # Liberar: sacar ese puesto del carro sin esperar al TTL. Es la salida

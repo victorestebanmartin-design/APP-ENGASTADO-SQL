@@ -12,6 +12,11 @@ let operarioActual = null;
 let operarioLoginId = null;   // ID del login exclusivo en servidor (null si no hay)
 let _latidoOperarioTimer = null;
 
+// Login por tarjeta (lector compartido en el carro)
+let loginRequestId = null;    // ID de la petición de login en curso
+let loginCarroSel = null;     // carro/lector contra el que se pide el login
+let _loginPollTimer = null;   // sondeo del estado de la petición
+
 // Caché para los modales de navegación
 let _puestosCache = [];
 let _maquinasCache = [];
@@ -141,6 +146,11 @@ function _iniciarLatidoOperario() {
 
 // Liberar la sesión si el operario cierra o refresca la pestaña
 window.addEventListener('beforeunload', function() {
+    // Cancelar una petición de login por tarjeta a medias (libera el lector)
+    if (loginRequestId) {
+        navigator.sendBeacon('/api/operarios/login/solicitar/cancelar',
+            new Blob([JSON.stringify({ request_id: loginRequestId })], { type: 'application/json' }));
+    }
     if (operarioLoginId) {
         // Cerrar el login exclusivo del operario en el servidor
         navigator.sendBeacon('/api/operarios/logout',
@@ -168,7 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Siempre pedir el operario al entrar (no recordar de sesiones anteriores)
     sessionStorage.removeItem('operario_actual');
 
-    // Cargar lista de operarios en el select
+    // Cargar lista de operarios en el select (respaldo manual)
     fetch('/api/operarios')
         .then(r => r.json())
         .then(data => {
@@ -183,10 +193,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(() => {}); // silencioso si falla
-    const inputOperario = document.getElementById('input-operario');
-    if (inputOperario) {
-        inputOperario.focus();
-    }
+
+    // Identificación por tarjeta (el operario pasa su tarjeta en el carro)
+    if (typeof iniciarLoginTarjeta === 'function') iniciarLoginTarjeta();
 
     // Event listener para código de bono
     const codigoBonoInput = document.getElementById('codigo-bono');

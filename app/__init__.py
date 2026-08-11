@@ -179,6 +179,30 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: tabla login_requests (login por tarjeta con lector compartido).
+    # El PC pide login contra un carro y el servidor genera un codigo visible en
+    # la pantalla. Cuando el operario pasa su tarjeta en ese carro, la peticion
+    # se resuelve. Solo puede haber UNA peticion pendiente por carro a la vez.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS login_requests (
+            id TEXT PRIMARY KEY,
+            carro TEXT NOT NULL,
+            codigo TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            operario_nombre TEXT,
+            login_id TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            ultimo_latido TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_login_requests_estado ON login_requests(estado)")
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_login_requests_carro_pendiente
+        ON login_requests(carro) WHERE estado = 'pendiente'
+    """)
+    conn.commit()
+
     # Migración: tabla terminales_imagenes (iconos/fotos de cada terminal)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS terminales_imagenes (

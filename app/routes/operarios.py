@@ -309,3 +309,191 @@ def api_operario_login_liberar(login_id):
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
+
+
+# ==================== LOGIN POR TARJETA (LECTOR COMPARTIDO) ====================
+#
+# El lector NFC vive en la pantalla del carro y lo comparten varios PCs. Al
+# abrir el módulo, el PC pide un login contra un carro concreto: el servidor
+# genera un código corto que la pantalla del carro muestra. El operario pasa su
+# tarjeta en ese carro y la lectura (que llega por /api/esp32/evento) resuelve
+# la petición. Regla: solo puede haber UNA petición pendiente por carro a la vez
+# (así no hay ambigüedad sobre a qué PC va la tarjeta leída).
+
+LOGIN_REQUEST_CADUCIDAD_MINUTOS = 2  # sin sondeo del PC => petición abandonada
+
+
+def _generar_codigo_login():
+    import random
+    return '%04d' % random.randint(0, 9999)
+
+
+def _expirar_login_requests(conn):
+    """Marca como expiradas las peticiones pendientes que el PC dejó de sondear."""
+    limite = (datetime.now() - timedelta(minutes=LOGIN_REQUEST_CADUCIDAD_MINUTOS)).isoformat()
+    conn.execute(text(
+        "UPDATE login_requests SET estado='expirado' "
+        "WHERE estado='pendiente' AND ultimo_latido < :lim"
+    ), {'lim': limite})
+
+
+def _crear_login_operario(conn, nombre):
+    """Crea un login exclusivo para el operario. Devuelve (login_id, error).
+
+    error no None => no se pudo (el operario ya está dentro en otro puesto).
+    Reutiliza las mismas reglas de exclusividad que el login manual.
+    """
+    import uuid
+    _expirar_logins_fantasma(conn)
+    existente = conn.execute(text(
+        "SELECT timestamp_login FROM operario_logins WHERE activo=1 AND operario_nombre=:n"
+    ), {'n': nombre}).fetchone()
+    if existente:
+        hora = (existente[0] or '')[11:16]
+        msg = f'{nombre} ya está dentro del módulo en otro puesto'
+        if hora:
+            msg += f' (desde las {hora})'
+        return None, msg
+    login_id = str(uuid.uuid4())
+    ahora = datetime.now().isoformat()
+    try:
+        conn.execute(text(
+            "INSERT INTO operario_logins "
+            "(id, operario_nombre, timestamp_login, ultimo_latido, activo) "
+            "VALUES (:id, :n, :t, :t, 1)"
+        ), {'id': login_id, 'n': nombre, 't': ahora})
+    except IntegrityError:
+        return None, f'{nombre} ya está dentro del módulo en otro puesto'
+    return login_id, None
+
+
+def resolver_login_por_tag(conn, carro, tag_uid):
+    """Intenta resolver una petición de login pendiente en ese carro con la
+    tarjeta leída. Lo llama el handler de eventos del ESP32.
+
+    Devuelve un dict con el resultado, o None si no había petición pendiente en
+    ese carro o si la tarjeta no es de ningún operario (se deja la petición
+    intacta para que lo vuelva a intentar).
+    """
+    _expirar_login_requests(conn)
+    req = conn.execute(text(
+        "SELECT id FROM login_requests WHERE carro=:c AND estado='pendiente'"
+    ), {'c': carro}).fetchone()
+    if not req:
+        return None
+    op = _operario_por_tag(conn, tag_uid)
+    if not op:
+        return None  # tarjeta desconocida: no consumir la petición
+    nombre = op[1]
+    login_id, error = _crear_login_operario(conn, nombre)
+    if error:
+        conn.execute(text(
+            "UPDATE login_requests SET estado='rechazado', operario_nombre=:n, error=:e "
+            "WHERE id=:id"
+        ), {'n': nombre, 'e': error, 'id': req[0]})
+        return {'estado': 'rechazado', 'operario': nombre, 'error': error}
+    conn.execute(text(
+        "UPDATE login_requests SET estado='resuelto', operario_nombre=:n, login_id=:lg "
+        "WHERE id=:id"
+    ), {'n': nombre, 'lg': login_id, 'id': req[0]})
+    return {'estado': 'resuelto', 'operario': nombre, 'login_id': login_id}
+
+
+@bp.route('/api/operarios/login/solicitar', methods=['POST'])
+def api_login_solicitar():
+    """El PC pide un login por tarjeta contra un carro. Genera el código.
+
+    Devuelve 409 si ese carro ya tiene una petición pendiente (regla: una a la
+    vez por carro).
+    """
+    try:
+        import uuid
+        data = request.get_json(silent=True) or {}
+        carro = (data.get('carro') or '').strip()[:24]
+        if not carro:
+            return jsonify({'success': False, 'error': 'carro es obligatorio'}), 400
+        with db.engine.connect() as conn:
+            _expirar_login_requests(conn)
+            ocupado = conn.execute(text(
+                "SELECT codigo FROM login_requests WHERE carro=:c AND estado='pendiente'"
+            ), {'c': carro}).fetchone()
+            if ocupado:
+                conn.commit()
+                return jsonify({
+                    'success': False, 'ocupado': True,
+                    'error': f'El lector del carro {carro} está ocupado por otro '
+                             f'login. Espera un momento.'
+                }), 409
+            req_id = str(uuid.uuid4())
+            codigo = _generar_codigo_login()
+            ahora = datetime.now().isoformat()
+            try:
+                conn.execute(text(
+                    "INSERT INTO login_requests "
+                    "(id, carro, codigo, estado, created_at, ultimo_latido) "
+                    "VALUES (:id, :c, :cod, 'pendiente', :t, :t)"
+                ), {'id': req_id, 'c': carro, 'cod': codigo, 't': ahora})
+                conn.commit()
+            except IntegrityError:
+                return jsonify({
+                    'success': False, 'ocupado': True,
+                    'error': f'El lector del carro {carro} está ocupado. Espera.'
+                }), 409
+        return jsonify({'success': True, 'request_id': req_id, 'codigo': codigo, 'carro': carro})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/operarios/login/solicitar/estado', methods=['POST'])
+def api_login_solicitar_estado():
+    """El PC sondea el estado de su petición de login (y la mantiene viva).
+
+    Respuestas: estado 'pendiente' (sigue esperando la tarjeta), 'resuelto'
+    (con operario y login_id), 'rechazado' (con error, p.ej. ya está dentro en
+    otro puesto), o 'expirado'/'cancelado'.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        req_id = (data.get('request_id') or '').strip()
+        if not req_id:
+            return jsonify({'success': False, 'error': 'request_id es obligatorio'}), 400
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE login_requests SET ultimo_latido=:t "
+                "WHERE id=:id AND estado='pendiente'"
+            ), {'t': datetime.now().isoformat(), 'id': req_id})
+            row = conn.execute(text(
+                "SELECT estado, codigo, operario_nombre, login_id, error "
+                "FROM login_requests WHERE id=:id"
+            ), {'id': req_id}).fetchone()
+            conn.commit()
+        if not row:
+            return jsonify({'success': True, 'estado': 'expirado'})
+        return jsonify({
+            'success': True, 'estado': row[0], 'codigo': row[1],
+            'operario': row[2], 'login_id': row[3], 'error': row[4],
+        })
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/operarios/login/solicitar/cancelar', methods=['POST'])
+def api_login_solicitar_cancelar():
+    """Cancela la petición de login (PC cierra el modal o la pestaña).
+
+    Acepta el JSON aunque llegue por sendBeacon sin Content-Type.
+    """
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        req_id = (data.get('request_id') or '').strip()
+        if not req_id:
+            return jsonify({'success': False, 'error': 'request_id es obligatorio'}), 400
+        with db.engine.connect() as conn:
+            conn.execute(text(
+                "UPDATE login_requests SET estado='cancelado' "
+                "WHERE id=:id AND estado='pendiente'"
+            ), {'id': req_id})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
