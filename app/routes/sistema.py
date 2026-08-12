@@ -114,6 +114,27 @@ def _encontrar_git():
     return None
 
 
+@bp.route('/api/descargar_instalador', methods=['GET'])
+@requiere_pin_admin
+def api_descargar_instalador():
+    """Descarga DESCARGAR_E_INSTALAR.bat para instalar la app en un PC local
+    (clona el repo, crea el venv, instala dependencias e inicializa la BD).
+    Pensado para el PC que va a llevar el USB de una placa ESP32 (pantalla o
+    lector RFID): PythonAnywhere no tiene puerto USB, asi que el flasheo
+    siempre necesita un servidor local.
+    """
+    try:
+        base_dir = os.path.dirname(current_app.root_path)
+        ruta = os.path.join(base_dir, 'DESCARGAR_E_INSTALAR.bat')
+        if not os.path.exists(ruta):
+            return jsonify({'success': False,
+                            'message': 'No se encuentra DESCARGAR_E_INSTALAR.bat en el servidor'}), 404
+        return send_file(ruta, as_attachment=True, download_name='DESCARGAR_E_INSTALAR.bat',
+                         mimetype='application/octet-stream')
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/comprobar_actualizaciones', methods=['GET'])
 @requiere_pin_admin
 def api_comprobar_actualizaciones():

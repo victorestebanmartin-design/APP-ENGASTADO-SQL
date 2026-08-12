@@ -440,6 +440,22 @@
                     </div>
 
                     <div class="card">
+                        <h2>💻 Instalación en un PC local</h2>
+                        <p class="instruccion">
+                            Descarga el instalador para tener la app corriendo en un PC de la empresa (no solo en
+                            PythonAnywhere). Hace falta para flashear placas ESP32 por USB, ya que PythonAnywhere
+                            no tiene puerto USB — el instalador clona el repositorio, prepara el entorno y la base
+                            de datos automáticamente.
+                        </p>
+                        <a href="/api/descargar_instalador" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:8px;">⬇️ Descargar instalador (.bat)</a>
+                        <p class="instruccion" style="margin-top:10px;font-size:0.85em;">
+                            Requiere Python y Git instalados en ese PC (el instalador te avisa y enlaza a la
+                            descarga si te falta alguno). Ejecútalo con doble clic; al terminar deja un
+                            <code>run.bat</code> para arrancar la app cuando quieras.
+                        </p>
+                    </div>
+
+                    <div class="card">
                         <h2>🔒 Bloqueos de Paquetes</h2>
                         <p class="instruccion">Sesiones activas que están bloqueando paquetes. Libéralas individualmente o todas a la vez.</p>
                         <div id="bloqueos-status" class="mensaje hidden"></div>
