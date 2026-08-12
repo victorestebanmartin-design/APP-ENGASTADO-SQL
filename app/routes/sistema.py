@@ -122,6 +122,13 @@ def api_descargar_instalador():
     Pensado para el PC que va a llevar el USB de una placa ESP32 (pantalla o
     lector RFID): PythonAnywhere no tiene puerto USB, asi que el flasheo
     siempre necesita un servidor local.
+
+    El fichero se guarda en el repo con saltos de linea LF (normalizados por
+    .gitattributes); un `git clone` en Windows los convierte solo a CRLF,
+    pero una descarga directa como esta no pasa por ese filtro. cmd.exe
+    puede fallar al interpretar los bloques `if (...)` multilinea con LF
+    puro y cerrar la ventana con un error de sintaxis antes de llegar a
+    ningun `pause` -- por eso se convierte aqui a CRLF explicitamente.
     """
     try:
         base_dir = os.path.dirname(current_app.root_path)
@@ -129,8 +136,13 @@ def api_descargar_instalador():
         if not os.path.exists(ruta):
             return jsonify({'success': False,
                             'message': 'No se encuentra DESCARGAR_E_INSTALAR.bat en el servidor'}), 404
-        return send_file(ruta, as_attachment=True, download_name='DESCARGAR_E_INSTALAR.bat',
-                         mimetype='application/octet-stream')
+        with open(ruta, 'rb') as f:
+            contenido = f.read()
+        contenido = contenido.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+        resp = current_app.make_response(contenido)
+        resp.headers['Content-Type'] = 'application/octet-stream'
+        resp.headers['Content-Disposition'] = 'attachment; filename=DESCARGAR_E_INSTALAR.bat'
+        return resp
     except Exception as e:
         return error_interno(e)
 
