@@ -198,6 +198,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Identificación por tarjeta (el operario pasa su tarjeta en el carro)
     if (typeof iniciarLoginTarjeta === 'function') iniciarLoginTarjeta();
 
+    // RFID entry detection (dedicate ESP32 reader at workstation entrance)
+    if (typeof iniciar_deteccion_rfid === 'function') iniciar_deteccion_rfid();
+
     // Event listener para código de bono
     const codigoBonoInput = document.getElementById('codigo-bono');
     if (codigoBonoInput) {

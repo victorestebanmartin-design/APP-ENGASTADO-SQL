@@ -19,6 +19,11 @@
                 <p>Identifícate con tu tarjeta para acceder</p>
             </div>
             <div class="modal-operario-body">
+                <!-- RFID Entry Status (new) -->
+                <div id="rfid-entrada-estado" style="text-align:center;padding:18px 8px;margin-bottom:20px;">
+                    <div id="rfid-entrada-msg" style="font-size:1.05em;color:#334155;">Escanea tu tarjeta RFID en la entrada…</div>
+                </div>
+
                 <!-- Login por tarjeta -->
                 <div id="login-tarjeta">
                     <div id="login-selector-lector" class="hidden" style="margin-bottom:14px;">
@@ -313,6 +318,7 @@
     <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
     <!-- Antiguo main-v3.js troceado por flujo; comparten ámbito global: el orden importa -->
     <script src="{{ url_for('static', filename='js/v3/v3-estado.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/v3/v3-rfid-entrada.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-modales.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-dashboard.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-seleccion.js') }}"></script>

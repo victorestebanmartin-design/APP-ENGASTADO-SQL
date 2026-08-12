@@ -497,3 +497,99 @@ def api_login_solicitar_cancelar():
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
+
+
+# ==================== RFID ENTRY FOR ENGASTADO V3 ====================
+#
+# Dedicated RFID reader at Engastado V3 workstation entrance. Operario scans
+# card to automatically log in to the module. Called by ESP32 firmware.
+
+
+@bp.route('/api/puestos/engastado_v3/entrada', methods=['POST'])
+def api_engastado_v3_entrada():
+    """RFID card scan at Engastado V3 workstation entrance.
+
+    ESP32 reader sends the card's UID (hex string). This endpoint:
+    1. Looks up operario by tag_uid in database
+    2. Creates/reuses operario_logins session (exclusive login)
+    3. Returns operario name + login_id for frontend to auto-populate
+
+    Request:  { "tag_uid": "A1B2C3D4" }
+    Response 200:
+      {
+        "success": true,
+        "operario_nombre": "Juan Pérez",
+        "login_id": "uuid-here",
+        "message": "Entrada registrada"
+      }
+    Response 404:
+      {
+        "success": false,
+        "error": "Tarjeta RFID no registrada"
+      }
+    Response 409:
+      {
+        "success": false,
+        "error": "Juan Pérez ya está dentro del módulo en otro puesto"
+      }
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        tag_uid = (data.get('tag_uid') or '').strip().upper()
+        if not tag_uid:
+            return jsonify({'success': False, 'error': 'tag_uid es obligatorio'}), 400
+
+        with db.engine.connect() as conn:
+            # Look up operario by RFID tag
+            op = _operario_por_tag(conn, tag_uid)
+            if not op:
+                return jsonify({
+                    'success': False,
+                    'error': 'Tarjeta RFID no registrada'
+                }), 404
+
+            op_id, nombre = op
+
+            # Check if operario already has active session
+            _expirar_logins_fantasma(conn)
+            existente = conn.execute(text(
+                "SELECT id FROM operario_logins WHERE activo=1 AND operario_nombre=:n"
+            ), {'n': nombre}).fetchone()
+
+            if existente:
+                # Reuse existing session
+                login_id = existente[0]
+                return jsonify({
+                    'success': True,
+                    'operario_nombre': nombre,
+                    'login_id': login_id,
+                    'message': 'Sesión existente reutilizada'
+                }), 200
+
+            # Create new session
+            import uuid
+            login_id = str(uuid.uuid4())
+            ahora = datetime.now().isoformat()
+            try:
+                conn.execute(text(
+                    "INSERT INTO operario_logins "
+                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo) "
+                    "VALUES (:id, :n, :t, :t, 1)"
+                ), {'id': login_id, 'n': nombre, 't': ahora})
+                conn.commit()
+            except IntegrityError:
+                # Race condition: operario logged in from another workstation
+                return jsonify({
+                    'success': False,
+                    'error': f'{nombre} ya está dentro del módulo en otro puesto'
+                }), 409
+
+            return jsonify({
+                'success': True,
+                'operario_nombre': nombre,
+                'login_id': login_id,
+                'message': 'Entrada registrada'
+            }), 200
+
+    except Exception as e:
+        return error_interno(e)
