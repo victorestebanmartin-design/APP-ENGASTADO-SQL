@@ -274,6 +274,10 @@
       <a href="{{ url_for('main.home') }}" class="modules-header-logo">COJO<span class="sw">sw</span></a>
       <span class="modules-header-title">MÓDULOS DEL SISTEMA</span>
       <div class="modules-header-right">
+        {% if session.operario_actual %}
+        <span class="modules-header-back" style="cursor:default;" title="Operario identificado en este PC">👤 {{ session.operario_actual }}</span>
+        <a href="#" class="modules-header-back" onclick="salirOperario(); return false;">🚪 SALIR</a>
+        {% endif %}
         <a href="{{ url_for('main.manual') }}" class="modules-header-help" target="_blank">❓ AYUDA</a>
         <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
       </div>
@@ -385,6 +389,21 @@
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') document.getElementById('prod-overlay').classList.remove('open');
     });
+
+    {% if session.operario_actual %}
+    // Latido de la sesion de operario (gate de login global): sin esto, el
+    // login caducaria solo a los 3 minutos aunque se siga navegando por la
+    // app. El servidor no hace nada si no hay sesion, asi que es seguro
+    // dejarlo siempre que haya un operario identificado en este PC.
+    setInterval(() => {
+        fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(() => {});
+    }, 60000);
+
+    function salirOperario() {
+        fetch('/api/sesion/operario/salir', { method: 'POST' })
+            .finally(() => { window.location.href = '/login'; });
+    }
+    {% endif %}
   </script>
 </body>
 </html>

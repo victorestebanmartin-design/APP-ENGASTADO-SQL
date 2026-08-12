@@ -407,10 +407,40 @@ def api_sesion_operario_get():
 
 @bp.route('/api/sesion/operario/salir', methods=['POST'])
 def api_sesion_operario_salir():
-    """Cierra la sesion de operario de ESTE navegador (no afecta a otros PCs
-    que puedan tener el mismo login_id, solo limpia la sesion de Flask local)."""
+    """Cierra la sesion de operario de ESTE navegador Y desactiva su login en
+    el servidor: es una salida real, no solo un olvido local. Si no
+    desactivaramos el login, volver a /login antes de que caduque solo (3
+    min sin latido) lo adoptaria de nuevo sin pasar la tarjeta -- justo el
+    bug que esto corrige."""
+    login_id = session.get('operario_login_id')
+    if login_id:
+        with db.engine.connect() as conn:
+            conn.execute(text("UPDATE operario_logins SET activo=0 WHERE id=:id"), {'id': login_id})
+            conn.commit()
     session.pop('operario_actual', None)
     session.pop('operario_login_id', None)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/sesion/operario/latido', methods=['POST'])
+def api_sesion_operario_latido():
+    """Late de la sesion de operario de ESTE navegador mientras navega por
+    /modules y el resto de la app. Sin esto, operario_logins caducaria solo
+    a los 3 minutos (ver _expirar_logins_fantasma) aunque el operario siga
+    trabajando -- el login por tarjeta global no tenia ningun latido propio
+    (a diferencia del de Engastado V3, que si lo tiene)."""
+    login_id = session.get('operario_login_id')
+    if not login_id:
+        return jsonify({'success': False})
+    with db.engine.connect() as conn:
+        res = conn.execute(text(
+            "UPDATE operario_logins SET ultimo_latido=:t WHERE id=:id AND activo=1"
+        ), {'t': datetime.now().isoformat(), 'id': login_id})
+        conn.commit()
+    if res.rowcount == 0:
+        session.pop('operario_actual', None)
+        session.pop('operario_login_id', None)
+        return jsonify({'success': False, 'expirado': True})
     return jsonify({'success': True})
 
 

@@ -27,7 +27,13 @@ function iniciarDeteccionRfid(pollUrl, onLogin, opts) {
     const intervalMs = opts.intervalMs || 2000;
     const timeoutMs = opts.timeoutMs || 0;
 
-    let lastLoginCount = 0;
+    // IDs de login ya vistos. Empieza en null (no inicializado): la PRIMERA
+    // respuesta solo fija la base (lo que ya estuviera activo NO cuenta como
+    // "recien escaneado" -- si no, volver a esta pantalla con un login viejo
+    // todavia activo en el servidor te "logueaba" solo, sin pasar la
+    // tarjeta). A partir de la segunda respuesta, cualquier id que no
+    // estuviera en la base es un escaneo de verdad.
+    let vistos = null;
     let pollStart = Date.now();
     let timer = null;
     let detenido = false;
@@ -42,15 +48,19 @@ function iniciarDeteccionRfid(pollUrl, onLogin, opts) {
             .then(r => r.json())
             .then(data => {
                 if (detenido) return;
-                if (data.success && data.logins && data.logins.length > 0) {
-                    const n = data.logins.length;
-                    if (n > lastLoginCount) {
-                        const nuevo = data.logins[data.logins.length - 1];
-                        detener();
-                        onLogin(nuevo);
-                        return;
+                if (data.success && data.logins) {
+                    const actuales = new Set(data.logins.map(l => l.id));
+                    if (vistos === null) {
+                        vistos = actuales;
+                    } else {
+                        const nuevo = data.logins.find(l => !vistos.has(l.id));
+                        if (nuevo) {
+                            detener();
+                            onLogin(nuevo);
+                            return;
+                        }
+                        vistos = actuales;
                     }
-                    lastLoginCount = n;
                 }
                 if (!expirado()) {
                     timer = setTimeout(tick, intervalMs);

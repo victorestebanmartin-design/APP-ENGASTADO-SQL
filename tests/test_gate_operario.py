@@ -134,6 +134,71 @@ def test_adoptar_login_id_inexistente_falla(client):
     assert r.status_code == 404
 
 
+def test_salir_desactiva_el_login_de_verdad(client):
+    """Regresion: 'salir' solo borraba la sesion de Flask, no el login del
+    servidor -- por eso volver a /login sin escanear te readmitia solo."""
+    _crear_operario_con_tag(client, 'Op Sale', '11113333')
+    login_id = client.post('/api/puestos/engastado_v3/entrada',
+                           json={'tag_uid': '11113333'}).get_json()['login_id']
+    client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
+
+    client.post('/api/sesion/operario/salir')
+
+    # El login ya no aparece como activo en ningun sondeo
+    assert client.get('/api/operarios/logins').get_json()['logins'] == []
+    d = client.post('/api/sesion/operario/latido').get_json()
+    assert d['success'] is False  # ya no hay sesion que latir
+
+
+def test_latido_de_sesion_mantiene_el_login_vivo(app, client):
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    _crear_operario_con_tag(client, 'Op Latido', '22224444')
+    login_id = client.post('/api/puestos/engastado_v3/entrada',
+                           json={'tag_uid': '22224444'}).get_json()['login_id']
+    client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
+
+    # Simular que el login lleva 10 minutos sin latido (fantasma)
+    viejo = (datetime.now() - timedelta(minutes=10)).isoformat()
+    conn = sqlite3.connect(app.config['DB_PATH'])
+    conn.execute("UPDATE operario_logins SET ultimo_latido=? WHERE id=?", (viejo, login_id))
+    conn.commit()
+    conn.close()
+
+    # El latido de sesion lo revive (rowcount>0 solo si seguia activo)
+    d = client.post('/api/sesion/operario/latido').get_json()
+    assert d['success']
+
+    # Tras el latido, el login ya no deberia expirar solo
+    assert len(client.get('/api/operarios/logins').get_json()['logins']) == 1
+
+
+def test_login_fantasma_no_reingresa_solo_por_latido(app, client):
+    """Si el login ya caduco (fantasma) antes de que el navegador vuelva a
+    latir, el latido de sesion debe avisar de que expiro, no revivirlo."""
+    import sqlite3
+    from datetime import datetime, timedelta
+
+    _crear_operario_con_tag(client, 'Op Fantasma', '33335555')
+    login_id = client.post('/api/puestos/engastado_v3/entrada',
+                           json={'tag_uid': '33335555'}).get_json()['login_id']
+    client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
+
+    viejo = (datetime.now() - timedelta(minutes=10)).isoformat()
+    conn = sqlite3.connect(app.config['DB_PATH'])
+    conn.execute("UPDATE operario_logins SET ultimo_latido=? WHERE id=?", (viejo, login_id))
+    conn.commit()
+    conn.close()
+
+    # Alguien mas sondea la lista general primero: eso expira el fantasma de verdad
+    client.get('/api/operarios/logins')
+
+    d = client.post('/api/sesion/operario/latido').get_json()
+    assert d['success'] is False
+    assert d['expirado'] is True
+
+
 # ==================== Gate: interruptor + comportamiento end-to-end ====================
 
 def test_gate_desactivado_por_defecto(client):
