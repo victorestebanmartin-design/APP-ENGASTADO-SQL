@@ -1360,6 +1360,16 @@ def api_esp32_rfid_flash_usb():
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=90)
 
+        def _resumen_error(etiqueta, err):
+            """Ultima linea no vacia del error (el mensaje de la excepcion,
+            p.ej. 'mpremote.transport.TransportError: could not enter raw
+            repl'), con el nombre del fichero delante. Un traceback completo
+            puede superar los 400 caracteres; cortarlo por el final se comia
+            el 'Error al copiar X' y dejaba solo el traceback pelado."""
+            lineas = [ln for ln in err.splitlines() if ln.strip()]
+            resumen = lineas[-1] if lineas else err
+            return (f'Error al copiar {etiqueta}: {resumen}')[:400]
+
         try:
             pasos = [
                 ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
@@ -1381,14 +1391,23 @@ def api_esp32_rfid_flash_usb():
             for etiqueta, origen, destino in pasos:
                 if not os.path.exists(origen):
                     return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
+
                 r = mpremote('cp', origen, ':' + destino)
+                if r.returncode != 0 and 'could not enter raw repl' in (r.stderr or ''):
+                    # El CP2102 a veces no esta listo justo despues de la
+                    # desconexion anterior: un respiro y un solo reintento
+                    # basta casi siempre (visto en placas reales).
+                    time.sleep(1.5)
+                    r = mpremote('cp', origen, ':' + destino)
+
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()
                     if 'No module named' in err:
                         return jsonify({'success': False,
                                         'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
-                    return jsonify({'success': False,
-                                    'message': (f'Error al copiar {etiqueta}: ' + err)[-400:]})
+                    return jsonify({'success': False, 'message': _resumen_error(etiqueta, err)})
+
+                time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
 
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
