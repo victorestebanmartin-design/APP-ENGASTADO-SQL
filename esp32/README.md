@@ -76,7 +76,7 @@ IRQ          (no se usa)
 
 ```
 Buzzer Pin   ESP32 Pin    Purpose
-+ (Red)      GPIO 26      Senal (con resistencia de 100ohm si es de 5V)
++ (Red)      GPIO 4       Senal (con resistencia de 100ohm si es de 5V)
 - (Black)    GND          Ground
 ```
 
@@ -240,8 +240,8 @@ duplicar la misma pasada de tarjeta.
 
 ### El zumbador no suena
 
-- Revisa el cableado: `+` a GPIO 26, `-` a GND.
-- Prueba a mano: `from machine import Pin; Pin(26, Pin.OUT).on()`.
+- Revisa el cableado: `+` a GPIO 4, `-` a GND.
+- Prueba a mano: `from machine import Pin; Pin(4, Pin.OUT).on()`.
 
 ### El lector RFID no responde
 

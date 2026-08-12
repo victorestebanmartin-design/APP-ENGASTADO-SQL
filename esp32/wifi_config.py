@@ -20,7 +20,7 @@ BACKEND_PORT = 443
 BACKEND_USE_SSL = True
 
 # GPIO Configuration
-BUZZER_PIN = 26    # GPIO pin para el zumbador
+BUZZER_PIN = 4     # GPIO pin para el zumbador
 LED_PIN = 2        # GPIO pin del LED de estado (opcional)
 
 # SPI Configuration (lector RC522) -- el driver crea su propio SPI interno,
