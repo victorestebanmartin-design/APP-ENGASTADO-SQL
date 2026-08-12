@@ -1274,6 +1274,105 @@ def api_esp32_rfid_device_delete(device_id):
         return error_interno(e)
 
 
+@bp.route('/api/esp32/rfid/flash_usb', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_rfid_flash_usb():
+    """Configura y sube TODOS los ficheros de una placa lectora RFID por USB
+    de una vez: http_client.py, ota_update.py, wifi_config.py (con el WiFi y
+    la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py, boot.py y
+    main.py.
+
+    Pensado para el primer flasheo de una placa nueva (o para reinstalar
+    todo desde cero): a partir de ahi, main.py se actualiza solo por WiFi
+    (ver esp32/ota_update.py) y no hace falta volver a tocar el USB.
+
+    Solo funciona en el servidor LOCAL con la placa conectada por USB (usa
+    el mismo /api/esp32/puertos que la pantalla del carro; en PythonAnywhere
+    no hay puertos USB, asi que esto no tiene efecto ahi).
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        puerto = str(data.get('puerto', '')).strip()
+        if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
+            return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
+
+        ssid = str(data.get('ssid', '')).strip()
+        password = str(data.get('password', ''))
+        webrepl_password = str(data.get('webrepl_password', ''))
+        if not ssid or not password or not webrepl_password:
+            return jsonify({'success': False,
+                            'message': 'SSID, contraseña WiFi y contraseña WebREPL son obligatorios '
+                                       '(se graban en la placa, no se guardan en el servidor).'}), 400
+
+        proyecto = os.path.dirname(current_app.root_path)
+        base = os.path.join(proyecto, 'esp32')
+        cfg_path = os.path.join(base, 'wifi_config.py')
+        if not os.path.exists(cfg_path):
+            return jsonify({'success': False, 'message': 'No se encuentra esp32/wifi_config.py'})
+
+        with open(cfg_path, encoding='utf-8') as f:
+            cfg_contenido = f.read()
+        cfg_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, cfg_contenido, count=1, flags=re.M)
+        cfg_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, cfg_contenido, count=1, flags=re.M)
+        cfg_contenido = re.sub(r'^WEBREPL_PASSWORD\s*=.*$', 'WEBREPL_PASSWORD = %r' % webrepl_password,
+                               cfg_contenido, count=1, flags=re.M)
+
+        datadir = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
+        tmp_cfg = os.path.join(datadir, '_rfid_wifi_config_tmp.py')
+        with open(tmp_cfg, 'w', encoding='utf-8') as f:
+            f.write(cfg_contenido)
+
+        def mpremote(*args):
+            return subprocess.run(
+                [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
+                capture_output=True, text=True, timeout=90)
+
+        try:
+            pasos = [
+                ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
+                ('ota_update.py', os.path.join(base, 'ota_update.py'), 'ota_update.py'),
+                ('wifi_config.py', tmp_cfg, 'wifi_config.py'),
+            ]
+            lib_dir = os.path.join(base, 'lib')
+            if os.path.isdir(lib_dir):
+                mpremote('mkdir', ':lib')  # "falla" en silencio si ya existe
+                for nombre in sorted(os.listdir(lib_dir)):
+                    if nombre.endswith('.py'):
+                        pasos.append((f'lib/{nombre}', os.path.join(lib_dir, nombre), f'lib/{nombre}'))
+            pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
+            pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
+
+            for etiqueta, origen, destino in pasos:
+                if not os.path.exists(origen):
+                    return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
+                r = mpremote('cp', origen, ':' + destino)
+                if r.returncode != 0:
+                    err = (r.stderr or r.stdout or '').strip()
+                    if 'No module named' in err:
+                        return jsonify({'success': False,
+                                        'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
+                    return jsonify({'success': False,
+                                    'message': (f'Error al copiar {etiqueta}: ' + err)[-400:]})
+
+            mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
+        finally:
+            try:
+                os.remove(tmp_cfg)
+            except OSError:
+                pass
+
+        return jsonify({'success': True,
+                        'message': f'Lector configurado y firmware subido por {puerto}. '
+                                   f'A partir de ahora se actualiza solo por WiFi cuando publiques una '
+                                   f'nueva FW_VERSION en esp32/main.py.'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False,
+                        'message': 'Timeout: comprueba que la placa está conectada a ese puerto y que '
+                                   'ningún otro programa (monitor serie, mpremote...) lo está usando.'})
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():

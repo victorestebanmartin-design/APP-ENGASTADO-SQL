@@ -331,6 +331,35 @@
                             <p class="instruccion">Cargando...</p>
                         </div>
                     </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>📲 Configurar y subir por USB</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Para el <strong>primer flasheo</strong> de una placa nueva (o para reinstalarla desde
+                            cero). Conéctala por USB a <strong>este equipo</strong> (el que ejecuta la aplicación)
+                            y sube todos los ficheros base de una vez con el WiFi y la contraseña de WebREPL que
+                            pongas aquí. A partir de ahí, el código de la placa se actualiza solo por WiFi cada vez
+                            que publiques cambios — no hace falta volver a tocar el USB.
+                            <br><em>Nota: desde PythonAnywhere no hay puertos USB — usa esta opción con la app
+                            local (run.bat).</em>
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <select id="usb-puerto-rfid" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                                <option value="">— sin puertos detectados —</option>
+                            </select>
+                            <button class="btn-secondary" onclick="cargarPuertosUSBRfid()">🔄 Buscar puertos</button>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="usb-ssid-rfid" placeholder="WiFi SSID"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <input type="password" id="usb-pass-rfid" placeholder="WiFi contraseña"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <input type="password" id="usb-webrepl-rfid" placeholder="Contraseña WebREPL"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                        </div>
+                        <button class="btn-primary" id="usb-flash-rfid-btn" onclick="flashUSBRfid()">📲 Subir todo a la placa</button>
+                        <div id="usb-msg-rfid" style="margin-top:10px;font-size:0.9em;display:none;"></div>
+                    </div>
                 </section>
 
 

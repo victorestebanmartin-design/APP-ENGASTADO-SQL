@@ -104,34 +104,37 @@ esptool.py erase_flash
 esptool.py write_flash -z 0x1000 esp32-XXXXXXXX-vX.XX.X.bin
 ```
 
-### 2. Rellenar `wifi_config.py` con tus credenciales reales
+### 2. Subir los ficheros base por USB
 
-Copia `esp32/wifi_config.py` de este repo a tu maquina y edita **tu copia
-local** (no la subas a git con los valores reales):
+**Opcion recomendada: boton en Admin.** Corre la app en este PC (`run.bat`
+o `python run_sql.py`, que instala `pyserial`/`mpremote` con el resto de
+`requirements.txt`), conecta la placa por USB y ve a
+**Admin -> Lectores RFID -> 📲 Configurar y subir por USB**: elige el
+puerto, rellena el WiFi y la contraseña de WebREPL que quieras para esa
+placa, y un solo click sube `http_client.py`, `ota_update.py`,
+`wifi_config.py` (ya con esas credenciales dentro), `lib/mfrc522.py`,
+`boot.py` y `main.py`, y reinicia la placa. A partir de ahi todo lo demas es
+por WiFi, no hace falta volver a tocar el USB.
 
-```python
-SSID = "TuRedWiFi"
-PASSWORD = "TuContrasenaWiFi"
-WEBREPL_PASSWORD = "TuContrasenaWebREPL"   # 4-9 caracteres, la que ya usabas
-```
+Esto **solo funciona con la app corriendo en local** (este PC tiene el
+puerto USB, PythonAnywhere no) -- por eso el primer flasheo es el unico paso
+que no se puede hacer desde el PC corporativo ni por HTTPS.
 
-`BACKEND_HOST`/`BACKEND_PORT`/`BACKEND_USE_SSL` ya apuntan a
-`viktor85.pythonanywhere.com:443` -- no hace falta tocarlos salvo que cambie
-el dominio de PAW.
-
-### 3. Subir los ficheros base por USB
-
-Con `mpremote` (o Thonny, si lo prefieres):
+**Alternativa manual**, si prefieres la linea de comandos o Thonny:
 
 ```bash
 pip install mpremote
 
-mpremote connect COM5 cp esp32/boot.py :boot.py
-mpremote connect COM5 cp esp32/ota_update.py :ota_update.py
+# Antes: copia esp32/wifi_config.py a un fichero aparte y rellena SSID,
+# PASSWORD y WEBREPL_PASSWORD con tus valores reales (no edites el del
+# repo, que se queda con valores de ejemplo a proposito).
+
 mpremote connect COM5 cp esp32/http_client.py :http_client.py
+mpremote connect COM5 cp esp32/ota_update.py :ota_update.py
 mpremote connect COM5 cp wifi_config_con_tus_credenciales.py :wifi_config.py
 mpremote connect COM5 mkdir :lib
 mpremote connect COM5 cp esp32/lib/mfrc522.py :lib/mfrc522.py
+mpremote connect COM5 cp esp32/boot.py :boot.py
 mpremote connect COM5 cp esp32/main.py :main.py
 mpremote connect COM5 reset
 ```
@@ -139,7 +142,7 @@ mpremote connect COM5 reset
 (Cambia `COM5` por el puerto que te asigne Windows, o `/dev/ttyUSB0` en
 Linux/Mac.)
 
-### 4. Verificar en el monitor serie
+### 3. Verificar en el monitor serie
 
 Abre un monitor serie a 115200 baudios (Thonny, `mpremote connect COM5`, o
 `screen`/`putty`) y deberias ver algo asi:

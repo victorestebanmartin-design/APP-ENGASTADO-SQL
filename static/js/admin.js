@@ -1475,6 +1475,77 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 10000);
 });
 
+// ── Lectores RFID: configurar y subir por USB (primer flasheo) ─────────────
+// Mismo patron que "Subir firmware por USB" de Display Carro, pero sube
+// TODOS los ficheros base de la placa RFID (no solo el firmware de app),
+// porque para esta placa es un paso de una sola vez: despues se autoactualiza
+// por WiFi.
+
+async function cargarPuertosUSBRfid() {
+    const sel = document.getElementById('usb-puerto-rfid');
+    if (!sel) return;
+    try {
+        const resp = await fetch('/api/esp32/puertos');
+        const d = await resp.json();
+        const puertos = d.puertos || [];
+        if (puertos.length === 0) {
+            sel.innerHTML = `<option value="">— sin puertos detectados —</option>`;
+            if (d.aviso) _usbMsgRfid('⚠️ ' + d.aviso, true);
+        } else {
+            sel.innerHTML = puertos.map(p =>
+                `<option value="${_dispEsc(p.puerto)}">${_dispEsc(p.puerto)}${p.descripcion ? ' — ' + _dispEsc(p.descripcion) : ''}</option>`
+            ).join('');
+        }
+    } catch (e) {
+        _usbMsgRfid('❌ No se pudieron listar los puertos', true);
+    }
+}
+
+function _usbMsgRfid(texto, esError) {
+    const el = document.getElementById('usb-msg-rfid');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    el.textContent = texto;
+}
+
+async function flashUSBRfid() {
+    const puerto = document.getElementById('usb-puerto-rfid')?.value;
+    if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
+    const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
+    const password = document.getElementById('usb-pass-rfid')?.value || '';
+    const webrepl_password = document.getElementById('usb-webrepl-rfid')?.value || '';
+    if (!ssid || !password || !webrepl_password) {
+        _usbMsgRfid('Rellena SSID, contraseña WiFi y contraseña WebREPL (se graban en la placa).', true);
+        return;
+    }
+    const btn = document.getElementById('usb-flash-rfid-btn');
+    btn.disabled = true;
+    const txtOriginal = btn.textContent;
+    btn.textContent = '⏳ Subiendo... (no desconectes la placa)';
+    _usbMsgRfid('Subiendo por ' + puerto + '...');
+    try {
+        const resp = await fetch('/api/esp32/rfid/flash_usb', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puerto, ssid, password, webrepl_password })
+        });
+        const d = await resp.json();
+        _usbMsgRfid((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        if (d.success) cargarLectoresRfid();
+    } catch (e) {
+        _usbMsgRfid('❌ Error de conexión con el servidor', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = txtOriginal;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('usb-puerto-rfid')) return;
+    cargarPuertosUSBRfid();
+});
+
 // ── Subir firmware por USB ──────────────────────────────────────────────────
 
 async function cargarPuertosUSB() {
