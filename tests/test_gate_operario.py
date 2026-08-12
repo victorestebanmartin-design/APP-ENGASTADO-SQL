@@ -124,9 +124,14 @@ def test_adoptar_sesion_y_consultarla(client):
 
     d = client.get('/api/sesion/operario').get_json()
     assert d['operario_nombre'] == 'Op Sesion'
+    # login_id se expone para que Engastado V3 reutilice esta identificacion
+    # (ya hecha por el gate) sin volver a pedir tarjeta -- ver v3-estado.js.
+    assert d['login_id'] == login_id
 
     client.post('/api/sesion/operario/salir')
-    assert client.get('/api/sesion/operario').get_json()['operario_nombre'] is None
+    d = client.get('/api/sesion/operario').get_json()
+    assert d['operario_nombre'] is None
+    assert d['login_id'] is None
 
 
 def test_adoptar_login_id_inexistente_falla(client):

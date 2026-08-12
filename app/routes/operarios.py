@@ -384,12 +384,18 @@ def api_sesion_operario_adoptar():
 @bp.route('/api/sesion/operario', methods=['GET'])
 def api_sesion_operario_get():
     """Operario adoptado en la sesion de ESTE navegador, o null si no hay
-    ninguno (o si su login de servidor ya caduco por falta de latido)."""
+    ninguno (o si su login de servidor ya caduco por falta de latido).
+
+    Incluye login_id: lo usa Engastado V3 (ver static/js/v3/v3-estado.js)
+    para reutilizar la identificacion ya hecha en el gate global y no volver
+    a pedir tarjeta al entrar al modulo -- ese login_id es el mismo id de
+    operario_logins que ya gestiona el latido del gate, asi que V3 puede
+    seguir usandolo tal cual para su propio latido."""
     try:
         nombre = session.get('operario_actual')
         login_id = session.get('operario_login_id')
         if not nombre or not login_id:
-            return jsonify({'success': True, 'operario_nombre': None})
+            return jsonify({'success': True, 'operario_nombre': None, 'login_id': None})
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)
             conn.commit()
@@ -399,8 +405,8 @@ def api_sesion_operario_get():
         if not vivo:
             session.pop('operario_actual', None)
             session.pop('operario_login_id', None)
-            return jsonify({'success': True, 'operario_nombre': None})
-        return jsonify({'success': True, 'operario_nombre': nombre})
+            return jsonify({'success': True, 'operario_nombre': None, 'login_id': None})
+        return jsonify({'success': True, 'operario_nombre': nombre, 'login_id': login_id})
     except Exception as e:
         return error_interno(e)
 
@@ -660,7 +666,8 @@ def api_login_solicitar_cancelar():
 
 
 def _rfid_devices_file_path():
-    return os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_rfid_devices.json')
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'esp32_rfid_devices.json')
 
 
 def _puesto_asignado_al_lector(device_id):
@@ -730,12 +737,28 @@ def api_engastado_v3_entrada():
         except Exception:
             current_app.logger.exception('No se pudo registrar la ultima tarjeta vista (lector RFID)')
 
+        # Deja constancia en el historial de eventos (Admin -> Diagnóstico
+        # ESP32): es la única forma de comprobar en remoto que un lector de
+        # puesto realmente lee tarjetas, sin depender solo de su 'online'.
+        def _log(detalle, operario=''):
+            try:
+                from app.routes.sistema import _esp32_registrar_evento
+                _esp32_registrar_evento({
+                    'tipo': 'entrada_rfid', 'fase': '', 'device_id': device_id or '',
+                    'carro': '', 'puesto': puesto_id or '', 'operario': operario,
+                    'lote': '', 'grupo': '', 'uid': tag_uid, 'detalle': detalle,
+                    'ts': datetime.now().isoformat(),
+                })
+            except Exception:
+                current_app.logger.exception('No se pudo registrar el evento de entrada RFID')
+
         puesto_id, puesto_nombre = _puesto_asignado_al_lector(device_id)
 
         with db.engine.connect() as conn:
             # Look up operario by RFID tag
             op = _operario_por_tag(conn, tag_uid)
             if not op:
+                _log('Tarjeta no registrada')
                 return jsonify({
                     'success': False,
                     'error': 'Tarjeta RFID no registrada'
@@ -758,6 +781,7 @@ def api_engastado_v3_entrada():
                         "UPDATE operario_logins SET puesto_id=:p WHERE id=:id"
                     ), {'p': puesto_id, 'id': login_id})
                     conn.commit()
+                _log('Sesión existente reutilizada', nombre)
                 return jsonify({
                     'success': True,
                     'operario_nombre': nombre,
@@ -780,11 +804,13 @@ def api_engastado_v3_entrada():
                 conn.commit()
             except IntegrityError:
                 # Race condition: operario logged in from another workstation
+                _log(f'{nombre} ya está dentro del módulo en otro puesto', nombre)
                 return jsonify({
                     'success': False,
                     'error': f'{nombre} ya está dentro del módulo en otro puesto'
                 }), 409
 
+            _log('Entrada registrada', nombre)
             return jsonify({
                 'success': True,
                 'operario_nombre': nombre,

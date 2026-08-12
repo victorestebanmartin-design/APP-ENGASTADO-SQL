@@ -42,6 +42,7 @@
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
                 <button class="admin-nav-item" data-section="wifi-hotspot" onclick="adminNav('wifi-hotspot')"><span class="ico">📶</span> Hotspot WiFi</button>
+                <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico ESP32</button>
 
                 <div class="admin-nav-label">Auditoría</div>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
@@ -407,6 +408,48 @@
                         <button class="btn-primary" onclick="iniciarHotspot()" style="margin-left:8px;">▶️ Iniciar</button>
                         <button class="btn-secondary" onclick="detenerHotspot()" style="margin-left:8px;">⏹️ Detener</button>
                         <div id="hotspot-control-msg" style="margin-top:10px;font-size:0.88em;white-space:pre-wrap;"></div>
+                    </div>
+                </section>
+
+
+                <!-- ============ DIAGNÓSTICO ESP32 (chequeo de hardware) ============ -->
+                <section id="sec-diagnostico" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Diagnóstico ESP32</h1>
+                        <p>Comprueba que las pantallas y lectores están vivos, y que sus botones y su NFC responden de verdad</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>📶 Resumen de conexión</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            "En línea" solo dice que el dispositivo sigue preguntando al servidor — no que su lector
+                            NFC o sus botones funcionen. Para eso, usa el chequeo en vivo de abajo.
+                        </p>
+                        <div id="diag-resumen" style="display:flex;gap:24px;flex-wrap:wrap;">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔴 Chequeo en vivo</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Ve físicamente a cada carro y a cada puesto:
+                            <strong>pulsa cada botón</strong> (1-7 y el OK) en la pantalla del carro, y
+                            <strong>pasa una tarjeta</strong> por cada lector NFC (el del carro y los de puesto).
+                            Cada pulsación o lectura debe aparecer aquí abajo en segundos. Si no aparece nada al
+                            probar un botón o un lector concreto, el problema está en ese hardware (cableado,
+                            soldadura, chip NFC), no en la red ni en el servidor.
+                        </p>
+                        <div style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+                            <button class="btn-secondary" onclick="cargarDiagnosticoEsp32()">🔄 Actualizar</button>
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.88em;">
+                                <input type="checkbox" id="diag-auto" checked> Actualizar solo mientras estoy en esta pestaña
+                            </label>
+                            <span id="diag-msg" style="font-size:0.88em;"></span>
+                        </div>
+                        <div id="diag-eventos-lista" class="tabla-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
                     </div>
                 </section>
 

@@ -172,12 +172,24 @@ window.addEventListener('beforeunload', function() {
     }
 });
 
-// Inicialización
+// Siempre pedir el operario al entrar (no recordar de sesiones anteriores) --
+// SALVO que el gate de login global (ver app/auth.py) ya haya identificado a
+// este operario para este navegador: en ese caso volver a pedir tarjeta aquí
+// es una segunda identificación innecesaria (y encima el servidor la
+// rechazaría, porque el operario ya figura "dentro" por el login del gate).
+// Ver /api/sesion/operario en app/routes/operarios.py.
+function _arrancarModuloSinGate() {
+    sessionStorage.removeItem('operario_actual');
+
+    // Identificación por tarjeta (el operario pasa su tarjeta en el carro)
+    if (typeof iniciarLoginTarjeta === 'function') iniciarLoginTarjeta();
+
+    // RFID entry detection (dedicate ESP32 reader at workstation entrance)
+    if (typeof iniciar_deteccion_rfid === 'function') iniciar_deteccion_rfid();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initCableColors === 'function') initCableColors();
-
-    // Siempre pedir el operario al entrar (no recordar de sesiones anteriores)
-    sessionStorage.removeItem('operario_actual');
 
     // Cargar lista de operarios en el select (respaldo manual)
     fetch('/api/operarios')
@@ -195,11 +207,21 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(() => {}); // silencioso si falla
 
-    // Identificación por tarjeta (el operario pasa su tarjeta en el carro)
-    if (typeof iniciarLoginTarjeta === 'function') iniciarLoginTarjeta();
-
-    // RFID entry detection (dedicate ESP32 reader at workstation entrance)
-    if (typeof iniciar_deteccion_rfid === 'function') iniciar_deteccion_rfid();
+    fetch('/api/sesion/operario')
+        .then(r => r.json())
+        .then(d => {
+            if (d.success && d.operario_nombre && d.login_id) {
+                // Ya identificado por el gate: reutilizar esa identidad,
+                // sin volver a pedir tarjeta.
+                sessionStorage.setItem('operario_actual', d.operario_nombre);
+                operarioLoginId = d.login_id;
+                _iniciarLatidoOperario();
+                _activarOperario(d.operario_nombre);
+            } else {
+                _arrancarModuloSinGate();
+            }
+        })
+        .catch(() => { _arrancarModuloSinGate(); });
 
     // Event listener para código de bono
     const codigoBonoInput = document.getElementById('codigo-bono');

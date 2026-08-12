@@ -1773,3 +1773,117 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 // ============================================================================
+// DIAGNÓSTICO ESP32 — chequeo en vivo de pantallas y lectores (Admin ->
+// Diagnóstico ESP32). No inventa hardware nuevo: junta lo que ya reportan
+// /api/esp32/devices, /api/esp32/rfid/devices y el historial de
+// /api/esp32/eventos (pulsadores + NFC) en un único panel de comprobación.
+// ============================================================================
+
+function _diagMsg(texto, esError) {
+    const el = document.getElementById('diag-msg');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 4000);
+}
+
+function _diagPill(label, ok, total) {
+    const color = total === 0 ? '#64748b' : (ok === total ? '#4ade80' : (ok === 0 ? '#f87171' : '#fbbf24'));
+    return `<div style="min-width:150px;">
+        <div style="font-size:0.8em;color:#94a3b8;margin-bottom:2px;">${label}</div>
+        <div style="font-size:1.3em;font-weight:700;color:${color};">${ok} / ${total} en línea</div>
+    </div>`;
+}
+
+async function _cargarResumenDiagnostico() {
+    const cont = document.getElementById('diag-resumen');
+    if (!cont) return;
+    try {
+        const [dPant, dLect] = await Promise.all([
+            fetch('/api/esp32/devices').then(r => r.json()),
+            fetch('/api/esp32/rfid/devices').then(r => r.json()),
+        ]);
+        const pantallas = dPant.devices || [];
+        const lectores = dLect.devices || [];
+        const nfcOk = pantallas.filter(d => d.nfc === 'ok').length;
+        const nfcKo = pantallas.filter(d => d.nfc === 'ko').length;
+        cont.innerHTML =
+            _diagPill('🖥️ Pantallas (Display Carro)', pantallas.filter(d => d.online).length, pantallas.length) +
+            _diagPill('🏷️ Lectores RFID (puesto)', lectores.filter(d => d.online).length, lectores.length) +
+            `<div style="min-width:150px;">
+                <div style="font-size:0.8em;color:#94a3b8;margin-bottom:2px;">NFC en pantallas</div>
+                <div style="font-size:1.3em;font-weight:700;color:${nfcKo > 0 ? '#f87171' : '#4ade80'};">
+                    ${nfcOk} ok${nfcKo > 0 ? `, ${nfcKo} sin responder` : ''}
+                </div>
+            </div>`;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">Error cargando el resumen.</p>';
+    }
+}
+
+// Traduce el evento crudo (mismo formato que esp32_eventos.json) a una frase
+// legible para quien está haciendo el chequeo físico.
+function _diagDescribirEvento(ev) {
+    switch (ev.tipo) {
+        case 'confirmacion':
+            return `Botón del carro pulsado — confirmó <strong>${ev.fase === 'devolver' ? 'devolver' : 'recoger'}</strong>`;
+        case 'confirmacion_manual':
+            return `Confirmación manual desde el PC (no desde el botón) — <strong>${ev.fase === 'devolver' ? 'devolver' : 'recoger'}</strong>`;
+        case 'tag':
+            return 'Tarjeta NFC leída en el lector del carro';
+        case 'liberar':
+            return 'Botón mantenido pulsado — liberar puesto';
+        case 'entrada_rfid':
+            return `Tarjeta leída en lector de puesto — ${_dispEsc(ev.detalle || '')}`;
+        default:
+            return _dispEsc(ev.tipo || '(sin tipo)');
+    }
+}
+
+async function cargarDiagnosticoEsp32() {
+    _cargarResumenDiagnostico();
+    const cont = document.getElementById('diag-eventos-lista');
+    if (!cont) return;
+    try {
+        const resp = await fetch('/api/esp32/eventos?limite=40');
+        const d = await resp.json();
+        const eventos = d.eventos || [];
+        if (eventos.length === 0) {
+            cont.innerHTML = '<p class="instruccion">Todavía no ha llegado ningún evento. Pulsa un botón o pasa una tarjeta para probar.</p>';
+            return;
+        }
+        cont.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                <thead><tr style="text-align:left;color:#94a3b8;">
+                    <th style="padding:8px 6px;">Hora</th><th>Dispositivo</th><th>Evento</th>
+                    <th>Carro / Puesto</th><th>Operario</th>
+                </tr></thead>
+                <tbody>` + eventos.map(ev => `
+                <tr style="border-top:1px solid #334155;">
+                    <td style="padding:8px 6px;color:#94a3b8;white-space:nowrap;">${_dispEsc((ev.ts || '').replace('T', ' ').slice(0, 19))}</td>
+                    <td style="font-family:monospace;">${_dispEsc(ev.dispositivo_nombre) || (ev.device_id ? '(' + _dispEsc(ev.device_id.slice(-4)) + ')' : '—')}</td>
+                    <td>${_diagDescribirEvento(ev)}</td>
+                    <td style="color:#94a3b8;">${_dispEsc(ev.carro) || _dispEsc(ev.puesto) || '—'}</td>
+                    <td>${_dispEsc(ev.operario) || '—'}</td>
+                </tr>`).join('') + `
+                </tbody>
+            </table>`;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">Error cargando los eventos. Reintenta con 🔄 Actualizar.</p>';
+        _diagMsg('❌ No se pudo conectar con el servidor', true);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('diag-eventos-lista')) return;
+    cargarDiagnosticoEsp32();
+    setInterval(() => {
+        if (!document.getElementById('sec-diagnostico')?.classList.contains('active')) return;
+        const auto = document.getElementById('diag-auto');
+        if (auto && !auto.checked) return;
+        cargarDiagnosticoEsp32();
+    }, 3000);
+});
+
+
+// ============================================================================

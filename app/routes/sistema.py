@@ -673,6 +673,22 @@ def _esp32_tags_file():
     return os.path.join(base, 'esp32_tags.json')
 
 
+def _esp32_registrar_evento(evento):
+    """Añade un evento al historial reciente (Admin -> Diagnóstico ESP32),
+    capado a los últimos 100. Compartido entre /api/esp32/evento (pulsadores
+    y NFC de la pantalla del carro) y la entrada RFID de puesto (ver
+    api_engastado_v3_entrada en operarios.py), para que ambos tipos de
+    hardware aparezcan en el mismo panel de chequeo."""
+    try:
+        with open(_esp32_eventos_file()) as f:
+            eventos = json.load(f)
+    except Exception:
+        eventos = []
+    eventos.append(evento)
+    with open(_esp32_eventos_file(), 'w') as f:
+        json.dump(eventos[-100:], f, ensure_ascii=False)
+
+
 @bp.route('/api/esp32/evento', methods=['GET'])
 def api_esp32_evento():
     """Recibe un evento de los pulsadores de la pantalla ESP32.
@@ -705,14 +721,7 @@ def api_esp32_evento():
         }
         if not evento['tipo']:
             return jsonify({'success': False, 'message': 'tipo es obligatorio'}), 400
-        try:
-            with open(_esp32_eventos_file()) as f:
-                eventos = json.load(f)
-        except Exception:
-            eventos = []
-        eventos.append(evento)
-        with open(_esp32_eventos_file(), 'w') as f:
-            json.dump(eventos[-100:], f, ensure_ascii=False)
+        _esp32_registrar_evento(evento)
         current_app.logger.info('Evento ESP32: %s', evento)
 
         # Tarjeta NFC leída en el carro. Se guarda como "última tarjeta vista"
@@ -762,6 +771,40 @@ def api_esp32_evento():
                 json.dump(confs, f, ensure_ascii=False)
 
         return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/eventos', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_eventos():
+    """Historial reciente de eventos físicos de los ESP32 (Admin -> Diagnóstico).
+
+    Alimenta el panel de chequeo: el 'online' de Display Carro/Lectores RFID
+    solo dice que el dispositivo hace poll, no que sus botones o su lector NFC
+    respondan de verdad. Aquí, en cambio, cada botón pulsado o tarjeta pasada
+    (en el carro o en un lector de puesto) debe aparecer al momento -- si no
+    aparece nada al probar, el fallo está en el hardware, no en la red.
+    """
+    try:
+        try:
+            with open(_esp32_eventos_file()) as f:
+                eventos = json.load(f)
+        except Exception:
+            eventos = []
+        try:
+            limite = min(max(int(request.args.get('limite', 50)), 1), 100)
+        except (TypeError, ValueError):
+            limite = 50
+        recientes = list(reversed(eventos))[:limite]
+
+        displays = _esp32_load_devices()
+        lectores = _rfid_load_devices()
+        for ev in recientes:
+            dev = displays.get(ev.get('device_id')) or lectores.get(ev.get('device_id')) or {}
+            ev['dispositivo_nombre'] = dev.get('nombre') or ''
+
+        return jsonify({'success': True, 'eventos': recientes})
     except Exception as e:
         return error_interno(e)
 
@@ -1223,7 +1266,7 @@ def api_esp32_rfid_firmware_file():
 # que elegirlo a mano.
 
 def _rfid_devices_file():
-    base = os.path.join(os.path.dirname(current_app.root_path), 'data')
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
     return os.path.join(base, 'esp32_rfid_devices.json')
 
 
