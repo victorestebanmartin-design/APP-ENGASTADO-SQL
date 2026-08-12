@@ -68,6 +68,8 @@
         <a href="#" class="login-reasignar" onclick="reasignarPuesto(); return false;">
             ¿Este equipo no es {{ puesto_nombre }}?
         </a>
+        <br>
+        <a href="{{ url_for('main.admin') }}" class="login-reasignar">🔧 Administración</a>
     </div>
 
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>

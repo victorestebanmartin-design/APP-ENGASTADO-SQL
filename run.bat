@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 title ENGASTADO SQL - Servidor
 cd /d "%~dp0"
 
@@ -14,7 +15,35 @@ echo ===========================================================================
 echo.
 echo  Abriendo navegador en http://localhost:5001 ...
 timeout /t 2 /nobreak >nul
-start "" "http://localhost:5001"
+
+REM Modo "app": si hay Chrome o Edge, se abre en una ventana sin barra de
+REM direcciones ni pestanas (--app=), para que parezca una aplicacion en vez
+REM de una pagina web. Si no se encuentra ninguno, se abre en el navegador
+REM normal como hasta ahora.
+set NAVEGADOR_APP=
+
+for %%P in (
+    "%ProgramFiles%\Google\Chrome\Application\chrome.exe"
+    "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+    "%LocalAppData%\Google\Chrome\Application\chrome.exe"
+) do (
+    if exist %%P if "!NAVEGADOR_APP!"=="" set NAVEGADOR_APP=%%~P
+)
+
+if "%NAVEGADOR_APP%"=="" (
+    for %%P in (
+        "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+        "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
+    ) do (
+        if exist %%P if "!NAVEGADOR_APP!"=="" set NAVEGADOR_APP=%%~P
+    )
+)
+
+if not "%NAVEGADOR_APP%"=="" (
+    start "" "%NAVEGADOR_APP%" --app="http://localhost:5001"
+) else (
+    start "" "http://localhost:5001"
+)
 
 python run_sql.py
 set EXIT_CODE=%errorlevel%
