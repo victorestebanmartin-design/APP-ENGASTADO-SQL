@@ -1060,6 +1060,90 @@ def api_esp32_device_ota(device_id):
         return error_interno(e)
 
 
+# ==================== OTA FIRMWARE ESP32 RFID (entrada Engastado V3) ====================
+#
+# Mismo patron que el OTA de la pantalla de arriba, pero para la placa
+# lectora RFID de entrada (ESP32 DevKit V1 Type-C + RC522, carpeta esp32/
+# sin el subdirectorio micropython/). Solo main.py y esp32/lib/*.py son
+# actualizables por OTA; boot.py, ota_update.py, http_client.py y
+# wifi_config.py se instalan una vez por USB y nunca se tocan por WiFi (asi
+# un OTA roto nunca puede inutilizar el propio mecanismo de OTA). La placa
+# comprueba esto mismo al arrancar y periodicamente (ver esp32/ota_update.py).
+
+def _rfid_firmware_files():
+    """Ficheros del firmware de la placa RFID: (nombre_destino, ruta_absoluta).
+
+    'main.py' es el unico fichero que cambia normalmente; lib/*.py se incluye
+    por si algun dia hace falta actualizar el driver MFRC522 sin pasar por USB.
+    """
+    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
+    files = [('main.py', os.path.join(base, 'main.py'))]
+    lib_dir = os.path.join(base, 'lib')
+    if os.path.isdir(lib_dir):
+        for nombre in sorted(os.listdir(lib_dir)):
+            if nombre.endswith('.py'):
+                files.append((nombre, os.path.join(lib_dir, nombre)))
+    return files
+
+
+def _rfid_firmware_version():
+    """Version declarada en FW_VERSION dentro de esp32/main.py ('' si no hay)."""
+    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
+    try:
+        with open(os.path.join(base, 'main.py'), encoding='utf-8') as f:
+            m = re.search(r'^FW_VERSION\s*=\s*["\'](.*?)["\']', f.read(), re.M)
+            return m.group(1) if m else ''
+    except Exception:
+        return ''
+
+
+def _rfid_firmware_manifest():
+    """Lista [{name, sha256, size}] de los ficheros del firmware RFID disponible."""
+    manifest = []
+    for nombre, ruta in _rfid_firmware_files():
+        try:
+            with open(ruta, 'rb') as f:
+                data = f.read()
+        except Exception:
+            continue
+        manifest.append({'name': nombre,
+                         'sha256': hashlib.sha256(data).hexdigest(),
+                         'size': len(data)})
+    return manifest
+
+
+@bp.route('/api/esp32/rfid/firmware/version', methods=['GET'])
+def api_esp32_rfid_firmware_version():
+    """Version y manifiesto del firmware disponible para la placa lectora RFID."""
+    try:
+        return jsonify({'version': _rfid_firmware_version(),
+                        'files': _rfid_firmware_manifest()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/firmware/file', methods=['GET'])
+def api_esp32_rfid_firmware_file():
+    """Sirve un fichero del firmware RFID (bytes crudos) para el OTA de la placa."""
+    try:
+        nombre = (request.args.get('name') or '').strip()
+        # Whitelist estricta: el nombre debe coincidir con uno del manifiesto,
+        # asi que no cabe ningun path traversal.
+        rutas = {n: r for n, r in _rfid_firmware_files()}
+        ruta = rutas.get(nombre)
+        if not ruta or not os.path.exists(ruta):
+            return jsonify({'success': False, 'message': 'Fichero no válido'}), 404
+        with open(ruta, 'rb') as f:
+            data = f.read()
+        resp = current_app.make_response(data)
+        resp.headers['Content-Type'] = 'application/octet-stream'
+        resp.headers['Content-Length'] = str(len(data))
+        resp.headers['X-SHA256'] = hashlib.sha256(data).hexdigest()
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== DEPLOY HOOK ====================
 
 def _deploy_token():

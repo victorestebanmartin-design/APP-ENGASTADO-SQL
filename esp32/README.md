@@ -1,12 +1,39 @@
 # ESP32 RFID Reader - Engastado V3 Entry System
 
-Firmware for ESP32 DevKit V1 Type-C with RC522 RFID reader to identify operarios at Engastado V3 workstation entrance.
+Placa lectora RFID (ESP32 DevKit V1 Type-C + RC522) para identificar operarios
+a la entrada del puesto de Engastado V3. Confirma con un zumbador y manda la
+lectura al backend (la misma app Flask/SQLite -- COJOsw -- que ya usa el resto
+del sistema, desplegada en PythonAnywhere).
+
+Incluye **actualizacion por WiFi (OTA)**: una vez instalada la placa, para
+cambiar su codigo basta con editar `esp32/main.py` en este repo, desplegar
+como siempre (`deploy.py`) y la placa se actualiza sola en su siguiente
+comprobacion -- sin volver a tocar el cable USB. Esto es lo que resuelve el
+problema de gestionarla desde un PC corporativo sin permisos de driver ni
+salida a puertos no estandar: todo el trafico (lectura RFID y OTA) va por
+HTTPS 443 hacia PythonAnywhere, que es lo unico que ese PC ya tiene garantizado.
+
+## Arquitectura: que se actualiza por USB y que por OTA
+
+| Fichero | Como se instala | Por que |
+|---|---|---|
+| `boot.py` | **USB, una vez** | Conecta el WiFi y dispara el OTA. Si un OTA rompiera este fichero, la placa no podria ni comprobar actualizaciones -- por eso nunca se toca por WiFi. |
+| `ota_update.py` | **USB, una vez** | El propio mecanismo de OTA. Mismo motivo que `boot.py`. |
+| `http_client.py` | **USB, una vez** | Cliente HTTPS del que dependen `main.py` y `ota_update.py`. |
+| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL y configuracion del backend. Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
+| `lib/mfrc522.py` | USB inicialmente, **actualizable por OTA** despues | Driver del lector. Se incluye en el manifiesto OTA por si hiciera falta un fix sin pasar por USB. |
+| `main.py` | USB inicialmente, **actualizable por OTA** despues | La logica de la placa (leer RFID, avisar con el zumbador, mandar la lectura). Esto es lo que cambiaras normalmente. |
+
+El patron (descargar y verificar TODO antes de tocar nada, con copia de
+seguridad y rollback automatico si el nuevo `main.py` no arranca) es el mismo
+que ya usa la pantalla del carro (`esp32/micropython/main_wifi.py`), asi que
+esta ya probado en produccion.
 
 ## Hardware Setup
 
 ### Wiring Diagram
 
-**RC522 RFID Reader → ESP32 DevKit V1 Type-C**
+**RC522 RFID Reader -> ESP32 DevKit V1 Type-C**
 
 ```
 RC522 Pin    ESP32 Pin    GPIO    Purpose
@@ -16,206 +43,209 @@ SDA          GPIO 5               SPI Chip Select (CS)
 SCK          GPIO 18              SPI Clock (CLK)
 MOSI         GPIO 23              SPI Master Out Slave In (MOSI)
 MISO         GPIO 19              SPI Master In Slave Out (MISO)
-IRQ          (not used)           Interrupt
+RST          GPIO 22              Reset
+IRQ          (no se usa)
 ```
 
-**Buzzer (Active/Passive)**
+**Buzzer (activo)**
 
 ```
 Buzzer Pin   ESP32 Pin    Purpose
-+ (Red)      GPIO 26      Signal (via 100Ω resistor if 5V buzzer)
++ (Red)      GPIO 26      Senal (con resistencia de 100ohm si es de 5V)
 - (Black)    GND          Ground
 ```
 
-### Components Needed
+### Componentes necesarios
 
 - ESP32 DevKit V1 Type-C
-- RC522 RFID Module
-- Active Buzzer (5V or 3.3V)
-- 100Ω resistor (if using 5V buzzer with 3.3V GPIO)
-- USB Type-C cable (for programming)
-- WiFi network with intranet access to your PC
+- Modulo RC522
+- Zumbador activo (5V o 3.3V)
+- Resistencia de 100ohm (solo si el zumbador es de 5V)
+- Cable USB Type-C (para el primer flasheo y subida de ficheros)
+- Red WiFi con salida a internet (para llegar a PythonAnywhere por HTTPS)
 
-## Software Setup
+## Instalacion (pasos manuales, una unica vez)
 
-### 1. Flash MicroPython to ESP32
+Todo esto se hace **en un PC libre** con acceso USB a la placa (no en el PC
+corporativo, que tiene el driver CP210x bloqueado).
 
-On your **PC libre** with USB access to ESP32:
+### 1. Flashear MicroPython
 
 ```bash
-# Install esptool
 pip install esptool
-
-# Download MicroPython for ESP32 generic
-# From: https://micropython.org/download/esp32/
-# Or use stable version:
-wget https://micropython.org/resources/firmware/esp32-20240222-v1.22.2.bin
-
-# Erase ESP32 flash
+# Descarga la version estable para ESP32 generico desde
+# https://micropython.org/download/esp32/
 esptool.py erase_flash
-
-# Flash MicroPython
-esptool.py write_flash -z 0x1000 esp32-20240222-v1.22.2.bin
-
-# Verify
-esptool.py chip_id  # Should return chip_id
+esptool.py write_flash -z 0x1000 esp32-XXXXXXXX-vX.XX.X.bin
 ```
 
-### 2. Upload MicroPython Files
+### 2. Rellenar `wifi_config.py` con tus credenciales reales
 
-Use **mpremote** or **ampy** to upload files to ESP32:
+Copia `esp32/wifi_config.py` de este repo a tu maquina y edita **tu copia
+local** (no la subas a git con los valores reales):
+
+```python
+SSID = "TuRedWiFi"
+PASSWORD = "TuContrasenaWiFi"
+WEBREPL_PASSWORD = "TuContrasenaWebREPL"   # 4-9 caracteres, la que ya usabas
+```
+
+`BACKEND_HOST`/`BACKEND_PORT`/`BACKEND_USE_SSL` ya apuntan a
+`viktor85.pythonanywhere.com:443` -- no hace falta tocarlos salvo que cambie
+el dominio de PAW.
+
+### 3. Subir los ficheros base por USB
+
+Con `mpremote` (o Thonny, si lo prefieres):
 
 ```bash
-# Install mpremote
 pip install mpremote
 
-# Connect and upload files
-mpremote mount .
-mpremote cp main.py :/main.py
-mpremote cp wifi_config.py :/wifi_config.py
-mpremote cp mfrc522.py :/mfrc522.py
+mpremote connect COM5 cp esp32/boot.py :boot.py
+mpremote connect COM5 cp esp32/ota_update.py :ota_update.py
+mpremote connect COM5 cp esp32/http_client.py :http_client.py
+mpremote connect COM5 cp wifi_config_con_tus_credenciales.py :wifi_config.py
+mpremote connect COM5 mkdir :lib
+mpremote connect COM5 cp esp32/lib/mfrc522.py :lib/mfrc522.py
+mpremote connect COM5 cp esp32/main.py :main.py
+mpremote connect COM5 reset
 ```
 
-Or use **Thonny IDE** (graphical):
-- Download: https://thonny.org
-- File → Open → Open esp32/main.py
-- Configure interpreter: Options → Interpreter → MicroPython (ESP32) with USB port
-- Upload to device (Ctrl+Shift+S)
+(Cambia `COM5` por el puerto que te asigne Windows, o `/dev/ttyUSB0` en
+Linux/Mac.)
 
-### 3. Configure WiFi & Backend URL
+### 4. Verificar en el monitor serie
 
-Edit `wifi_config.py` on the ESP32 with your network credentials:
-
-```python
-SSID = "YourWiFiNetwork"
-PASSWORD = "YourWiFiPassword"
-BACKEND_URL = "http://192.168.1.100:5001"  # Change to your PC's IP
-```
-
-**To find your PC's IP:**
-
-Linux/Mac:
-```bash
-ifconfig | grep "inet "
-```
-
-Windows:
-```
-ipconfig
-```
-
-Look for the IP on the same subnet as your ESP32 (e.g., 192.168.x.x).
-
-### 4. Test Connection
-
-On ESP32, open serial monitor (115200 baud) and watch for:
+Abre un monitor serie a 115200 baudios (Thonny, `mpremote connect COM5`, o
+`screen`/`putty`) y deberias ver algo asi:
 
 ```
-ESP32 RFID Reader - Engastado V3
-==================================================
-Connecting to WiFi...
-WiFi connected: ('192.168.1.50', '255.255.255.0', '192.168.1.1', '8.8.8.8')
-
-Waiting for RFID card scan...
+Conectando WiFi...
+WiFi OK: ('192.168.1.50', '255.255.255.0', '192.168.1.1', '8.8.8.8')
+OTA: version nueva disponible: 2026-08-12a (actual: ninguna)
+OTA: actualizado a 2026-08-12a - reiniciando
+...
+Placa RFID Engastado V3 - version 2026-08-12a
+Esperando lectura de tarjeta...
 ```
 
-If you see connection errors, verify:
-- WiFi SSID and password are correct
-- Backend URL is reachable from ESP32 (test with curl on your PC)
-- ESP32 is on same network as PC (no firewall blocking port 5001)
+La primera vez es normal ver un OTA nada mas arrancar: la placa aun no tiene
+version local guardada, asi que se "actualiza" a la version publicada
+(aunque sea la misma que le subiste por USB) para fijar `version.txt`.
 
-## RFID Card Registration
+## Publicar una actualizacion (desde entonces, ya no hace falta USB)
 
-Before operarios can use the system, their RFID card UIDs must be registered in the database.
+1. Edita `esp32/main.py` en este repo (o `esp32/lib/mfrc522.py` si tocara el
+   driver).
+2. **Sube `FW_VERSION`** al principio de `esp32/main.py` (p.ej.
+   `"2026-08-13a"`). Es la unica senal que usa la placa para saber que hay
+   algo nuevo -- si no cambias esta linea, el OTA no se dispara.
+3. Commit + push + despliegue habitual (`deploy.py`, igual que siempre).
+4. La placa se actualiza sola:
+   - En su siguiente arranque (corte de luz, reset manual), o
+   - En la siguiente comprobacion periodica (cada
+     `OTA_CHECK_INTERVAL_MS` de `wifi_config.py`, 1 hora por defecto).
 
-### Get Card UID
+No hace falta tocar la placa fisicamente para nada de esto.
 
-1. Connect ESP32 and place RFID card on reader
-2. Serial monitor will show: `Card detected: A1B2C3D4`
-3. Note the hex code (e.g., "A1B2C3D4")
+## Registro de tarjetas RFID de operarios
 
-### Register in Database
+Antes de que un operario pueda usar la placa, su tarjeta debe tener el UID
+guardado en `operarios.tag_uid` (columna que ya existe en el sistema, la
+misma que usa el login por NFC del carro).
 
-On your PC running app-engastado-sql:
+### Averiguar el UID de una tarjeta
 
-**Via admin panel (if available):**
-- Admin → Operarios → Edit operario → Scan RFID → Save
+Con la placa conectada por USB y el monitor serie abierto, apoya la tarjeta:
+el log muestra `Tarjeta detectada: A1B2C3D4`.
 
-**Via direct SQL:**
+### Darla de alta
+
+Desde Admin -> Operarios (si el panel lo permite), o directamente en la base
+de datos:
+
 ```sql
-UPDATE operarios SET tag_uid = 'A1B2C3D4' WHERE nombre = 'Juan Pérez';
+UPDATE operarios SET tag_uid = 'A1B2C3D4' WHERE nombre = 'Juan Perez';
 ```
 
-**Via Python shell:**
-```python
-import sqlite3
-conn = sqlite3.connect('data/engastado.db')
-conn.execute("UPDATE operarios SET tag_uid = 'A1B2C3D4' WHERE nombre = 'Juan Pérez'")
-conn.commit()
-```
+## Comportamiento del firmware
 
-## Firmware Behavior
+### Funcionamiento normal
 
-### Normal Operation
+1. El operario pasa su tarjeta por el lector.
+2. La placa lee el UID y hace `POST /api/puestos/engastado_v3/entrada`.
+3. **Exito (200):** 2 pitidos + LED, la interfaz V3 detecta el login solo.
+4. **Tarjeta no registrada / ya dentro en otro puesto (404/409):** 1 pitido.
+5. **Fallo de red:** 5 pitidos, se puede reintentar al momento (no hay estado
+   que limpiar).
 
-1. Operario scans RFID card at puesto entrance
-2. ESP32 reads 4-byte card UID
-3. Sends HTTP POST to `/api/puestos/engastado_v3/entrada`
-4. **On success (200):** Buzzer beeps 2x, LED blinks (operario logged in)
-5. **On card not found (404):** Buzzer beeps 1x (invalid card)
-6. **On network error:** Buzzer beeps 5x, retries after 5 seconds
+### Antirrebote
 
-### Debounce
+Minimo 2 segundos entre lecturas (`DEBOUNCE_MS` en `wifi_config.py`) para no
+duplicar la misma pasada de tarjeta.
 
-Minimum 2 seconds between reads to prevent double-scans. Operario can scan again after buzzer confirms.
+### Seguridad ante fallos de OTA
 
-## Troubleshooting
+- Se descarga y verifica (tamano + sha256) TODO antes de tocar nada: un corte
+  de red a mitad de la descarga deja el firmware actual intacto.
+- Si el `main.py` nuevo no llega a arrancar 3 veces seguidas, `boot.py`
+  restaura la version anterior solo (rollback), sin intervencion manual.
+- Un corte de luz que reinicie la placa a mitad de trabajo NO cuenta como
+  fallo de arranque (solo cuenta si `main.py` no llega a entrar en su bucle
+  principal).
 
-### "Card detected" but no HTTP request
+## Resolucion de problemas
 
-- Check `BACKEND_URL` in wifi_config.py is correct
-- Verify firewall on PC allows port 5001
-- Test connectivity: `ping 192.168.1.100` from another device on network
+### La placa no conecta a WiFi
 
-### Buzzer not working
+- Revisa `SSID`/`PASSWORD` en tu copia de `wifi_config.py` (subida por USB).
+- Prueba con una red de 2.4GHz (el ESP32 clasico no soporta 5GHz).
 
-- Check GPIO 26 is connected to buzzer
-- Verify buzzer + lead goes to GPIO 26, - lead to GND
-- Test with: `from machine import Pin; Pin(26, Pin.OUT).on()`
+### "Tarjeta detectada" pero no llega nada al servidor
 
-### ESP32 won't connect to WiFi
+- Comprueba que la placa tiene salida a internet (no solo a la red local):
+  el backend es `viktor85.pythonanywhere.com` por HTTPS, no una IP local.
+- Revisa el log del monitor serie: `http_client` imprime el motivo del fallo.
 
-- Verify SSID and password in wifi_config.py
-- Check if WiFi requires special characters (edit with care)
-- Try 2.4GHz network (some ESP32 have issues with 5GHz)
+### El zumbador no suena
 
-### RFID reader not detected
+- Revisa el cableado: `+` a GPIO 26, `-` a GND.
+- Prueba a mano: `from machine import Pin; Pin(26, Pin.OUT).on()`.
 
-- Check SPI wiring: CS=5, CLK=18, MOSI=23, MISO=19
-- Verify 3.3V power to RC522
-- Try different RFID cards (some cards don't work)
+### El lector RFID no responde
 
-## Files
+- Repasa el cableado SPI: CS=5, SCK=18, MOSI=23, MISO=19, RST=22.
+- Alimentacion del RC522 a 3.3V, nunca a 5V (se puede danar).
+- Prueba con otra tarjeta (algunos tags no son compatibles con MIFARE
+  Classic, que es lo que soporta este lector).
 
-- `main.py` - Main firmware loop
-- `wifi_config.py` - WiFi & backend configuration
-- `mfrc522.py` - RFID library (must be uploaded to ESP32)
+### La placa se quedo "vieja" y no se actualiza
 
-## Backend Integration
+- Comprueba `GET https://viktor85.pythonanywhere.com/api/esp32/rfid/firmware/version`
+  desde un navegador: debe devolver la `FW_VERSION` que pusiste en
+  `esp32/main.py` tras el ultimo deploy.
+- Por USB, revisa `version.txt` en la placa (`mpremote connect COM5 cat version.txt`)
+  para ver que version cree tener instalada.
 
-The firmware expects this endpoint to exist:
+## Ficheros de este directorio
 
-```
-POST /api/puestos/engastado_v3/entrada
-Request:  { "tag_uid": "A1B2C3D4" }
-Response: 200 OK { "success": true, "operario_nombre": "Juan Pérez", "login_id": "..." }
-Response: 404 Not Found { "success": false, "error": "Tarjeta RFID no registrada" }
-```
+- `boot.py` -- arranque: WiFi, WebREPL, dispara el OTA. **USB, no se toca por OTA.**
+- `ota_update.py` -- logica de comprobar/descargar/aplicar/revertir el OTA. **USB, no se toca por OTA.**
+- `http_client.py` -- cliente HTTP/HTTPS minimo sin dependencias externas. **USB, no se toca por OTA.**
+- `wifi_config.py` -- credenciales y configuracion. **USB, no se toca por OTA, no se commitea con secretos reales.**
+- `lib/mfrc522.py` -- driver del lector RC522 (vendorizado, MIT license). Actualizable por OTA.
+- `main.py` -- logica de la placa (RFID + zumbador + POST). **Esto es lo que se actualiza por OTA.**
 
-See backend implementation in `app/routes/operarios.py`.
+## Backend (referencia)
 
-## References
+Endpoints implicados, todos en `app/routes/`:
 
-- MicroPython documentation: https://docs.micropython.org
-- RC522 RFID library: https://github.com/mfrc522/micropython-mfrc522
-- ESP32 pinout: https://randomnerdtutorials.com/esp32-pinout-reference-gpios/
+- `POST /api/puestos/engastado_v3/entrada` (`app/routes/operarios.py`) -- recibe la lectura RFID, resuelve el login del operario.
+- `GET /api/esp32/rfid/firmware/version` (`app/routes/sistema.py`) -- version y manifiesto disponibles.
+- `GET /api/esp32/rfid/firmware/file?name=X` (`app/routes/sistema.py`) -- sirve un fichero del firmware.
+
+## Referencias
+
+- Documentacion MicroPython: https://docs.micropython.org
+- Driver MFRC522 original: https://github.com/wendlers/micropython-mfrc522 (MIT License)
+- Pinout ESP32: https://randomnerdtutorials.com/esp32-pinout-reference-gpios/
