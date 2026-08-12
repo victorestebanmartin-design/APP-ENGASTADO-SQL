@@ -42,6 +42,16 @@ from app.routes.base import (
 
 # ==================== OPERARIOS ====================
 
+@bp.route('/api/modulos', methods=['GET'])
+def api_modulos_get():
+    """Lista de módulos de la app (MODULOS_APP), para las casillas de
+    permisos en Admin -> Operarios. Fuente única de verdad: app/routes/base.py."""
+    from app.routes.base import MODULOS_APP
+    return jsonify({'success': True, 'modulos': [
+        {'slug': slug, 'label': info['label']} for slug, info in MODULOS_APP.items()
+    ]})
+
+
 def _operario_por_tag(conn, tag_uid):
     """Operario activo asociado a esa tarjeta NFC, o None."""
     return conn.execute(text(
@@ -55,10 +65,13 @@ def api_operarios_get():
     try:
         with db.engine.connect() as conn:
             rows = conn.execute(text(
-                "SELECT id, nombre, activo, created_at, tag_uid FROM operarios ORDER BY nombre"
+                "SELECT id, nombre, activo, created_at, tag_uid, modulos_permitidos "
+                "FROM operarios ORDER BY nombre"
             )).fetchall()
         return jsonify({'success': True, 'operarios': [
-            {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3], 'tag_uid': r[4]}
+            {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3], 'tag_uid': r[4],
+             # null = todos los modulos; lista = justo esos (ver base.py:modulos_permitidos_de)
+             'modulos_permitidos': json.loads(r[5]) if r[5] else None}
             for r in rows
         ]})
     except Exception as e:
@@ -87,9 +100,10 @@ def api_operarios_create():
 
 @bp.route('/api/operarios/<op_id>', methods=['PUT'])
 def api_operarios_update(op_id):
-    """Actualizar operario: nombre y/o su tarjeta NFC."""
+    """Actualizar operario: nombre, su tarjeta NFC y/o sus módulos permitidos."""
     try:
         from app.routes.puestos import normalizar_tag_uid
+        from app.routes.base import MODULOS_APP
         data = request.get_json() or {}
 
         # Tarjeta NFC del operario: UID en hex, o null/'' para quitarla.
@@ -106,9 +120,28 @@ def api_operarios_update(op_id):
                                     'error': 'El UID de la tarjeta no es válido '
                                              '(se espera hexadecimal, de 4 a 10 bytes)'}), 400
 
-        # Si solo se toca la tarjeta, el nombre no es obligatorio.
+        # Módulos permitidos: lista de slugs, o null para "todos" (ver
+        # app/routes/base.py:modulos_permitidos_de). Se valida contra
+        # MODULOS_APP para no guardar slugs inventados.
+        modulos_json, tocar_modulos = None, False
+        if 'modulos_permitidos' in data:
+            tocar_modulos = True
+            crudo_mod = data.get('modulos_permitidos')
+            if crudo_mod is None:
+                modulos_json = None  # "todos los modulos"
+            elif isinstance(crudo_mod, list):
+                invalidos = [m for m in crudo_mod if m not in MODULOS_APP]
+                if invalidos:
+                    return jsonify({'success': False,
+                                    'error': f'Módulo(s) desconocido(s): {", ".join(invalidos)}'}), 400
+                modulos_json = json.dumps(sorted(set(crudo_mod)))
+            else:
+                return jsonify({'success': False,
+                                'error': 'modulos_permitidos debe ser una lista o null'}), 400
+
+        # Si solo se toca la tarjeta o los modulos, el nombre no es obligatorio.
         nombre = None
-        if 'nombre' in data or not tocar_tag:
+        if 'nombre' in data or not (tocar_tag or tocar_modulos):
             nombre = (data.get('nombre') or '').strip()
             if not nombre:
                 return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
@@ -126,6 +159,9 @@ def api_operarios_update(op_id):
             if tocar_tag:
                 conn.execute(text("UPDATE operarios SET tag_uid=:t WHERE id=:id"),
                              {'t': None if limpiar_tag else tag_uid, 'id': op_id})
+            if tocar_modulos:
+                conn.execute(text("UPDATE operarios SET modulos_permitidos=:m WHERE id=:id"),
+                             {'m': modulos_json, 'id': op_id})
             conn.commit()
         return jsonify({'success': True})
     except IntegrityError:
@@ -284,8 +320,15 @@ def api_operario_logins_get():
     Incluye puesto_id/puesto_nombre cuando el login vino de un lector RFID
     asignado a un puesto: el frontend lo sondea para saltarse la selección
     manual de puesto (ver static/js/v3/v3-rfid-entrada.js).
+
+    Con ?puesto_id=X, filtra a solo los logins de ESE puesto -- imprescindible
+    para el gate global de login (ver static/js/shared/rfid-login.js): sin
+    este filtro, cualquier PC que sondee "el ultimo login que aparezca en
+    cualquier sitio" podria adoptar por error el login de OTRO puesto. El
+    sondeo sin filtro (usado hoy por Engastado V3) sigue funcionando igual.
     """
     try:
+        puesto_id = (request.args.get('puesto_id') or '').strip() or None
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)
             conn.commit()
@@ -293,8 +336,9 @@ def api_operario_logins_get():
                 "SELECT ol.id, ol.operario_nombre, ol.timestamp_login, ol.ultimo_latido, "
                 "       ol.puesto_id, p.nombre "
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
-                "WHERE ol.activo=1 ORDER BY ol.timestamp_login"
-            )).fetchall()
+                "WHERE ol.activo=1 AND (:puesto_id IS NULL OR ol.puesto_id = :puesto_id) "
+                "ORDER BY ol.timestamp_login"
+            ), {'puesto_id': puesto_id}).fetchall()
         return jsonify({'success': True, 'logins': [
             {'id': r[0], 'operario': r[1], 'desde': r[2], 'ultimo_latido': r[3],
              'puesto_id': r[4], 'puesto_nombre': r[5]}
@@ -302,6 +346,72 @@ def api_operario_logins_get():
         ]})
     except Exception as e:
         return error_interno(e)
+
+
+# ==================== SESION GLOBAL DE OPERARIO (gate de login) ====================
+#
+# operario_logins (arriba) es la sesion "de trabajo" -- exclusiva por
+# operario, con latido, pensada para Engastado V3. Esto es distinto: una vez
+# que un PC ve (via el sondeo con ?puesto_id=) que su operario ha pasado la
+# tarjeta, adopta ese login guardando su identidad en la sesion de Flask de
+# ESE navegador (vida corta, por pestaña/navegador), para que requiere_operario
+# (app/auth.py) sepa quien esta detras de cada peticion sin volver a sondear.
+
+
+@bp.route('/api/sesion/operario/adoptar', methods=['POST'])
+def api_sesion_operario_adoptar():
+    """Fija la sesion de Flask de este navegador a partir de un login_id ya
+    creado (por un lector RFID). Llamado por static/js/shared/rfid-login.js
+    tras detectar un login nuevo en el sondeo de /api/operarios/logins."""
+    try:
+        data = request.get_json(silent=True) or {}
+        login_id = (data.get('login_id') or '').strip()
+        if not login_id:
+            return jsonify({'success': False, 'error': 'login_id es obligatorio'}), 400
+        with db.engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT operario_nombre FROM operario_logins WHERE id=:id AND activo=1"
+            ), {'id': login_id}).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Ese login ya no está activo'}), 404
+        session['operario_actual'] = row[0]
+        session['operario_login_id'] = login_id
+        return jsonify({'success': True, 'operario_nombre': row[0]})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/sesion/operario', methods=['GET'])
+def api_sesion_operario_get():
+    """Operario adoptado en la sesion de ESTE navegador, o null si no hay
+    ninguno (o si su login de servidor ya caduco por falta de latido)."""
+    try:
+        nombre = session.get('operario_actual')
+        login_id = session.get('operario_login_id')
+        if not nombre or not login_id:
+            return jsonify({'success': True, 'operario_nombre': None})
+        with db.engine.connect() as conn:
+            _expirar_logins_fantasma(conn)
+            conn.commit()
+            vivo = conn.execute(text(
+                "SELECT 1 FROM operario_logins WHERE id=:id AND activo=1"
+            ), {'id': login_id}).fetchone()
+        if not vivo:
+            session.pop('operario_actual', None)
+            session.pop('operario_login_id', None)
+            return jsonify({'success': True, 'operario_nombre': None})
+        return jsonify({'success': True, 'operario_nombre': nombre})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/sesion/operario/salir', methods=['POST'])
+def api_sesion_operario_salir():
+    """Cierra la sesion de operario de ESTE navegador (no afecta a otros PCs
+    que puedan tener el mismo login_id, solo limpia la sesion de Flask local)."""
+    session.pop('operario_actual', None)
+    session.pop('operario_login_id', None)
+    return jsonify({'success': True})
 
 
 @bp.route('/api/operarios/logins/<login_id>/liberar', methods=['POST'])

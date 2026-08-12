@@ -33,6 +33,8 @@ from app.auth import (
     sesion_admin_valida,
     marcar_sesion_admin,
     cerrar_sesion_admin,
+    gate_operario_activo,
+    fijar_gate_operario,
 )
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
@@ -112,6 +114,29 @@ def _encontrar_git():
             return scoop_git
 
     return None
+
+
+@bp.route('/api/sistema/gate_operario', methods=['GET'])
+@requiere_pin_admin
+def api_gate_operario_get():
+    """Estado del gate de login global (Admin -> Sistema)."""
+    try:
+        return jsonify({'success': True, 'activo': gate_operario_activo()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/sistema/gate_operario', methods=['POST'])
+@requiere_pin_admin
+def api_gate_operario_set():
+    """Activa/desactiva el gate de login global en caliente (sin reiniciar
+    el servidor). Ver app/auth.py:requiere_operario."""
+    try:
+        data = request.get_json(silent=True) or {}
+        fijar_gate_operario(bool(data.get('activo')))
+        return jsonify({'success': True, 'activo': gate_operario_activo()})
+    except Exception as e:
+        return error_interno(e)
 
 
 @bp.route('/api/descargar_instalador', methods=['GET'])
@@ -1424,6 +1449,147 @@ def api_esp32_rfid_flash_usb():
         return jsonify({'success': False,
                         'message': 'Timeout: comprueba que la placa está conectada a ese puerto y que '
                                    'ningún otro programa (monitor serie, mpremote...) lo está usando.'})
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== HOTSPOT WIFI (PC servidor) ====================
+#
+# Dos piezas independientes:
+# 1. Credenciales guardadas (bajo riesgo, siempre util): se recuerdan una vez
+#    y precargan los formularios de "Subir por USB" (Display Carro y
+#    Lectores RFID), para no tener que reescribirlas en cada placa.
+# 2. Control del hotspot en si (mejor esfuerzo): usa el mecanismo clasico de
+#    Windows (`netsh wlan set/start/stop hostednetwork`). Esta OBSOLETO en
+#    Windows moderno y depende del driver del adaptador WiFi -- puede
+#    simplemente no funcionar en algunos PCs. El error de netsh se muestra
+#    tal cual en el admin, sin esconderlo, y la alternativa manual (activar
+#    el Hotspot movil de Windows a mano, una vez, desde Ajustes) sigue
+#    funcionando igual: solo hace falta guardar aqui el mismo SSID/clave.
+
+def _hotspot_file():
+    return os.path.join(current_app.config['DATA_DIR'], 'wifi_hotspot.json')
+
+
+def _hotspot_cargar():
+    try:
+        with open(_hotspot_file()) as f:
+            return json.load(f)
+    except Exception:
+        return {'ssid': '', 'password': ''}
+
+
+@bp.route('/api/hotspot/credenciales', methods=['GET'])
+@requiere_pin_admin
+def api_hotspot_credenciales_get():
+    """SSID/clave guardados del hotspot (para precargar formularios de USB)."""
+    try:
+        return jsonify({'success': True, **_hotspot_cargar()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/hotspot/credenciales', methods=['POST'])
+@requiere_pin_admin
+def api_hotspot_credenciales_set():
+    """Guarda SSID/clave del hotspot (no arranca nada, solo los recuerda)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        ssid = str(data.get('ssid', '')).strip()
+        password = str(data.get('password', ''))
+        if not ssid:
+            return jsonify({'success': False, 'message': 'El SSID es obligatorio'}), 400
+        with open(_hotspot_file(), 'w') as f:
+            json.dump({'ssid': ssid, 'password': password}, f)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+def _netsh_hostednetwork(*args, timeout=30):
+    return subprocess.run(
+        ['netsh', 'wlan'] + list(args),
+        capture_output=True, text=True, timeout=timeout)
+
+
+@bp.route('/api/hotspot/estado', methods=['GET'])
+@requiere_pin_admin
+def api_hotspot_estado():
+    """Estado del hotspot 'hosted network' de Windows (netsh wlan).
+
+    Solo tiene sentido en el servidor local (run.bat); en PythonAnywhere
+    netsh no existe y esto devuelve 'no soportado' sin liar nada.
+    """
+    try:
+        try:
+            r = _netsh_hostednetwork('show', 'hostednetwork')
+        except FileNotFoundError:
+            return jsonify({'success': True, 'soportado': False,
+                            'mensaje': 'netsh no está disponible en este servidor (no es Windows local).'})
+        salida = (r.stdout or '') + (r.stderr or '')
+        activo = 'Estado                 : Iniciado' in salida or 'Status                 : Started' in salida
+        return jsonify({'success': True, 'soportado': True, 'activo': activo, 'salida_netsh': salida.strip()})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout consultando el estado con netsh'})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/hotspot/iniciar', methods=['POST'])
+@requiere_pin_admin
+def api_hotspot_iniciar():
+    """Configura y arranca el hotspot con las credenciales guardadas.
+
+    Usa el mecanismo 'hosted network' de netsh (obsoleto, depende del driver
+    del adaptador). Si falla, se devuelve el error de netsh tal cual: no hay
+    forma fiable de "arreglarlo" desde aquí, mejor que el admin vea el motivo
+    real y recurra a la alternativa manual (Hotspot móvil de Windows) si hace
+    falta.
+    """
+    try:
+        cred = _hotspot_cargar()
+        if not cred.get('ssid'):
+            return jsonify({'success': False,
+                            'message': 'Guarda primero un SSID y contraseña en "Credenciales del hotspot"'}), 400
+        try:
+            r1 = _netsh_hostednetwork('set', 'hostednetwork', 'mode=allow',
+                                      f"ssid={cred['ssid']}", f"key={cred['password']}")
+        except FileNotFoundError:
+            return jsonify({'success': False,
+                            'message': 'netsh no está disponible en este servidor (no es Windows local).'})
+        if r1.returncode != 0:
+            return jsonify({'success': False,
+                            'message': ('Error al configurar: ' + (r1.stdout or r1.stderr or '')).strip()[-400:]})
+        r2 = _netsh_hostednetwork('start', 'hostednetwork')
+        if r2.returncode != 0:
+            salida = (r2.stdout or r2.stderr or '').strip()
+            return jsonify({'success': False,
+                            'message': ('Error al arrancar el hotspot: ' + salida)[-400:] +
+                                       ' — Si el adaptador WiFi no soporta redes "hosted", usa el Hotspot '
+                                       'móvil de Windows manualmente (Ajustes) y guarda aquí el mismo SSID/clave.'})
+        return jsonify({'success': True, 'message': f"Hotspot '{cred['ssid']}' iniciado."})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout arrancando el hotspot con netsh'})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/hotspot/detener', methods=['POST'])
+@requiere_pin_admin
+def api_hotspot_detener():
+    """Para el hotspot iniciado por /api/hotspot/iniciar."""
+    try:
+        try:
+            r = _netsh_hostednetwork('stop', 'hostednetwork')
+        except FileNotFoundError:
+            return jsonify({'success': False,
+                            'message': 'netsh no está disponible en este servidor (no es Windows local).'})
+        if r.returncode != 0:
+            return jsonify({'success': False,
+                            'message': ('Error al detener: ' + (r.stdout or r.stderr or '')).strip()[-400:]})
+        return jsonify({'success': True, 'message': 'Hotspot detenido.'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Timeout deteniendo el hotspot con netsh'})
     except Exception as e:
         return error_interno(e)
 

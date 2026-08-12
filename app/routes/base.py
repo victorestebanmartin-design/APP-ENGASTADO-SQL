@@ -42,6 +42,40 @@ def set_db(db_real):
     _DBProxy._real = db_real
 
 
+# ==================== MODULOS DE LA APP (permisos por operario) ====================
+#
+# Fuente unica de verdad de que modulos existen: la usan las casillas de
+# permisos en Admin -> Operarios, el filtrado de la rejilla de /modules y el
+# gate de login (requiere_operario, en app/auth.py). 'admin' NO esta aqui a
+# proposito: ya tiene su propio PIN, es ortogonal a los permisos por operario.
+MODULOS_APP = {
+    'engastado':     {'label': 'Engastado',      'endpoint': 'main.index_v3'},
+    'mangueras':     {'label': 'Mangueras',       'endpoint': 'main.mangueras'},
+    'manguitos':     {'label': 'Manguitos',       'endpoint': 'main.manguitos'},
+    'produccion':    {'label': 'Producción',      'endpoint': None},  # popup Bonos+Ordenes
+    'visualizacion': {'label': 'Visualización',   'endpoint': 'main.visualizacion'},
+    'etiquetas':     {'label': 'Etiquetas',       'endpoint': 'main.etiquetas'},
+}
+
+
+def modulos_permitidos_de(modulos_permitidos_raw):
+    """Parsea operarios.modulos_permitidos (JSON en texto, o None) a un set
+    de slugs. None/valor invalido -> None, que significa "todos los modulos"
+    (asi la migracion no deja a nadie fuera el primer dia: el acceso solo se
+    restringe cuando el admin edita explicitamente a ese operario). Una lista
+    vacia explicita ('[]') si significa "ninguno"."""
+    if modulos_permitidos_raw is None:
+        return None
+    try:
+        import json as _json
+        lista = _json.loads(modulos_permitidos_raw)
+        if not isinstance(lista, list):
+            return None
+        return {m for m in lista if m in MODULOS_APP}
+    except Exception:
+        return None
+
+
 def _ahora_iso() -> str:
     """Hora local real (Europe/Madrid) en isoformat naive.
 

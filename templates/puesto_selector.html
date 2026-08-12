@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurar este equipo — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        .sel-card {
+            background: #1e293b;
+            border: 1px solid rgba(148,163,184,.18);
+            border-radius: 16px;
+            padding: 38px 34px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.45);
+            text-align: center;
+        }
+        .sel-logo {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.4em;
+            letter-spacing: 2px;
+            color: #f1f5f9;
+            margin-bottom: 4px;
+        }
+        .sel-logo .sw { color: #3b82f6; }
+        .sel-title { font-size: 1.15em; font-weight: 600; margin: 18px 0 6px; }
+        .sel-sub {
+            color: #94a3b8;
+            font-size: 0.92em;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+        .sel-select {
+            width: 100%;
+            box-sizing: border-box;
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.28);
+            border-radius: 10px;
+            color: #f1f5f9;
+            font-size: 1.05em;
+            text-align: left;
+            padding: 13px 12px;
+            margin-bottom: 18px;
+            font-family: inherit;
+        }
+        .sel-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,.25);
+        }
+        .sel-btn {
+            width: 100%;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 13px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background .15s;
+        }
+        .sel-btn:hover { background: #2563eb; }
+        .sel-btn:disabled { opacity: .6; cursor: default; }
+        .sel-error {
+            background: rgba(239,68,68,.12);
+            border: 1px solid rgba(239,68,68,.4);
+            color: #fca5a5;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 18px;
+            font-size: 0.9em;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="sel-card">
+        <div class="sel-logo">COJO<span class="sw">sw</span></div>
+        <div class="sel-title">¿Qué puesto es este equipo?</div>
+        <div class="sel-sub">
+            Se pregunta una sola vez por PC. A partir de ahora, cuando alguien
+            pase su tarjeta en el lector de este puesto, esta pantalla lo
+            reconocerá sola.
+        </div>
+
+        <div id="sel-error" class="sel-error"></div>
+
+        <select id="sel-puesto" class="sel-select">
+            <option value="">— Selecciona un puesto —</option>
+            {% for p in puestos %}
+            <option value="{{ p.id }}" {{ 'selected' if p.id == puesto_actual_id else '' }}>{{ p.nombre }}</option>
+            {% endfor %}
+        </select>
+
+        <button id="sel-btn" class="sel-btn" onclick="confirmarPuestoPC()">Confirmar</button>
+    </div>
+
+    <script>
+        // Si este PC ya tenía puesto asignado, esto es una reasignación: la
+        // página ya exigió PIN antes de llegar aquí (ver paginas.py), así
+        // que el endpoint protegido funcionará. Si es la primera vez, va por
+        // el endpoint abierto (autoservicio).
+        const PUESTO_ACTUAL_ID = {{ puesto_actual_id | tojson }};
+        const URL_GUARDAR = PUESTO_ACTUAL_ID ? '/api/puesto/pc/reasignar' : '/api/puesto/pc';
+
+        async function confirmarPuestoPC() {
+            const sel = document.getElementById('sel-puesto');
+            const err = document.getElementById('sel-error');
+            const btn = document.getElementById('sel-btn');
+            const puestoId = sel.value;
+            if (!puestoId) {
+                err.textContent = 'Elige un puesto de la lista.';
+                err.style.display = 'block';
+                return;
+            }
+            err.style.display = 'none';
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+            try {
+                const r = await fetch(URL_GUARDAR, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puesto_id: puestoId })
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'Error al guardar');
+                window.location.href = '/modules';
+            } catch (e) {
+                err.textContent = e.message || 'No se pudo guardar. Reintenta.';
+                err.style.display = 'block';
+                btn.disabled = false;
+                btn.textContent = 'Confirmar';
+            }
+        }
+    </script>
+</body>
+</html>

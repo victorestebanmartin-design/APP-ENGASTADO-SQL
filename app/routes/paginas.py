@@ -29,6 +29,7 @@ from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
 from app.auth import (
     requiere_pin_admin,
+    requiere_operario,
     proteccion_activa,
     sesion_admin_valida,
     marcar_sesion_admin,
@@ -37,6 +38,7 @@ from app.auth import (
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
+    MODULOS_APP, modulos_permitidos_de,
 )
 
 
@@ -52,15 +54,73 @@ def favicon():
 
 
 @bp.route('/')
+@requiere_operario
 def home():
     """Página de inicio"""
     return render_template('home.html')
 
 
 @bp.route('/modules')
+@requiere_operario
 def modules():
-    """Página de módulos del sistema"""
-    return render_template('modules.html')
+    """Página de módulos del sistema, filtrada por lo que el operario en
+    sesión tiene permitido (ver MODULOS_APP/modulos_permitidos_de en
+    app/routes/base.py). Con el gate desactivado, o para un operario sin
+    modulos_permitidos configurado (NULL = "todos"), se ve la rejilla
+    completa, igual que siempre. El filtrado SOLO se aplica con el gate
+    activo: si se desactiva, no debe importar qué sesión de operario haya
+    quedado colgada de antes -- todo vuelve a verse, sin excepciones."""
+    from app.auth import gate_operario_activo
+    permitidos = set(MODULOS_APP.keys())  # por defecto, todos
+    if gate_operario_activo():
+        nombre = session.get('operario_actual')
+        if nombre:
+            with db.engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT modulos_permitidos FROM operarios WHERE nombre=:n AND activo=1"
+                ), {'n': nombre}).fetchone()
+            if row:
+                calculados = modulos_permitidos_de(row[0])
+                if calculados is not None:
+                    permitidos = calculados
+    return render_template('modules.html', permitidos=permitidos)
+
+
+@bp.route('/puesto/seleccionar')
+def puesto_seleccionar():
+    """Configuración inicial (o reasignación) del puesto de este PC.
+
+    Sin puesto asignado a este navegador, main.home/main.modules redirigen
+    aquí (ver requiere_operario en app/auth.py) y NO hace falta PIN: es la
+    configuración de un equipo recién instalado, autoservicio. Pero si el PC
+    YA tenía un puesto asignado, esto es una reasignación -- exige la misma
+    sesión de admin que el resto del panel, así que se manda por el PIN
+    (con next= de vuelta aquí) antes de mostrar nada.
+    """
+    from app.routes.puestos import _puesto_pc_actual
+    puesto_id_actual, _ = _puesto_pc_actual()
+    if puesto_id_actual and proteccion_activa() and not sesion_admin_valida():
+        return redirect(url_for('main.admin_pin', next=url_for('main.puesto_seleccionar')))
+
+    from repositories.puesto_repository import PuestoRepository
+    puestos = PuestoRepository(db).obtener_todos_puestos()
+    return render_template('puesto_selector.html', puestos=puestos, puesto_actual_id=puesto_id_actual)
+
+
+@bp.route('/login')
+def login_operario():
+    """Pantalla "pasa tu tarjeta": puerta de entrada a toda la app.
+
+    Requiere que este PC ya tenga puesto asignado (si no, main.home/
+    main.modules ya lo habrían mandado antes a /puesto/seleccionar). Sondea
+    los logins de ESE puesto (evita adoptar el login de otro puesto) y, al
+    detectar uno, adopta la sesión y sigue a /modules.
+    """
+    from app.routes.puestos import _puesto_pc_actual
+    puesto_id, puesto_nombre = _puesto_pc_actual()
+    if not puesto_id:
+        return redirect(url_for('main.puesto_seleccionar'))
+    return render_template('login_operario.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
@@ -97,15 +157,30 @@ _PIN_MAX_INTENTOS = 5
 _PIN_BLOQUEO_SEG = 15 * 60
 
 
+def _destino_pin_seguro(crudo):
+    """Solo rutas internas ('/algo'), nunca '//host' (protocol-relative) ni
+    URLs absolutas -- evita que 'next' se use para un open redirect."""
+    if crudo and crudo.startswith('/') and not crudo.startswith('//'):
+        return crudo
+    return url_for('main.admin')
+
+
 @bp.route('/admin/pin', methods=['GET', 'POST'])
 def admin_pin():
-    """Pantalla de introducción del PIN de administración."""
+    """Pantalla de introducción del PIN de administración.
+
+    Acepta ?next=/ruta-interna para volver a donde estaba el usuario tras
+    verificar el PIN (usado por la reasignación de puesto de un PC, ver
+    main.puesto_seleccionar) en vez de mandarlo siempre a /admin.
+    """
+    destino = _destino_pin_seguro(request.values.get('next'))
+
     # Si la protección no está activa, no tiene sentido pedir PIN
     if not proteccion_activa():
-        return redirect(url_for('main.admin'))
-    # Si ya está verificado, directo al panel
+        return redirect(destino)
+    # Si ya está verificado, directo al destino
     if sesion_admin_valida():
-        return redirect(url_for('main.admin'))
+        return redirect(destino)
 
     error = None
     if request.method == 'POST':
@@ -115,7 +190,7 @@ def admin_pin():
         if time.time() < bloqueado_hasta:
             minutos = int((bloqueado_hasta - time.time()) // 60) + 1
             error = f'Demasiados intentos fallidos. Espera {minutos} min.'
-            return render_template('admin-pin.html', error=error)
+            return render_template('admin-pin.html', error=error, next=destino)
 
         pin = (request.form.get('pin') or '').strip()
         hash_introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
@@ -124,7 +199,7 @@ def admin_pin():
         if pin and hmac.compare_digest(hash_introducido, hash_correcto):
             _PIN_INTENTOS.pop(ip, None)
             marcar_sesion_admin()
-            return redirect(url_for('main.admin'))
+            return redirect(destino)
 
         # Fallo: contar intento y bloquear la IP si supera el máximo
         fallos += 1
@@ -136,7 +211,7 @@ def admin_pin():
         time.sleep(1)
         error = 'PIN incorrecto'
 
-    return render_template('admin-pin.html', error=error)
+    return render_template('admin-pin.html', error=error, next=destino)
 
 
 @bp.route('/admin/logout', methods=['GET', 'POST'])

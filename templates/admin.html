@@ -41,6 +41,7 @@
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
+                <button class="admin-nav-item" data-section="wifi-hotspot" onclick="adminNav('wifi-hotspot')"><span class="ico">📶</span> Hotspot WiFi</button>
 
                 <div class="admin-nav-label">Auditoría</div>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
@@ -363,6 +364,53 @@
                 </section>
 
 
+                <!-- ============ HOTSPOT WIFI (PC servidor) ============ -->
+                <section id="sec-wifi-hotspot" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Hotspot WiFi</h1>
+                        <p>Para que las placas ESP32 se conecten directamente a este PC, sin depender de un router</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>📶 Credenciales del hotspot</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Se guardan aquí y precargan los formularios de "Subir por USB" (Display Carro y
+                            Lectores RFID), para no tener que escribirlas cada vez.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="hotspot-ssid" placeholder="SSID del hotspot"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <input type="password" id="hotspot-pass" placeholder="Contraseña"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <button class="btn-primary" onclick="guardarCredencialesHotspot()">💾 Guardar</button>
+                        </div>
+                        <div id="hotspot-cred-msg" style="font-size:0.88em;"></div>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>📡 Controlar el hotspot en este PC</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Arranca/para el punto de acceso WiFi de <strong>este equipo</strong> con las
+                            credenciales guardadas arriba, usando el mecanismo "hosted network" de Windows.
+                            <strong style="color:#fbbf24;">Aviso:</strong> este mecanismo está obsoleto en
+                            Windows moderno y depende de que tu adaptador WiFi lo soporte — puede simplemente
+                            no funcionar. Si falla, activa el <strong>Hotspot móvil</strong> de Windows a mano
+                            desde Ajustes (una sola vez) con el mismo SSID/contraseña; la app no necesita nada
+                            más para que las placas lo usen.
+                            <br><em>Solo tiene efecto en la app local (run.bat) — en PythonAnywhere no hay
+                            adaptador WiFi que controlar.</em>
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <span id="hotspot-estado-badge" style="font-size:0.9em;">Comprobando estado…</span>
+                        </div>
+                        <button class="btn-secondary" onclick="cargarEstadoHotspot()">🔄 Comprobar estado</button>
+                        <button class="btn-primary" onclick="iniciarHotspot()" style="margin-left:8px;">▶️ Iniciar</button>
+                        <button class="btn-secondary" onclick="detenerHotspot()" style="margin-left:8px;">⏹️ Detener</button>
+                        <div id="hotspot-control-msg" style="margin-top:10px;font-size:0.88em;white-space:pre-wrap;"></div>
+                    </div>
+                </section>
+
+
                 <!-- ============ REPORT (TRAZABILIDAD) ============ -->
                 <section id="sec-report" class="admin-section">
                     <div class="admin-section-head">
@@ -429,6 +477,20 @@
                     <div class="admin-section-head">
                         <h1>Sistema</h1>
                         <p>Actualizaciones y bloqueos de paquetes activos</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>🪪 Login con tarjeta (obligatorio para acceder a la app)</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Con esto activado, <strong>toda la app exige pasar la tarjeta</strong> antes de entrar
+                            a cualquier módulo (según los permisos de cada operario, configurables en
+                            Admin → Operarios). Actívalo solo cuando ya hayas revisado los permisos de todos los
+                            operarios — con el interruptor apagado, todo funciona exactamente igual que hasta ahora.
+                        </p>
+                        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                            <input type="checkbox" id="gate-operario-toggle" onchange="cambiarGateOperario()">
+                            <span id="gate-operario-estado">Cargando…</span>
+                        </label>
                     </div>
 
                     <div class="card">
@@ -604,17 +666,35 @@
     // ──────────────────────────────────────────────────────────────
     //  OPERARIOS — CRUD
     // ──────────────────────────────────────────────────────────────
+    // Cache de MODULOS_APP (cambia poco, se pide una sola vez)
+    let _modulosAppCache = null;
+    function _cargarModulosApp() {
+        if (_modulosAppCache) return Promise.resolve(_modulosAppCache);
+        return fetch('/api/modulos').then(r => r.json()).then(d => {
+            _modulosAppCache = d.modulos || [];
+            return _modulosAppCache;
+        });
+    }
+
     function cargarOperariosAdmin() {
-        fetch('/api/operarios')
-            .then(r => r.json())
-            .then(data => {
+        Promise.all([fetch('/api/operarios').then(r => r.json()), _cargarModulosApp()])
+            .then(([data, modulos]) => {
                 const cont = document.getElementById('op-lista-container');
                 if (!cont) return;
                 if (!data.operarios || data.operarios.length === 0) {
                     cont.innerHTML = '<p class="instruccion">No hay operarios registrados. Añade uno arriba.</p>';
                     return;
                 }
-                const filas = data.operarios.map(op => `
+                const filas = data.operarios.map(op => {
+                    // null = sin restringir (todos marcados); si no, solo los de la lista
+                    const permitidos = op.modulos_permitidos;
+                    const casillasModulos = modulos.map(m => `
+                        <label style="display:flex;align-items:center;gap:5px;font-size:0.85em;white-space:nowrap;">
+                            <input type="checkbox" class="op-mod-check" data-op="${op.id}" data-slug="${m.slug}"
+                                ${(permitidos === null || permitidos.includes(m.slug)) ? 'checked' : ''}>
+                            ${m.label}
+                        </label>`).join('');
+                    return `
                     <tr id="op-row-${op.id}">
                         <td>
                             <span id="op-nombre-${op.id}">${op.nombre}</span>
@@ -630,6 +710,11 @@
                         <td>
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
                         </td>
+                        <td>
+                            <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">${casillasModulos}</div>
+                            <button onclick="guardarPermisosOperario('${op.id}')" class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:0.8em;">Guardar permisos</button>
+                            <span id="op-permisos-msg-${op.id}" style="font-size:0.78em;margin-left:6px;"></span>
+                        </td>
                         <td style="white-space:nowrap;">
                             <span id="op-btns-${op.id}">
                                 <button onclick="editarOperario('${op.id}')" class="btn-accion-edit" title="Editar">✏️</button>
@@ -643,7 +728,8 @@
                                 <button onclick="cancelarEditarOperario('${op.id}')" class="btn-secondary" style="padding:4px 12px;font-size:0.85em;margin-left:6px;">Cancelar</button>
                             </span>
                         </td>
-                    </tr>`).join('');
+                    </tr>`;
+                }).join('');
                 cont.innerHTML = `
                     <div class="tabla-container">
                         <table>
@@ -652,6 +738,7 @@
                                     <th>Nombre</th>
                                     <th>Tarjeta NFC</th>
                                     <th>Estado</th>
+                                    <th>Módulos permitidos</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -667,6 +754,23 @@
                     });
                 }
             });
+    }
+
+    function guardarPermisosOperario(id) {
+        const checks = document.querySelectorAll(`.op-mod-check[data-op="${id}"]`);
+        const modulos_permitidos = Array.from(checks).filter(c => c.checked).map(c => c.dataset.slug);
+        const msg = document.getElementById(`op-permisos-msg-${id}`);
+        fetch(`/api/operarios/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modulos_permitidos })
+        }).then(r => r.json()).then(data => {
+            if (msg) {
+                msg.textContent = data.success ? '✅ Guardado' : (data.error || 'Error');
+                msg.style.color = data.success ? '#4ade80' : '#f87171';
+                setTimeout(() => { msg.textContent = ''; }, 3000);
+            }
+        });
     }
 
     // Logins activos (quién está dentro del módulo de engastado)

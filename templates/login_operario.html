@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identifícate — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        .login-card {
+            background: #1e293b;
+            border: 1px solid rgba(148,163,184,.18);
+            border-radius: 16px;
+            padding: 42px 34px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.45);
+            text-align: center;
+        }
+        .login-logo {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.4em;
+            letter-spacing: 2px;
+            color: #f1f5f9;
+            margin-bottom: 4px;
+        }
+        .login-logo .sw { color: #3b82f6; }
+        .login-puesto {
+            display: inline-block;
+            background: rgba(59,130,246,.14);
+            border: 1px solid rgba(59,130,246,.35);
+            color: #93c5fd;
+            border-radius: 999px;
+            padding: 4px 14px;
+            font-size: 0.82em;
+            margin: 14px 0 24px;
+        }
+        .login-icon { font-size: 2.8em; line-height: 1; margin-bottom: 12px; }
+        .login-msg { font-size: 1.08em; color: #cbd5e1; min-height: 1.4em; }
+        .login-reasignar {
+            display: inline-block;
+            margin-top: 26px;
+            color: #475569;
+            text-decoration: none;
+            font-size: 0.8em;
+        }
+        .login-reasignar:hover { color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">COJO<span class="sw">sw</span></div>
+        <div class="login-puesto">📍 {{ puesto_nombre }}</div>
+        <div class="login-icon">📇</div>
+        <div id="login-msg" class="login-msg">Pasa tu tarjeta por el lector...</div>
+
+        <a href="#" class="login-reasignar" onclick="reasignarPuesto(); return false;">
+            ¿Este equipo no es {{ puesto_nombre }}?
+        </a>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
+    <script>
+        const PUESTO_ID = {{ puesto_id | tojson }};
+
+        iniciarDeteccionRfid(`/api/operarios/logins?puesto_id=${encodeURIComponent(PUESTO_ID)}`, function (login) {
+            const msg = document.getElementById('login-msg');
+            msg.textContent = `✓ ${login.operario}`;
+            msg.style.color = '#4ade80';
+
+            fetch('/api/sesion/operario/adoptar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_id: login.id })
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        window.location.href = '/modules';
+                    } else {
+                        msg.textContent = d.error || 'No se pudo entrar. Vuelve a pasar la tarjeta.';
+                        msg.style.color = '#f87171';
+                    }
+                })
+                .catch(() => {
+                    msg.textContent = 'Error de conexión. Vuelve a pasar la tarjeta.';
+                    msg.style.color = '#f87171';
+                });
+        });
+
+        // Reasignación: exige PIN de admin (ver /api/puesto/pc/reasignar).
+        // Aquí solo se manda a la pantalla del selector; si el PC ya tiene
+        // puesto, el propio selector es quien pide el PIN al confirmar.
+        function reasignarPuesto() {
+            window.location.href = '/puesto/seleccionar';
+        }
+    </script>
+</body>
+</html>

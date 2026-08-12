@@ -48,6 +48,81 @@ from app.routes.progreso import _crimps_por_terminal_archivo
 BOTONES_PUESTO_MAX = 7
 
 
+# ==================== PC <-> PUESTO (identidad del equipo) ====================
+#
+# Cada PC vive fisicamente en un puesto fijo. Un navegador no tiene ninguna
+# identidad propia por defecto, asi que se la damos con una cookie de muy
+# larga duracion (no la sesion de Flask, que dura horas): la primera vez que
+# se abre la app en un PC se pregunta "que puesto es este equipo" y se
+# recuerda para siempre (hasta que un admin lo reasigne). Esto es lo que
+# permite que /api/operarios/logins?puesto_id=X (ver operarios.py) sepa a que
+# puesto pertenece cada navegador, sin mezclar logins entre puestos.
+
+COOKIE_PUESTO_PC = 'puesto_pc_id'
+COOKIE_PUESTO_PC_MAX_AGE = 315360000  # ~10 anios
+
+
+def _puesto_pc_actual():
+    """(puesto_id, nombre) del puesto asignado a ESTE navegador, o (None, None)
+    si no hay cookie o el puesto ya no existe/esta inactivo."""
+    puesto_id = (request.cookies.get(COOKIE_PUESTO_PC) or '').strip()
+    if not puesto_id:
+        return None, None
+    puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+    if not puesto:
+        return None, None
+    return puesto_id, puesto['nombre']
+
+
+@bp.route('/api/puesto/pc', methods=['GET'])
+def api_puesto_pc_get():
+    """Puesto asignado a este navegador (o null si aun no se ha elegido)."""
+    puesto_id, nombre = _puesto_pc_actual()
+    return jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': nombre})
+
+
+@bp.route('/api/puesto/pc', methods=['POST'])
+def api_puesto_pc_set():
+    """Fija el puesto de este PC por primera vez (autoservicio, sin PIN: es
+    la configuracion inicial de un equipo recien instalado, no un cambio)."""
+    try:
+        data = request.get_json(silent=True) or {}
+        puesto_id = (data.get('puesto_id') or '').strip()
+        if not puesto_id:
+            return jsonify({'success': False, 'error': 'puesto_id es obligatorio'}), 400
+        puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+        if not puesto:
+            return jsonify({'success': False, 'error': 'Puesto no encontrado'}), 404
+        resp = jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': puesto['nombre']})
+        resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                        httponly=True, samesite='Lax')
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/puesto/pc/reasignar', methods=['POST'])
+@requiere_pin_admin
+def api_puesto_pc_reasignar():
+    """Cambia el puesto de un PC que ya tenia uno asignado. Protegido por PIN:
+    a diferencia de la configuracion inicial, reasignar es una accion de
+    infraestructura que no deberia hacer cualquiera desde el suelo de planta."""
+    try:
+        data = request.get_json(silent=True) or {}
+        puesto_id = (data.get('puesto_id') or '').strip()
+        if not puesto_id:
+            return jsonify({'success': False, 'error': 'puesto_id es obligatorio'}), 400
+        puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+        if not puesto:
+            return jsonify({'success': False, 'error': 'Puesto no encontrado'}), 404
+        resp = jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': puesto['nombre']})
+        resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                        httponly=True, samesite='Lax')
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
 def normalizar_tag_uid(crudo):
     """Deja un UID de tarjeta NFC en forma canónica: hex en mayúsculas y sin
     separadores. Devuelve '' si viene vacío, o None si no es un UID válido.

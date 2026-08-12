@@ -103,6 +103,7 @@
         {% endif %}
 
         <form method="POST" action="{{ url_for('main.admin_pin') }}">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
             <input type="password" name="pin" class="pin-input" inputmode="numeric"
                    autocomplete="off" autofocus required>
             <button type="submit" class="pin-btn">Entrar</button>

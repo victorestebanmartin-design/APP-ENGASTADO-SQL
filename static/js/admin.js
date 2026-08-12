@@ -3,6 +3,158 @@
  * JavaScript Administración
  */
 
+// ============================================================================
+// GATE DE LOGIN GLOBAL — interruptor en caliente (Admin -> Sistema)
+// ============================================================================
+
+async function cargarGateOperario() {
+    const check = document.getElementById('gate-operario-toggle');
+    const estado = document.getElementById('gate-operario-estado');
+    if (!check) return;
+    try {
+        const r = await fetch('/api/sistema/gate_operario');
+        const d = await r.json();
+        check.checked = !!d.activo;
+        estado.textContent = d.activo ? 'Activado: se exige tarjeta en toda la app' : 'Desactivado: acceso libre, como hasta ahora';
+    } catch (e) {
+        estado.textContent = 'No se pudo comprobar el estado';
+    }
+}
+
+async function cambiarGateOperario() {
+    const check = document.getElementById('gate-operario-toggle');
+    const estado = document.getElementById('gate-operario-estado');
+    estado.textContent = 'Guardando…';
+    try {
+        const r = await fetch('/api/sistema/gate_operario', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ activo: check.checked })
+        });
+        const d = await r.json();
+        estado.textContent = d.activo ? 'Activado: se exige tarjeta en toda la app' : 'Desactivado: acceso libre, como hasta ahora';
+    } catch (e) {
+        estado.textContent = 'No se pudo guardar';
+        check.checked = !check.checked;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('gate-operario-toggle')) return;
+    cargarGateOperario();
+});
+
+// ============================================================================
+// HOTSPOT WIFI — credenciales guardadas + control netsh (Admin -> Hotspot WiFi)
+// ============================================================================
+
+function _hotspotMsg(id, texto, esError) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = esError ? '#f87171' : '#4ade80';
+}
+
+async function cargarCredencialesHotspot() {
+    try {
+        const r = await fetch('/api/hotspot/credenciales');
+        const d = await r.json();
+        const ssidInput = document.getElementById('hotspot-ssid');
+        const passInput = document.getElementById('hotspot-pass');
+        if (ssidInput && d.ssid) ssidInput.value = d.ssid;
+        if (passInput && d.password) passInput.value = d.password;
+    } catch (e) { /* silencioso */ }
+}
+
+async function guardarCredencialesHotspot() {
+    const ssid = document.getElementById('hotspot-ssid')?.value || '';
+    const password = document.getElementById('hotspot-pass')?.value || '';
+    if (!ssid) { _hotspotMsg('hotspot-cred-msg', 'El SSID es obligatorio', true); return; }
+    try {
+        const r = await fetch('/api/hotspot/credenciales', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssid, password })
+        });
+        const d = await r.json();
+        _hotspotMsg('hotspot-cred-msg', d.success ? '✅ Guardado' : (d.message || 'Error'), !d.success);
+        if (d.success) _precargarHotspotEnFormulariosUSB();
+    } catch (e) {
+        _hotspotMsg('hotspot-cred-msg', '❌ Error de conexión', true);
+    }
+}
+
+async function cargarEstadoHotspot() {
+    const badge = document.getElementById('hotspot-estado-badge');
+    if (badge) badge.textContent = 'Comprobando estado…';
+    try {
+        const r = await fetch('/api/hotspot/estado');
+        const d = await r.json();
+        if (!badge) return;
+        if (!d.soportado) {
+            badge.textContent = '⚪ ' + (d.mensaje || 'No soportado en este servidor');
+        } else if (d.activo) {
+            badge.textContent = '🟢 Hotspot iniciado';
+        } else {
+            badge.textContent = '🔴 Hotspot detenido';
+        }
+    } catch (e) {
+        if (badge) badge.textContent = '❌ No se pudo comprobar';
+    }
+}
+
+async function iniciarHotspot() {
+    _hotspotMsg('hotspot-control-msg', 'Iniciando…');
+    try {
+        const r = await fetch('/api/hotspot/iniciar', { method: 'POST' });
+        const d = await r.json();
+        _hotspotMsg('hotspot-control-msg', (d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        cargarEstadoHotspot();
+    } catch (e) {
+        _hotspotMsg('hotspot-control-msg', '❌ Error de conexión', true);
+    }
+}
+
+async function detenerHotspot() {
+    _hotspotMsg('hotspot-control-msg', 'Deteniendo…');
+    try {
+        const r = await fetch('/api/hotspot/detener', { method: 'POST' });
+        const d = await r.json();
+        _hotspotMsg('hotspot-control-msg', (d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        cargarEstadoHotspot();
+    } catch (e) {
+        _hotspotMsg('hotspot-control-msg', '❌ Error de conexión', true);
+    }
+}
+
+// Precarga las credenciales guardadas en los formularios de "Subir por USB"
+// (Display Carro y Lectores RFID), solo si el campo está vacío -- para no
+// pisar algo que el admin ya haya escrito a mano en esta misma visita.
+async function _precargarHotspotEnFormulariosUSB() {
+    const ssidDisplay = document.getElementById('usb-ssid');
+    const ssidRfid = document.getElementById('usb-ssid-rfid');
+    if (!ssidDisplay && !ssidRfid) return;
+    try {
+        const r = await fetch('/api/hotspot/credenciales');
+        const d = await r.json();
+        if (!d.ssid) return;
+        if (ssidDisplay && !ssidDisplay.value) ssidDisplay.value = d.ssid;
+        const passDisplay = document.getElementById('usb-pass');
+        if (passDisplay && !passDisplay.value) passDisplay.value = d.password || '';
+        if (ssidRfid && !ssidRfid.value) ssidRfid.value = d.ssid;
+        const passRfid = document.getElementById('usb-pass-rfid');
+        if (passRfid && !passRfid.value) passRfid.value = d.password || '';
+    } catch (e) { /* silencioso: si falla, el admin escribe a mano como siempre */ }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('hotspot-ssid')) {
+        cargarCredencialesHotspot();
+        cargarEstadoHotspot();
+    }
+    _precargarHotspotEnFormulariosUSB();
+});
+
 // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
     cargarArchivos();

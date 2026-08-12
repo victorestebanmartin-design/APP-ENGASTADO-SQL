@@ -123,6 +123,14 @@ def _apply_migrations(db_path):
         """)
         conn.commit()
 
+    # Migración: permisos por operario (que módulos puede ver en /modules).
+    # NULL = todos los modulos permitidos (asi nadie se queda fuera justo
+    # tras esta migracion); '[]' explicito = ninguno. Ver
+    # app/routes/base.py:modulos_permitidos_de().
+    if op_cols and 'modulos_permitidos' not in op_cols:
+        cur.execute("ALTER TABLE operarios ADD COLUMN modulos_permitidos TEXT")
+        conn.commit()
+
     # Migración: tabla sesiones_trabajo (bloqueo de paquetes concurrente)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sesiones_trabajo (

@@ -1,13 +1,16 @@
 /**
  * RFID Entry System for Engastado V3
  * Handles automatic operario login via RFID card scan at workstation entrance
+ *
+ * El sondeo en si (esperar a que aparezca un login nuevo en
+ * /api/operarios/logins) vive en static/js/shared/rfid-login.js, compartido
+ * con la pantalla de login global (templates/login_operario.html). Este
+ * fichero solo decide QUE HACER cuando aparece: activar el operario dentro
+ * del asistente de V3, sin filtrar por puesto (comportamiento historico,
+ * pensado para un solo puesto sondeando a la vez dentro de este modulo).
  */
 
-// Configuration
-const RFID_POLL_INTERVAL_MS = 2000;  // Poll for new logins every 2 seconds
-const RFID_POLL_TIMEOUT_MS = 30000;   // Stop polling after 30 seconds
-
-let rfidPollingTimeout = null;
+let _detenerSondeoRfidV3 = null;
 
 /**
  * Initialize RFID entry detection
@@ -16,55 +19,22 @@ let rfidPollingTimeout = null;
 function iniciar_deteccion_rfid() {
     console.log('[RFID] Iniciando detección de entrada RFID...');
 
-    let lastLoginCount = 0;
-    let pollStartTime = Date.now();
+    _detenerSondeoRfidV3 = iniciarDeteccionRfid('/api/operarios/logins', (login) => {
+        const operarioNombre = login.operario;
+        const loginId = login.id;
+        const puestoId = login.puesto_id || null;
+        const puestoNombre = login.puesto_nombre || null;
 
-    function sondear_logins() {
-        fetch('/api/operarios/logins')
-            .then(r => r.json())
-            .then(data => {
-                if (data.success && data.logins && data.logins.length > 0) {
-                    const currentLoginCount = data.logins.length;
-
-                    // A new login appeared (RFID scan detected)
-                    if (currentLoginCount > lastLoginCount) {
-                        const newLogin = data.logins[data.logins.length - 1];
-                        const operarioNombre = newLogin.operario;
-                        const loginId = newLogin.id;
-                        const puestoId = newLogin.puesto_id || null;
-                        const puestoNombre = newLogin.puesto_nombre || null;
-
-                        console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
-                            (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
-                        mostrar_rfid_confirmado(operarioNombre, loginId, puestoId, puestoNombre);
-
-                        // Stop polling
-                        if (rfidPollingTimeout) clearTimeout(rfidPollingTimeout);
-                        return;
-                    }
-
-                    lastLoginCount = currentLoginCount;
-                }
-
-                // Continue polling if not expired
-                if (Date.now() - pollStartTime < RFID_POLL_TIMEOUT_MS) {
-                    rfidPollingTimeout = setTimeout(sondear_logins, RFID_POLL_INTERVAL_MS);
-                } else {
-                    console.log('[RFID] Polling timeout - RFID reader may not be connected');
-                    mostrar_rfid_timeout();
-                }
-            })
-            .catch(err => {
-                console.error('[RFID] Error polling logins:', err);
-                // Retry on error
-                if (Date.now() - pollStartTime < RFID_POLL_TIMEOUT_MS) {
-                    rfidPollingTimeout = setTimeout(sondear_logins, RFID_POLL_INTERVAL_MS);
-                }
-            });
-    }
-
-    // Start polling
-    rfidPollingTimeout = setTimeout(sondear_logins, RFID_POLL_INTERVAL_MS);
+        console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
+            (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
+        mostrar_rfid_confirmado(operarioNombre, loginId, puestoId, puestoNombre);
+    }, {
+        timeoutMs: 30000,
+        onTimeout: () => {
+            console.log('[RFID] Polling timeout - RFID reader may not be connected');
+            mostrar_rfid_timeout();
+        }
+    });
 }
 
 /**
@@ -138,9 +108,9 @@ function procesar_login_rfid(operarioNombre, loginId) {
  * Stop RFID polling (call when user manually closes modal or logs out)
  */
 function detener_deteccion_rfid() {
-    if (rfidPollingTimeout) {
-        clearTimeout(rfidPollingTimeout);
-        rfidPollingTimeout = null;
+    if (_detenerSondeoRfidV3) {
+        _detenerSondeoRfidV3();
+        _detenerSondeoRfidV3 = null;
         console.log('[RFID] Detección de RFID detenida');
     }
 }

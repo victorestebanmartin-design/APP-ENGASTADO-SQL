@@ -83,7 +83,18 @@ class Config:
     ADMIN_PIN_HASH = os.environ.get('ADMIN_PIN_HASH', '').strip()
     # Duración de la sesión de administración (horas) antes de pedir el PIN otra vez.
     ADMIN_SESSION_HOURS = int(os.environ.get('ADMIN_SESSION_HOURS', '8'))
-    
+
+    # =====================================================
+    # GATE DE LOGIN GLOBAL (tarjeta RFID + permisos por operario)
+    # =====================================================
+    # Interruptor maestro: con esto en False (por defecto), '/' y '/modules'
+    # funcionan exactamente igual que siempre, sin pedir tarjeta. Se activa
+    # solo cuando ya se han configurado los permisos reales de cada operario
+    # desde Admin -> Operarios, para no bloquear a nadie el primer día tras
+    # desplegar. También hay un interruptor visible en Admin -> Sistema que
+    # sobreescribe esto en caliente sin tocar el .env.
+    OPERARIO_GATE_ENABLED = os.environ.get('OPERARIO_GATE_ENABLED', 'False').lower() == 'true'
+
     # Rutas de directorios
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     DATA_DIR = os.path.join(BASE_DIR, 'data')
