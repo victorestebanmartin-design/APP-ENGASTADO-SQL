@@ -279,17 +279,25 @@ def api_operario_latido():
 
 @bp.route('/api/operarios/logins', methods=['GET'])
 def api_operario_logins_get():
-    """Listar logins activos (quién está dentro del módulo ahora mismo)."""
+    """Listar logins activos (quién está dentro del módulo ahora mismo).
+
+    Incluye puesto_id/puesto_nombre cuando el login vino de un lector RFID
+    asignado a un puesto: el frontend lo sondea para saltarse la selección
+    manual de puesto (ver static/js/v3/v3-rfid-entrada.js).
+    """
     try:
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)
             conn.commit()
             rows = conn.execute(text(
-                "SELECT id, operario_nombre, timestamp_login, ultimo_latido "
-                "FROM operario_logins WHERE activo=1 ORDER BY timestamp_login"
+                "SELECT ol.id, ol.operario_nombre, ol.timestamp_login, ol.ultimo_latido, "
+                "       ol.puesto_id, p.nombre "
+                "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
+                "WHERE ol.activo=1 ORDER BY ol.timestamp_login"
             )).fetchall()
         return jsonify({'success': True, 'logins': [
-            {'id': r[0], 'operario': r[1], 'desde': r[2], 'ultimo_latido': r[3]}
+            {'id': r[0], 'operario': r[1], 'desde': r[2], 'ultimo_latido': r[3],
+             'puesto_id': r[4], 'puesto_nombre': r[5]}
             for r in rows
         ]})
     except Exception as e:
@@ -503,23 +511,52 @@ def api_login_solicitar_cancelar():
 #
 # Dedicated RFID reader at Engastado V3 workstation entrance. Operario scans
 # card to automatically log in to the module. Called by ESP32 firmware.
+#
+# Cada lector puede estar asignado a un puesto concreto desde Admin ->
+# Lectores RFID (ver app/routes/sistema.py, endpoints /api/esp32/rfid/devices
+# y el registro que se guarda en data/esp32_rfid_devices.json). Si lo está,
+# el PC no tiene que preguntar el puesto: esta ruta se lo devuelve ya
+# resuelto junto con el operario.
+
+
+def _rfid_devices_file_path():
+    return os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_rfid_devices.json')
+
+
+def _puesto_asignado_al_lector(device_id):
+    """(puesto_id, puesto_nombre) asignados a ese lector, o (None, None)."""
+    if not device_id:
+        return None, None
+    try:
+        with open(_rfid_devices_file_path()) as f:
+            devs = json.load(f)
+    except Exception:
+        return None, None
+    dev = devs.get(device_id) or {}
+    puesto_id = dev.get('puesto_id') or None
+    return (puesto_id, dev.get('puesto_nombre') or None) if puesto_id else (None, None)
 
 
 @bp.route('/api/puestos/engastado_v3/entrada', methods=['POST'])
 def api_engastado_v3_entrada():
     """RFID card scan at Engastado V3 workstation entrance.
 
-    ESP32 reader sends the card's UID (hex string). This endpoint:
+    ESP32 reader sends the card's UID (hex string) and its own device_id.
+    This endpoint:
     1. Looks up operario by tag_uid in database
     2. Creates/reuses operario_logins session (exclusive login)
-    3. Returns operario name + login_id for frontend to auto-populate
+    3. If the reading device has a puesto assigned (Admin -> Lectores RFID),
+       resolves it so the frontend can skip the manual puesto-selection step
+    4. Returns operario name + login_id (+ puesto, if any) for the frontend
 
-    Request:  { "tag_uid": "A1B2C3D4" }
+    Request:  { "tag_uid": "A1B2C3D4", "device_id": "a1b2c3d4e5f6" }
     Response 200:
       {
         "success": true,
         "operario_nombre": "Juan Pérez",
         "login_id": "uuid-here",
+        "puesto_id": "puesto_001",       (null si el lector no tiene puesto asignado)
+        "puesto_nombre": "Engastado 1",  (null si no aplica)
         "message": "Entrada registrada"
       }
     Response 404:
@@ -536,8 +573,11 @@ def api_engastado_v3_entrada():
     try:
         data = request.get_json(silent=True) or {}
         tag_uid = (data.get('tag_uid') or '').strip().upper()
+        device_id = (data.get('device_id') or '').strip()[:32] or None
         if not tag_uid:
             return jsonify({'success': False, 'error': 'tag_uid es obligatorio'}), 400
+
+        puesto_id, puesto_nombre = _puesto_asignado_al_lector(device_id)
 
         with db.engine.connect() as conn:
             # Look up operario by RFID tag
@@ -557,12 +597,20 @@ def api_engastado_v3_entrada():
             ), {'n': nombre}).fetchone()
 
             if existente:
-                # Reuse existing session
+                # Reuse existing session. Refresca el puesto por si el
+                # operario ha vuelto a pasar la tarjeta en un lector distinto.
                 login_id = existente[0]
+                if puesto_id:
+                    conn.execute(text(
+                        "UPDATE operario_logins SET puesto_id=:p WHERE id=:id"
+                    ), {'p': puesto_id, 'id': login_id})
+                    conn.commit()
                 return jsonify({
                     'success': True,
                     'operario_nombre': nombre,
                     'login_id': login_id,
+                    'puesto_id': puesto_id,
+                    'puesto_nombre': puesto_nombre,
                     'message': 'Sesión existente reutilizada'
                 }), 200
 
@@ -573,9 +621,9 @@ def api_engastado_v3_entrada():
             try:
                 conn.execute(text(
                     "INSERT INTO operario_logins "
-                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo) "
-                    "VALUES (:id, :n, :t, :t, 1)"
-                ), {'id': login_id, 'n': nombre, 't': ahora})
+                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id) "
+                    "VALUES (:id, :n, :t, :t, 1, :p)"
+                ), {'id': login_id, 'n': nombre, 't': ahora, 'p': puesto_id})
                 conn.commit()
             except IntegrityError:
                 # Race condition: operario logged in from another workstation
@@ -588,6 +636,8 @@ def api_engastado_v3_entrada():
                 'success': True,
                 'operario_nombre': nombre,
                 'login_id': login_id,
+                'puesto_id': puesto_id,
+                'puesto_nombre': puesto_nombre,
                 'message': 'Entrada registrada'
             }), 200
 

@@ -40,6 +40,7 @@
                 <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
+                <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
 
                 <div class="admin-nav-label">Auditoría</div>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
@@ -303,6 +304,32 @@
                         </div>
                         <button class="btn-primary" id="usb-flash-btn" onclick="flashUSB()">📲 Subir firmware a la pantalla</button>
                         <div id="usb-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
+                    </div>
+                </section>
+
+
+                <!-- ============ LECTORES RFID (entrada Engastado V3) ============ -->
+                <section id="sec-lectores-rfid" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Lectores RFID</h1>
+                        <p>Placas ESP32 + RC522 detectadas: ponles nombre y asigna cada una a su puesto</p>
+                    </div>
+                    <div class="card">
+                        <h2>🏷️ Lectores detectados</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Cada lector encendido se registra solo aquí en menos de un minuto. Para saber cuál es
+                            cuál, mira el <strong>ID</strong> (últimos 4 caracteres, visibles también en el monitor
+                            serie de la placa). Con un puesto asignado, al pasar la tarjeta el operario entra
+                            directamente a ese puesto, sin tener que elegirlo a mano; sin asignar, se le pedirá
+                            el puesto como hasta ahora.
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <button class="btn-secondary" onclick="cargarLectoresRfid()">🔄 Actualizar</button>
+                            <span id="lectores-rfid-msg" style="margin-left:10px;font-size:0.88em;"></span>
+                        </div>
+                        <div id="lectores-rfid-lista" class="tabla-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
                     </div>
                 </section>
 

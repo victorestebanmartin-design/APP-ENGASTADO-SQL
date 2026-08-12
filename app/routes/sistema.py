@@ -1114,8 +1114,17 @@ def _rfid_firmware_manifest():
 
 @bp.route('/api/esp32/rfid/firmware/version', methods=['GET'])
 def api_esp32_rfid_firmware_version():
-    """Version y manifiesto del firmware disponible para la placa lectora RFID."""
+    """Version y manifiesto del firmware disponible para la placa lectora RFID.
+
+    La placa llama a esto periodicamente para el OTA; se aprovecha la misma
+    llamada como latido de presencia (?id=&ip=&fw=) para que aparezca sola en
+    Admin -> Lectores RFID, igual que hacen las pantallas del carro con
+    /api/esp32/current.
+    """
     try:
+        dev_id = _esp32_device_id(request.args.get('id'))
+        if dev_id:
+            _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'))
         return jsonify({'version': _rfid_firmware_version(),
                         'files': _rfid_firmware_manifest()})
     except Exception as e:
@@ -1140,6 +1149,127 @@ def api_esp32_rfid_firmware_file():
         resp.headers['Content-Length'] = str(len(data))
         resp.headers['X-SHA256'] = hashlib.sha256(data).hexdigest()
         return resp
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== REGISTRO DE LECTORES RFID (asignacion a puesto) ====================
+#
+# Mismo patron que "Display Carro" de arriba (device_id -> carro), aqui
+# device_id -> puesto. El lector se registra solo, sin paso manual: cada vez
+# que consulta /api/esp32/rfid/firmware/version manda su id/ip/fw y aqui se
+# guarda como latido (ver _rfid_registrar_dispositivo, mas arriba). Desde
+# Admin -> Lectores RFID se le asigna un puesto; a partir de ahi, el endpoint
+# de entrada (POST /api/puestos/engastado_v3/entrada, en operarios.py) usa
+# esa asignacion para decirle al PC que puesto es, sin que el operario tenga
+# que elegirlo a mano.
+
+def _rfid_devices_file():
+    base = os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'esp32_rfid_devices.json')
+
+
+def _rfid_load_devices():
+    try:
+        with open(_rfid_devices_file()) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _rfid_save_devices(devs):
+    with open(_rfid_devices_file(), 'w') as f:
+        json.dump(devs, f)
+
+
+def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
+    """Actualiza last_seen/ip/fw de un lector (lo crea si es la primera vez)."""
+    devs = _rfid_load_devices()
+    dev = devs.setdefault(dev_id, {})
+    dev['last_seen'] = datetime.now().isoformat()
+    if ip:
+        dev['ip'] = ip
+    if fw:
+        dev['fw'] = fw
+    _rfid_save_devices(devs)
+
+
+@bp.route('/api/esp32/rfid/devices', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_rfid_devices():
+    """Lista los lectores RFID detectados y los puestos existentes (Admin)."""
+    try:
+        devs = _rfid_load_devices()
+        ahora = datetime.now()
+        version_srv = _rfid_firmware_version()
+        out = []
+        for did, d in sorted(devs.items()):
+            online = False
+            try:
+                # El lector late cada OTA_CHECK_INTERVAL_MS (60s por defecto,
+                # ver esp32/wifi_config.py); 90s de margen evita parpadeos.
+                online = (ahora - datetime.fromisoformat(d.get('last_seen', ''))).total_seconds() < 90
+            except Exception:
+                pass
+            out.append({
+                'id': did,
+                'nombre': d.get('nombre', ''),
+                'puesto_id': d.get('puesto_id', ''),
+                'puesto_nombre': d.get('puesto_nombre', ''),
+                'ip': d.get('ip', ''),
+                'last_seen': d.get('last_seen', ''),
+                'online': online,
+                'fw': d.get('fw', ''),
+            })
+        try:
+            puestos = [{'id': p['id'], 'nombre': p['nombre']}
+                      for p in PuestoRepository(db).obtener_todos_puestos()]
+        except Exception:
+            puestos = []
+        return jsonify({'success': True, 'devices': out, 'puestos': puestos,
+                        'firmware_version': version_srv})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/devices/<device_id>', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_rfid_device_update(device_id):
+    """Asigna nombre y/o puesto a un lector RFID (Admin)."""
+    try:
+        dev_id = _esp32_device_id(device_id)
+        data = request.get_json(silent=True) or {}
+        devs = _rfid_load_devices()
+        dev = devs.setdefault(dev_id, {})
+        if 'nombre' in data:
+            dev['nombre'] = (data.get('nombre') or '').strip()[:60]
+        if 'puesto_id' in data:
+            puesto_id = (data.get('puesto_id') or '').strip()
+            if puesto_id:
+                puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+                if not puesto:
+                    return jsonify({'success': False, 'message': 'Puesto no encontrado'}), 404
+                dev['puesto_id'] = puesto_id
+                dev['puesto_nombre'] = puesto['nombre']
+            else:
+                dev['puesto_id'] = ''
+                dev['puesto_nombre'] = ''
+        _rfid_save_devices(devs)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/devices/<device_id>', methods=['DELETE'])
+@requiere_pin_admin
+def api_esp32_rfid_device_delete(device_id):
+    """Olvida un lector RFID (Admin). Si sigue encendido, se registra solo de nuevo."""
+    try:
+        dev_id = _esp32_device_id(device_id)
+        devs = _rfid_load_devices()
+        devs.pop(dev_id, None)
+        _rfid_save_devices(devs)
+        return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
 

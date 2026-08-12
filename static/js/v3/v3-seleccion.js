@@ -53,8 +53,14 @@ async function cargarBono() {
             
             document.getElementById('bono-info').classList.remove('hidden');
 
-            // Abrir modal de selección de puesto
-            await abrirModalPuesto();
+            // Si el operario entró por un lector RFID asignado a un puesto
+            // concreto (Admin -> Lectores RFID), saltarse el modal de elegir
+            // puesto e ir directo a máquina; si no, el flujo manual normal.
+            if (window.RFID_PUESTO_ID) {
+                await seleccionarPuestoAutomatico(window.RFID_PUESTO_ID);
+            } else {
+                await abrirModalPuesto();
+            }
         } else {
             mostrarMensaje(data.message || 'Bono no encontrado', 'error');
         }

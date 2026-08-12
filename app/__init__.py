@@ -179,6 +179,16 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: puesto_id en operario_logins. Cuando el login viene de un
+    # lector RFID asignado a un puesto (Admin -> Lectores RFID), se guarda
+    # aquí para que el navegador (que solo sondea /api/operarios/logins) sepa
+    # a qué puesto saltar sin que el operario tenga que elegirlo a mano.
+    try:
+        cur.execute("ALTER TABLE operario_logins ADD COLUMN puesto_id TEXT")
+        conn.commit()
+    except Exception:
+        pass  # ya existe
+
     # Migración: tabla login_requests (login por tarjeta con lector compartido).
     # El PC pide login contra un carro y el servidor genera un codigo visible en
     # la pantalla. Cuando el operario pasa su tarjeta en ese carro, la peticion

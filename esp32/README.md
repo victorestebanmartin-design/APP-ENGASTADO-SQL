@@ -29,6 +29,31 @@ seguridad y rollback automatico si el nuevo `main.py` no arranca) es el mismo
 que ya usa la pantalla del carro (`esp32/micropython/main_wifi.py`), asi que
 esta ya probado en produccion.
 
+## Registro y asignacion a puesto (Admin -> Lectores RFID)
+
+Cada lector se registra solo en el servidor -- sin ningun paso manual -- la
+primera vez que comprueba si hay firmware nuevo (llamada que ya hace sola,
+por defecto cada minuto: ver `OTA_CHECK_INTERVAL_MS` en `wifi_config.py`).
+Esa misma llamada sirve de "estoy vivo": Admin -> Lectores RFID lo marca
+🟢 en linea mientras siga llegando.
+
+Desde ahi se le puede:
+- Poner un **nombre** (para identificarlo en la lista; por defecto solo se ve
+  el ID, los ultimos 4 caracteres de su MAC).
+- **Asignar un puesto**. Un lector sin puesto asignado sigue funcionando
+  igual que antes (identifica al operario y el PC le pide el puesto a mano).
+  Un lector **con** puesto asignado hace que, al pasar la tarjeta, el PC
+  reciba tambien ese puesto y se salte el paso de elegirlo -- va directo a
+  pedir el bono y abrir el puesto. Esto es lo pensado para cuando haya un
+  lector fisico en cada puesto: cada uno solo identifica al operario Y dice
+  automaticamente donde esta.
+
+Esto no requiere ningun cambio en `esp32/main.py`: el lector manda su
+`device_id` (la MAC del chip) en cada lectura y el servidor resuelve el
+puesto por su cuenta a partir de la asignacion guardada en Admin. Si el
+lector no esta asignado a ningun puesto, la respuesta simplemente no trae
+puesto y el PC sigue el flujo manual de siempre.
+
 ## Hardware Setup
 
 ### Wiring Diagram
@@ -173,8 +198,11 @@ UPDATE operarios SET tag_uid = 'A1B2C3D4' WHERE nombre = 'Juan Perez';
 ### Funcionamiento normal
 
 1. El operario pasa su tarjeta por el lector.
-2. La placa lee el UID y hace `POST /api/puestos/engastado_v3/entrada`.
-3. **Exito (200):** 2 pitidos + LED, la interfaz V3 detecta el login solo.
+2. La placa lee el UID y hace `POST /api/puestos/engastado_v3/entrada` con el
+   UID y su propio `device_id` (la MAC del chip).
+3. **Exito (200):** 2 pitidos + LED, la interfaz V3 detecta el login solo. Si
+   el lector tiene un puesto asignado (Admin -> Lectores RFID), el PC recibe
+   tambien ese puesto y se salta el paso de elegirlo a mano.
 4. **Tarjeta no registrada / ya dentro en otro puesto (404/409):** 1 pitido.
 5. **Fallo de red:** 5 pitidos, se puede reintentar al momento (no hay estado
    que limpiar).
@@ -240,9 +268,12 @@ duplicar la misma pasada de tarjeta.
 
 Endpoints implicados, todos en `app/routes/`:
 
-- `POST /api/puestos/engastado_v3/entrada` (`app/routes/operarios.py`) -- recibe la lectura RFID, resuelve el login del operario.
-- `GET /api/esp32/rfid/firmware/version` (`app/routes/sistema.py`) -- version y manifiesto disponibles.
+- `POST /api/puestos/engastado_v3/entrada` (`app/routes/operarios.py`) -- recibe la lectura RFID (+ `device_id`), resuelve el login del operario y, si el lector tiene puesto asignado, lo devuelve tambien.
+- `GET /api/esp32/rfid/firmware/version` (`app/routes/sistema.py`) -- version y manifiesto disponibles; con `?id=&ip=&fw=` tambien registra/actualiza el lector (latido).
 - `GET /api/esp32/rfid/firmware/file?name=X` (`app/routes/sistema.py`) -- sirve un fichero del firmware.
+- `GET /api/esp32/rfid/devices` (Admin) -- lista de lectores detectados + puestos disponibles, para Admin -> Lectores RFID.
+- `POST /api/esp32/rfid/devices/<device_id>` (Admin) -- asigna nombre y/o puesto a un lector.
+- `DELETE /api/esp32/rfid/devices/<device_id>` (Admin) -- olvida un lector (vuelve a aparecer solo si sigue encendido).
 
 ## Referencias
 

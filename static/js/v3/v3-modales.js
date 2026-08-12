@@ -398,6 +398,30 @@ async function seleccionarPuestoDesdeModal(idx) {
     await abrirModalMaquina();
 }
 
+/**
+ * Entrada por lector RFID asignado a un puesto (Admin -> Lectores RFID):
+ * se salta el modal de elegir puesto y se va directa a máquina, igual que
+ * si el operario lo hubiera elegido a mano. Si el puesto ya no existe o
+ * está desactivado, cae al flujo manual normal en vez de dejar la pantalla
+ * colgada.
+ */
+async function seleccionarPuestoAutomatico(puestoId) {
+    try {
+        const r = await fetch('/api/puestos');
+        const data = await r.json();
+        const puesto = data.success ? (data.puestos || []).find(p => p.id === puestoId && p.activo) : null;
+        if (puesto) {
+            puestoSeleccionado = puesto;
+            await abrirModalMaquina();
+            return;
+        }
+        console.warn('[RFID] Puesto asignado no encontrado o inactivo, se pide a mano:', puestoId);
+    } catch (e) {
+        console.warn('[RFID] Error resolviendo puesto asignado, se pide a mano:', e);
+    }
+    await abrirModalPuesto();
+}
+
 async function abrirModalMaquina() {
     _mostrarModalWizard('modal-maquina');
 

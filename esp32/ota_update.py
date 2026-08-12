@@ -17,6 +17,7 @@
 
 import os
 import machine
+import binascii
 
 import http_client
 import wifi_config as cfg
@@ -30,6 +31,20 @@ PORT = getattr(cfg, "BACKEND_PORT", 443)
 USE_SSL = getattr(cfg, "BACKEND_USE_SSL", True)
 VERSION_PATH = "/api/esp32/rfid/firmware/version"
 FILE_PATH = "/api/esp32/rfid/firmware/file"
+
+# Identidad de la placa (MAC del chip). La misma que se manda en el POST de
+# entrada, para que Admin -> Lectores RFID y el registro de operarios/puestos
+# hablen del mismo dispositivo. Vive aqui (no en main.py) porque es una
+# propiedad del hardware, no de la version de la app.
+DEVICE_ID = binascii.hexlify(machine.unique_id()).decode()
+
+
+def _own_ip():
+    try:
+        import network
+        return network.WLAN(network.STA_IF).ifconfig()[0]
+    except Exception:
+        return ""
 
 
 def _local_version():
@@ -125,7 +140,13 @@ def check_and_apply():
     resetea antes), False si no habia nada nuevo o algo fallo.
     """
     try:
-        info = http_client.get_json(HOST, VERSION_PATH, port=PORT, use_ssl=USE_SSL)
+        # id/ip/fw sirven de latido: el servidor registra este lector en
+        # Admin -> Lectores RFID (o le actualiza last_seen) cada vez que
+        # llega esta llamada, la haya disparado el arranque o la
+        # comprobacion periodica.
+        ruta = "%s?id=%s&ip=%s&fw=%s" % (
+            VERSION_PATH, _urlenc(DEVICE_ID), _urlenc(_own_ip()), _urlenc(_local_version()))
+        info = http_client.get_json(HOST, ruta, port=PORT, use_ssl=USE_SSL)
     except Exception as e:
         print("OTA: no se pudo comprobar version:", e)
         return False

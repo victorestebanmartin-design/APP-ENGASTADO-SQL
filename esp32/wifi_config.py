@@ -36,4 +36,8 @@ DEBOUNCE_MS = 2000
 
 # Cada cuanto main.py vuelve a comprobar si hay firmware nuevo, ademas de la
 # comprobacion automatica al arrancar (milisegundos). None = solo al arrancar.
-OTA_CHECK_INTERVAL_MS = 60 * 60 * 1000  # 1 hora
+# Esta misma llamada hace de latido de presencia para Admin -> Lectores RFID
+# (aparece "en linea"/"sin senal" segun cuando se vio por ultima vez), asi que
+# conviene que no sea demasiado espaciada. Es un GET pequeno (unos cientos de
+# bytes): 60s no supone trafico apreciable.
+OTA_CHECK_INTERVAL_MS = 60 * 1000  # 1 minuto

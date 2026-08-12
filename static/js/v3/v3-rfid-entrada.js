@@ -31,9 +31,12 @@ function iniciar_deteccion_rfid() {
                         const newLogin = data.logins[data.logins.length - 1];
                         const operarioNombre = newLogin.operario;
                         const loginId = newLogin.id;
+                        const puestoId = newLogin.puesto_id || null;
+                        const puestoNombre = newLogin.puesto_nombre || null;
 
-                        console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}`);
-                        mostrar_rfid_confirmado(operarioNombre, loginId);
+                        console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
+                            (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
+                        mostrar_rfid_confirmado(operarioNombre, loginId, puestoId, puestoNombre);
 
                         // Stop polling
                         if (rfidPollingTimeout) clearTimeout(rfidPollingTimeout);
@@ -67,17 +70,22 @@ function iniciar_deteccion_rfid() {
 /**
  * Display successful RFID card detection
  */
-function mostrar_rfid_confirmado(operarioNombre, loginId) {
+function mostrar_rfid_confirmado(operarioNombre, loginId, puestoId, puestoNombre) {
     const rfidMsgDiv = document.getElementById('rfid-entrada-msg');
     if (rfidMsgDiv) {
-        rfidMsgDiv.innerHTML = `✓ Operario: <strong>${operarioNombre}</strong>`;
+        rfidMsgDiv.innerHTML = `✓ Operario: <strong>${operarioNombre}</strong>` +
+            (puestoNombre ? `<br><small>Puesto: ${puestoNombre}</small>` : '');
         rfidMsgDiv.style.color = '#10b981';  // Green
         rfidMsgDiv.style.fontSize = '1.2em';
     }
 
-    // Auto-populate operario in hidden state (frontend will use this)
+    // Auto-populate operario (y puesto, si el lector lo tiene asignado) en
+    // estado global: lo usan v3-seleccion.js/v3-modales.js para saltarse
+    // pasos manuales del asistente.
     window.RFID_OPERARIO_NOMBRE = operarioNombre;
     window.RFID_LOGIN_ID = loginId;
+    window.RFID_PUESTO_ID = puestoId;
+    window.RFID_PUESTO_NOMBRE = puestoNombre;
 
     // Trigger automatic login flow (skip the manual selection modal)
     setTimeout(() => {
@@ -97,37 +105,32 @@ function mostrar_rfid_timeout() {
 }
 
 /**
- * Process automatic RFID login
- * Populate operario selection and proceed to bono modal
+ * Process automatic RFID login: hooks into the SAME globals/functions the
+ * manual login uses (operarioActual, operarioLoginId, _activarOperario,
+ * _iniciarLatidoOperario en v3-estado.js/v3-modales.js) para que el latido
+ * de sesion, el badge y el resto del flujo funcionen exactamente igual que
+ * con un login manual.
  */
 function procesar_login_rfid(operarioNombre, loginId) {
     console.log(`[RFID] Procesando login de ${operarioNombre} (${loginId})`);
 
-    // Store login info globally for later use
-    window.OPERARIO_NOMBRE = operarioNombre;
-    window.LOGIN_ID = loginId;
+    operarioLoginId = loginId;
+    if (typeof _iniciarLatidoOperario === 'function') _iniciarLatidoOperario();
 
-    // Hide operario selection modal
-    const modalOperario = document.getElementById('modal-operario');
-    if (modalOperario) {
-        modalOperario.classList.add('hidden');
+    // El login por RFID sustituye al de tarjeta compartida del carro, si
+    // hubiera una peticion en curso.
+    if (typeof _pararLoginPoll === 'function') _pararLoginPoll();
+    if (typeof _cancelarLoginRequest === 'function') _cancelarLoginRequest();
+
+    sessionStorage.setItem('operario_actual', operarioNombre);
+
+    if (typeof _activarOperario === 'function') {
+        _activarOperario(operarioNombre);  // oculta modal-operario, badge, abre modal-bono
     }
 
-    // Show bono selection modal
-    const modalBono = document.getElementById('modal-bono');
-    if (modalBono) {
-        modalBono.classList.remove('hidden');
-    }
-
-    // Update bono modal subtitle to show logged-in operario
-    const bonoSubtitulo = document.getElementById('modal-bono-subtitulo');
-    if (bonoSubtitulo) {
-        bonoSubtitulo.textContent = `Operario: ${operarioNombre}`;
-    }
-
-    // Set operario globally so V3 work module knows who's logged in
-    if (typeof window !== 'undefined') {
-        window.OPERARIO_ACTUAL = operarioNombre;
+    if (window.RFID_PUESTO_NOMBRE) {
+        const subtitulo = document.getElementById('modal-bono-subtitulo');
+        if (subtitulo) subtitulo.textContent += ` · Puesto: ${window.RFID_PUESTO_NOMBRE}`;
     }
 }
 

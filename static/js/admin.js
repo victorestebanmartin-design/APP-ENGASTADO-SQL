@@ -1367,6 +1367,114 @@ async function eliminarDisplay(id) {
     }
 }
 
+
+// ============================================================================
+// LECTORES RFID — placas ESP32+RC522 asignadas a un puesto (entrada Engastado V3)
+// Mismo patron que "Display Carro" de arriba, pero device_id -> puesto.
+// ============================================================================
+
+function _rfidMsg(texto, esError) {
+    const el = document.getElementById('lectores-rfid-msg');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 4000);
+}
+
+async function cargarLectoresRfid() {
+    const cont = document.getElementById('lectores-rfid-lista');
+    if (!cont) return;
+    try {
+        const resp = await fetch('/api/esp32/rfid/devices');
+        const d = await resp.json();
+        const devs = d.devices || [];
+        const puestos = d.puestos || [];
+        const versionSrv = d.firmware_version || '';
+        if (devs.length === 0) {
+            cont.innerHTML = '<p class="instruccion">Todavía no se ha detectado ningún lector.<br>' +
+                'Enciende un lector con el firmware actualizado y aparecerá aquí solo en menos de un minuto.</p>';
+            return;
+        }
+        const filaOpts = (asignadoId) => {
+            let html = '<option value="">— sin asignar (pide el puesto a mano) —</option>';
+            let visto = false;
+            for (const p of puestos) {
+                const sel = String(asignadoId) === String(p.id);
+                if (sel) visto = true;
+                html += `<option value="${_dispEsc(p.id)}" ${sel ? 'selected' : ''}>${_dispEsc(p.nombre)}</option>`;
+            }
+            // Puesto asignado que ya no existe/está inactivo: conservarlo visible
+            if (asignadoId && !visto) html += `<option value="${_dispEsc(asignadoId)}" selected>${_dispEsc(asignadoId)} (no encontrado)</option>`;
+            return html;
+        };
+        cont.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                <thead><tr style="text-align:left;color:#94a3b8;">
+                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th>
+                    <th>Puesto asignado</th><th>Firmware</th><th>Última señal</th><th></th>
+                </tr></thead>
+                <tbody>` + devs.map(dev => `
+                <tr style="border-top:1px solid #334155;">
+                    <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>90s)'}">${dev.online ? '🟢' : '🔴'}</td>
+                    <td><input id="rfid-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Lector..." style="${_dispInputStyle}width:130px;"></td>
+                    <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
+                    <td style="font-family:monospace;">${_dispEsc(dev.ip) || '—'}</td>
+                    <td><select id="rfid-puesto-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.puesto_id)}</select></td>
+                    <td title="Versión del firmware del lector vs la del servidor (${_dispEsc(versionSrv) || '—'})">
+                        ${!dev.fw ? '<span style="color:#64748b;">—</span>'
+                            : dev.fw === versionSrv ? `<span style="color:#4ade80;">🟢 ${_dispEsc(dev.fw)}</span>`
+                            : `<span style="color:#fbbf24;">🟠 ${_dispEsc(dev.fw)} (se autoactualiza solo)</span>`}
+                    </td>
+                    <td style="color:#94a3b8;">${dev.last_seen ? _dispEsc(dev.last_seen.replace('T', ' ').slice(0, 19)) : '—'}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn-primary" onclick="guardarLectorRfid('${dev.id}')" title="Guardar nombre y puesto">💾 Guardar</button>
+                        <button class="btn-secondary" onclick="eliminarLectorRfid('${dev.id}')" title="Olvidar este lector">🗑️</button>
+                    </td>
+                </tr>`).join('') + `
+                </tbody>
+            </table>`;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">Error cargando los lectores. Reintenta con 🔄 Actualizar.</p>';
+    }
+}
+
+async function guardarLectorRfid(id) {
+    const nombre = document.getElementById(`rfid-nombre-${id}`)?.value ?? '';
+    const puesto_id = document.getElementById(`rfid-puesto-${id}`)?.value ?? '';
+    try {
+        const resp = await fetch(`/api/esp32/rfid/devices/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre, puesto_id })
+        });
+        if (!resp.ok) throw new Error();
+        _rfidMsg(puesto_id ? '✅ Guardado: lector asignado a su puesto' : '✅ Guardado: lector sin asignar');
+        cargarLectoresRfid();
+    } catch (e) {
+        _rfidMsg('❌ No se pudo guardar', true);
+    }
+}
+
+async function eliminarLectorRfid(id) {
+    if (!confirm('¿Olvidar este lector? Si sigue encendido volverá a aparecer solo (sin puesto asignado).')) return;
+    try {
+        await fetch(`/api/esp32/rfid/devices/${id}`, { method: 'DELETE' });
+        cargarLectoresRfid();
+    } catch (e) {
+        _rfidMsg('❌ No se pudo eliminar', true);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('lectores-rfid-lista')) return;
+    cargarLectoresRfid();
+    setInterval(() => {
+        if (!document.getElementById('sec-lectores-rfid')?.classList.contains('active')) return;
+        if (document.activeElement && String(document.activeElement.id).startsWith('rfid-')) return;
+        cargarLectoresRfid();
+    }, 10000);
+});
+
 // ── Subir firmware por USB ──────────────────────────────────────────────────
 
 async function cargarPuertosUSB() {

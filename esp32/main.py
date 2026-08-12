@@ -4,7 +4,7 @@
 # Este fichero SI se actualiza por OTA (ver ota_update.py): sube la version
 # aqui, publicalo con el deploy habitual del repo y la placa se autoactualiza
 # sola en su siguiente comprobacion (arranque o periodica).
-FW_VERSION = "2026-08-12a"
+FW_VERSION = "2026-08-12b"
 
 import time
 from machine import Pin
@@ -42,12 +42,19 @@ def uid_to_hex(uid):
 
 
 def enviar_entrada(tag_uid):
-    """POST del UID leido al backend. Beep segun resultado."""
+    """POST del UID leido al backend. Beep segun resultado.
+
+    Manda tambien el device_id de esta placa (MAC, ver ota_update.DEVICE_ID):
+    si el lector tiene un puesto asignado desde Admin -> Lectores RFID, el
+    servidor lo devuelve junto al operario, para que el PC no tenga que
+    preguntarlo."""
     status, data = http_client.post_json(
-        HOST, ENTRADA_PATH, {"tag_uid": tag_uid}, port=PORT, use_ssl=USE_SSL)
+        HOST, ENTRADA_PATH,
+        {"tag_uid": tag_uid, "device_id": ota_update.DEVICE_ID},
+        port=PORT, use_ssl=USE_SSL)
 
     if status == 200 and data and data.get("success"):
-        print("OK:", data.get("operario_nombre"))
+        print("OK:", data.get("operario_nombre"), "puesto:", data.get("puesto_nombre") or "(sin asignar)")
         beep(2, 100)
         led.on(); time.sleep(1); led.off()
         return True
