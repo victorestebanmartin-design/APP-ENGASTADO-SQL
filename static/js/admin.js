@@ -39,6 +39,30 @@ async function cambiarGateOperario() {
     }
 }
 
+async function liberarCachePuestoPC() {
+    const msg = document.getElementById('puesto-pc-cache-msg');
+    if (!msg) return;
+    if (!confirm('¿Liberar ahora la caché de puesto de este PC?\n\nSe cerrará la sesión del operario actual en este navegador.')) return;
+
+    msg.textContent = 'Liberando...';
+    msg.style.color = '#94a3b8';
+    try {
+        const r = await fetch('/api/puesto/pc/liberar', { method: 'POST' });
+        const d = await r.json();
+        if (!d.success) {
+            msg.textContent = d.error || d.message || 'No se pudo liberar la caché';
+            msg.style.color = '#f87171';
+            return;
+        }
+        msg.textContent = '✅ Caché liberada. Redirigiendo a selección de puesto...';
+        msg.style.color = '#4ade80';
+        setTimeout(() => { window.location.href = '/puesto/seleccionar'; }, 800);
+    } catch (e) {
+        msg.textContent = '❌ Error de conexión al liberar la caché';
+        msg.style.color = '#f87171';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('gate-operario-toggle')) return;
     cargarGateOperario();

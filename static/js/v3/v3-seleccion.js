@@ -53,15 +53,26 @@ async function cargarBono() {
             
             document.getElementById('bono-info').classList.remove('hidden');
 
-            // Si el operario entró por un lector RFID asignado a un puesto
-            // concreto (Admin -> Lectores RFID), saltarse el modal de elegir
-            // puesto e ir directo a máquina; si no, el flujo manual normal.
-            if (window.RFID_PUESTO_ID) {
-                await seleccionarPuestoAutomatico(window.RFID_PUESTO_ID);
+            // Si el puesto llega por RFID, usarlo. Si no, usar el puesto del
+            // propio PC (cookie) para saltarse también la selección manual.
+            const puestoRfid = window.RFID_PUESTO_ID || null;
+            if (puestoRfid) {
+                await seleccionarPuestoAutomatico(puestoRfid);
             } else {
-                puestoBloqueadoPorRfid = false;
-                if (typeof _actualizarUiPuestoBloqueado === 'function') _actualizarUiPuestoBloqueado();
-                await abrirModalPuesto();
+                let puestoPc = null;
+                try {
+                    const rPc = await fetch('/api/puesto/pc');
+                    const dPc = await rPc.json();
+                    if (dPc && dPc.success) puestoPc = dPc.puesto_id || null;
+                } catch (_) { /* si falla, cae al flujo manual */ }
+
+                if (puestoPc) {
+                    await seleccionarPuestoAutomatico(puestoPc);
+                } else {
+                    puestoBloqueadoPorRfid = false;
+                    if (typeof _actualizarUiPuestoBloqueado === 'function') _actualizarUiPuestoBloqueado();
+                    await abrirModalPuesto();
+                }
             }
         } else {
             mostrarMensaje(data.message || 'Bono no encontrado', 'error');
@@ -477,7 +488,7 @@ async function cargarAreaTrabajoV2() {
  */
 async function volverAPuestos() {
     if (puestoBloqueadoPorRfid) {
-        mostrarMensaje('Este puesto viene fijado por el lector RFID. Para cambiarlo, usa otro lector o reasigna en Admin.', 'error');
+        mostrarMensaje('Este puesto está fijado automáticamente (lector/PC). Para cambiarlo, libera el puesto del PC en Admin y reasigna.', 'error');
         await abrirModalMaquina();
         return;
     }

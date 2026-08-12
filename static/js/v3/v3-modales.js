@@ -345,7 +345,7 @@ function volverModalBonoDesdeModalPuesto() {
 
 async function abrirModalPuesto() {
     if (puestoBloqueadoPorRfid) {
-        // El puesto ya está fijado por lector RFID asignado.
+        // El puesto ya está fijado por RFID asignado o por el propio PC.
         await abrirModalMaquina();
         return;
     }
