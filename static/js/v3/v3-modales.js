@@ -187,6 +187,38 @@ function _mostrarCodigoLogin(codigo) {
     else { wrap.classList.add('hidden'); }
 }
 
+async function salirEngastadoV3() {
+    if (!confirm('¿Cerrar sesión y salir del módulo de Engastado?')) return;
+
+    // Liberar recursos del login por tarjeta compartida del carro.
+    _pararLoginPoll();
+    _cancelarLoginRequest();
+
+    // Cerrar login exclusivo del módulo en servidor.
+    try {
+        if (operarioLoginId) {
+            await fetch('/api/operarios/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_id: operarioLoginId })
+            });
+        }
+    } catch (_) { /* continuar igualmente */ }
+
+    if (_latidoOperarioTimer) {
+        clearInterval(_latidoOperarioTimer);
+        _latidoOperarioTimer = null;
+    }
+
+    operarioActual = null;
+    operarioLoginId = null;
+    operarioTagUid = null;
+    sessionStorage.removeItem('operario_actual');
+
+    // beforeunload también limpia bloqueos/sesión de trabajo al abandonar.
+    window.location.href = '/modules';
+}
+
 function _activarOperario(nombre) {
     operarioActual = nombre;
 
