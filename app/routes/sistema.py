@@ -1366,12 +1366,15 @@ def api_esp32_rfid_flash_usb():
                 ('ota_update.py', os.path.join(base, 'ota_update.py'), 'ota_update.py'),
                 ('wifi_config.py', tmp_cfg, 'wifi_config.py'),
             ]
+            # Los ficheros de esp32/lib/ se suben SUELTOS a la raiz de la
+            # placa (sin subcarpeta): main.py los importa de forma plana
+            # (`from mfrc522 import MFRC522`) y asi coincide exactamente con
+            # los nombres que ya usa el manifiesto OTA (_rfid_firmware_files).
             lib_dir = os.path.join(base, 'lib')
             if os.path.isdir(lib_dir):
-                mpremote('mkdir', ':lib')  # "falla" en silencio si ya existe
                 for nombre in sorted(os.listdir(lib_dir)):
                     if nombre.endswith('.py'):
-                        pasos.append((f'lib/{nombre}', os.path.join(lib_dir, nombre), f'lib/{nombre}'))
+                        pasos.append((nombre, os.path.join(lib_dir, nombre), nombre))
             pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
             pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
 
