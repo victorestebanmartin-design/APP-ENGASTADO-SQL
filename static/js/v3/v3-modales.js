@@ -325,12 +325,31 @@ function _cerrarModalesWizard() {
     });
 }
 
+function _actualizarUiPuestoBloqueado() {
+    const btnModal = document.getElementById('btn-modal-cambiar-puesto');
+    const btnPaso = document.getElementById('btn-volver-puestos');
+    const bloqueado = !!puestoBloqueadoPorRfid;
+
+    if (btnModal) {
+        btnModal.style.display = bloqueado ? 'none' : '';
+    }
+    if (btnPaso) {
+        btnPaso.style.display = bloqueado ? 'none' : '';
+    }
+}
+
 function volverModalBonoDesdeModalPuesto() {
     document.getElementById('modal-puesto').classList.add('hidden');
     abrirModalBono();
 }
 
 async function abrirModalPuesto() {
+    if (puestoBloqueadoPorRfid) {
+        // El puesto ya está fijado por lector RFID asignado.
+        await abrirModalMaquina();
+        return;
+    }
+
     _mostrarModalWizard('modal-puesto');
 
     const subtitulo = document.getElementById('modal-puesto-subtitulo');
@@ -394,6 +413,8 @@ async function abrirModalPuesto() {
 }
 
 async function seleccionarPuestoDesdeModal(idx) {
+    puestoBloqueadoPorRfid = false;
+    _actualizarUiPuestoBloqueado();
     puestoSeleccionado = _puestosCache[idx];
     await abrirModalMaquina();
 }
@@ -411,6 +432,8 @@ async function seleccionarPuestoAutomatico(puestoId) {
         const data = await r.json();
         const puesto = data.success ? (data.puestos || []).find(p => p.id === puestoId && p.activo) : null;
         if (puesto) {
+            puestoBloqueadoPorRfid = true;
+            _actualizarUiPuestoBloqueado();
             puestoSeleccionado = puesto;
             await abrirModalMaquina();
             return;
@@ -419,6 +442,8 @@ async function seleccionarPuestoAutomatico(puestoId) {
     } catch (e) {
         console.warn('[RFID] Error resolviendo puesto asignado, se pide a mano:', e);
     }
+    puestoBloqueadoPorRfid = false;
+    _actualizarUiPuestoBloqueado();
     await abrirModalPuesto();
 }
 

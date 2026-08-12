@@ -27,6 +27,7 @@ let bonoActual = null;
 let proyectoActual = null;
 let datosV3 = {};
 let puestoSeleccionado = null;
+let puestoBloqueadoPorRfid = false; // true si el lector ya resolvió el puesto
 let maquinaSeleccionada = null;
 let terminalesAsignados = [];
 let carrosDelBono = []; // Todos los carros del bono

@@ -59,6 +59,8 @@ async function cargarBono() {
             if (window.RFID_PUESTO_ID) {
                 await seleccionarPuestoAutomatico(window.RFID_PUESTO_ID);
             } else {
+                puestoBloqueadoPorRfid = false;
+                if (typeof _actualizarUiPuestoBloqueado === 'function') _actualizarUiPuestoBloqueado();
                 await abrirModalPuesto();
             }
         } else {
@@ -474,6 +476,12 @@ async function cargarAreaTrabajoV2() {
  * Navegación - Volver a selección de puestos
  */
 async function volverAPuestos() {
+    if (puestoBloqueadoPorRfid) {
+        mostrarMensaje('Este puesto viene fijado por el lector RFID. Para cambiarlo, usa otro lector o reasigna en Admin.', 'error');
+        await abrirModalMaquina();
+        return;
+    }
+
     document.getElementById('paso-trabajo').classList.add('hidden');
     document.getElementById('workspace-v3').classList.add('hidden');
     // Dejar de ocupar la pantalla del carro con este puesto

@@ -83,6 +83,9 @@ def modules():
                 calculados = modulos_permitidos_de(row[0])
                 if calculados is not None:
                     permitidos = calculados
+                else:
+                    # Sin permisos explícitos aún: todo menos Admin.
+                    permitidos = {m for m in MODULOS_APP.keys() if m != 'admin'}
     return render_template('modules.html', permitidos=permitidos)
 
 
@@ -174,13 +177,18 @@ def admin_pin():
     main.puesto_seleccionar) en vez de mandarlo siempre a /admin.
     """
     destino = _destino_pin_seguro(request.values.get('next'))
+    forzar = str(request.values.get('force', '')).lower() in ('1', 'true', 'si', 'sí', 'yes', 'on')
 
     # Si la protección no está activa, no tiene sentido pedir PIN
     if not proteccion_activa():
         return redirect(destino)
-    # Si ya está verificado, directo al destino
-    if sesion_admin_valida():
+    # Si ya está verificado, directo al destino (salvo petición forzada SOS)
+    if sesion_admin_valida() and not forzar:
         return redirect(destino)
+
+    # Forzado: siempre exigir PIN fresco.
+    if forzar and request.method == 'GET':
+        cerrar_sesion_admin()
 
     error = None
     if request.method == 'POST':
@@ -190,7 +198,7 @@ def admin_pin():
         if time.time() < bloqueado_hasta:
             minutos = int((bloqueado_hasta - time.time()) // 60) + 1
             error = f'Demasiados intentos fallidos. Espera {minutos} min.'
-            return render_template('admin-pin.html', error=error, next=destino)
+            return render_template('admin-pin.html', error=error, next=destino, force=forzar)
 
         pin = (request.form.get('pin') or '').strip()
         hash_introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
@@ -211,7 +219,7 @@ def admin_pin():
         time.sleep(1)
         error = 'PIN incorrecto'
 
-    return render_template('admin-pin.html', error=error, next=destino)
+    return render_template('admin-pin.html', error=error, next=destino, force=forzar)
 
 
 @bp.route('/admin/logout', methods=['GET', 'POST'])

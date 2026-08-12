@@ -278,6 +278,7 @@
         <span class="modules-header-back" style="cursor:default;" title="Operario identificado en este PC">👤 {{ session.operario_actual }}</span>
         <a href="#" class="modules-header-back" onclick="salirOperario(); return false;">🚪 SALIR</a>
         {% endif %}
+        <a href="{{ url_for('main.admin_pin') }}?next=/admin&amp;force=1" class="modules-header-back" title="Acceso de emergencia por PIN">🆘 SOS ADMIN</a>
         <a href="{{ url_for('main.manual') }}" class="modules-header-help" target="_blank">❓ AYUDA</a>
         <a href="{{ url_for('main.home') }}" class="modules-header-back">← INICIO</a>
       </div>
@@ -322,12 +323,14 @@
       <div class="modules-row-bottom">
 
         <!-- Administración -->
-        <a href="{{ url_for('main.admin') }}" class="mod-card mod-admin">
+        {% if 'admin' in permitidos %}
+        <a href="{{ url_for('main.admin_pin') }}?next=/admin&amp;force=1" class="mod-card mod-admin">
           <div class="mod-icon"><svg viewBox="0 0 80 80" width="72" height="72" xmlns="http://www.w3.org/2000/svg"><g stroke="#000" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="40" cy="40" r="22" fill="#607D8B"/><rect x="36" y="12" width="8" height="7" rx="2" fill="#607D8B"/><rect x="36" y="61" width="8" height="7" rx="2" fill="#607D8B"/><rect x="61" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="12" y="36" width="7" height="8" rx="2" fill="#607D8B"/><rect x="56" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 59.5 21)"/><rect x="17" y="56" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(45 20.5 60)"/><rect x="56" y="55" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 59.5 59)"/><rect x="17" y="17" width="7" height="8" rx="2" fill="#607D8B" transform="rotate(-45 20.5 21)"/><circle cx="40" cy="40" r="22" fill="none" stroke="#000" stroke-width="2.5"/><circle cx="40" cy="40" r="10" fill="#455A64"/><g transform="rotate(-45 40 40)"><rect x="35" y="18" width="10" height="44" rx="3" fill="#FFB300"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="#FFB300"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="#FFB300"/><rect x="35" y="18" width="10" height="44" rx="3" fill="none" stroke="#000" stroke-width="2"/><path d="M35 21 Q28 15 28 21 L28 29 Q28 35 35 29 Z" fill="none" stroke="#000" stroke-width="2"/><path d="M45 21 Q52 15 52 21 L52 29 Q52 35 45 29 Z" fill="none" stroke="#000" stroke-width="2"/></g></g></svg></div>
           <div class="mod-title">Administración</div>
           <div class="mod-desc">Configuración de terminales, impresora y sistema.</div>
           <div class="mod-btn">Administrar</div>
         </a>
+        {% endif %}
 
         <!-- Producción (Bonos + Órdenes) -->
         {% if 'produccion' in permitidos %}
