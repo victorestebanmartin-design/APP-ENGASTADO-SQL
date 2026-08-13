@@ -112,16 +112,17 @@ Tres avisos de montaje:
 
 ### Alta de tarjetas
 
-No hay que escribir nada en la tarjeta: se usa su UID de fábrica. En
-Admin → Puestos, al editar un puesto, pulsa **Capturar**, acerca la tarjeta al
-lector de cualquier carro y el UID aparece solo (la pantalla manda al servidor
-las tarjetas que no reconoce, y Admin sondea `/api/esp32/ultimo-tag`). Solo se
-aceptan lecturas de los últimos 30 segundos, para no asignar por error una
-tarjeta que alguien pasó antes.
+No hay que escribir nada en la tarjeta: se usa su UID de fábrica. La captura se
+hace con el lector RFID dedicado de la entrada (`esp32/main.py`), no con este
+lector del carro: en Admin → Operarios, pulsa **Capturar** y acerca la tarjeta
+a cualquier lector de entrada; el UID aparece solo (Admin sondea
+`/api/esp32/ultimo-tag`). Solo se aceptan lecturas de los últimos 30 segundos,
+para no asignar por error una tarjeta que alguien pasó antes.
 
-Una tarjeta sin asignar leída en un carro muestra `TARJETA SIN TRABAJO AQUI` con
-su UID en pantalla — que es justo lo que hay que copiar si se prefiere teclearlo
-a mano.
+Una tarjeta sin asignar leída en un carro (en modo trabajo, sin nada pendiente
+para ese UID en ese carro) muestra `TARJETA SIN TRABAJO AQUI` con su UID en
+pantalla, pero solo como referencia visual -- ya no se manda al servidor para
+alta: hay que darla de alta con el lector de la entrada.
 
 ### Ficheros del firmware
 

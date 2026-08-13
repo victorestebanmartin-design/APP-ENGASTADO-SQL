@@ -177,11 +177,6 @@ function procesar_login_rfid(operarioNombre, loginId) {
     operarioLoginId = loginId;
     if (typeof _iniciarLatidoOperario === 'function') _iniciarLatidoOperario();
 
-    // El login por RFID sustituye al de tarjeta compartida del carro, si
-    // hubiera una peticion en curso.
-    if (typeof _pararLoginPoll === 'function') _pararLoginPoll();
-    if (typeof _cancelarLoginRequest === 'function') _cancelarLoginRequest();
-
     sessionStorage.setItem('operario_actual', operarioNombre);
 
     if (typeof _activarOperario === 'function') {

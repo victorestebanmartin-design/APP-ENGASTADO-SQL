@@ -180,7 +180,7 @@ No hace falta tocar la placa fisicamente para nada de esto.
 
 Antes de que un operario pueda usar la placa, su tarjeta debe tener el UID
 guardado en `operarios.tag_uid` (columna que ya existe en el sistema, la
-misma que usa el login por NFC del carro).
+misma que usa el NFC del carro para confirmar recogidas/devoluciones).
 
 ### Averiguar el UID de una tarjeta
 

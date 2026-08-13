@@ -760,7 +760,7 @@
                         </td>
                         <td>
                             <span id="op-tag-${op.id}" style="font-family:monospace;color:${op.tag_uid ? '#f1f5f9' : '#64748b'};">${op.tag_uid ? '🏷️ ' + op.tag_uid : 'Sin tarjeta'}</span>
-                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Asignar tarjeta: acércala a cualquier lector RFID de puesto o al del carro" style="margin-left:6px;">📡</button>
+                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Asignar tarjeta: acércala a cualquier lector RFID de la entrada" style="margin-left:6px;">📡</button>
                             ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta" style="margin-left:4px;">🗑️</button>` : ''}
                         </td>
                         <td>
@@ -959,7 +959,7 @@
     async function capturarTagOperario(id) {
         _pararCapturaTagOperario();
         const span = document.getElementById('op-tag-' + id);
-        if (span) { span.textContent = '📡 Acerca la tarjeta a un lector (puesto o carro)...'; span.style.color = '#3b82f6'; }
+        if (span) { span.textContent = '📡 Acerca la tarjeta a un lector RFID de la entrada...'; span.style.color = '#3b82f6'; }
         // Solo valen lecturas posteriores a este momento.
         let ignorar = null;
         try {
