@@ -11,6 +11,10 @@
  */
 
 let _detenerSondeoRfidV3 = null;
+let _rfidEstadoTimer = null;
+let _rfidEstadoSince = '';
+let _rfidPuestoPcId = null;
+let _rfidEstadoInicializado = false;
 
 /**
  * Initialize RFID entry detection
@@ -23,9 +27,12 @@ function iniciar_deteccion_rfid() {
         .then(r => r.json())
         .then(d => {
             const puestoId = d && d.success ? (d.puesto_id || null) : null;
+            _rfidPuestoPcId = puestoId;
             const pollUrl = puestoId
                 ? `/api/operarios/logins?puesto_id=${encodeURIComponent(puestoId)}`
                 : '/api/operarios/logins';
+
+            _iniciarSondeoEstadoRfid();
 
             _detenerSondeoRfidV3 = iniciarDeteccionRfid(pollUrl, (login) => {
                 const operarioNombre = login.operario;
@@ -45,6 +52,8 @@ function iniciar_deteccion_rfid() {
             });
         })
         .catch(() => {
+            _rfidPuestoPcId = null;
+            _iniciarSondeoEstadoRfid();
             _detenerSondeoRfidV3 = iniciarDeteccionRfid('/api/operarios/logins', (login) => {
                 const operarioNombre = login.operario;
                 const loginId = login.id;
@@ -101,6 +110,60 @@ function mostrar_rfid_timeout() {
     }
 }
 
+function _render_estado_rfid(evento) {
+    if (!evento || evento.estado === 'ok') return;
+    const rfidMsgDiv = document.getElementById('rfid-entrada-msg');
+    if (!rfidMsgDiv) return;
+
+    const base = evento.motivo || 'No se pudo procesar la tarjeta.';
+    if (evento.estado === 'rechazo') {
+        rfidMsgDiv.innerHTML = `✗ ${base}`;
+        rfidMsgDiv.style.color = '#dc2626';
+    } else {
+        rfidMsgDiv.innerHTML = `⚠ ${base}`;
+        rfidMsgDiv.style.color = '#b45309';
+    }
+
+    setTimeout(() => {
+        if (!operarioActual) {
+            rfidMsgDiv.innerHTML = 'Escanea tu tarjeta RFID en la entrada…';
+            rfidMsgDiv.style.color = '#334155';
+        }
+    }, 7000);
+}
+
+function _iniciarSondeoEstadoRfid() {
+    _pararSondeoEstadoRfid();
+    _rfidEstadoTimer = setInterval(async () => {
+        try {
+            const q = new URLSearchParams();
+            if (_rfidPuestoPcId) q.set('puesto_id', _rfidPuestoPcId);
+            if (_rfidEstadoSince) q.set('since', _rfidEstadoSince);
+            const resp = await fetch(`/api/rfid/entrada/estado?${q.toString()}`);
+            const data = await resp.json();
+            const ev = data && data.success ? data.evento : null;
+            if (ev && ev.ts) {
+                if (!_rfidEstadoInicializado) {
+                    _rfidEstadoInicializado = true;
+                    _rfidEstadoSince = ev.ts;
+                    return;
+                }
+                _rfidEstadoSince = ev.ts;
+                _render_estado_rfid(ev);
+            }
+        } catch (_) {
+            // Silencioso: no romper el flujo principal de login.
+        }
+    }, 1500);
+}
+
+function _pararSondeoEstadoRfid() {
+    if (_rfidEstadoTimer) {
+        clearInterval(_rfidEstadoTimer);
+        _rfidEstadoTimer = null;
+    }
+}
+
 /**
  * Process automatic RFID login: hooks into the SAME globals/functions the
  * manual login uses (operarioActual, operarioLoginId, _activarOperario,
@@ -140,4 +203,5 @@ function detener_deteccion_rfid() {
         _detenerSondeoRfidV3 = null;
         console.log('[RFID] Detección de RFID detenida');
     }
+    _pararSondeoEstadoRfid();
 }

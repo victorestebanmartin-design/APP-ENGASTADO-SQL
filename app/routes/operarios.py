@@ -684,6 +684,72 @@ def _puesto_asignado_al_lector(device_id):
     return (puesto_id, dev.get('puesto_nombre') or None) if puesto_id else (None, None)
 
 
+def _rfid_estado_file_path():
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'rfid_entrada_estado.json')
+
+
+def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag_uid=None,
+                           puesto_id=None, puesto_nombre=None, operario_nombre=None):
+    """Guarda el ultimo estado de entrada RFID para mostrar feedback en UI.
+
+    Se conserva un historial corto (ultimos 120) para tolerar que haya varias
+    pantallas sondeando a la vez y no perder un rechazo entre sondeos.
+    """
+    try:
+        with open(_rfid_estado_file_path()) as f:
+            eventos = json.load(f)
+    except Exception:
+        eventos = []
+
+    eventos.append({
+        'ts': datetime.now().isoformat(),
+        'estado': estado,
+        'motivo': motivo or '',
+        'error_code': error_code or '',
+        'device_id': (device_id or '')[:32],
+        'tag_uid': (tag_uid or '')[:20],
+        'puesto_id': (puesto_id or '')[:24],
+        'puesto_nombre': puesto_nombre or '',
+        'operario_nombre': operario_nombre or '',
+    })
+    with open(_rfid_estado_file_path(), 'w') as f:
+        json.dump(eventos[-120:], f, ensure_ascii=False)
+
+
+@bp.route('/api/rfid/entrada/estado', methods=['GET'])
+def api_rfid_entrada_estado():
+    """Devuelve el último evento de entrada RFID (opcionalmente por puesto).
+
+    Query params:
+      - puesto_id: filtra por puesto
+      - since: devuelve solo eventos con ts > since (ISO datetime)
+    """
+    try:
+        puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        since = (request.args.get('since') or '').strip()
+
+        try:
+            with open(_rfid_estado_file_path()) as f:
+                eventos = json.load(f)
+        except Exception:
+            eventos = []
+
+        evento = None
+        for ev in reversed(eventos):
+            if puesto_id and (ev.get('puesto_id') or '') != puesto_id:
+                continue
+            ts = ev.get('ts') or ''
+            if since and ts and ts <= since:
+                continue
+            evento = ev
+            break
+
+        return jsonify({'success': True, 'evento': evento})
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/puestos/engastado_v3/entrada', methods=['POST'])
 def api_engastado_v3_entrada():
     """RFID card scan at Engastado V3 workstation entrance.
@@ -722,6 +788,8 @@ def api_engastado_v3_entrada():
         tag_uid = (data.get('tag_uid') or '').strip().upper()
         device_id = (data.get('device_id') or '').strip()[:32] or None
         if not tag_uid:
+            _rfid_estado_registrar('rechazo', 'tag_uid es obligatorio', 'BAD_REQUEST',
+                                   device_id=device_id, tag_uid=tag_uid)
             return jsonify({'success': False, 'error': 'tag_uid es obligatorio'}), 400
 
         # Registrar como "ultima tarjeta vista", igual que hace la pantalla
@@ -759,6 +827,9 @@ def api_engastado_v3_entrada():
             op = _operario_por_tag(conn, tag_uid)
             if not op:
                 _log('Tarjeta no registrada')
+                _rfid_estado_registrar('rechazo', 'Tarjeta RFID no registrada', 'TAG_NO_REG',
+                                       device_id=device_id, tag_uid=tag_uid,
+                                       puesto_id=puesto_id, puesto_nombre=puesto_nombre)
                 return jsonify({
                     'success': False,
                     'error': 'Tarjeta RFID no registrada'
@@ -782,6 +853,10 @@ def api_engastado_v3_entrada():
                     ), {'p': puesto_id, 'id': login_id})
                     conn.commit()
                 _log('Sesión existente reutilizada', nombre)
+                _rfid_estado_registrar('ok', 'Sesión existente reutilizada', 'OK_REUSED',
+                                       device_id=device_id, tag_uid=tag_uid,
+                                       puesto_id=puesto_id, puesto_nombre=puesto_nombre,
+                                       operario_nombre=nombre)
                 return jsonify({
                     'success': True,
                     'operario_nombre': nombre,
@@ -805,12 +880,20 @@ def api_engastado_v3_entrada():
             except IntegrityError:
                 # Race condition: operario logged in from another workstation
                 _log(f'{nombre} ya está dentro del módulo en otro puesto', nombre)
+                _rfid_estado_registrar('rechazo', f'{nombre} ya está dentro del módulo en otro puesto',
+                                       'ALREADY_ACTIVE', device_id=device_id, tag_uid=tag_uid,
+                                       puesto_id=puesto_id, puesto_nombre=puesto_nombre,
+                                       operario_nombre=nombre)
                 return jsonify({
                     'success': False,
                     'error': f'{nombre} ya está dentro del módulo en otro puesto'
                 }), 409
 
             _log('Entrada registrada', nombre)
+            _rfid_estado_registrar('ok', 'Entrada registrada', 'OK_NEW',
+                                   device_id=device_id, tag_uid=tag_uid,
+                                   puesto_id=puesto_id, puesto_nombre=puesto_nombre,
+                                   operario_nombre=nombre)
             return jsonify({
                 'success': True,
                 'operario_nombre': nombre,
@@ -821,4 +904,8 @@ def api_engastado_v3_entrada():
             }), 200
 
     except Exception as e:
+        try:
+            _rfid_estado_registrar('error', 'Error interno del servidor', 'SERVER_ERR')
+        except Exception:
+            pass
         return error_interno(e)

@@ -75,6 +75,52 @@
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
     <script>
         const PUESTO_ID = {{ puesto_id | tojson }};
+        let _rfidEstadoSince = '';
+        let _rfidEstadoTimer = null;
+        let _rfidEstadoInicializado = false;
+
+        function _renderEstadoRfid(evento) {
+            if (!evento || evento.estado === 'ok') return;
+            const msg = document.getElementById('login-msg');
+            const texto = evento.motivo || 'No se pudo procesar la tarjeta. Vuelve a pasarla.';
+            if (evento.estado === 'rechazo') {
+                msg.textContent = `✗ ${texto}`;
+                msg.style.color = '#f87171';
+            } else {
+                msg.textContent = `⚠ ${texto}`;
+                msg.style.color = '#fbbf24';
+            }
+            setTimeout(() => {
+                msg.textContent = 'Pasa tu tarjeta por el lector...';
+                msg.style.color = '#cbd5e1';
+            }, 7000);
+        }
+
+        function _iniciarSondeoEstadoRfid() {
+            if (_rfidEstadoTimer) clearInterval(_rfidEstadoTimer);
+            _rfidEstadoTimer = setInterval(async () => {
+                try {
+                    const q = new URLSearchParams({ puesto_id: String(PUESTO_ID) });
+                    if (_rfidEstadoSince) q.set('since', _rfidEstadoSince);
+                    const r = await fetch(`/api/rfid/entrada/estado?${q.toString()}`);
+                    const d = await r.json();
+                    const ev = d && d.success ? d.evento : null;
+                    if (ev && ev.ts) {
+                        if (!_rfidEstadoInicializado) {
+                            _rfidEstadoInicializado = true;
+                            _rfidEstadoSince = ev.ts;
+                            return;
+                        }
+                        _rfidEstadoSince = ev.ts;
+                        _renderEstadoRfid(ev);
+                    }
+                } catch (_) {
+                    // Silencioso: si falla el sondeo, el login principal sigue activo.
+                }
+            }, 1500);
+        }
+
+        _iniciarSondeoEstadoRfid();
 
         iniciarDeteccionRfid(`/api/operarios/logins?puesto_id=${encodeURIComponent(PUESTO_ID)}`, function (login) {
             const msg = document.getElementById('login-msg');
