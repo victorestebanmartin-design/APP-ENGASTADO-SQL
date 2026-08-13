@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">COJOsw Logo Horizontal</title>
+  <desc id="desc">Logo COJOsw inspirado en el home de la aplicacion.</desc>
+  <rect width="1200" height="360" fill="#ffffff"/>
+
+  <text x="70" y="170" font-family="'Bebas Neue', 'Arial Narrow', sans-serif" font-size="180" letter-spacing="8" fill="#111827">COJO</text>
+  <text x="565" y="170" font-family="'Bebas Neue', 'Arial Narrow', sans-serif" font-size="92" letter-spacing="4" fill="#9ca3af">sw</text>
+
+  <text x="72" y="218" font-family="'DM Mono', 'Courier New', monospace" font-size="20" letter-spacing="2" fill="#9ca3af">Crimping Operations - Jobs &amp; Orders Software</text>
+
+  <line x1="70" y1="248" x2="1130" y2="248" stroke="#e5e7eb" stroke-width="1"/>
+
+  <text x="70" y="292" font-family="'DM Mono', 'Courier New', monospace" font-size="16" letter-spacing="1" fill="#9ca3af">MERAK - Knorr-Bremse</text>
+  <circle cx="300" cy="286" r="3" fill="#d1d5db"/>
+  <text x="320" y="292" font-family="'DM Mono', 'Courier New', monospace" font-size="16" letter-spacing="1" fill="#9ca3af">Version 3.0 Pro</text>
+  <circle cx="520" cy="286" r="3" fill="#d1d5db"/>
+  <text x="540" y="292" font-family="'DM Mono', 'Courier New', monospace" font-size="16" letter-spacing="1" fill="#9ca3af">Python - Flask - SQLite</text>
+</svg>

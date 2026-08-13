@@ -52,6 +52,7 @@ MODULOS_APP = {
     'engastado':     {'label': 'Engastado',      'endpoint': 'main.index_v3'},
     'mangueras':     {'label': 'Mangueras',       'endpoint': 'main.mangueras'},
     'manguitos':     {'label': 'Manguitos',       'endpoint': 'main.manguitos'},
+    'admin':         {'label': 'Administración',  'endpoint': 'main.admin'},
     'produccion':    {'label': 'Producción',      'endpoint': None},  # popup Bonos+Ordenes
     'visualizacion': {'label': 'Visualización',   'endpoint': 'main.visualizacion'},
     'etiquetas':     {'label': 'Etiquetas',       'endpoint': 'main.etiquetas'},
@@ -60,10 +61,10 @@ MODULOS_APP = {
 
 def modulos_permitidos_de(modulos_permitidos_raw):
     """Parsea operarios.modulos_permitidos (JSON en texto, o None) a un set
-    de slugs. None/valor invalido -> None, que significa "todos los modulos"
-    (asi la migracion no deja a nadie fuera el primer dia: el acceso solo se
-    restringe cuando el admin edita explicitamente a ese operario). Una lista
-    vacia explicita ('[]') si significa "ninguno"."""
+    de slugs. None/valor invalido -> None, que significa "sin restriccion
+    explicita" y se interpreta en la UI como "todos menos Administración"
+    para no conceder admin por defecto tras migraciones. Una lista vacia
+    explicita ('[]') si significa "ninguno"."""
     if modulos_permitidos_raw is None:
         return None
     try:

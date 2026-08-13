@@ -22,6 +22,7 @@ let bonoActual = null;
 let proyectoActual = null;
 let datosV3 = {};
 let puestoSeleccionado = null;
+let puestoBloqueadoPorRfid = false; // true si el puesto vino fijado por RFID o por el PC
 let maquinaSeleccionada = null;
 let terminalesAsignados = [];
 let carrosDelBono = []; // Todos los carros del bono

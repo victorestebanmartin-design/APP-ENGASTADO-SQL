@@ -537,6 +537,17 @@
                     </div>
 
                     <div class="card">
+                        <h2>🧹 Puesto de este PC (caché)</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Si quieres reasignar rápidamente este equipo a otro puesto, borra aquí la caché local.
+                            Al liberar, se cerrará también el operario actual de este navegador y al siguiente acceso
+                            se pedirá configurar puesto de nuevo.
+                        </p>
+                        <button onclick="liberarCachePuestoPC()" class="btn-secondary">🧹 Liberar caché de puesto</button>
+                        <div id="puesto-pc-cache-msg" style="margin-top:10px;font-size:0.88em;"></div>
+                    </div>
+
+                    <div class="card">
                         <h2>🔄 Actualización del Sistema</h2>
                         <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
                         <div id="update-status" class="mensaje hidden"></div>
@@ -729,12 +740,14 @@
                     return;
                 }
                 const filas = data.operarios.map(op => {
-                    // null = sin restringir (todos marcados); si no, solo los de la lista
+                    // null = sin restringir explícita: todo marcado salvo Admin.
                     const permitidos = op.modulos_permitidos;
                     const casillasModulos = modulos.map(m => `
                         <label style="display:flex;align-items:center;gap:5px;font-size:0.85em;white-space:nowrap;">
                             <input type="checkbox" class="op-mod-check" data-op="${op.id}" data-slug="${m.slug}"
-                                ${(permitidos === null || permitidos.includes(m.slug)) ? 'checked' : ''}>
+                                ${(permitidos === null
+                                    ? (m.slug !== 'admin')
+                                    : permitidos.includes(m.slug)) ? 'checked' : ''}>
                             ${m.label}
                         </label>`).join('');
                     return `

@@ -46,6 +46,34 @@ async function confirmarOperario() {
     _activarOperario(valor);
 }
 
+async function salirEngastadoV3() {
+    if (!confirm('¿Cerrar sesión y salir del módulo de Engastado?')) return;
+
+    // Cerrar login exclusivo del módulo en servidor.
+    try {
+        if (operarioLoginId) {
+            await fetch('/api/operarios/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_id: operarioLoginId })
+            });
+        }
+    } catch (_) { /* continuar igualmente */ }
+
+    if (_latidoOperarioTimer) {
+        clearInterval(_latidoOperarioTimer);
+        _latidoOperarioTimer = null;
+    }
+
+    operarioActual = null;
+    operarioLoginId = null;
+    operarioTagUid = null;
+    sessionStorage.removeItem('operario_actual');
+
+    // beforeunload también limpia bloqueos/sesión de trabajo al abandonar.
+    window.location.href = '/modules';
+}
+
 function _activarOperario(nombre) {
     operarioActual = nombre;
 
@@ -184,12 +212,31 @@ function _cerrarModalesWizard() {
     });
 }
 
+function _actualizarUiPuestoBloqueado() {
+    const btnModal = document.getElementById('btn-modal-cambiar-puesto');
+    const btnPaso = document.getElementById('btn-volver-puestos');
+    const bloqueado = !!puestoBloqueadoPorRfid;
+
+    if (btnModal) {
+        btnModal.style.display = bloqueado ? 'none' : '';
+    }
+    if (btnPaso) {
+        btnPaso.style.display = bloqueado ? 'none' : '';
+    }
+}
+
 function volverModalBonoDesdeModalPuesto() {
     document.getElementById('modal-puesto').classList.add('hidden');
     abrirModalBono();
 }
 
 async function abrirModalPuesto() {
+    if (puestoBloqueadoPorRfid) {
+        // El puesto ya está fijado por RFID asignado o por el propio PC.
+        await abrirModalMaquina();
+        return;
+    }
+
     _mostrarModalWizard('modal-puesto');
 
     const subtitulo = document.getElementById('modal-puesto-subtitulo');
@@ -253,6 +300,8 @@ async function abrirModalPuesto() {
 }
 
 async function seleccionarPuestoDesdeModal(idx) {
+    puestoBloqueadoPorRfid = false;
+    _actualizarUiPuestoBloqueado();
     puestoSeleccionado = _puestosCache[idx];
     await abrirModalMaquina();
 }
@@ -270,6 +319,8 @@ async function seleccionarPuestoAutomatico(puestoId) {
         const data = await r.json();
         const puesto = data.success ? (data.puestos || []).find(p => p.id === puestoId && p.activo) : null;
         if (puesto) {
+            puestoBloqueadoPorRfid = true;
+            _actualizarUiPuestoBloqueado();
             puestoSeleccionado = puesto;
             await abrirModalMaquina();
             return;
@@ -278,6 +329,8 @@ async function seleccionarPuestoAutomatico(puestoId) {
     } catch (e) {
         console.warn('[RFID] Error resolviendo puesto asignado, se pide a mano:', e);
     }
+    puestoBloqueadoPorRfid = false;
+    _actualizarUiPuestoBloqueado();
     await abrirModalPuesto();
 }
 

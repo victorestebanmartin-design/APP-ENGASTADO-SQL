@@ -19,22 +19,49 @@ let _detenerSondeoRfidV3 = null;
 function iniciar_deteccion_rfid() {
     console.log('[RFID] Iniciando detección de entrada RFID...');
 
-    _detenerSondeoRfidV3 = iniciarDeteccionRfid('/api/operarios/logins', (login) => {
-        const operarioNombre = login.operario;
-        const loginId = login.id;
-        const puestoId = login.puesto_id || null;
-        const puestoNombre = login.puesto_nombre || null;
+    fetch('/api/puesto/pc')
+        .then(r => r.json())
+        .then(d => {
+            const puestoId = d && d.success ? (d.puesto_id || null) : null;
+            const pollUrl = puestoId
+                ? `/api/operarios/logins?puesto_id=${encodeURIComponent(puestoId)}`
+                : '/api/operarios/logins';
 
-        console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
-            (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
-        mostrar_rfid_confirmado(operarioNombre, loginId, puestoId, puestoNombre);
-    }, {
-        timeoutMs: 30000,
-        onTimeout: () => {
-            console.log('[RFID] Polling timeout - RFID reader may not be connected');
-            mostrar_rfid_timeout();
-        }
-    });
+            _detenerSondeoRfidV3 = iniciarDeteccionRfid(pollUrl, (login) => {
+                const operarioNombre = login.operario;
+                const loginId = login.id;
+                const puestoIdLogin = login.puesto_id || null;
+                const puestoNombre = login.puesto_nombre || null;
+
+                console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
+                    (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
+                mostrar_rfid_confirmado(operarioNombre, loginId, puestoIdLogin, puestoNombre);
+            }, {
+                timeoutMs: 30000,
+                onTimeout: () => {
+                    console.log('[RFID] Polling timeout - RFID reader may not be connected');
+                    mostrar_rfid_timeout();
+                }
+            });
+        })
+        .catch(() => {
+            _detenerSondeoRfidV3 = iniciarDeteccionRfid('/api/operarios/logins', (login) => {
+                const operarioNombre = login.operario;
+                const loginId = login.id;
+                const puestoIdLogin = login.puesto_id || null;
+                const puestoNombre = login.puesto_nombre || null;
+
+                console.log(`[RFID] ✓ Operario detectado: ${operarioNombre}` +
+                    (puestoNombre ? ` (puesto: ${puestoNombre})` : ''));
+                mostrar_rfid_confirmado(operarioNombre, loginId, puestoIdLogin, puestoNombre);
+            }, {
+                timeoutMs: 30000,
+                onTimeout: () => {
+                    console.log('[RFID] Polling timeout - RFID reader may not be connected');
+                    mostrar_rfid_timeout();
+                }
+            });
+        });
 }
 
 /**

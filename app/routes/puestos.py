@@ -123,6 +123,33 @@ def api_puesto_pc_reasignar():
         return error_interno(e)
 
 
+@bp.route('/api/puesto/pc/liberar', methods=['POST'])
+@requiere_pin_admin
+def api_puesto_pc_liberar():
+    """Libera la identidad de puesto de ESTE navegador (borra la cookie).
+
+    Útil para reasignar rápidamente el equipo sin esperar a caducidades.
+    Además cierra la sesión de operario local para evitar que el gate de
+    login adopte una identidad antigua tras cambiar de puesto.
+    """
+    try:
+        login_id = session.get('operario_login_id')
+        if login_id:
+            with db.engine.connect() as conn:
+                conn.execute(text("UPDATE operario_logins SET activo=0 WHERE id=:id"), {'id': login_id})
+                conn.commit()
+
+        session.pop('operario_actual', None)
+        session.pop('operario_login_id', None)
+
+        resp = jsonify({'success': True, 'message': 'Puesto del PC liberado'})
+        resp.set_cookie(COOKIE_PUESTO_PC, '', max_age=0, expires=0,
+                        httponly=True, samesite='Lax')
+        return resp
+    except Exception as e:
+        return error_interno(e)
+
+
 def normalizar_tag_uid(crudo):
     """Deja un UID de tarjeta NFC en forma canónica: hex en mayúsculas y sin
     separadores. Devuelve '' si viene vacío, o None si no es un UID válido.
