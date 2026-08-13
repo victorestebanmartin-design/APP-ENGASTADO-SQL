@@ -55,7 +55,7 @@ import framebuf
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-11b"
+FW_VERSION = "2026-08-13a"
 
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
@@ -107,11 +107,12 @@ BTN_PUESTO_PINS = [17, 16, 15, 48, 47, 38, 39]
 BTN_OK_PIN = 40
 
 # ── Lector NFC (PN532 "NFC MODULE V3" en modo I2C) ───────────────────────────
-# La tarjeta identifica al OPERARIO (no al puesto). Sirve para dos cosas:
-#   1. LOGIN: al abrir el modulo en el PC, la pantalla muestra "LOGIN / PASA TU
-#      TARJETA" con un codigo; el operario pasa su tarjeta aqui y entra.
-#   2. CONFIRMAR: en modo trabajo, pasar la tarjeta = pulsar el boton de su
-#      puesto (muestra sus paquetes); el OK (boton 8) confirma.
+# La tarjeta identifica al OPERARIO (no al puesto), SOLO para confirmar en modo
+# trabajo: pasar la tarjeta = pulsar el boton de su puesto (muestra sus
+# paquetes); el OK (boton 8) confirma. Igual que con el boton, funciona con o
+# sin tarjeta asignada -- el NFC es solo una forma alternativa de identificarse
+# ante el carro, nunca hace falta para entrar al modulo (eso es el lector
+# dedicado de la entrada del puesto, o la seleccion manual en el PC).
 # Cada operario tiene su tarjeta asignada en Admin -> Operarios. Sin lector
 # conectado no pasa nada: los pulsadores siguen funcionando igual.
 #   SDA -> pad 11 (GPIO6)    VCC -> pad 20 (3.3V)
@@ -385,29 +386,12 @@ def draw_idle(msg=None):
         pass       # aun no se ha inicializado (primer draw del arranque)
     draw_wifi_bar()
 
-def draw_login(codigo):
-    """Pantalla de espera de login: el operario pasa su tarjeta para entrar.
-
-    El servidor manda un codigo corto que tambien se ve en el PC que pidio el
-    login: sirve para confirmar de un vistazo que es TU login (seguridad basica
-    por si varios PCs piden entrar a la vez)."""
-    rect(0, 0, 240, 320, BLACK)
-    text_center(24, "LOGIN", ORANGE, BLACK, scale=4)
-    hline(20, 84, 200, DGRAY)
-    text_center(104, "PASA TU", WHITE, BLACK, scale=3)
-    text_center(140, "TARJETA", WHITE, BLACK, scale=3)
-    if codigo:
-        text_center(196, "CODIGO", LGRAY, BLACK, scale=2)
-        text_center(224, str(codigo)[:6], YELLOW, BLACK, scale=4)
-    text(4, 274, "ID " + DEVICE_ID[-4:], DGRAY, BLACK, scale=1)
-    draw_wifi_bar()
-
 def draw_reposo():
-    """Reposo: banner de login si hay uno pendiente en este carro, o idle."""
-    if login_codigo:
-        draw_login(login_codigo)
-    else:
-        draw_idle()
+    """Reposo: pantalla idle. El NFC del carro ya no sirve para entrar al
+    modulo (eso es cosa del lector dedicado de la entrada, o de la seleccion
+    manual en el PC) -- aqui solo identifica para confirmar recogidas, igual
+    que un boton de puesto, y eso no necesita banner en reposo."""
+    draw_idle()
 
 # ── Estado de trabajo ─────────────────────────────────────────────────────────
 # work_ops: lo que el servidor dice que hay ahora mismo en este carro, una
@@ -425,11 +409,6 @@ work_idx   = 0     # paquete mostrado dentro de esa lista
 
 # Lo ya confirmado en esta pantalla: clave de puesto -> "lote|fase"
 confirmados = {}
-
-# Login por tarjeta: codigo del login pendiente en este carro ('' = ninguno).
-# Lo manda el servidor en cada poll; la pantalla lo muestra en reposo.
-login_codigo = ''
-login_codigo_shown = ''   # lo que el banner de reposo tiene dibujado ahora
 
 # Version que anuncia el servidor: para pintar en reposo si estamos al dia.
 fw_servidor = ''
@@ -1270,13 +1249,13 @@ while True:
                 if en_work_mode:
                     seleccionar_por_tag(uid)
                 else:
-                    # En reposo: cazar el UID para dar de alta operarios desde
-                    # Admin y, sobre todo, para resolver un login pendiente (el
-                    # servidor identifica al operario por su tarjeta).
+                    # En reposo: cazar el UID solo para dar de alta operarios
+                    # desde Admin ("Capturar tag"). El NFC del carro NO entra
+                    # al modulo -- eso es cosa del lector dedicado de la
+                    # entrada, o de la seleccion manual en el PC.
                     _encolar_evento({'tipo': 'tag', 'uid': uid,
                                      'carro': str(mi_carro or '')})
                     draw_estado("Tarjeta " + uid[:14], YELLOW)
-                    login_codigo_shown = None   # el proximo poll redibuja reposo
 
     # ── Boton 8 (OK): confirmar lo que pide la pantalla ───────────────
     b_ok = btn_ok.value()
@@ -1292,7 +1271,7 @@ while True:
             draw_reposo()          # soltado antes de los 5s: restaurar reposo
     # Pulsacion LARGA de OK, SOLO en reposo y con firmware desactualizado:
     # actualizar por WiFi. Nunca en modo trabajo (ahi OK solo confirma).
-    if b_ok == 0 and not en_work_mode and not login_codigo \
+    if b_ok == 0 and not en_work_mode \
             and _desactualizada() and not btn_ok_ota_hecho:
         falta = OTA_HOLD_MS - time.ticks_diff(now, btn_ok_t0)
         if falta <= 0:
@@ -1393,18 +1372,14 @@ while True:
                 if _ota and _ota.get('update') and _ota.get('version') \
                         and _ota.get('version') != FW_VERSION:
                     hacer_ota(_ota)
-                # Codigo de login pendiente en este carro (banner de reposo)
-                login_codigo = (d.get('login') or {}).get('codigo') or ''
                 # Version del servidor: para el estado de firmware en reposo
                 fw_servidor = d.get('fw_server') or ''
                 # Carro que nos asigna el servidor (Admin -> Display Carro)
                 ca = d.get('carro_asignado') or CARRO_ASIGNADO
                 if ca != mi_carro:
                     mi_carro = ca
-                    login_codigo_shown = None      # forzar redibujo de reposo
                     if not en_work_mode:
                         draw_reposo()
-                        login_codigo_shown = login_codigo
                         fw_servidor_shown = fw_servidor
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
@@ -1416,12 +1391,10 @@ while True:
                         vista = 'lista'; sel_clave = ''
                         confirmados.clear()
                         draw_reposo()
-                        login_codigo_shown = login_codigo
                         fw_servidor_shown = fw_servidor
-                    elif login_codigo_shown != login_codigo or fw_servidor_shown != fw_servidor:
-                        # En reposo: cambio el login pendiente o el estado de firmware
+                    elif fw_servidor_shown != fw_servidor:
+                        # En reposo: cambio el estado de firmware
                         draw_reposo()
-                        login_codigo_shown = login_codigo
                         fw_servidor_shown = fw_servidor
                 elif fp != work_fp:
                     # Contenido nuevo del servidor

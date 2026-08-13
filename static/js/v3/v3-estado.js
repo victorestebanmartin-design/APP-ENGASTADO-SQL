@@ -13,11 +13,6 @@ let operarioLoginId = null;   // ID del login exclusivo en servidor (null si no 
 let operarioTagUid = null;    // tarjeta NFC del operario (para confirmar en el carro)
 let _latidoOperarioTimer = null;
 
-// Login por tarjeta (lector compartido en el carro)
-let loginRequestId = null;    // ID de la petición de login en curso
-let loginCarroSel = null;     // carro/lector contra el que se pide el login
-let _loginPollTimer = null;   // sondeo del estado de la petición
-
 // Caché para los modales de navegación
 let _puestosCache = [];
 let _maquinasCache = [];
@@ -147,11 +142,6 @@ function _iniciarLatidoOperario() {
 
 // Liberar la sesión si el operario cierra o refresca la pestaña
 window.addEventListener('beforeunload', function() {
-    // Cancelar una petición de login por tarjeta a medias (libera el lector)
-    if (loginRequestId) {
-        navigator.sendBeacon('/api/operarios/login/solicitar/cancelar',
-            new Blob([JSON.stringify({ request_id: loginRequestId })], { type: 'application/json' }));
-    }
     if (operarioLoginId) {
         // Cerrar el login exclusivo del operario en el servidor
         navigator.sendBeacon('/api/operarios/logout',
@@ -178,13 +168,16 @@ window.addEventListener('beforeunload', function() {
 // es una segunda identificación innecesaria (y encima el servidor la
 // rechazaría, porque el operario ya figura "dentro" por el login del gate).
 // Ver /api/sesion/operario en app/routes/operarios.py.
+//
+// El NFC del carro NO identifica para entrar al módulo (eso quedó solo para
+// el lector RFID dedicado de la entrada, ver iniciar_deteccion_rfid, o la
+// selección manual de abajo): sirve únicamente, ya dentro y en modo trabajo,
+// para confirmar recogidas/devoluciones -- lo mismo que pulsar el botón de
+// tu puesto (ver esp32/micropython/main_wifi.py).
 function _arrancarModuloSinGate() {
     sessionStorage.removeItem('operario_actual');
 
-    // Identificación por tarjeta (el operario pasa su tarjeta en el carro)
-    if (typeof iniciarLoginTarjeta === 'function') iniciarLoginTarjeta();
-
-    // RFID entry detection (dedicate ESP32 reader at workstation entrance)
+    // RFID entry detection (lector dedicado en la entrada del puesto)
     if (typeof iniciar_deteccion_rfid === 'function') iniciar_deteccion_rfid();
 }
 
