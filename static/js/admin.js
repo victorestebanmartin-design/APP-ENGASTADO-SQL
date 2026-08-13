@@ -1604,6 +1604,11 @@ async function cargarLectoresRfid() {
                     <td style="color:#94a3b8;">${dev.last_seen ? _dispEsc(dev.last_seen.replace('T', ' ').slice(0, 19)) : '—'}</td>
                     <td style="white-space:nowrap;">
                         <button class="btn-primary" onclick="guardarLectorRfid('${dev.id}')" title="Guardar nombre y puesto">💾 Guardar</button>
+                        ${dev.ota_pedido
+                            ? `<button class="btn-secondary" onclick="actualizarLectorRfid('${dev.id}')" title="Actualización pedida: se aplicará en el próximo poll del lector">⏳ OTA pedida</button>`
+                            : (dev.fw && dev.fw !== versionSrv)
+                                ? `<button class="btn-secondary" onclick="actualizarLectorRfid('${dev.id}')" title="Forzar actualización OTA por WiFi">⬆️ Actualizar</button>`
+                                : `<button class="btn-secondary" onclick="actualizarLectorRfid('${dev.id}')" title="Forzar reinstalación OTA por WiFi">🔁 Forzar OTA</button>`}
                         <button class="btn-secondary" onclick="eliminarLectorRfid('${dev.id}')" title="Olvidar este lector">🗑️</button>
                     </td>
                 </tr>`).join('') + `
@@ -1638,6 +1643,19 @@ async function eliminarLectorRfid(id) {
         cargarLectoresRfid();
     } catch (e) {
         _rfidMsg('❌ No se pudo eliminar', true);
+    }
+}
+
+async function actualizarLectorRfid(id) {
+    if (!confirm('¿Pedir actualización OTA para este lector RFID por WiFi?\n\nSe aplicará en su próximo poll y el lector se reiniciará solo.')) return;
+    try {
+        const resp = await fetch(`/api/esp32/rfid/devices/${id}/ota`, { method: 'POST' });
+        const d = await resp.json();
+        if (!d.success) throw new Error();
+        _rfidMsg(`⬆️ OTA pedida (a ${d.version || 'la última'}). El lector la aplicará en el próximo chequeo.`);
+        cargarLectoresRfid();
+    } catch (e) {
+        _rfidMsg('❌ No se pudo pedir la actualización OTA', true);
     }
 }
 

@@ -1152,6 +1152,17 @@ def api_esp32_rfid_firmware_version():
         dev_id = _esp32_device_id(request.args.get('id'))
         if dev_id:
             _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'))
+
+            # Si Admin pidió OTA manual para este lector, se marca como
+            # resuelta cuando ya reporta la versión publicada en servidor.
+            fw = (request.args.get('fw') or '').strip()[:24]
+            version_srv = _rfid_firmware_version()
+            devs = _rfid_load_devices()
+            dev = devs.get(dev_id) or {}
+            if dev.get('ota_pedido') and fw and version_srv and fw == version_srv:
+                dev['ota_pedido'] = False
+                devs[dev_id] = dev
+                _rfid_save_devices(devs)
         return jsonify({'version': _rfid_firmware_version(),
                         'files': _rfid_firmware_manifest()})
     except Exception as e:
@@ -1247,6 +1258,7 @@ def api_esp32_rfid_devices():
                 'last_seen': d.get('last_seen', ''),
                 'online': online,
                 'fw': d.get('fw', ''),
+                'ota_pedido': bool(d.get('ota_pedido')),
             })
         try:
             puestos = [{'id': p['id'], 'nombre': p['nombre']}
@@ -1283,6 +1295,22 @@ def api_esp32_rfid_device_update(device_id):
                 dev['puesto_nombre'] = ''
         _rfid_save_devices(devs)
         return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/devices/<device_id>/ota', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_rfid_device_ota(device_id):
+    """Pide OTA por WiFi para un lector RFID en su próximo poll."""
+    try:
+        dev_id = _esp32_device_id(device_id)
+        devs = _rfid_load_devices()
+        if dev_id not in devs:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        devs[dev_id]['ota_pedido'] = True
+        _rfid_save_devices(devs)
+        return jsonify({'success': True, 'version': _rfid_firmware_version()})
     except Exception as e:
         return error_interno(e)
 
