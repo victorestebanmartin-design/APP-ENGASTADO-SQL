@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">COJOsw Favicon</title>
+  <desc id="desc">Icono favicon para COJOsw.</desc>
+  <rect width="512" height="512" rx="52" ry="52" fill="#111827"/>
+
+  <text x="76" y="275" font-family="'Bebas Neue', 'Arial Narrow', sans-serif" font-size="210" letter-spacing="8" fill="#ffffff">COJO</text>
+  <text x="350" y="275" font-family="'Bebas Neue', 'Arial Narrow', sans-serif" font-size="102" letter-spacing="3" fill="#9ca3af">sw</text>
+
+  <line x1="76" y1="310" x2="436" y2="310" stroke="#374151" stroke-width="2"/>
+  <text x="78" y="352" font-family="'DM Mono', 'Courier New', monospace" font-size="18" letter-spacing="1" fill="#d1d5db">Crimping Software</text>
+</svg>
