@@ -536,11 +536,11 @@ def api_engastado_v3_entrada():
         if not tag_uid:
             return jsonify({'success': False, 'error': 'tag_uid es obligatorio'}), 400
 
-        # Registrar como "ultima tarjeta vista", igual que hace la pantalla
-        # del carro con /api/esp32/evento?tipo=tag. Es lo que sondea Admin ->
-        # Operarios al pulsar "Capturar tag": con esto, la captura funciona
-        # igual de bien acercando la tarjeta a un lector RFID de puesto que
-        # al lector NFC del carro -- mas logico si ya estas en tu puesto.
+        # Registrar como "ultima tarjeta vista": es lo que sondea Admin ->
+        # Operarios al pulsar "Capturar tag" (ver /api/esp32/ultimo-tag). El
+        # lector NFC del carro ya NO contribuye a esto -- solo identifica en
+        # modo trabajo para confirmar recoger/devolver -- asi que la captura
+        # de tarjetas nuevas depende solo de los lectores RFID de la entrada.
         try:
             from app.routes.sistema import _esp32_tags_file
             with open(_esp32_tags_file(), 'w') as f:

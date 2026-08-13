@@ -55,7 +55,7 @@ import framebuf
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-13a"
+FW_VERSION = "2026-08-13b"
 
 SSID     = "MOVISTAR_8A70"
 PASSWORD = "tnADEofvTsc8MNGj6PSK"
@@ -687,9 +687,9 @@ def seleccionar_por_tag(uid):
 
     La tarjeta identifica al OPERARIO. Si el UID no corresponde a ningun
     operario con trabajo en este carro puede ser porque no tiene nada aqui o
-    porque la tarjeta no esta dada de alta. La pantalla no conoce la tabla de
-    operarios: ensena el UID (para poder darlo de alta desde Admin) y se lo
-    cuenta al servidor.
+    porque la tarjeta no esta dada de alta -- eso se hace en Admin con el
+    lector RFID dedicado de la entrada del puesto, no con este lector del
+    carro (que solo confirma, nunca identifica de alta).
     """
     o = _op_por_tag(uid)
     if o is not None:
@@ -699,9 +699,7 @@ def seleccionar_por_tag(uid):
     text_center(110, "TARJETA", ORANGE, BLACK, scale=3)
     text_center(150, "SIN TRABAJO AQUI", ORANGE, BLACK, scale=1)
     text_center(180, uid[:20], LGRAY, BLACK, scale=2)
-    text_center(215, "Alta en Admin > Operarios", DGRAY, BLACK, scale=1)
     bip_error()
-    _encolar_evento({'tipo': 'tag', 'uid': uid, 'carro': str(mi_carro or '')})
     time.sleep_ms(1600)
     mostrar_lista()
 
@@ -1242,20 +1240,18 @@ while True:
                         time.ticks_diff(now, nfc_uid_ts) < NFC_REPETIR_MS)
             nfc_uid_prev = uid
             nfc_uid_ts = now
-            if not repetida:
+            # El NFC del carro SOLO identifica en modo trabajo (confirmar
+            # recoger/devolver). En reposo se ignora sin mas: ni entra al
+            # modulo ni sirve para "Capturar tag" en Admin -- eso es cosa del
+            # lector RFID dedicado de la entrada del puesto (ver
+            # app/routes/operarios.py:api_engastado_v3_entrada). Se sigue
+            # leyendo el chip igualmente (arriba) para poder detectar si el
+            # lector se ha colgado.
+            if not repetida and en_work_mode:
                 print("NFC:", uid)
                 ultima_accion = now
                 ultimo_avance = now
-                if en_work_mode:
-                    seleccionar_por_tag(uid)
-                else:
-                    # En reposo: cazar el UID solo para dar de alta operarios
-                    # desde Admin ("Capturar tag"). El NFC del carro NO entra
-                    # al modulo -- eso es cosa del lector dedicado de la
-                    # entrada, o de la seleccion manual en el PC.
-                    _encolar_evento({'tipo': 'tag', 'uid': uid,
-                                     'carro': str(mi_carro or '')})
-                    draw_estado("Tarjeta " + uid[:14], YELLOW)
+                seleccionar_por_tag(uid)
 
     # ── Boton 8 (OK): confirmar lo que pide la pantalla ───────────────
     b_ok = btn_ok.value()

@@ -668,19 +668,6 @@ def api_esp32_evento():
         _esp32_registrar_evento(evento)
         current_app.logger.info('Evento ESP32: %s', evento)
 
-        # Tarjeta NFC leída en el carro fuera de modo trabajo: se guarda como
-        # "última tarjeta vista", para alta desde Admin (Admin -> Operarios,
-        # botón "Capturar tag"). El NFC del carro NO sirve para entrar al
-        # módulo -- eso solo se hace desde /login (lector de puesto o
-        # selección manual); aquí solo identifica para confirmar recogidas
-        # (ver tipo=confirmacion, mandado por el propio firmware cuando SÍ
-        # está en modo trabajo).
-        if evento['tipo'] == 'tag' and evento['uid']:
-            with open(_esp32_tags_file(), 'w') as f:
-                json.dump({'uid': evento['uid'], 'device_id': evento['device_id'],
-                           'carro': evento['carro'], 'ts': evento['ts']}, f)
-            return jsonify({'success': True})
-
         # Liberar: sacar ese puesto del carro sin esperar al TTL. Es la salida
         # de emergencia física para un puesto que se quedó colgado (PC cerrado
         # de golpe, sin red al cancelar...).

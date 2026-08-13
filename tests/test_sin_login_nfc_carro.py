@@ -12,18 +12,15 @@ def _operario_con_tag(client, nombre, tag):
 
 
 def test_tarjeta_en_el_carro_no_crea_ningun_login(client):
-    """Pasar la tarjeta en el carro (fuera de modo trabajo) ya no autentica:
-    solo queda registrada como 'última tarjeta vista' para Admin."""
+    """Pasar la tarjeta en el carro (fuera de modo trabajo) ya no hace nada:
+    no autentica y tampoco queda como 'última tarjeta vista' para Admin (eso
+    es solo del lector de la entrada, ver test_puestos_tag.py)."""
     _operario_con_tag(client, 'ANA', 'A1B2C3D4')
     r = client.get('/api/esp32/evento?tipo=tag&uid=A1B2C3D4&carro=7')
     assert r.get_json()['success']
     assert 'login' not in r.get_json()
 
     assert client.get('/api/operarios/logins').get_json()['logins'] == []
-
-    tag = client.get('/api/esp32/ultimo-tag')
-    # requiere admin normalmente, pero comprobamos que no rompe el evento
-    assert tag.status_code in (200, 401)
 
 
 def test_current_ya_no_expone_banner_de_login(client):
