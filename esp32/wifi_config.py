@@ -10,9 +10,22 @@ SSID = "YOUR_SSID"                # Nombre de tu red WiFi
 PASSWORD = "YOUR_PASSWORD"        # Contrasena de tu red WiFi
 WEBREPL_PASSWORD = "YOUR_WEBREPL_PASSWORD"  # Contrasena de WebREPL (puerto 8266)
 
-# El host del backend YA NO vive aqui: esta en backend_config.py, que a
-# diferencia de este fichero SI se actualiza por OTA (para poder migrar de
-# servidor sin visitar cada placa con un cable USB).
+# El host del backend REAL vive en backend_config.py, que a diferencia de
+# este fichero SI se actualiza por OTA (para poder migrar de servidor sin
+# visitar cada placa con un cable USB). Lo de abajo es solo una RED DE
+# SEGURIDAD y no se usa mientras main.py sea la version actual.
+#
+# Por que sigue aqui: si un main.py nuevo falla al arrancar 3 veces,
+# ota_update.rollback_si_procede() restaura main_prev.py, que puede ser un
+# main.py ANTERIOR al split de backend_config.py y que por tanto lee el host
+# de aqui. Sin estas tres lineas ese rollback lanzaria AttributeError en cada
+# arranque, el contador de fallos nunca se resetearia y la placa quedaria en
+# bucle infinito -- justo lo que la red de seguridad pretende evitar. Con
+# ellas, la placa arranca igual y ota_update (que si usa backend_config) puede
+# volver a descargar el firmware bueno y curarse sola.
+BACKEND_HOST = "192.168.1.20"
+BACKEND_PORT = 5001
+BACKEND_USE_SSL = False
 
 # GPIO Configuration
 BUZZER_PIN = 4     # GPIO pin para el zumbador
