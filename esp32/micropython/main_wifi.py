@@ -1,7 +1,10 @@
 # main_wifi.py — Pantalla de carro COJOsw vía WiFi (gen4-ESP32-24, ILI9341 240x320)
 # Subir con: mpremote connect COM5 cp esp32\micropython\main_wifi.py :main.py + reset
 #
-# ANTES DE SUBIR: ajusta SSID, PASSWORD y HOST_IP abajo.
+# ANTES DE SUBIR: ajusta SSID, PASSWORD y HOST_IP abajo con los valores
+# REALES en tu copia local, pero NO subas ese cambio a git con las
+# credenciales reales dentro (este fichero se versiona con valores de
+# ejemplo a proposito; ver el mismo aviso en esp32/wifi_config.py).
 #
 # Modo de uso:
 #   - En reposo muestra "Esperando carro..." con el estado WiFi.
@@ -57,10 +60,13 @@ import framebuf
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
 FW_VERSION = "2026-08-13b"
 
-SSID     = "MOVISTAR_8A70"
-PASSWORD = "tnADEofvTsc8MNGj6PSK"
-HOST_IP  = "viktor85.pythonanywhere.com"
-PORT     = 80
+SSID     = "YOUR_SSID"
+PASSWORD = "YOUR_PASSWORD"
+# Servidor LOCAL (planta, sin internet): IP fija del PC servidor + puerto
+# de run_sql.py (5001). Alternativa remota: "viktor85.pythonanywhere.com"
+# con PORT = 443 (requiere que la placa tenga salida a internet).
+HOST_IP  = "192.168.1.20"
+PORT     = 5001
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
