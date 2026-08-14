@@ -79,6 +79,34 @@ Debe responder algo como `{"status": "ok", ...}`.
 
 ---
 
+## Icono en el escritorio / barra de tareas (opcional)
+
+La app trae icono propio (COJOsw). Cómo dejarlo bien depende del equipo:
+
+**En el PC servidor** (o en cualquiera que entre por `http://localhost:5001`):
+1. Abrir Edge o Chrome y entrar en `http://localhost:5001`.
+2. Menú `⋮` → **Aplicaciones** → *Instalar este sitio como una aplicación*
+   (en Chrome: `⋮` → *Emitir, guardar y compartir* → *Instalar página como aplicación*).
+3. **Dejar el nombre que propone (`COJOsw`)** y aceptar anclar a la barra de tareas.
+
+A partir de ahí `run.bat` detecta ese acceso directo y abre la app instalada en
+vez del navegador, así que la barra de tareas muestra el icono de COJOsw. Si se
+le cambia el nombre al instalarla, `run.bat` no la encontrará y volverá a abrir
+el navegador en modo ventana (que funciona igual, pero con el icono del
+navegador).
+
+**En los PCs cliente** (entran por `http://IP-DEL-SERVIDOR:5001`): el navegador
+**no ofrece instalar**, porque solo lo permite sobre HTTPS o `localhost`. El
+equivalente es `⋮` → *Guardar y compartir* → **Crear acceso directo…** y marcar
+**"Abrir como ventana"**. Mismo resultado visual: icono propio y ventana sin
+barra de direcciones.
+
+Para accesos directos creados a mano está `static\img\cojosw.ico` (icono de
+Windows multi-tamaño): botón derecho en el acceso directo → Propiedades →
+Cambiar icono → examinar hasta ese archivo.
+
+---
+
 ## Notas
 - La app **no requiere permisos de administrador** (sí se necesitan para abrir
   el puerto del firewall).
