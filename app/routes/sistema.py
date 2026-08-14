@@ -72,7 +72,9 @@ def health():
 def _encontrar_git():
     """
     Busca el ejecutable de git en el PATH y en las rutas de instalación
-    habituales de Windows (Git for Windows, GitHub Desktop, etc.).
+    habituales de Windows (Git for Windows, GitHub Desktop, etc.) y de
+    Linux (PythonAnywhere y similares, donde el proceso web puede correr
+    con un PATH mínimo que no incluye /usr/bin).
     Devuelve la ruta completa al ejecutable o None si no se encuentra.
     """
     import shutil
@@ -83,8 +85,10 @@ def _encontrar_git():
     if git_path:
         return git_path
 
-    # 2. Rutas de instalación estándar de Git for Windows
+    # 2. Rutas estándar: Linux (PythonAnywhere) y Git for Windows
     rutas_fijas = [
+        '/usr/bin/git',
+        '/usr/local/bin/git',
         r'C:\Program Files\Git\cmd\git.exe',
         r'C:\Program Files\Git\bin\git.exe',
         r'C:\Program Files (x86)\Git\cmd\git.exe',
