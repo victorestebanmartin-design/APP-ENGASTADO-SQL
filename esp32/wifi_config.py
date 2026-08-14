@@ -10,21 +10,9 @@ SSID = "YOUR_SSID"                # Nombre de tu red WiFi
 PASSWORD = "YOUR_PASSWORD"        # Contrasena de tu red WiFi
 WEBREPL_PASSWORD = "YOUR_WEBREPL_PASSWORD"  # Contrasena de WebREPL (puerto 8266)
 
-# Backend: la misma app Flask/SQLite (COJOsw) que ya usan la pantalla del
-# carro y el resto del sistema. Todo el trafico de esta placa (lectura RFID
-# y OTA) pasa por aqui.
-#
-# Servidor LOCAL (planta, sin internet): pon la IP fija del PC servidor y
-# el puerto de run_sql.py (5001), sin SSL (HTTP normal en la LAN).
-BACKEND_HOST = "192.168.1.20"
-BACKEND_PORT = 5001
-BACKEND_USE_SSL = False
-# Alternativa: servidor en PythonAnywhere (requiere que la placa tenga
-# salida a internet; funciona tambien desde una red corporativa que solo
-# permita saliente el 443):
-#   BACKEND_HOST = "viktor85.pythonanywhere.com"
-#   BACKEND_PORT = 443
-#   BACKEND_USE_SSL = True
+# El host del backend YA NO vive aqui: esta en backend_config.py, que a
+# diferencia de este fichero SI se actualiza por OTA (para poder migrar de
+# servidor sin visitar cada placa con un cable USB).
 
 # GPIO Configuration
 BUZZER_PIN = 4     # GPIO pin para el zumbador

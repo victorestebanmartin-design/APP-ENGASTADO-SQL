@@ -20,7 +20,7 @@ import machine
 import binascii
 
 import http_client
-import wifi_config as cfg
+import backend_config as cfg
 
 VERSION_FILE = "version.txt"
 BOOT_FAILS_FILE = "boot_fails.txt"

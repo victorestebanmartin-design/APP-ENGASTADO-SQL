@@ -4,7 +4,7 @@
 # Este fichero SI se actualiza por OTA (ver ota_update.py): sube la version
 # aqui, publicalo con el deploy habitual del repo y la placa se autoactualiza
 # sola en su siguiente comprobacion (arranque o periodica).
-FW_VERSION = "2026-08-13a"
+FW_VERSION = "2026-08-14a"
 
 import time
 from machine import Pin
@@ -13,10 +13,11 @@ from mfrc522 import MFRC522
 import http_client
 import ota_update
 import wifi_config as cfg
+import backend_config as backend_cfg
 
-HOST = cfg.BACKEND_HOST
-PORT = cfg.BACKEND_PORT
-USE_SSL = cfg.BACKEND_USE_SSL
+HOST = backend_cfg.BACKEND_HOST
+PORT = backend_cfg.BACKEND_PORT
+USE_SSL = backend_cfg.BACKEND_USE_SSL
 ENTRADA_PATH = "/api/puestos/engastado_v3/entrada"
 
 # ── Hardware ─────────────────────────────────────────────────────────────────

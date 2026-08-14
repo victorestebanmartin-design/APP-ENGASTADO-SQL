@@ -7,11 +7,12 @@ del sistema, desplegada en PythonAnywhere).
 
 Incluye **actualizacion por WiFi (OTA)**: una vez instalada la placa, para
 cambiar su codigo basta con editar `esp32/main.py` en este repo, desplegar
-como siempre (`deploy.py`) y la placa se actualiza sola en su siguiente
-comprobacion -- sin volver a tocar el cable USB. Esto es lo que resuelve el
-problema de gestionarla desde un PC corporativo sin permisos de driver ni
-salida a puertos no estandar: todo el trafico (lectura RFID y OTA) va por
-HTTPS 443 hacia PythonAnywhere, que es lo unico que ese PC ya tiene garantizado.
+como siempre (`deploy.py`, o un `git pull` en el servidor local) y la placa
+se actualiza sola en su siguiente comprobacion -- sin volver a tocar el
+cable USB. El backend puede ser PythonAnywhere (util desde un PC corporativo
+sin permisos de driver ni salida a puertos no estandar: todo el trafico va
+por HTTPS 443) o el servidor local de planta (sin depender de internet en
+absoluto); ver `esp32/backend_config.py`.
 
 ## Arquitectura: que se actualiza por USB y que por OTA
 
@@ -20,7 +21,8 @@ HTTPS 443 hacia PythonAnywhere, que es lo unico que ese PC ya tiene garantizado.
 | `boot.py` | **USB, una vez** | Conecta el WiFi y dispara el OTA. Si un OTA rompiera este fichero, la placa no podria ni comprobar actualizaciones -- por eso nunca se toca por WiFi. |
 | `ota_update.py` | **USB, una vez** | El propio mecanismo de OTA. Mismo motivo que `boot.py`. |
 | `http_client.py` | **USB, una vez** | Cliente HTTPS del que dependen `main.py` y `ota_update.py`. |
-| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL y configuracion del backend. Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
+| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
+| `backend_config.py` | USB inicialmente, **actualizable por OTA** despues | Host/puerto del backend. Separado de `wifi_config.py` a proposito: no lleva secretos, asi que se puede migrar de servidor (p.ej. PythonAnywhere -> local) publicando el cambio, sin visitar cada placa. |
 | `lib/mfrc522.py` | USB inicialmente, **actualizable por OTA** despues | Driver del lector. Se incluye en el manifiesto OTA por si hiciera falta un fix sin pasar por USB. |
 | `main.py` | USB inicialmente, **actualizable por OTA** despues | La logica de la placa (leer RFID, avisar con el zumbador, mandar la lectura). Esto es lo que cambiaras normalmente. |
 
@@ -113,8 +115,8 @@ o `python run_sql.py`, que instala `pyserial`/`mpremote` con el resto de
 puerto, rellena el WiFi y la contraseña de WebREPL que quieras para esa
 placa, y un solo click sube `http_client.py`, `ota_update.py`,
 `wifi_config.py` (ya con esas credenciales dentro), `lib/mfrc522.py`,
-`boot.py` y `main.py`, y reinicia la placa. A partir de ahi todo lo demas es
-por WiFi, no hace falta volver a tocar el USB.
+`boot.py`, `backend_config.py` y `main.py`, y reinicia la placa. A partir de
+ahi todo lo demas es por WiFi, no hace falta volver a tocar el USB.
 
 Esto **solo funciona con la app corriendo en local** (este PC tiene el
 puerto USB, PythonAnywhere no) -- por eso el primer flasheo es el unico paso
@@ -135,6 +137,7 @@ mpremote connect COM5 cp wifi_config_con_tus_credenciales.py :wifi_config.py
 mpremote connect COM5 mkdir :lib
 mpremote connect COM5 cp esp32/lib/mfrc522.py :lib/mfrc522.py
 mpremote connect COM5 cp esp32/boot.py :boot.py
+mpremote connect COM5 cp esp32/backend_config.py :backend_config.py
 mpremote connect COM5 cp esp32/main.py :main.py
 mpremote connect COM5 reset
 ```
@@ -263,7 +266,8 @@ duplicar la misma pasada de tarjeta.
 - `boot.py` -- arranque: WiFi, WebREPL, dispara el OTA. **USB, no se toca por OTA.**
 - `ota_update.py` -- logica de comprobar/descargar/aplicar/revertir el OTA. **USB, no se toca por OTA.**
 - `http_client.py` -- cliente HTTP/HTTPS minimo sin dependencias externas. **USB, no se toca por OTA.**
-- `wifi_config.py` -- credenciales y configuracion. **USB, no se toca por OTA, no se commitea con secretos reales.**
+- `wifi_config.py` -- credenciales WiFi/WebREPL y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
+- `backend_config.py` -- host/puerto del backend. **Se actualiza por OTA** (permite migrar de servidor sin USB).
 - `lib/mfrc522.py` -- driver del lector RC522 (vendorizado, MIT license). Actualizable por OTA.
 - `main.py` -- logica de la placa (RFID + zumbador + POST). **Esto es lo que se actualiza por OTA.**
 

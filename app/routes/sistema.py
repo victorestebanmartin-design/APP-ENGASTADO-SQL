@@ -1104,11 +1104,16 @@ def api_esp32_device_ota(device_id):
 def _rfid_firmware_files():
     """Ficheros del firmware de la placa RFID: (nombre_destino, ruta_absoluta).
 
-    'main.py' es el unico fichero que cambia normalmente; lib/*.py se incluye
-    por si algun dia hace falta actualizar el driver MFRC522 sin pasar por USB.
+    'main.py' es el fichero que cambia normalmente; 'backend_config.py' se
+    incluye para poder migrar el host del backend (p.ej. de PythonAnywhere
+    al servidor local) sin pasar por USB; lib/*.py por si hiciera falta
+    actualizar el driver MFRC522 tambien sin USB.
     """
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
-    files = [('main.py', os.path.join(base, 'main.py'))]
+    files = [
+        ('main.py', os.path.join(base, 'main.py')),
+        ('backend_config.py', os.path.join(base, 'backend_config.py')),
+    ]
     lib_dir = os.path.join(base, 'lib')
     if os.path.isdir(lib_dir):
         for nombre in sorted(os.listdir(lib_dir)):
@@ -1338,8 +1343,8 @@ def api_esp32_rfid_device_delete(device_id):
 def api_esp32_rfid_flash_usb():
     """Configura y sube TODOS los ficheros de una placa lectora RFID por USB
     de una vez: http_client.py, ota_update.py, wifi_config.py (con el WiFi y
-    la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py, boot.py y
-    main.py.
+    la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py, boot.py,
+    backend_config.py y main.py.
 
     Pensado para el primer flasheo de una placa nueva (o para reinstalar
     todo desde cero): a partir de ahi, main.py se actualiza solo por WiFi
@@ -1412,6 +1417,7 @@ def api_esp32_rfid_flash_usb():
                     if nombre.endswith('.py'):
                         pasos.append((nombre, os.path.join(lib_dir, nombre), nombre))
             pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
+            pasos.append(('backend_config.py', os.path.join(base, 'backend_config.py'), 'backend_config.py'))
             pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
 
             for etiqueta, origen, destino in pasos:
