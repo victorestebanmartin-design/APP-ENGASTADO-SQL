@@ -1776,6 +1776,12 @@ function _usbMsg(texto, esError) {
 async function flashUSB() {
     const puerto = document.getElementById('usb-puerto')?.value;
     if (!puerto) { _usbMsg('Selecciona un puerto (pulsa 🔄 Buscar puertos con la pantalla conectada)', true); return; }
+    // El SSID es obligatorio: el fichero del repo lleva un placeholder, no
+    // credenciales reales. La contraseña sí puede ir vacía (red abierta).
+    if (!document.getElementById('usb-ssid')?.value) {
+        _usbMsg('Rellena el SSID (deja la contraseña vacía si la red no tiene).', true);
+        return;
+    }
     const btn = document.getElementById('usb-flash-btn');
     btn.disabled = true;
     const txtOriginal = btn.textContent;
