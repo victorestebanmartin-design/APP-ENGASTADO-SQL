@@ -902,10 +902,16 @@ def api_esp32_flash_usb():
             contenido = f.read()
         ssid = str(data.get('ssid', '')).strip()
         password = str(data.get('password', ''))
-        if ssid:
-            contenido = re.sub(r'^SSID\s*=.*$', 'SSID     = %r' % ssid, contenido, count=1, flags=re.M)
-        if password:
-            contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, contenido, count=1, flags=re.M)
+        if not ssid:
+            return jsonify({'success': False,
+                            'message': 'El SSID es obligatorio: el fichero del repo lleva un '
+                                       'placeholder (YOUR_SSID), no unas credenciales reales.'}), 400
+        # OJO: los dos re.sub van SIEMPRE, tambien con la contraseña vacia
+        # (red abierta). El fichero del repo lleva placeholders a proposito
+        # (YOUR_SSID / YOUR_PASSWORD), asi que saltarse el parcheo grabaria
+        # esos literales en la placa y no conectaria nunca.
+        contenido = re.sub(r'^SSID\s*=.*$', 'SSID     = %r' % ssid, contenido, count=1, flags=re.M)
+        contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, contenido, count=1, flags=re.M)
 
         # Copia temporal (posiblemente parcheada) que es la que se sube
         base = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
@@ -942,6 +948,16 @@ def api_esp32_flash_usb():
                     return jsonify({'success': False, 'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote  (o actualiza dependencias)'})
                 return jsonify({'success': False, 'message': ('Error al copiar: ' + err)[-400:] or 'Error al copiar (¿puerto ocupado por otro programa?)'})
 
+            # La copia de seguridad del rollback (launcher.py) se deja
+            # apuntando a ESTE mismo app.py. Si no, app_prev.py conserva el
+            # firmware anterior al flasheo y un rollback desharia lo que se
+            # acaba de subir (incluido el WiFi recien configurado).
+            r = mpremote('cp', tmp_fw, ':app_prev.py')
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout or '').strip()
+                return jsonify({'success': False,
+                                'message': ('Error al copiar la copia de seguridad: ' + err)[-400:]})
+
             # Lanzador estable con autorrecuperacion (main.py). Solo se instala
             # por USB; el OTA por WiFi actualiza app.py, no este.
             launcher = os.path.join(proyecto, 'esp32', 'micropython', 'launcher.py')
@@ -951,6 +967,12 @@ def api_esp32_flash_usb():
                     err = (r.stderr or r.stdout or '').strip()
                     return jsonify({'success': False,
                                     'message': ('Error al copiar launcher: ' + err)[-400:]})
+
+            # Contador de arranques fallidos a cero: si la pantalla venia de un
+            # app.py que no arrancaba, ese contador heredado dispararia un
+            # rollback en el primer arranque tras el flasheo.
+            mpremote('exec', "open('boot_fails.txt','w').write('0')")
+
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
             try:
