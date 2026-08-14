@@ -68,6 +68,23 @@ async function cargarPaquetesDelCarro() {
 }
 
 /**
+ * Id corto y estable para un lote de paquetes (FNV-1a de 32 bits, 8 hex).
+ *
+ * Se calcula sobre el contenido del lote, no sobre su posicion, para que dos
+ * conjuntos distintos de paquetes nunca compartan id: la confirmacion fisica
+ * en el carro vale solo para los paquetes que se confirmaron. Corto a
+ * proposito -- el servidor recorta el campo 'lote' a 32 caracteres.
+ */
+function _hashLote(texto) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < texto.length; i++) {
+        h ^= texto.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+}
+
+/**
  * Mostrar modal con paquetes a coger del carro (paginado de 5 en 5)
  */
 async function mostrarModalPaquetes(carro) {
@@ -145,16 +162,26 @@ async function mostrarModalPaquetes(carro) {
     // puesto tiene botón, el botón "Tengo estos N, empezar" queda bloqueado
     // hasta que el operario pulse en el carro el botón de su puesto y luego OK
     // (o confirme desde el PC si la pantalla no responde).
-    if (!window._loteIds) window._loteIds = {};
-    const claveLote = `${carro.carro}|${paginaPaquetes}`;
-    if (!window._loteIds[claveLote]) window._loteIds[claveLote] = Math.random().toString(36).slice(2, 10);
-    const loteId = window._loteIds[claveLote];
+    // El id de lote se deriva del CONTENIDO de la pagina (los paquetes que se
+    // pide recoger), no de su numero. Con un id por (carro|numero de pagina),
+    // una pagina recompuesta heredaba la confirmacion de la anterior: al
+    // retomar un carro a medias los pendientes se recargan y se renumeran
+    // desde la pagina 0, asi que la pagina volvia a llamarse igual pero ya
+    // contenia paquetes nuevos -- y el boton salia desbloqueado para paquetes
+    // que nadie habia cogido del carro.
+    const idsPagina = paginaActual
+        .filter(p => !p.bloqueado)
+        .map(p => `${p.cod_cable}||${p.elemento}`)
+        .sort();
+    const loteId = _hashLote(`${carro.carro}|${idsPagina.join('|')}`);
     window._loteActualId = loteId;
 
     const est = await _estadoPantallaCarro(carro.carro);
     // Sin pantalla en el carro, o sin forma de identificarse (ni botón ni
     // tarjeta), no se bloquea: el operario no podría confirmar allí.
-    const puedeConfirmar = est.display && _puestoSeIdentifica();
+    // Sin nada que recoger (toda la página en uso por otros puestos) tampoco:
+    // no hay recogida física que confirmar.
+    const puedeConfirmar = est.display && _puestoSeIdentifica() && idsPagina.length > 0;
     window._loteGate = puedeConfirmar &&
         !(est.confirmacion && est.confirmacion.lote === loteId && est.confirmacion.fase === 'recoger');
     const displayVivo = est.viva;
