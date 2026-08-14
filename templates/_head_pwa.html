@@ -1,0 +1,25 @@
+{# Cabecera comun de PWA e iconos. Se incluye desde el <head> de cada
+   plantilla ({% include '_head_pwa.html' %}) para no repetir esto 17 veces
+   ni tener que tocarlas una a una cuando cambie el icono. #}
+<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='img/icon-512.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='img/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+<meta name="theme-color" content="#111827">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="COJOsw">
+<script>
+    // Registrar el service worker (requisito para que el navegador ofrezca
+    // "Instalar aplicacion"). navigator.serviceWorker solo existe en
+    // contexto seguro -- https o localhost --, asi que sobre http en la LAN
+    // esto simplemente no se ejecuta y la app funciona igual que siempre.
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js').catch(function () {
+                /* silencioso: no poder instalar no debe romper nada */
+            });
+        });
+    }
+</script>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">COJOsw</title>
+  <desc id="desc">Icono de aplicacion COJOsw.</desc>
+
+  <!-- Icono de app (PWA, favicon y acceso directo del escritorio).
+       Se dibuja aparte de logo_cojosw_favicon.svg a proposito:
+        - Cada palabra es su propio <text> con x explicita (nada de tspan ni
+          de textLength): son las dos construcciones que los rasterizadores
+          suelen ignorar, y con ellas el icono salia cortado o sin el 'sw'.
+        - Los tamanos dejan margen de sobra para que una fuente de reemplazo
+          ancha (cualquier equipo sin las fuentes de la marca) siga cabiendo.
+        - Sin subtitulo: a 192 px o menos seria ilegible y solo ensucia. -->
+
+  <rect width="512" height="512" rx="96" ry="96" fill="#111827"/>
+
+  <text x="52" y="292" font-weight="700" font-size="120" fill="#ffffff"
+        font-family="'Bebas Neue','Arial Narrow',Arial,Helvetica,sans-serif">COJO</text>
+
+  <text x="380" y="292" font-weight="700" font-size="66" fill="#9ca3af"
+        font-family="'Bebas Neue','Arial Narrow',Arial,Helvetica,sans-serif">sw</text>
+
+  <rect x="136" y="344" width="240" height="10" rx="5" fill="#2563eb"/>
+</svg>

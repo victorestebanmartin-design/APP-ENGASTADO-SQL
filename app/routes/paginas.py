@@ -48,9 +48,26 @@ from app.routes.base import (
 def favicon():
     """Icono de pestaña del navegador (evita el 404 de /favicon.ico)."""
     return send_file(
-        os.path.join(current_app.static_folder, 'img', 'reloj_100.png'),
+        os.path.join(current_app.static_folder, 'img', 'icon-192.png'),
         mimetype='image/png',
     )
+
+
+@bp.route('/sw.js')
+def service_worker():
+    """Service worker de la PWA, servido desde la RAIZ a proposito.
+
+    El ambito de un service worker no puede subir por encima de la carpeta
+    desde la que se sirve: en /static/sw.js solo controlaria /static/, y el
+    navegador no daria la app por instalable. Desde aqui su ambito es '/'.
+    """
+    resp = send_file(
+        os.path.join(current_app.static_folder, 'sw.js'),
+        mimetype='application/javascript',
+    )
+    # Que un sw viejo no se quede cacheado tras una actualizacion
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 @bp.route('/')
