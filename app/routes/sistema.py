@@ -1423,6 +1423,13 @@ def api_esp32_rfid_flash_usb():
             pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
             pasos.append(('backend_config.py', os.path.join(base, 'backend_config.py'), 'backend_config.py'))
             pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
+            # La copia de seguridad del rollback se deja apuntando a ESTE
+            # mismo main.py. Si no, main_prev.py conserva el firmware que
+            # hubiera antes del flasheo (posiblemente incompatible con la
+            # wifi_config.py/backend_config.py que se acaban de subir) y un
+            # rollback restauraria algo que no arranca.
+            pasos.append(('main_prev.py (copia de seguridad)',
+                          os.path.join(base, 'main.py'), 'main_prev.py'))
 
             for etiqueta, origen, destino in pasos:
                 if not os.path.exists(origen):
@@ -1444,6 +1451,12 @@ def api_esp32_rfid_flash_usb():
                     return jsonify({'success': False, 'message': _resumen_error(etiqueta, err)})
 
                 time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
+
+            # Dejar el contador de arranques fallidos a cero: si la placa
+            # venia de un firmware que no arrancaba, ese contador puede estar
+            # a punto de disparar un rollback que desharia este flasheo en el
+            # primer arranque.
+            mpremote('exec', "open('boot_fails.txt','w').write('0')")
 
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
