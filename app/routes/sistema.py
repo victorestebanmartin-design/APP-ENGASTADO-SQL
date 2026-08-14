@@ -1361,12 +1361,16 @@ def api_esp32_rfid_flash_usb():
             return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
 
         ssid = str(data.get('ssid', '')).strip()
+        # La contraseña WiFi puede ir vacia (red abierta, sin cifrado):
+        # network.WLAN.connect(ssid, "") en MicroPython conecta igual a una
+        # red sin clave, asi que aqui NO se exige que tenga contenido.
         password = str(data.get('password', ''))
         webrepl_password = str(data.get('webrepl_password', ''))
-        if not ssid or not password or not webrepl_password:
+        if not ssid or not webrepl_password:
             return jsonify({'success': False,
-                            'message': 'SSID, contraseña WiFi y contraseña WebREPL son obligatorios '
-                                       '(se graban en la placa, no se guardan en el servidor).'}), 400
+                            'message': 'SSID y contraseña WebREPL son obligatorios '
+                                       '(deja la contraseña WiFi vacía si la red no tiene; '
+                                       'se graban en la placa, no se guardan en el servidor).'}), 400
 
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')

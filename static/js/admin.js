@@ -1709,8 +1709,9 @@ async function flashUSBRfid() {
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
     const password = document.getElementById('usb-pass-rfid')?.value || '';
     const webrepl_password = document.getElementById('usb-webrepl-rfid')?.value || '';
-    if (!ssid || !password || !webrepl_password) {
-        _usbMsgRfid('Rellena SSID, contraseña WiFi y contraseña WebREPL (se graban en la placa).', true);
+    // La contraseña WiFi puede quedar vacia si la red no tiene (red abierta).
+    if (!ssid || !webrepl_password) {
+        _usbMsgRfid('Rellena SSID y contraseña WebREPL (deja la contraseña WiFi vacía si la red no tiene).', true);
         return;
     }
     const btn = document.getElementById('usb-flash-rfid-btn');
