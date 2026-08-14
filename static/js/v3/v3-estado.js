@@ -37,8 +37,17 @@ let paquetesActuales = []; // Paquetes del carro actual
 let gruposEtiquetasCache = null; // Cache de grupos de etiquetas
 let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concurrente)
 
-// ── Push a pantalla ESP32 vía PA relay (funciona desde cualquier red) ────────
-const _ESP32_PA = 'https://viktor85.pythonanywhere.com';
+// ── Push a pantalla ESP32 ────────────────────────────────────────────────────
+// Se envia al MISMO servidor que sirve esta pagina (cadena vacia = ruta
+// relativa). Es lo unico correcto: la pantalla sondea /api/esp32/current en el
+// servidor que tenga configurado (ver HOST_IP en main_wifi.py), y push y
+// sondeo tienen que caer en el mismo sitio para encontrarse.
+//
+// Antes esto era la URL fija de PythonAnywhere ("PA relay"), lo que funcionaba
+// mientras la pantalla tambien vivia en PA: desde el servidor local los
+// paquetes se escribian en PA y la pantalla, que ya sondeaba en local, no
+// recibia nada nunca.
+const _ESP32_PA = '';
 
 // Último envío real (no "clear"): se repite cada minuto como latido para que
 // el servidor sepa que este puesto sigue vivo. Sin latido, el servidor lo
