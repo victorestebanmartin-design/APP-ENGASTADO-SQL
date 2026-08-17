@@ -28,6 +28,10 @@ data/engastado.db.backup_*
 # - Etiquetas ZPL generadas en modo simulación
 data/cortes/
 data/etiquetas_simuladas/
+# Firmwares .bin e instaladores de drivers subidos desde Admin -> ESP32.
+# Son binarios grandes y propios de cada instalación, no del repo.
+data/firmware/
+data/drivers/
 
 # Configuración local de VS Code
 *.code-workspace

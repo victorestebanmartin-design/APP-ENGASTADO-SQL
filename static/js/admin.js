@@ -1807,10 +1807,202 @@ async function flashUSB() {
     }
 }
 
+// ── Grabar MicroPython en placa nueva (esptool) ───────────────────────────────
+// Paso previo a flashUSB(): una placa recién sacada de la caja no habla
+// MicroPython todavía, así que mpremote no puede con ella.
+
+function _mpMsg(texto, esError) {
+    const el = document.getElementById('mp-msg');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    el.textContent = texto;
+}
+
+async function cargarGrabadoMicroPython() {
+    const selP = document.getElementById('mp-puerto');
+    const selF = document.getElementById('mp-firmware');
+    if (!selP || !selF) return;
+    try {
+        const [rp, rf] = await Promise.all([
+            fetch('/api/esp32/puertos').then(r => r.json()),
+            fetch('/api/esp32/firmwares').then(r => r.json())
+        ]);
+
+        const puertos = rp.puertos || [];
+        selP.innerHTML = puertos.length
+            ? puertos.map(p => {
+                const chip = p.chip ? ' [' + _dispEsc(p.chip) + ']' : '';
+                return `<option value="${_dispEsc(p.puerto)}">${_dispEsc(p.puerto)}${p.descripcion ? ' — ' + _dispEsc(p.descripcion) : ''}${chip}</option>`;
+              }).join('')
+            : `<option value="">— sin puertos detectados —</option>`;
+
+        const fws = rf.firmwares || [];
+        selF.innerHTML = fws.length
+            ? fws.map(f => {
+                // El chip se manda al servidor junto al nombre: si no se puede
+                // deducir del nombre del fichero, el servidor lo rechaza y pide
+                // elegirlo, en vez de grabar en un offset equivocado.
+                const et = f.chip ? `${f.chip} @ ${f.offset}` : 'chip no reconocido';
+                return `<option value="${_dispEsc(f.nombre)}" data-chip="${_dispEsc(f.chip || '')}">${_dispEsc(f.nombre)} (${f.tamano_mb} MB, ${et})</option>`;
+              }).join('')
+            : `<option value="">— sin firmwares disponibles —</option>`;
+
+        if (!fws.length) {
+            _mpMsg('No hay ningún firmware .bin en el servidor. Despliega el desplegable de abajo para subir uno.', true);
+        }
+    } catch (e) {
+        _mpMsg('❌ No se pudo consultar puertos/firmwares', true);
+    }
+}
+
+async function subirFirmwareMicroPython() {
+    const input = document.getElementById('mp-fichero');
+    const fichero = input?.files?.[0];
+    if (!fichero) { _mpMsg('Elige primero un fichero .bin', true); return; }
+
+    const fd = new FormData();
+    fd.append('firmware', fichero);
+    _mpMsg('Subiendo ' + fichero.name + '...');
+    try {
+        const d = await (await fetch('/api/esp32/firmwares', { method: 'POST', body: fd })).json();
+        _mpMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        if (d.success) { input.value = ''; cargarGrabadoMicroPython(); }
+    } catch (e) {
+        _mpMsg('❌ Error de conexión al subir el firmware', true);
+    }
+}
+
+async function grabarMicroPython() {
+    const puerto = document.getElementById('mp-puerto')?.value;
+    const selF = document.getElementById('mp-firmware');
+    const firmware = selF?.value;
+    if (!puerto) { _mpMsg('Selecciona un puerto (pulsa 🔄 Actualizar con la placa conectada)', true); return; }
+    if (!firmware) { _mpMsg('Selecciona un firmware (o sube uno desde el desplegable de abajo)', true); return; }
+
+    // Borrado irreversible: se confirma nombrando el puerto, para que no se
+    // dispare por un clic despistado sobre la placa equivocada.
+    if (!confirm(`Se va a BORRAR POR COMPLETO la placa conectada en ${puerto} y grabar:\n\n${firmware}\n\n` +
+                 `En las pantallas 4D Systems esto elimina también el firmware original de fábrica.\n\n` +
+                 `Esta acción no tiene vuelta atrás. ¿Continuar?`)) return;
+
+    const btn = document.getElementById('mp-grabar-btn');
+    btn.disabled = true;
+    const txtOriginal = btn.textContent;
+    btn.textContent = '⏳ Grabando... (no desconectes la placa)';
+    _mpMsg('Borrando y grabando MicroPython por ' + puerto + '. Puede tardar un par de minutos...');
+    try {
+        const chip = selF.selectedOptions?.[0]?.dataset?.chip || '';
+        const d = await (await fetch('/api/esp32/grabar_micropython', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puerto, firmware, chip })
+        })).json();
+        _mpMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        // Tras grabar, la placa reenumera y suele cambiar de COM: se refresca
+        // la lista para que el siguiente paso no apunte a un puerto muerto.
+        if (d.success) { cargarGrabadoMicroPython(); cargarPuertosUSB(); }
+    } catch (e) {
+        _mpMsg('❌ Error de conexión con el servidor', true);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = txtOriginal;
+    }
+}
+
+// ── Drivers USB-serie (la placa no aparece como puerto COM) ───────────────────
+
+function _drvMsg(texto, esError) {
+    const el = document.getElementById('drivers-msg');
+    if (!el) return;
+    el.style.display = 'block';
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    el.textContent = texto;
+}
+
+async function cargarDriversUSB() {
+    const cont = document.getElementById('drivers-lista');
+    if (!cont) return;
+    cont.innerHTML = '<p class="instruccion">Comprobando...</p>';
+    try {
+        const d = await (await fetch('/api/esp32/drivers/estado')).json();
+        if (!d.success) { cont.innerHTML = `<p class="instruccion">${_dispEsc(d.message || 'Error')}</p>`; return; }
+
+        let html = '';
+        if (d.aviso) html += `<p class="instruccion">⚠️ ${_dispEsc(d.aviso)}</p>`;
+
+        const disp = d.dispositivos || [];
+        if (d.windows) {
+            html += disp.length
+                ? '<p class="instruccion" style="margin-bottom:8px;">Chips USB-serie detectados:</p><ul style="margin:0 0 12px 18px;font-size:0.9em;">' +
+                  disp.map(x => {
+                      const ok = !x.necesita_driver;
+                      const icono = ok ? '✅' : '⚠️';
+                      const nota = ok ? 'reconocido por Windows' : `<strong style="color:#fbbf24;">falta driver</strong> (estado: ${_dispEsc(x.estado)})`;
+                      return `<li>${icono} ${_dispEsc(x.chip)} — ${_dispEsc(x.nombre)}: ${nota}</li>`;
+                  }).join('') + '</ul>'
+                : '<p class="instruccion" style="margin-bottom:12px;">No se ha detectado ningún chip USB-serie conocido. ¿Está la placa enchufada? Prueba con otro cable: algunos USB baratos solo llevan corriente y no datos.</p>';
+        }
+
+        html += '<p class="instruccion" style="margin-bottom:8px;">Instaladores:</p>';
+        html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+        for (const drv of (d.drivers || [])) {
+            if (drv.instalador) {
+                html += `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.9em;">✅ ${_dispEsc(drv.nombre)} — <code>${_dispEsc(drv.instalador)}</code></span>
+                    ${d.windows ? `<button class="btn-secondary" onclick="instalarDriverUSB('${_dispEsc(drv.clave)}')">⚙️ Instalar</button>` : ''}
+                </div>`;
+            } else {
+                html += `<div style="font-size:0.9em;">
+                    ⬜ ${_dispEsc(drv.nombre)} — no subido
+                    (<a href="${_dispEsc(drv.url)}" target="_blank" rel="noopener" style="color:#60a5fa;">descargar del fabricante</a>)
+                </div>`;
+            }
+        }
+        html += '</div>';
+        cont.innerHTML = html;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">❌ No se pudo comprobar el estado de los drivers</p>';
+    }
+}
+
+async function instalarDriverUSB(clave) {
+    if (!confirm('Se lanzará el instalador del driver.\n\nWindows pedirá confirmación en el PC: hay que aceptarla ahí y seguir los pasos del instalador.\n\n¿Continuar?')) return;
+    _drvMsg('Lanzando el instalador. Acepta el aviso de Windows en el PC...');
+    try {
+        const d = await (await fetch('/api/esp32/drivers/instalar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ driver: clave })
+        })).json();
+        _drvMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+    } catch (e) {
+        _drvMsg('❌ Error de conexión con el servidor', true);
+    }
+}
+
+async function subirDriverUSB() {
+    const input = document.getElementById('driver-fichero');
+    const fichero = input?.files?.[0];
+    if (!fichero) { _drvMsg('Elige primero un instalador (.exe o .msi)', true); return; }
+
+    const fd = new FormData();
+    fd.append('driver', fichero);
+    _drvMsg('Subiendo ' + fichero.name + '...');
+    try {
+        const d = await (await fetch('/api/esp32/drivers/subir', { method: 'POST', body: fd })).json();
+        _drvMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        if (d.success) { input.value = ''; cargarDriversUSB(); }
+    } catch (e) {
+        _drvMsg('❌ Error de conexión al subir el instalador', true);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('displays-lista')) return;
     cargarDisplays();
     cargarPuertosUSB();
+    cargarGrabadoMicroPython();
     // Refresco automático mientras la sección está visible (estado online/offline).
     // No refrescar si el admin está editando un campo de la tabla.
     setInterval(() => {

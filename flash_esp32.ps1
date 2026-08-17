@@ -1,14 +1,19 @@
 # flash_esp32.ps1 — Flashea MicroPython en el 4D Systems gen4-ESP32-24 (ESP32-S3)
 #
+# NOTA: esto ya se puede hacer desde la propia aplicación, sin PowerShell:
+#   Admin -> Display Carro -> "Grabar MicroPython (placa nueva)"
+# Allí se elige puerto y firmware desde el navegador, se comprueba que el .bin
+# corresponde al chip de la placa y se instala también el driver USB si hace
+# falta. Este script se mantiene como alternativa para uso desde terminal.
+#
 # Uso:
-#   .\flash_esp32.ps1                       # busca el .bin en esta carpeta
+#   .\flash_esp32.ps1                       # busca el .bin en esp32\firmware
 #   .\flash_esp32.ps1 -Puerto COM5          # otro puerto
 #   .\flash_esp32.ps1 -SoloSubir            # solo sube main.py (ya tiene MicroPython)
 #
-# Antes de ejecutar, descarga el firmware MicroPython para ESP32-S3 SPIRAM_OCT:
+# Los firmwares viven en esp32\firmware\. Si falta el de tu placa, descárgalo de:
 #   https://micropython.org/download/ESP32_GENERIC_S3/
 #   Busca el fichero: ESP32_GENERIC_S3-SPIRAM_OCT-XXXXXXXX-vX.XX.X.bin
-#   Cópialo a la misma carpeta que este script.
 #
 # ⚠ ADVERTENCIA: El flash BORRA el firmware 4D Systems original.
 
@@ -41,8 +46,11 @@ Write-Host ""
 
 # ── FLASH MICROPYTHON ─────────────────────────────────────────────────────────
 if (-not $SoloSubir) {
-    # Buscar firmware .bin
-    $Bin = Get-ChildItem -Path $PSScriptRoot -Filter "ESP32_GENERIC_S3-SPIRAM_OCT-*.bin" |
+    # Buscar firmware .bin (en esp32\firmware y, por compatibilidad, en la raíz)
+    $DirFirmware = Join-Path $PSScriptRoot "esp32\firmware"
+    $Bin = @($DirFirmware, $PSScriptRoot) |
+           Where-Object { Test-Path $_ } |
+           ForEach-Object { Get-ChildItem -Path $_ -Filter "ESP32_GENERIC_S3-SPIRAM_OCT-*.bin" -ErrorAction SilentlyContinue } |
            Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
     if (-not $Bin) {
@@ -51,9 +59,9 @@ if (-not $SoloSubir) {
         Write-Host "Descárgalo de:" -ForegroundColor Yellow
         Write-Host "  https://micropython.org/download/ESP32_GENERIC_S3/" -ForegroundColor White
         Write-Host "  Busca: ESP32_GENERIC_S3-SPIRAM_OCT-*.bin" -ForegroundColor White
-        Write-Host "  Cópialo a: $PSScriptRoot" -ForegroundColor White
+        Write-Host "  Cópialo a: $DirFirmware" -ForegroundColor White
         Write-Host ""
-        Write-Host "Después vuelve a ejecutar: .\flash_esp32.ps1" -ForegroundColor Cyan
+        Write-Host "O hazlo desde la aplicación: Admin -> Display Carro -> Grabar MicroPython" -ForegroundColor Cyan
         exit 0
     }
 

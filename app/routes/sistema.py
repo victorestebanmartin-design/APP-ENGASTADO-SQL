@@ -862,7 +862,18 @@ def api_esp32_puertos():
             from serial.tools import list_ports
         except ImportError:
             return jsonify({'puertos': [], 'aviso': 'pyserial no está instalado en este servidor (pip install pyserial mpremote)'})
-        puertos = [{'puerto': p.device, 'descripcion': p.description or ''} for p in list_ports.comports()]
+        # Se incluye el chip del puente USB-serie (deducido del VID) para poder
+        # decir que driver falta cuando una placa no aparece como puerto COM.
+        puertos = []
+        for p in list_ports.comports():
+            vid = f'{p.vid:04X}' if p.vid is not None else ''
+            conocido = _USB_SERIE_CONOCIDOS.get(vid, {})
+            puertos.append({
+                'puerto': p.device,
+                'descripcion': p.description or '',
+                'vid': vid,
+                'chip': conocido.get('chip', ''),
+            })
         # SSID actual del firmware, para prellenar el formulario
         fw = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython', 'main_wifi.py')
         ssid = ''
@@ -1497,6 +1508,506 @@ def api_esp32_rfid_flash_usb():
                                    'ningún otro programa (monitor serie, mpremote...) lo está usando.'})
     except Exception as e:
         return error_interno(e)
+
+
+# ==================== GRABAR MICROPYTHON EN PLACA NUEVA (esptool) ====================
+#
+# Los /api/esp32/*/flash_usb de arriba usan mpremote, que habla el protocolo
+# REPL de MicroPython: solo funcionan si la placa YA tiene MicroPython. Una
+# placa recien sacada de la caja no responde a mpremote, y hasta ahora habia
+# que bajar a flash_esp32.ps1 a mano. Esto cubre ese primer paso con esptool:
+# borra la flash y graba el firmware de MicroPython. A partir de ahi ya valen
+# los flash_usb existentes.
+#
+# El .bin NO se descarga aqui: se busca en disco (repo o subido desde el
+# navegador) para que el PC del taller no dependa de tener internet.
+
+# Direccion de escritura del firmware segun el chip. MicroPython para ESP32
+# clasico va en 0x1000 (antes esta el bootloader); los S3/C3/S2 llevan el
+# bootloader dentro del propio .bin y van en 0x0. Equivocarse aqui deja la
+# placa sin arrancar, asi que no hay un valor por defecto "generico".
+_OFFSET_POR_CHIP = {
+    'esp32':   '0x1000',
+    'esp32s2': '0x1000',
+    'esp32s3': '0x0',
+    'esp32c3': '0x0',
+    'esp32c6': '0x0',
+}
+
+# VID USB -> chip puente serie. Sirve para decir al usuario que driver le
+# falta cuando Windows no le da puerto COM a la placa.
+_USB_SERIE_CONOCIDOS = {
+    '1A86': {'chip': 'CH340/CH341', 'driver': 'ch340',  'fabricante': 'WCH'},
+    '10C4': {'chip': 'CP210x',      'driver': 'cp210x', 'fabricante': 'Silicon Labs'},
+    '0403': {'chip': 'FTDI FT232',  'driver': 'ftdi',   'fabricante': 'FTDI'},
+    '303A': {'chip': 'USB nativo del ESP32-S2/S3', 'driver': None, 'fabricante': 'Espressif'},
+}
+
+
+def _dirs_firmware():
+    """Carpetas donde se buscan los .bin de MicroPython, por prioridad.
+
+    - esp32/firmware/ y la raiz del repo: firmwares versionados con el codigo.
+    - DATA_DIR/firmware/: los subidos desde el navegador en esta instalacion
+      (no van al repo; cada taller sube los que necesite).
+    """
+    proyecto = os.path.dirname(current_app.root_path)
+    return [
+        os.path.join(proyecto, 'esp32', 'firmware'),
+        proyecto,
+        os.path.join(current_app.config['DATA_DIR'], 'firmware'),
+    ]
+
+
+def _chip_desde_nombre(nombre):
+    """Deduce el chip del nombre del .bin de micropython.org.
+
+    'ESP32_GENERIC_S3-SPIRAM_OCT-20260406-v1.28.0.bin' -> 'esp32s3'
+    'ESP32_GENERIC-20260406-v1.28.0.bin'               -> 'esp32'
+    Devuelve None si no se reconoce (entonces lo elige el usuario a mano).
+
+    Es solo el plan B de _chip_desde_binario: el nombre lo pone quien descarga
+    el fichero y puede llegar renombrado.
+    """
+    n = nombre.upper()
+    for sufijo, chip in (('_S3', 'esp32s3'), ('_S2', 'esp32s2'),
+                         ('_C3', 'esp32c3'), ('_C6', 'esp32c6')):
+        if f'ESP32{sufijo}' in n or f'ESP32_GENERIC{sufijo}' in n:
+            return chip
+    if 'ESP32' in n:
+        return 'esp32'
+    return None
+
+
+# chip_id que Espressif graba en la cabecera de la imagen -> chip nuestro.
+_CHIP_ID_IMAGEN = {
+    0x0000: 'esp32',
+    0x0002: 'esp32s2',
+    0x0005: 'esp32c3',
+    0x0009: 'esp32s3',
+    0x000D: 'esp32c6',
+}
+
+
+def _chip_desde_binario(ruta):
+    """Lee el chip real de la cabecera del .bin, o None si no se puede.
+
+    Una imagen ESP empieza por el byte magico 0xE9 y lleva el chip_id en los
+    bytes 12-13 (little endian) de la cabecera extendida. Esto es la fuente
+    de verdad: el nombre del fichero puede venir renombrado, pero la cabecera
+    no miente, y grabar el firmware de otro chip deja la placa sin arrancar.
+    """
+    try:
+        with open(ruta, 'rb') as f:
+            cabecera = f.read(16)
+        if len(cabecera) < 14 or cabecera[0] != 0xE9:
+            return None
+        chip_id = int.from_bytes(cabecera[12:14], 'little')
+        return _CHIP_ID_IMAGEN.get(chip_id)
+    except OSError:
+        return None
+
+
+def _listar_firmwares():
+    """Los .bin encontrados, sin duplicar nombres (gana la primera carpeta)."""
+    vistos = {}
+    for carpeta in _dirs_firmware():
+        if not os.path.isdir(carpeta):
+            continue
+        try:
+            nombres = sorted(os.listdir(carpeta))
+        except OSError:
+            continue
+        for nombre in nombres:
+            if not nombre.lower().endswith('.bin') or nombre in vistos:
+                continue
+            ruta = os.path.join(carpeta, nombre)
+            if not os.path.isfile(ruta):
+                continue
+            # La cabecera manda; el nombre solo si el fichero no es legible
+            # como imagen ESP (p.ej. un .bin de otra cosa).
+            chip = _chip_desde_binario(ruta) or _chip_desde_nombre(nombre)
+            vistos[nombre] = {
+                'nombre': nombre,
+                'tamano_mb': round(os.path.getsize(ruta) / (1024 * 1024), 2),
+                'chip': chip,
+                'offset': _OFFSET_POR_CHIP.get(chip or '', ''),
+            }
+    return list(vistos.values())
+
+
+def _ruta_firmware_segura(nombre):
+    """Ruta del .bin por nombre, garantizada dentro de una carpeta conocida.
+
+    Se compara la ruta ya resuelta contra cada carpeta permitida, de modo que
+    un nombre con '..' o separadores no pueda apuntar fuera.
+    """
+    nombre = (nombre or '').strip()
+    if not nombre or not nombre.lower().endswith('.bin'):
+        return None
+    for carpeta in _dirs_firmware():
+        base = os.path.abspath(carpeta)
+        ruta = os.path.abspath(os.path.join(base, nombre))
+        if os.path.commonpath([ruta, base]) == base and os.path.isfile(ruta):
+            return ruta
+    return None
+
+
+@bp.route('/api/esp32/firmwares', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_firmwares():
+    """Firmwares de MicroPython disponibles en este servidor."""
+    try:
+        return jsonify({'success': True, 'firmwares': _listar_firmwares()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/firmwares', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_firmware_subir():
+    """Sube un .bin de MicroPython a DATA_DIR/firmware/.
+
+    Evita tener que copiar ficheros a mano por el explorador: se descarga de
+    micropython.org en cualquier PC con internet y se sube aqui una sola vez.
+    """
+    try:
+        if 'firmware' not in request.files:
+            return jsonify({'success': False, 'message': 'No se envió ningún archivo'}), 400
+        archivo = request.files['firmware']
+        nombre = secure_filename(archivo.filename or '')
+        if not nombre:
+            return jsonify({'success': False, 'message': 'Nombre de archivo vacío'}), 400
+        if not nombre.lower().endswith('.bin'):
+            return jsonify({'success': False, 'message': 'El firmware debe ser un fichero .bin'}), 400
+
+        destino_dir = os.path.join(current_app.config['DATA_DIR'], 'firmware')
+        os.makedirs(destino_dir, exist_ok=True)
+        destino = os.path.join(destino_dir, nombre)
+        archivo.save(destino)
+
+        # Un firmware de MicroPython ronda 1-2 MB; algo de 2 KB es casi seguro
+        # una pagina de error HTML guardada por error desde el navegador.
+        tam = os.path.getsize(destino)
+        if tam < 64 * 1024:
+            os.remove(destino)
+            return jsonify({'success': False,
+                            'message': f'El fichero solo ocupa {tam} bytes: no parece un firmware '
+                                       'de MicroPython (deberían ser 1-2 MB). ¿Descargaste el .bin correcto?'}), 400
+
+        return jsonify({'success': True,
+                        'message': f'Firmware {nombre} subido ({round(tam / (1024 * 1024), 2)} MB).',
+                        'firmwares': _listar_firmwares()})
+    except Exception as e:
+        return error_interno(e, 'Error al subir el firmware')
+
+
+@bp.route('/api/esp32/grabar_micropython', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_grabar_micropython():
+    """Borra la flash y graba MicroPython en una placa nueva (esptool).
+
+    Es el paso previo a /api/esp32/flash_usb y /api/esp32/rfid/flash_usb, que
+    necesitan que la placa ya hable MicroPython.
+
+    OJO: borra por completo lo que hubiera en la placa (en las pantallas 4D
+    Systems, eso incluye el firmware original de fábrica).
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        puerto = str(data.get('puerto', '')).strip()
+        if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
+            return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
+
+        firmware = str(data.get('firmware', '')).strip()
+        ruta_fw = _ruta_firmware_segura(firmware)
+        if not ruta_fw:
+            return jsonify({'success': False,
+                            'message': 'Firmware no encontrado. Súbelo primero desde esta misma pantalla.'}), 400
+
+        # El chip real sale de la cabecera del .bin. Si se puede leer, manda
+        # sobre lo que pida el cliente: grabar el firmware de otro chip (o en
+        # el offset de otro chip) deja la placa sin arrancar, y recuperarla
+        # exige volver a esto mismo con el fichero correcto.
+        chip_binario = _chip_desde_binario(ruta_fw)
+        chip_pedido = str(data.get('chip', '')).strip().lower()
+
+        if chip_binario and chip_pedido and chip_pedido != chip_binario:
+            return jsonify({'success': False,
+                            'message': f'El firmware "{firmware}" es para {chip_binario}, pero se ha '
+                                       f'pedido grabarlo como {chip_pedido}. Grabarlo así dejaría la '
+                                       f'placa sin arrancar, así que no se hace.'}), 400
+
+        chip = chip_binario or chip_pedido or _chip_desde_nombre(firmware)
+        if chip not in _OFFSET_POR_CHIP:
+            return jsonify({'success': False,
+                            'message': f'No se reconoce el chip del firmware "{firmware}" (ni por su '
+                                       f'cabecera ni por su nombre). ¿Es un firmware de MicroPython? '
+                                       f'Chips soportados: {", ".join(sorted(_OFFSET_POR_CHIP))}.'}), 400
+        offset = _OFFSET_POR_CHIP[chip]
+
+        def esptool(*args, timeout=180):
+            # Comandos con guion bajo (erase_flash / write_flash): esptool 5
+            # los mantiene como alias y esptool 4 solo entiende estos, asi
+            # que funciona con las dos versiones.
+            return subprocess.run(
+                [sys.executable, '-m', 'esptool', '--chip', chip, '--port', puerto] + list(args),
+                capture_output=True, text=True, timeout=timeout)
+
+        r = esptool('erase_flash')
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or '').strip()
+            if 'No module named' in err:
+                return jsonify({'success': False,
+                                'message': 'esptool no está instalado en este servidor. '
+                                           'Ejecuta: pip install -r requirements.txt'})
+            return jsonify({'success': False,
+                            'message': ('Error al borrar la flash: ' + err)[-500:]})
+
+        r = esptool('--baud', '460800', 'write_flash', '-z', offset, ruta_fw, timeout=300)
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or '').strip()
+            return jsonify({'success': False,
+                            'message': ('Error al grabar el firmware: ' + err)[-500:]})
+
+        return jsonify({
+            'success': True,
+            'message': (f'MicroPython grabado en {puerto} ({chip}, offset {offset}). '
+                        'La placa reenumera el puerto USB: espera unos segundos, vuelve a '
+                        'buscar puertos y ya puedes subirle el firmware de la aplicación.'),
+            'chip': chip,
+            'offset': offset,
+            'firmware': firmware,
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False,
+                        'message': 'Timeout grabando la placa. Comprueba que está en el puerto indicado, '
+                                   'que ningún otro programa lo está usando y que el cable USB es de datos '
+                                   '(algunos cables baratos solo llevan corriente).'})
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== DRIVERS USB-SERIE (puerto COM no reconocido) ====================
+#
+# Cuando Windows no le asigna puerto COM a la placa, casi siempre falta el
+# driver del puente USB-serie (CH340 en los DevKit baratos, CP210x en los
+# oficiales). Aqui se detecta que chip hay y si Windows lo ha reconocido, y
+# se puede lanzar el instalador. El instalador NO se descarga: se busca en
+# DATA_DIR/drivers/, para que funcione en un taller sin internet.
+
+def _dir_drivers():
+    return os.path.join(current_app.config['DATA_DIR'], 'drivers')
+
+
+# Como se llama cada instalador y de donde sacarlo si no esta.
+_DRIVERS = {
+    'ch340': {
+        'nombre': 'CH340 / CH341 (WCH)',
+        'patrones': ('ch341ser', 'ch340'),
+        'url': 'https://www.wch-ic.com/downloads/CH341SER_EXE.html',
+    },
+    'cp210x': {
+        'nombre': 'CP210x (Silicon Labs)',
+        'patrones': ('cp210x', 'cp210'),
+        'url': 'https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers',
+    },
+    'ftdi': {
+        'nombre': 'FTDI VCP',
+        'patrones': ('ftdi', 'cdm'),
+        'url': 'https://ftdichip.com/drivers/vcp-drivers/',
+    },
+}
+
+
+def _instalador_local(clave):
+    """Ruta del instalador de ese driver en DATA_DIR/drivers/, o None."""
+    carpeta = _dir_drivers()
+    if not os.path.isdir(carpeta):
+        return None
+    patrones = _DRIVERS.get(clave, {}).get('patrones', ())
+    try:
+        nombres = sorted(os.listdir(carpeta))
+    except OSError:
+        return None
+    for nombre in nombres:
+        if not nombre.lower().endswith(('.exe', '.msi')):
+            continue
+        if any(p in nombre.lower() for p in patrones):
+            ruta = os.path.join(carpeta, nombre)
+            if os.path.isfile(ruta):
+                return ruta
+    return None
+
+
+def _dispositivos_usb_windows():
+    """Dispositivos USB-serie vistos por Windows, con su estado.
+
+    Usa Get-PnpDevice, que a diferencia de list_ports tambien lista los que
+    NO tienen driver -- justo el caso que interesa aqui. Fuera de Windows
+    devuelve lista vacia.
+    """
+    if not sys.platform.startswith('win'):
+        return []
+    ps = (
+        "Get-PnpDevice -PresentOnly | "
+        "Where-Object { $_.InstanceId -like 'USB*' } | "
+        "Select-Object Status,Class,FriendlyName,InstanceId | ConvertTo-Json -Compress"
+    )
+    try:
+        r = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps],
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        datos = json.loads(r.stdout)
+    except Exception:
+        return []
+    if isinstance(datos, dict):
+        datos = [datos]
+    return datos if isinstance(datos, list) else []
+
+
+@bp.route('/api/esp32/drivers/estado', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_drivers_estado():
+    """Que puentes USB-serie ve Windows, si les falta driver y si hay instalador.
+
+    Pensado para el caso "he enchufado la placa y no aparece ningún puerto COM".
+    """
+    try:
+        if not sys.platform.startswith('win'):
+            return jsonify({
+                'success': True, 'windows': False, 'dispositivos': [],
+                'drivers': [{'clave': k, 'nombre': v['nombre'], 'url': v['url'],
+                             'instalador': None} for k, v in _DRIVERS.items()],
+                'aviso': 'Este servidor no es Windows: la instalación de drivers '
+                         'solo aplica al PC local que ejecuta la aplicación.',
+            })
+
+        dispositivos = []
+        for d in _dispositivos_usb_windows():
+            instance = str(d.get('InstanceId') or '')
+            m = re.search(r'VID_([0-9A-Fa-f]{4})', instance)
+            vid = (m.group(1).upper() if m else '')
+            conocido = _USB_SERIE_CONOCIDOS.get(vid)
+            estado = str(d.get('Status') or '')
+            # Un puente serie con driver correcto queda en la clase 'Ports';
+            # si Windows no lo reconoce se queda en Status 'Error' o Class vacia.
+            necesita_driver = bool(conocido) and (estado.upper() == 'ERROR'
+                                                  or str(d.get('Class') or '') not in ('Ports', 'USB'))
+            if conocido or necesita_driver:
+                dispositivos.append({
+                    'nombre': d.get('FriendlyName') or '(sin nombre)',
+                    'estado': estado,
+                    'clase': d.get('Class') or '',
+                    'vid': vid,
+                    'chip': (conocido or {}).get('chip', 'desconocido'),
+                    'driver': (conocido or {}).get('driver'),
+                    'necesita_driver': necesita_driver,
+                })
+
+        drivers = []
+        for clave, info in _DRIVERS.items():
+            ruta = _instalador_local(clave)
+            drivers.append({
+                'clave': clave,
+                'nombre': info['nombre'],
+                'url': info['url'],
+                'instalador': os.path.basename(ruta) if ruta else None,
+            })
+
+        return jsonify({'success': True, 'windows': True,
+                        'dispositivos': dispositivos, 'drivers': drivers})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/drivers/instalar', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_driver_instalar():
+    """Lanza el instalador del driver indicado, pidiendo elevación a Windows.
+
+    El servidor corre como usuario normal, asi que el instalador se lanza con
+    'Start-Process -Verb RunAs': Windows muestra el aviso de UAC en el PC y
+    alguien tiene que aceptarlo fisicamente. No es desatendido a proposito.
+    """
+    try:
+        if not sys.platform.startswith('win'):
+            return jsonify({'success': False,
+                            'message': 'Solo se puede instalar drivers desde el PC Windows '
+                                       'que ejecuta la aplicación.'}), 400
+
+        data = request.get_json(silent=True) or {}
+        clave = str(data.get('driver', '')).strip().lower()
+        if clave not in _DRIVERS:
+            return jsonify({'success': False, 'message': 'Driver desconocido'}), 400
+
+        ruta = _instalador_local(clave)
+        if not ruta:
+            info = _DRIVERS[clave]
+            return jsonify({'success': False,
+                            'message': f'No hay instalador de {info["nombre"]} en el servidor. '
+                                       f'Descárgalo de {info["url"]} y súbelo desde esta pantalla.'}), 404
+
+        # El instalador solo puede salir de nuestra carpeta de drivers.
+        base = os.path.abspath(_dir_drivers())
+        if os.path.commonpath([os.path.abspath(ruta), base]) != base:
+            return jsonify({'success': False, 'message': 'Ruta de instalador no válida'}), 400
+
+        r = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command',
+             'Start-Process -FilePath $env:CCR_DRIVER_EXE -Verb RunAs'],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, 'CCR_DRIVER_EXE': os.path.abspath(ruta)})
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or '').strip()
+            return jsonify({'success': False,
+                            'message': ('No se pudo lanzar el instalador (¿se canceló el aviso de '
+                                        'Windows?): ' + err)[-400:]})
+
+        return jsonify({'success': True,
+                        'message': f'Instalador {os.path.basename(ruta)} lanzado. Acepta el aviso de '
+                                   'Windows en el PC y sigue los pasos; al terminar, desenchufa y '
+                                   'vuelve a enchufar la placa y busca puertos otra vez.'})
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False,
+                        'message': 'Timeout al lanzar el instalador (¿hay un aviso de Windows '
+                                   'esperando respuesta en el PC?).'})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/drivers/subir', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_driver_subir():
+    """Sube el instalador de un driver a DATA_DIR/drivers/."""
+    try:
+        if 'driver' not in request.files:
+            return jsonify({'success': False, 'message': 'No se envió ningún archivo'}), 400
+        archivo = request.files['driver']
+        nombre = secure_filename(archivo.filename or '')
+        if not nombre:
+            return jsonify({'success': False, 'message': 'Nombre de archivo vacío'}), 400
+        if not nombre.lower().endswith(('.exe', '.msi')):
+            return jsonify({'success': False,
+                            'message': 'El instalador debe ser un .exe o .msi. Si lo has descargado '
+                                       'como .zip, descomprímelo antes.'}), 400
+
+        # El nombre debe encajar con algun driver conocido: asi el boton de
+        # instalar lo encuentra despues, y no se acumulan .exe sueltos.
+        if not any(any(p in nombre.lower() for p in info['patrones'])
+                   for info in _DRIVERS.values()):
+            esperados = ', '.join(sorted({p for i in _DRIVERS.values() for p in i['patrones']}))
+            return jsonify({'success': False,
+                            'message': f'No se reconoce "{nombre}" como instalador de un driver '
+                                       f'soportado. El nombre debe contener uno de: {esperados}.'}), 400
+
+        destino_dir = _dir_drivers()
+        os.makedirs(destino_dir, exist_ok=True)
+        archivo.save(os.path.join(destino_dir, nombre))
+        return jsonify({'success': True, 'message': f'Instalador {nombre} subido.'})
+    except Exception as e:
+        return error_interno(e, 'Error al subir el instalador')
 
 
 # ==================== HOTSPOT WIFI (PC servidor) ====================
