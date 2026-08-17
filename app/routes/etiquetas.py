@@ -664,7 +664,9 @@ def api_etiquetas_regenerar():
         total = _regenerar_etiquetas_archivo(archivo, excel_path)
         return jsonify({'success': True, 'total': total, 'archivo': archivo})
 
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError as e:
+        return jsonify({'success': False, 'message': str(e)}), 404
+    except ValueError as e:
         return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
         return error_interno(e, 'Error al regenerar')

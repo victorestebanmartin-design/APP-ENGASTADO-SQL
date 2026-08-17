@@ -290,7 +290,9 @@ def api_manguitos_generar_txt_desde_excel():
     if not excel_file or not excel_file.filename:
         return jsonify({'success': False, 'error': 'No se recibió ningún archivo Excel'})
 
-    nombre_original = excel_file.filename
+    # secure_filename neutraliza separadores y '..': sin esto un nombre como
+    # '../../../evil.xlsx' escaparia del directorio temporal al guardarlo.
+    nombre_original = secure_filename(excel_file.filename)
     if not nombre_original.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'success': False, 'error': 'El archivo debe ser .xlsx o .xls'})
 
