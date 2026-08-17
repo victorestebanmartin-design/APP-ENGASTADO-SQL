@@ -44,3 +44,5 @@ passwords.txt
 .deploy_token
 # Clave secreta única por instalación (se genera sola, nunca al repo)
 .secret_key
+# Credenciales del hotspot WiFi (se configuran desde Admin, nunca al repo)
+data/wifi_hotspot.json

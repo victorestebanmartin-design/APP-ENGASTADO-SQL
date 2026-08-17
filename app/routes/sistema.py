@@ -233,7 +233,7 @@ def api_comprobar_actualizaciones():
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout al conectar con GitHub. Comprueba la conexión.'})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e, 'Error al comprobar actualizaciones')
 
 
 @bp.route('/api/actualizar_sistema', methods=['POST'])
@@ -334,7 +334,7 @@ def api_actualizar_sistema():
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout durante la actualización.'})
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        return error_interno(e, 'Error al actualizar el sistema')
 
 
 @bp.route('/api/stats', methods=['GET'])

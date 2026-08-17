@@ -46,8 +46,9 @@ def set_db(db_real):
 #
 # Fuente unica de verdad de que modulos existen: la usan las casillas de
 # permisos en Admin -> Operarios, el filtrado de la rejilla de /modules y el
-# gate de login (requiere_operario, en app/auth.py). 'admin' NO esta aqui a
-# proposito: ya tiene su propio PIN, es ortogonal a los permisos por operario.
+# gate de login (requiere_operario, en app/auth.py). 'admin' esta incluido
+# para controlar si el operario ve el boton de Admin en /modules; el panel
+# de administracion en si esta protegido por su propio PIN, de forma ortogonal.
 MODULOS_APP = {
     'engastado':     {'label': 'Engastado',      'endpoint': 'main.index_v3'},
     'mangueras':     {'label': 'Mangueras',       'endpoint': 'main.mangueras'},

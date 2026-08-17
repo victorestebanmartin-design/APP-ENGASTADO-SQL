@@ -164,7 +164,11 @@ class ConfigManager:
                 conteos = {}
                 for (t,) in tablas:
                     try:
-                        conteos[t] = tc.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                        # El nombre de tabla viene del sqlite_master del ZIP subido,
+                        # asi que se entrecomilla como identificador (y se duplican
+                        # las comillas internas) en vez de interpolarlo en crudo.
+                        ident = '"' + str(t).replace('"', '""') + '"'
+                        conteos[t] = tc.execute(f"SELECT COUNT(*) FROM {ident}").fetchone()[0]
                     except Exception:
                         conteos[t] = '?'
                 tc.close()

@@ -15,7 +15,6 @@ import sys
 import time
 import hmac
 import hashlib
-import traceback
 from datetime import datetime
 import pandas as pd
 
@@ -237,8 +236,6 @@ def generar_etiquetas_html():
         })
         
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
         return error_interno(e, 'Error al generar HTML')
 
 
@@ -672,8 +669,6 @@ def api_etiquetas_regenerar():
     except ValueError as e:
         return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
         return error_interno(e, 'Error al regenerar')
 
 

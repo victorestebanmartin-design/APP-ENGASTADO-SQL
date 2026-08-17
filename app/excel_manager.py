@@ -743,10 +743,12 @@ def validar_excel_columnas(filepath):
     try:
         df = leer_excel_cacheado(filepath)
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"Error leyendo Excel para validación: {exc}")
         return {
             'columnas_faltantes': [], 'features_no_disponibles': [],
             'advertencias': [], 'advertencias_total': 0,
-            'error': str(exc),
+            'error': 'No se pudo leer el archivo Excel',
         }
 
     columnas_faltantes      = [c for c in COLUMNAS_MANGUERAS_ESPERADAS if c not in df.columns]

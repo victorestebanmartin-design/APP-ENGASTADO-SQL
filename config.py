@@ -188,7 +188,6 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Configuración para testing"""
     TESTING = True
-    DB_NAME = 'EngastadoDB_Test'
 
 
 # Diccionario de configuraciones

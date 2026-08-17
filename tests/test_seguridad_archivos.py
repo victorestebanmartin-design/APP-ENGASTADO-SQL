@@ -46,6 +46,35 @@ def test_regenerar_no_expone_rutas_internas(admin_client):
     assert '/home/' not in msg and ':\\' not in msg
 
 
+def test_manguitos_excel_rechaza_traversal_en_nombre(client, tmp_path, monkeypatch):
+    """El nombre del Excel subido no puede escapar del directorio temporal.
+
+    Werkzeug NO sanea FileStorage.filename, así que sin secure_filename un
+    nombre como '../evil.xlsx' se guardaría fuera del tmpdir. Se fija el
+    tmpdir a una ruta conocida para poder comprobar de forma determinista
+    que no se escribe en su directorio padre.
+    """
+    import io
+    import tempfile
+
+    jaula = tmp_path / 'jaula'
+    jaula.mkdir()
+    monkeypatch.setattr(tempfile, 'mkdtemp', lambda *a, **kw: str(jaula))
+
+    centinela = tmp_path / 'evil.xlsx'
+    payload = {
+        'excel': (io.BytesIO(b'no es un excel real'), '../evil.xlsx'),
+        'ref': 'PC_CAB_BADEN',
+        'edicion': 'ed_04',
+    }
+    client.post('/api/manguitos/generar-txt-desde-excel',
+                data=payload, content_type='multipart/form-data')
+
+    # El Excel es basura, así que la petición falla igualmente; lo que importa
+    # es que no haya escrito nada fuera del directorio temporal.
+    assert not centinela.exists()
+
+
 def test_excel_manager_ruta_segura(tmp_path):
     em = ExcelManager(str(tmp_path))
     assert em._ruta_segura('normal.xlsx') is not None
