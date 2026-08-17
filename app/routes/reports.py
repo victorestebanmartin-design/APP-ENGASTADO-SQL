@@ -15,7 +15,6 @@ import sys
 import time
 import hmac
 import hashlib
-import traceback
 from datetime import datetime
 import pandas as pd
 
@@ -145,8 +144,6 @@ def api_report_progreso():
             'operarios': operarios_unicos,
         })
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
         return error_interno(e)
 
 
@@ -253,6 +250,4 @@ def report_carros_bono(nombre_bono):
             generado_hora=gen_hora,
         )
     except Exception as e:
-        import traceback
-        print(traceback.format_exc())
         return error_interno(e)

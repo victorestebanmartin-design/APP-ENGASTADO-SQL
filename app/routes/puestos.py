@@ -769,9 +769,10 @@ def api_terminales_disponibles():
                         archivos_procesados += 1
                     
                 except Exception as e:
+                    current_app.logger.warning(f"Error leyendo terminales de {archivo}: {e}")
                     errores_lectura.append({
                         'archivo': archivo,
-                        'error': str(e)
+                        'error': 'Error al leer el archivo'
                     })
         
         # Obtener asignaciones actuales

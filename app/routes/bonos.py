@@ -15,7 +15,6 @@ import sys
 import time
 import hmac
 import hashlib
-import traceback
 from datetime import datetime
 import pandas as pd
 
@@ -170,10 +169,8 @@ def api_crear_bono():
                 'success': False,
                 'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
             }), 409
-        traceback.print_exc()
         return error_interno(e)
     except Exception as e:
-        traceback.print_exc()
         return error_interno(e)
 
 
@@ -342,8 +339,6 @@ def api_generar_bono_desde_carros():
                 'success': False,
                 'message': 'Ya existe un bono con ese nombre. Refresca el nombre sugerido e inténtalo de nuevo.'
             }), 409
-        traceback.print_exc()
         return error_interno(e, 'Error al generar bono')
     except Exception as e:
-        traceback.print_exc()
         return error_interno(e, 'Error al generar bono')
