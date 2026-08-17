@@ -34,6 +34,10 @@ et-xmlfile==2.0.0
 # Pantallas ESP32: deteccion de puertos USB y subida de firmware desde Admin
 pyserial>=3.5
 mpremote>=1.24
+# esptool graba MicroPython en placas nuevas (mpremote solo habla con placas
+# que YA lo tienen). Los comandos se invocan con guion bajo (erase_flash /
+# write_flash), que funcionan tanto en esptool 4 como en 5.
+esptool>=4.7
 
 # Utilidades
 python-dateutil==2.9.0.post0

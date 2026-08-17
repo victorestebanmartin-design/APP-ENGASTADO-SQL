@@ -14,6 +14,52 @@ sin permisos de driver ni salida a puertos no estandar: todo el trafico va
 por HTTPS 443) o el servidor local de planta (sin depender de internet en
 absoluto); ver `esp32/backend_config.py`.
 
+## Placa nueva: los dos pasos, desde Admin
+
+Una placa recien sacada de la caja **no lleva MicroPython**, asi que no
+responde a `mpremote` y no se le puede subir el codigo directamente. Son dos
+pasos, y los dos estan en **Admin -> Display Carro**:
+
+1. **Grabar MicroPython (placa nueva)** -- borra la flash y graba el firmware
+   de MicroPython con `esptool`. Solo hace falta la primera vez.
+2. **Subir firmware por USB** -- copia el codigo de la aplicacion con
+   `mpremote`. Esto es lo de siempre, y ya funciona en cualquier placa que
+   tenga MicroPython.
+
+Los firmwares viven en `esp32/firmware/`:
+
+| Fichero | Placa | Chip | Offset |
+|---|---|---|---|
+| `ESP32_GENERIC_S3-SPIRAM_OCT-*.bin` | Pantalla del carro (4D Systems gen4-ESP32-24) | `esp32s3` | `0x0` |
+| `ESP32_GENERIC-*.bin` | Lector RFID (DevKit V1 Type-C) | `esp32` | `0x1000` |
+
+El offset **no es el mismo** para los dos chips: el ESP32 clasico deja sitio
+antes para el bootloader y el S3 lo lleva dentro del propio `.bin`. Grabar en
+el offset equivocado deja la placa sin arrancar, asi que el servidor lee el
+`chip_id` de la cabecera del `.bin` y **se niega a grabar** si no cuadra con
+el chip pedido (ver `_chip_desde_binario` en `app/routes/sistema.py`). Por eso
+el chip nunca se deduce solo del nombre del fichero, que puede venir renombrado.
+
+Si falta el firmware de alguna placa, se descarga de
+[micropython.org/download](https://micropython.org/download/) en cualquier PC
+con internet y se sube desde esa misma pantalla -- no hace falta copiar nada a
+mano ni que el PC del taller tenga internet.
+
+### Windows no me da puerto COM
+
+Casi siempre falta el driver del puente USB-serie. En **Admin -> Display Carro
+-> Drivers USB** se ve que chip lleva la placa y si Windows lo ha reconocido:
+
+- **CH340/CH341** (VID `1A86`): los DevKit baratos.
+- **CP210x** (VID `10C4`): los oficiales de Espressif.
+- **USB nativo** (VID `303A`): los ESP32-S3 como la pantalla; no necesitan driver.
+
+Los instaladores no vienen en el repo (son del fabricante): se descargan una
+vez, se suben desde esa pantalla y a partir de ahi se instalan desde el panel,
+tambien en talleres sin internet. Al instalar, Windows pide confirmacion (UAC)
+en el PC y alguien tiene que aceptarla fisicamente -- no es desatendido a
+proposito.
+
 ## Arquitectura: que se actualiza por USB y que por OTA
 
 | Fichero | Como se instala | Por que |
