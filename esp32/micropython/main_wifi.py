@@ -58,7 +58,7 @@ import framebuf
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-18a"
+FW_VERSION = "2026-08-18b"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -82,7 +82,10 @@ DNS         = "192.168.50.5"
 # defecto para un flasheo a mano con mpremote.
 HOST_IP  = "192.168.50.1"
 PORT     = 5001
-POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
+POLL_INTERVAL = 1      # segundos entre polls de /api/esp32/current. Es el techo
+                       # de lo que tarda en aparecer un paquete: el servidor
+                       # responde en <1 ms y aguanta 600+ req/s, asi que bajarlo
+                       # de 3s a 1s no le supone nada y se nota de inmediato.
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
 OTA_HOLD_MS = 5000     # mantener OK (boton 8) 5s EN REPOSO = actualizar por WiFi
@@ -1090,6 +1093,17 @@ def conectar_wifi():
     try:
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
+        # Sin ahorro de energia. Por defecto MicroPython deja el ESP32 en
+        # WIFI_PS_MIN_MODEM: la radio duerme entre balizas del punto de acceso
+        # y este le RETIENE los paquetes hasta que despierta. Eso mete cientos
+        # de ms (a veces segundos) en CADA respuesta del servidor -- se nota en
+        # todo: paquetes que tardan en salir, confirmaciones lentas. El
+        # servidor responde en menos de 1 ms, asi que la espera era esta.
+        # A cambio sube algo el consumo (esta pantalla va con power bank).
+        try:
+            wlan.config(pm=network.WLAN.PM_NONE)
+        except Exception as e:
+            print("Ahorro de energia WiFi no desactivado:", e)
         if STATIC_IP:
             # ANTES del connect: la red no reparte IPs, si no se fija aqui
             # la pantalla no llega al servidor.

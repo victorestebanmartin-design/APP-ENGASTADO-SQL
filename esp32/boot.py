@@ -31,9 +31,26 @@ def _aplicar_ip_fija(wlan):
         print("IP fija no aplicada:", e)
 
 
+def _desactivar_ahorro_energia(wlan):
+    """Sin ahorro de energia: la latencia manda sobre el consumo.
+
+    Por defecto MicroPython deja el ESP32 en WIFI_PS_MIN_MODEM, con la radio
+    durmiendo entre balizas del punto de acceso. Mientras duerme, el AP le
+    RETIENE los paquetes, asi que cada respuesta del servidor espera a la
+    siguiente baliza: cientos de ms, a veces segundos. En un lector que tiene
+    que confirmar una tarjeta al instante eso se nota mucho, y el servidor no
+    tiene la culpa (responde en menos de 1 ms).
+    """
+    try:
+        wlan.config(pm=network.WLAN.PM_NONE)
+    except Exception as e:
+        print("Ahorro de energia WiFi no desactivado:", e)
+
+
 def _conectar_wifi():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+    _desactivar_ahorro_energia(wlan)
     _aplicar_ip_fija(wlan)
     if not wlan.isconnected():
         try:

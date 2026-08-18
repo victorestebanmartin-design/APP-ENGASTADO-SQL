@@ -24,7 +24,10 @@
  */
 function iniciarDeteccionRfid(pollUrl, onLogin, opts) {
     opts = opts || {};
-    const intervalMs = opts.intervalMs || 2000;
+    // 750 ms: es el techo de lo que tarda la app en reaccionar a una tarjeta,
+    // asi que se nota directamente. El coste en el servidor es despreciable
+    // (responde en <1 ms y aguanta 600+ req/s; el taller entero no llega a 25).
+    const intervalMs = opts.intervalMs || 750;
     const timeoutMs = opts.timeoutMs || 0;
 
     // IDs de login ya vistos. Empieza en null (no inicializado): la PRIMERA

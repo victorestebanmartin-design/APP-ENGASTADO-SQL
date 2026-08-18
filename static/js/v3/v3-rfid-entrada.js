@@ -154,7 +154,7 @@ function _iniciarSondeoEstadoRfid() {
         } catch (_) {
             // Silencioso: no romper el flujo principal de login.
         }
-    }, 1500);
+    }, 750);   // mismo ritmo que el sondeo de logins: el servidor ni se entera
 }
 
 function _pararSondeoEstadoRfid() {

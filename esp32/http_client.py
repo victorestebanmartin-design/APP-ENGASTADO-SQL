@@ -14,6 +14,7 @@
 # datos sensibles.
 
 import socket
+import time
 import json as _json
 
 try:
@@ -22,13 +23,26 @@ except ImportError:
     import ssl as _ssl
 
 
+class ErrorConexion(Exception):
+    """Fallo ANTES de mandar nada (DNS, socket, connect, handshake TLS).
+
+    Se distingue a proposito del resto: si no llego a salir un byte, el
+    servidor no ha visto la peticion y reintentarla es seguro. Un fallo
+    POSTERIOR no lo es -- el servidor puede haberla procesado y solo haberse
+    perdido la respuesta, y repetir un POST duplicaria el fichaje.
+    """
+
+
 def _request(host, path, port, use_ssl, timeout, method="GET", body_bytes=None):
-    addr = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)[0][-1]
-    s = socket.socket()
-    s.settimeout(timeout)
-    s.connect(addr)
-    if use_ssl:
-        s = _ssl.wrap_socket(s, server_hostname=host)
+    try:
+        addr = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)[0][-1]
+        s = socket.socket()
+        s.settimeout(timeout)
+        s.connect(addr)
+        if use_ssl:
+            s = _ssl.wrap_socket(s, server_hostname=host)
+    except Exception as e:
+        raise ErrorConexion(e)
 
     headers = "Host: %s\r\nConnection: close\r\n" % host
     if body_bytes is not None:
@@ -70,10 +84,41 @@ def _request(host, path, port, use_ssl, timeout, method="GET", body_bytes=None):
     return status, raw_body
 
 
+# Un socket TCP nuevo por peticion (Connection: close) tiene un punto flojo:
+# si el SYN inicial se pierde -- cosa normal en WiFi -- la pila TCP no lo
+# reintenta hasta pasados ~3s, y otra vez a los ~6s. Esos son los "a veces
+# tarda 5-7 segundos" que no explica el servidor (responde en menos de 1 ms).
+# Un reintento propio y rapido convierte esa espera en menos de medio segundo.
+REINTENTOS = 2
+ESPERA_REINTENTO_MS = 250
+
+
+def _request_reintentando(host, path, port, use_ssl, timeout, method="GET", body_bytes=None):
+    """_request reintentando SOLO lo que es seguro reintentar.
+
+    Un ErrorConexion (no salio ni un byte) se reintenta siempre. Cualquier
+    otro fallo solo se reintenta en un GET, que es idempotente: repetir un
+    POST cuyo resultado se perdio duplicaria el fichaje en el servidor.
+    """
+    ultimo = None
+    for intento in range(REINTENTOS):
+        try:
+            return _request(host, path, port, use_ssl, timeout, method, body_bytes)
+        except ErrorConexion as e:
+            ultimo = e
+        except Exception as e:
+            if method != "GET":
+                raise
+            ultimo = e
+        if intento + 1 < REINTENTOS:
+            time.sleep_ms(ESPERA_REINTENTO_MS)
+    raise ultimo
+
+
 def get_bytes(host, path, port=443, use_ssl=True, timeout=15):
     """GET -> bytes crudos del cuerpo si status 200, o None ante cualquier fallo."""
     try:
-        status, body = _request(host, path, port, use_ssl, timeout, "GET")
+        status, body = _request_reintentando(host, path, port, use_ssl, timeout, "GET")
         return body if status == 200 else None
     except Exception as e:
         print("http_client GET error:", e)
@@ -98,7 +143,7 @@ def post_json(host, path, obj, port=443, use_ssl=True, timeout=15):
     """
     try:
         body_bytes = _json.dumps(obj).encode("utf-8")
-        status, body = _request(host, path, port, use_ssl, timeout, "POST", body_bytes)
+        status, body = _request_reintentando(host, path, port, use_ssl, timeout, "POST", body_bytes)
         parsed = None
         if body is not None:
             try:
