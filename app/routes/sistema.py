@@ -812,6 +812,272 @@ def api_esp32_estado_carro():
         return error_interno(e)
 
 
+# ==================== IP ESTATICA POR PLACA ESP32 ====================
+#
+# La red de planta esta aislada (sin internet) y NO tiene DHCP:
+#
+#   PC servidor .................. 192.168.50.1   (fija)
+#   TL-WR802N (punto de acceso) .. 192.168.50.5   (fija, hace de gateway/DNS)
+#   Placas ESP32 ................. 192.168.50.2-254 (menos las dos de arriba)
+#
+# Cada placa lleva por tanto su IP grabada en el propio firmware
+# (wlan.ifconfig() ANTES de wlan.connect(), ver esp32/boot.py y
+# esp32/micropython/main_wifi.py). Aqui se lleva el registro de que IP tiene
+# cada placa -- en la BD, indexada por device_id (la MAC del chip, el mismo
+# identificador que la placa usa en /api/esp32/*) -- para no repetir ninguna
+# y poder reflashear sin recordarlas de memoria.
+#
+# La mascara y la puerta de enlace son fijas para toda la instalacion, no se
+# configuran por placa.
+
+IP_MASCARA = '255.255.255.0'
+IP_GATEWAY = '192.168.50.5'      # TL-WR802N: puerta de enlace y DNS
+IP_DNS = '192.168.50.5'
+IP_PREFIJO = '192.168.50.'
+IP_ULTIMO_MIN = 2                # .0 es la red y .1 el PC servidor
+IP_ULTIMO_MAX = 254              # .255 es el broadcast
+# IPs que ya tiene alguien fijo en esta red y que ninguna placa puede usar.
+IP_RESERVADAS = {
+    '192.168.50.1': 'PC servidor',
+    IP_GATEWAY: 'punto de acceso TL-WR802N',
+}
+# Tipos de placa que gestiona la app (los dos flujos de "Subir por USB").
+IP_TIPOS = {'display': 'Pantalla de carro', 'rfid': 'Lector RFID'}
+
+
+def _ip_estatica_normalizar(ip):
+    return str(ip or '').strip()
+
+
+def _ip_estatica_error(ip):
+    """Devuelve el motivo por el que 'ip' no vale como IP de placa, o None.
+
+    Solo comprueba la IP en si (rango y reservas). El choque con otra placa
+    depende de lo que haya en la BD y se mira aparte, en
+    _ip_estatica_ocupada_por_otra.
+    """
+    ip = _ip_estatica_normalizar(ip)
+    if not ip:
+        return 'La IP estática es obligatoria'
+    if not re.fullmatch(r'\d{1,3}(\.\d{1,3}){3}', ip):
+        return f'"{ip}" no es una dirección IPv4 válida'
+    if not ip.startswith(IP_PREFIJO):
+        return (f'La IP debe estar en la red de planta {IP_PREFIJO}0/24 '
+                f'(entre {IP_PREFIJO}{IP_ULTIMO_MIN} y {IP_PREFIJO}{IP_ULTIMO_MAX})')
+    # Las reservadas se miran ANTES del rango: .1 tambien queda fuera del
+    # rango util, pero "es la del PC servidor" le dice al operario por que
+    # no puede usarla, que es la informacion que necesita.
+    if ip in IP_RESERVADAS:
+        return f'{ip} está reservada para el {IP_RESERVADAS[ip]}'
+    ultimo = ip[len(IP_PREFIJO):]
+    if not ultimo.isdigit() or not (IP_ULTIMO_MIN <= int(ultimo) <= IP_ULTIMO_MAX):
+        return (f'La IP debe estar entre {IP_PREFIJO}{IP_ULTIMO_MIN} y '
+                f'{IP_PREFIJO}{IP_ULTIMO_MAX}')
+    return None
+
+
+def _ips_estaticas_todas():
+    """Todas las asignaciones guardadas, ordenadas por el ultimo octeto."""
+    with db.engine.connect() as conn:
+        filas = conn.execute(text(
+            'SELECT device_id, tipo, nombre, ip, updated_at FROM esp32_ips'
+        )).fetchall()
+    salida = [{'device_id': f[0], 'tipo': f[1], 'nombre': f[2] or '',
+               'ip': f[3], 'updated_at': f[4] or ''} for f in filas]
+    return sorted(salida, key=lambda f: int(str(f['ip']).rsplit('.', 1)[-1] or 0))
+
+
+def _ip_estatica_de(device_id):
+    """IP asignada a una placa ('' si no tiene ninguna)."""
+    with db.engine.connect() as conn:
+        fila = conn.execute(
+            text('SELECT ip FROM esp32_ips WHERE device_id = :d'),
+            {'d': _esp32_device_id(device_id)}
+        ).fetchone()
+    return fila[0] if fila else ''
+
+
+def _ip_estatica_libre_sugerida():
+    """Primera IP del rango que no esté cogida ('' si no queda ninguna)."""
+    usadas = {f['ip'] for f in _ips_estaticas_todas()} | set(IP_RESERVADAS)
+    for n in range(IP_ULTIMO_MIN, IP_ULTIMO_MAX + 1):
+        ip = f'{IP_PREFIJO}{n}'
+        if ip not in usadas:
+            return ip
+    return ''
+
+
+def _ip_estatica_ocupada_por_otra(device_id, ip):
+    """device_id de OTRA placa que ya tiene esa IP, o '' si está libre.
+
+    Reasignarle a una placa la IP que ya tenía (reflasheo) no es un choque.
+    """
+    with db.engine.connect() as conn:
+        fila = conn.execute(
+            text('SELECT device_id FROM esp32_ips WHERE ip = :ip'),
+            {'ip': _ip_estatica_normalizar(ip)}
+        ).fetchone()
+    if fila and fila[0] != _esp32_device_id(device_id):
+        return fila[0]
+    return ''
+
+
+def _ip_estatica_guardar(device_id, ip, tipo='display', nombre=''):
+    """Asigna una IP a una placa. Devuelve (ok, mensaje).
+
+    Valida el rango/reservas y que ninguna OTRA placa la tenga ya. Reasignar
+    la misma IP a la misma placa es válido (reflasheo), no un duplicado.
+    """
+    dev_id = _esp32_device_id(device_id)
+    if not dev_id:
+        return False, 'Falta el identificador de la placa'
+    ip = _ip_estatica_normalizar(ip)
+    error = _ip_estatica_error(ip)
+    if error:
+        return False, error
+
+    otra = _ip_estatica_ocupada_por_otra(dev_id, ip)
+    if otra:
+        return False, f'{ip} ya está asignada a la placa {otra[-4:]} ({otra})'
+
+    with db.engine.connect() as conn:
+        tipo = tipo if tipo in IP_TIPOS else 'display'
+        try:
+            conn.execute(text("""
+                INSERT INTO esp32_ips (device_id, tipo, nombre, ip, updated_at)
+                VALUES (:d, :t, :n, :ip, datetime('now'))
+                ON CONFLICT(device_id) DO UPDATE SET
+                    tipo = excluded.tipo,
+                    nombre = COALESCE(NULLIF(excluded.nombre, ''), esp32_ips.nombre),
+                    ip = excluded.ip,
+                    updated_at = datetime('now')
+            """), {'d': dev_id, 't': tipo, 'n': str(nombre or '')[:60], 'ip': ip})
+            conn.commit()
+        except IntegrityError:
+            # El UNIQUE de la IP salta si dos flasheos coinciden en el tiempo
+            # y los dos pasaron la comprobacion de arriba.
+            conn.rollback()
+            return False, f'{ip} acaba de asignarse a otra placa, elige otra'
+    return True, f'IP {ip} asignada a la placa {dev_id[-4:]}'
+
+
+def _leer_device_id_usb(mpremote):
+    """Pregunta a la placa su device_id (MAC) por USB, con el mismo cálculo
+    que usa el firmware (binascii.hexlify(machine.unique_id())).
+
+    Sirve para guardar la IP contra el identificador real de la placa en el
+    momento de flashearla, sin esperar a que arranque y se registre sola.
+    Devuelve '' si la placa no contesta (p.ej. sin MicroPython todavía).
+    """
+    try:
+        r = mpremote('exec', 'import machine,binascii;'
+                             'print(binascii.hexlify(machine.unique_id()).decode())')
+    except Exception:
+        return ''
+    if r.returncode != 0:
+        return ''
+    # La ultima linea es lo que imprimio el print(); antes puede venir ruido
+    # del propio arranque de la placa.
+    lineas = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
+    return _esp32_device_id(lineas[-1]) if lineas else ''
+
+
+@bp.route('/api/esp32/ips', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_ips():
+    """Listado de placas con IP fija asignada + parámetros de red (Admin).
+
+    Incluye las placas detectadas por WiFi que aún no tienen IP asignada,
+    para poder dársela desde la misma vista.
+    """
+    try:
+        asignadas = {f['device_id']: f for f in _ips_estaticas_todas()}
+        detectadas = {}
+        for did, d in _esp32_load_devices().items():
+            detectadas[did] = ('display', d.get('nombre', ''), d.get('ip', ''))
+        for did, d in _rfid_load_devices().items():
+            detectadas.setdefault(did, ('rfid', d.get('nombre', ''), d.get('ip', '')))
+
+        placas = []
+        for did, fila in asignadas.items():
+            tipo, nombre, ip_vista = detectadas.get(did, (fila['tipo'], '', ''))
+            placas.append({
+                'device_id': did,
+                'tipo': fila['tipo'] or tipo,
+                'tipo_label': IP_TIPOS.get(fila['tipo'] or tipo, fila['tipo'] or tipo),
+                'nombre': nombre or fila['nombre'] or '',
+                'ip': fila['ip'],
+                'ip_vista': ip_vista,        # la que reporta la placa al latir
+                'coincide': bool(ip_vista) and ip_vista == fila['ip'],
+                'detectada': did in detectadas,
+                'updated_at': fila['updated_at'],
+            })
+        for did, (tipo, nombre, ip_vista) in sorted(detectadas.items()):
+            if did in asignadas:
+                continue
+            placas.append({
+                'device_id': did,
+                'tipo': tipo,
+                'tipo_label': IP_TIPOS.get(tipo, tipo),
+                'nombre': nombre,
+                'ip': '',
+                'ip_vista': ip_vista,
+                'coincide': False,
+                'detectada': True,
+                'updated_at': '',
+            })
+
+        return jsonify({
+            'success': True,
+            'placas': placas,
+            'sugerida': _ip_estatica_libre_sugerida(),
+            'red': {
+                'mascara': IP_MASCARA,
+                'gateway': IP_GATEWAY,
+                'dns': IP_DNS,
+                'rango': f'{IP_PREFIJO}{IP_ULTIMO_MIN} – {IP_PREFIJO}{IP_ULTIMO_MAX}',
+                'reservadas': IP_RESERVADAS,
+            },
+        })
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/ips', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_ips_asignar():
+    """Asigna (o cambia) la IP fija de una placa (Admin).
+
+    Solo toca el registro: la placa no se entera hasta que se le vuelve a
+    flashear el firmware por USB con esta IP dentro.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        ok, mensaje = _ip_estatica_guardar(
+            data.get('device_id'), data.get('ip'),
+            tipo=str(data.get('tipo') or 'display'),
+            nombre=str(data.get('nombre') or ''))
+        if not ok:
+            return jsonify({'success': False, 'message': mensaje}), 400
+        return jsonify({'success': True, 'message': mensaje + '. Reflashea la placa por USB para que la use.'})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/ips/<device_id>', methods=['DELETE'])
+@requiere_pin_admin
+def api_esp32_ips_liberar(device_id):
+    """Libera la IP de una placa (queda disponible para otra)."""
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text('DELETE FROM esp32_ips WHERE device_id = :d'),
+                         {'d': _esp32_device_id(device_id)})
+            conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== ADMIN: DISPLAY CARRO ====================
 
 @bp.route('/api/esp32/devices', methods=['GET'])
@@ -834,6 +1100,7 @@ def api_esp32_devices():
                 'nombre': d.get('nombre', ''),
                 'carro': d.get('carro', ''),
                 'ip': d.get('ip', ''),
+                'ip_estatica': _ip_estatica_de(did),
                 'last_seen': d.get('last_seen', ''),
                 'online': online,
                 'nfc': d.get('nfc', ''),
@@ -894,8 +1161,8 @@ def api_esp32_puertos():
 def api_esp32_flash_usb():
     """Sube esp32/micropython/main_wifi.py como main.py a la pantalla por USB.
 
-    Usa mpremote contra el puerto indicado. Opcionalmente parchea SSID y
-    PASSWORD del WiFi antes de subir (sin tocar el fichero del repo).
+    Usa mpremote contra el puerto indicado. Parchea SSID, PASSWORD y la IP
+    fija de esta pantalla antes de subir (sin tocar el fichero del repo).
     Solo funciona en el servidor local con la pantalla conectada por USB.
     """
     try:
@@ -924,6 +1191,21 @@ def api_esp32_flash_usb():
         contenido = re.sub(r'^SSID\s*=.*$', 'SSID     = %r' % ssid, contenido, count=1, flags=re.M)
         contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, contenido, count=1, flags=re.M)
 
+        # IP fija de ESTA pantalla: la red de planta no tiene DHCP, asi que
+        # sin ella la pantalla no llega al servidor. Se valida antes de tocar
+        # nada (rango, reservas y que no la tenga ya otra placa) para no dejar
+        # media placa flasheada con una IP que luego se rechaza.
+        ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
+        if not ip_estatica:
+            return jsonify({'success': False,
+                            'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
+                                       'Mira las libres en Admin → IPs de placas.'}), 400
+        error_ip = _ip_estatica_error(ip_estatica)
+        if error_ip:
+            return jsonify({'success': False, 'message': error_ip}), 400
+        contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP   = %r' % ip_estatica,
+                           contenido, count=1, flags=re.M)
+
         # Copia temporal (posiblemente parcheada) que es la que se sube
         base = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
         tmp_fw = os.path.join(base, '_fw_upload_tmp.py')
@@ -934,6 +1216,22 @@ def api_esp32_flash_usb():
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=90)
+
+        # El device_id (MAC) se lee ANTES de copiar nada: es el identificador
+        # con el que se anota la IP y con el que la pantalla se registrara
+        # luego sola. Con el en la mano se comprueba ya que la IP no sea de
+        # otra placa, para no dejar la flash a medias por un choque evitable.
+        # La anotacion en si se guarda al final, cuando el flasheo ha ido bien.
+        dev_id = _leer_device_id_usb(mpremote)
+        otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
+        if otra:
+            try:
+                os.remove(tmp_fw)
+            except OSError:
+                pass
+            return jsonify({'success': False,
+                            'message': f'{ip_estatica} ya está asignada a la placa '
+                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → IPs de placas.'}), 400
 
         try:
             # Módulos auxiliares (driver del lector NFC, etc.) antes del main:
@@ -993,7 +1291,17 @@ def api_esp32_flash_usb():
 
         cambios = ' (WiFi actualizado)' if (ssid or password) else ''
         extra = f' Módulos: {", ".join(libs)}.' if libs else ''
-        return jsonify({'success': True, 'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.{extra}'})
+        red = f' IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}).'
+        # Ya grabada en la placa: se anota para que no se le dé a otra.
+        if dev_id:
+            ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='display')
+            if not ok_ip:
+                red += f' AVISO: la IP no se pudo anotar en la app ({msg_ip}).'
+        else:
+            red += (' AVISO: no se pudo leer el identificador de la placa, así que la IP no queda '
+                    'registrada en la app — anótala en Admin → IPs de placas cuando la pantalla aparezca.')
+        return jsonify({'success': True,
+                        'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.{extra}{red}'})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'message': 'Timeout: comprueba que la pantalla está conectada a ese puerto y que ningún otro programa (monitor serie, mpremote...) lo está usando.'})
     except Exception as e:
@@ -1297,6 +1605,7 @@ def api_esp32_rfid_devices():
                 'puesto_id': d.get('puesto_id', ''),
                 'puesto_nombre': d.get('puesto_nombre', ''),
                 'ip': d.get('ip', ''),
+                'ip_estatica': _ip_estatica_de(did),
                 'last_seen': d.get('last_seen', ''),
                 'online': online,
                 'fw': d.get('fw', ''),
@@ -1375,9 +1684,9 @@ def api_esp32_rfid_device_delete(device_id):
 @requiere_pin_admin
 def api_esp32_rfid_flash_usb():
     """Configura y sube TODOS los ficheros de una placa lectora RFID por USB
-    de una vez: http_client.py, ota_update.py, wifi_config.py (con el WiFi y
-    la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py, boot.py,
-    backend_config.py y main.py.
+    de una vez: http_client.py, ota_update.py, wifi_config.py (con el WiFi, la
+    IP fija y la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py,
+    boot.py, backend_config.py y main.py.
 
     Pensado para el primer flasheo de una placa nueva (o para reinstalar
     todo desde cero): a partir de ahi, main.py se actualiza solo por WiFi
@@ -1405,6 +1714,18 @@ def api_esp32_rfid_flash_usb():
                                        '(deja la contraseña WiFi vacía si la red no tiene; '
                                        'se graban en la placa, no se guardan en el servidor).'}), 400
 
+        # IP fija: obligatoria porque la red de planta no reparte direcciones.
+        # Se valida antes de tocar la placa para no dejarla a medio flashear
+        # con una IP que luego se rechaza.
+        ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
+        if not ip_estatica:
+            return jsonify({'success': False,
+                            'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
+                                       'Mira las libres en Admin → IPs de placas.'}), 400
+        error_ip = _ip_estatica_error(ip_estatica)
+        if error_ip:
+            return jsonify({'success': False, 'message': error_ip}), 400
+
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')
         cfg_path = os.path.join(base, 'wifi_config.py')
@@ -1418,6 +1739,12 @@ def api_esp32_rfid_flash_usb():
         cfg_contenido = re.sub(r'^WEBREPL_PASSWORD\s*=.*$', 'WEBREPL_PASSWORD = %r' % webrepl_password,
                                cfg_contenido, count=1, flags=re.M)
 
+        # IP fija de ESTA placa (la red de planta no tiene DHCP). boot.py la
+        # aplica con wlan.ifconfig() antes del connect; mascara y puerta de
+        # enlace son fijas para toda la instalacion y ya vienen en el fichero.
+        cfg_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
+                               cfg_contenido, count=1, flags=re.M)
+
         datadir = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
         tmp_cfg = os.path.join(datadir, '_rfid_wifi_config_tmp.py')
         with open(tmp_cfg, 'w', encoding='utf-8') as f:
@@ -1427,6 +1754,21 @@ def api_esp32_rfid_flash_usb():
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=90)
+
+        # device_id (MAC) de la placa: con el se anota la IP y con el se
+        # registra ella sola despues, asi que se lee ANTES de escribir nada y
+        # se comprueba ya que la IP no sea de otra placa. La anotacion se
+        # guarda al final, cuando el flasheo ha ido bien.
+        dev_id = _leer_device_id_usb(mpremote)
+        otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
+        if otra:
+            try:
+                os.remove(tmp_cfg)
+            except OSError:
+                pass
+            return jsonify({'success': False,
+                            'message': f'{ip_estatica} ya está asignada a la placa '
+                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → IPs de placas.'}), 400
 
         def _resumen_error(etiqueta, err):
             """Ultima linea no vacia del error (el mensaje de la excepcion,
@@ -1498,8 +1840,17 @@ def api_esp32_rfid_flash_usb():
             except OSError:
                 pass
 
+        red = f'IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}). '
+        # Ya grabada en la placa: se anota para que no se le dé a otra.
+        if dev_id:
+            ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='rfid')
+            if not ok_ip:
+                red += f'AVISO: la IP no se pudo anotar en la app ({msg_ip}). '
+        else:
+            red += ('AVISO: no se pudo leer el identificador de la placa, así que la IP no queda '
+                    'registrada en la app — anótala en Admin → IPs de placas cuando el lector aparezca. ')
         return jsonify({'success': True,
-                        'message': f'Lector configurado y firmware subido por {puerto}. '
+                        'message': f'Lector configurado y firmware subido por {puerto}. {red}'
                                    f'A partir de ahora se actualiza solo por WiFi cuando publiques una '
                                    f'nueva FW_VERSION en esp32/main.py.'})
     except subprocess.TimeoutExpired:

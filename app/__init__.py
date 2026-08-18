@@ -243,6 +243,24 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: tabla esp32_ips (IP fija de cada placa ESP32).
+    # La red de planta no tiene DHCP, asi que cada placa lleva su IP grabada
+    # en el firmware; aqui se registra cual tiene cada una (device_id = MAC)
+    # para no repetirlas y poder reflashear sin recordarlas a mano.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS esp32_ips (
+            device_id  TEXT PRIMARY KEY,
+            tipo       TEXT NOT NULL DEFAULT 'display',
+            nombre     TEXT,
+            ip         TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    # UNIQUE sobre la IP: la unicidad se valida antes de escribir, pero el
+    # indice la garantiza tambien si dos flasheos coinciden en el tiempo.
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_esp32_ips_ip ON esp32_ips(ip)")
+    conn.commit()
+
     # Migración: tabla terminales_ignorados (terminales desactivados de la vista)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS terminales_ignorados (

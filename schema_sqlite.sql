@@ -262,6 +262,27 @@ CREATE TABLE IF NOT EXISTS terminales_gavetas (
 );
 
 -- =====================================================
+-- TABLA: esp32_ips (IP fija de cada placa ESP32)
+-- =====================================================
+-- La red de planta (192.168.50.0/24) no tiene DHCP: cada placa lleva su IP
+-- grabada en el firmware. Aqui se lleva el registro de que IP tiene cada una,
+-- para no repetirlas y poder reflashear sin recordarlas de memoria.
+--   device_id = MAC del chip (binascii.hexlify(machine.unique_id())), el mismo
+--               identificador que la placa manda en /api/esp32/*.
+--   tipo      = 'display' (pantalla de carro) | 'rfid' (lector de puesto).
+-- La mascara (255.255.255.0) y la puerta de enlace (192.168.50.5, el
+-- TL-WR802N) son fijas para toda la instalacion y no se guardan por placa.
+CREATE TABLE IF NOT EXISTS esp32_ips (
+    device_id  TEXT PRIMARY KEY,
+    tipo       TEXT NOT NULL DEFAULT 'display',
+    nombre     TEXT,
+    ip         TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_esp32_ips_ip ON esp32_ips(ip);
+
+-- =====================================================
 -- TABLA: terminales_desactivados
 -- =====================================================
 DROP TABLE IF EXISTS terminales_desactivados;

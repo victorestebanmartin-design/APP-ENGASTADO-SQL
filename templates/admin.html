@@ -43,6 +43,7 @@
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
                 <button class="admin-nav-item" data-section="wifi-hotspot" onclick="adminNav('wifi-hotspot')"><span class="ico">📶</span> Hotspot WiFi</button>
+                <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🔢</span> IPs de placas</button>
                 <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
                 <div class="admin-nav-label">Auditoría</div>
@@ -305,6 +306,19 @@
                             <input type="password" id="usb-pass" placeholder="WiFi contraseña (vacío = no cambiar)"
                                 style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
                         </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="usb-ip" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                            <span style="font-size:0.85em;color:#94a3b8;">
+                                Máscara <code>255.255.255.0</code> · Puerta de enlace <code>192.168.50.5</code>
+                                <em>(fijas)</em>
+                            </span>
+                        </div>
+                        <p class="instruccion" style="margin-bottom:10px;">
+                            La red de planta no tiene DHCP, así que cada pantalla necesita su propia IP fija.
+                            Se propone la primera libre; puedes cambiarla. Qué IP tiene cada placa se ve en
+                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
+                        </p>
                         <button class="btn-primary" id="usb-flash-btn" onclick="flashUSB()">📲 Subir firmware a la pantalla</button>
                         <div id="usb-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
                         <p class="instruccion" style="margin-top:12px;">
@@ -364,6 +378,19 @@
                             <input type="password" id="usb-webrepl-rfid" placeholder="Contraseña WebREPL"
                                 style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
                         </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="usb-ip-rfid" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                            <span style="font-size:0.85em;color:#94a3b8;">
+                                Máscara <code>255.255.255.0</code> · Puerta de enlace <code>192.168.50.5</code>
+                                <em>(fijas)</em>
+                            </span>
+                        </div>
+                        <p class="instruccion" style="margin-bottom:10px;">
+                            La red de planta no tiene DHCP, así que cada lector necesita su propia IP fija.
+                            Se propone la primera libre; puedes cambiarla. Qué IP tiene cada placa se ve en
+                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
+                        </p>
                         <button class="btn-primary" id="usb-flash-rfid-btn" onclick="flashUSBRfid()">📲 Subir todo a la placa</button>
                         <div id="usb-msg-rfid" style="margin-top:10px;font-size:0.9em;display:none;"></div>
                     </div>
@@ -413,6 +440,42 @@
                         <button class="btn-primary" onclick="iniciarHotspot()" style="margin-left:8px;">▶️ Iniciar</button>
                         <button class="btn-secondary" onclick="detenerHotspot()" style="margin-left:8px;">⏹️ Detener</button>
                         <div id="hotspot-control-msg" style="margin-top:10px;font-size:0.88em;white-space:pre-wrap;"></div>
+                    </div>
+                </section>
+
+
+                <!-- ============ IPs DE PLACAS (red de planta sin DHCP) ============ -->
+                <section id="sec-ips-placas" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>IPs de placas</h1>
+                        <p>Qué IP fija tiene cada ESP32 en la red de planta, para no repetirlas ni tener que recordarlas</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>🌐 La red de planta</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            La red está aislada (sin internet) y <strong>no tiene DHCP</strong>: nadie reparte
+                            direcciones, así que cada placa lleva la suya grabada en su propio firmware. Se le
+                            graba al flashearla por USB (Display Carro / Lectores RFID) y queda anotada aquí.
+                        </p>
+                        <div id="ips-red" style="font-size:0.9em;color:#cbd5e1;line-height:1.9;">
+                            Cargando…
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔢 Placas y su IP</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Cambiar una IP aquí solo cambia la anotación: la placa sigue con la que tiene grabada
+                            hasta que la vuelvas a flashear por USB con la nueva.
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <button class="btn-secondary" onclick="cargarIpsPlacas()">🔄 Actualizar</button>
+                            <span id="ips-msg" style="margin-left:10px;font-size:0.88em;"></span>
+                        </div>
+                        <div id="ips-lista" class="tabla-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
                     </div>
                 </section>
 

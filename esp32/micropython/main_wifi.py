@@ -58,10 +58,21 @@ import framebuf
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-13b"
+FW_VERSION = "2026-08-18a"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
+# IP fija de ESTA pantalla. La red de planta (192.168.50.0/24) no tiene DHCP,
+# asi que sin esto la pantalla se queda esperando una direccion que nadie
+# reparte. La rellena el servidor al flashear por USB (Admin -> Display Carro
+# -> "Subir firmware por USB", campo "IP estatica") y se conserva en los OTA
+# por WiFi (ver _reinyectar_wifi). Vacia = DHCP.
+# Mascara y puerta de enlace son fijas para toda la instalacion (GATEWAY = el
+# TL-WR802N, que hace tambien de DNS).
+STATIC_IP   = ""
+SUBNET_MASK = "255.255.255.0"
+GATEWAY     = "192.168.50.5"
+DNS         = "192.168.50.5"
 # Servidor LOCAL (planta, sin internet): IP fija del PC servidor + puerto
 # de run_sql.py (5001). Alternativa remota: "viktor85.pythonanywhere.com"
 # con PORT = 443 (requiere que la placa tenga salida a internet).
@@ -910,8 +921,10 @@ def _sha256_hex(data):
     return ubinascii.hexlify(uhashlib.sha256(data).digest()).decode()
 
 def _reinyectar_wifi(texto):
-    """Mete el SSID/PASSWORD de ESTA pantalla en el app.py descargado, para que
-    el OTA nunca cambie la red con la que ya esta conectada."""
+    """Mete el SSID/PASSWORD y la IP fija de ESTA pantalla en el app.py
+    descargado, para que el OTA nunca cambie la red con la que ya esta
+    conectada ni le quite la IP que tiene asignada (la red no tiene DHCP:
+    perderla la dejaria incomunicada y sin forma de recuperarse por WiFi)."""
     lineas = texto.split("\n")
     for i, ln in enumerate(lineas):
         st = ln.lstrip()
@@ -919,6 +932,8 @@ def _reinyectar_wifi(texto):
             lineas[i] = "SSID     = " + repr(SSID)
         elif st.startswith("PASSWORD") and "=" in ln:
             lineas[i] = "PASSWORD = " + repr(PASSWORD)
+        elif st.startswith("STATIC_IP") and "=" in ln:
+            lineas[i] = "STATIC_IP   = " + repr(STATIC_IP)
     return "\n".join(lineas)
 
 def http_get_bytes(host, port, path):
@@ -1071,6 +1086,13 @@ def conectar_wifi():
     try:
         wlan = network.WLAN(network.STA_IF)
         wlan.active(True)
+        if STATIC_IP:
+            # ANTES del connect: la red no reparte IPs, si no se fija aqui
+            # la pantalla no llega al servidor.
+            try:
+                wlan.ifconfig((STATIC_IP, SUBNET_MASK, GATEWAY, DNS))
+            except Exception as e:
+                print("IP fija no aplicada:", e)
         if not wlan.isconnected():
             try:
                 wlan.disconnect()

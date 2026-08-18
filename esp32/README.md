@@ -69,7 +69,7 @@ proposito.
 | `boot.py` | **USB, una vez** | Conecta el WiFi y dispara el OTA. Si un OTA rompiera este fichero, la placa no podria ni comprobar actualizaciones -- por eso nunca se toca por WiFi. |
 | `ota_update.py` | **USB, una vez** | El propio mecanismo de OTA. Mismo motivo que `boot.py`. |
 | `http_client.py` | **USB, una vez** | Cliente HTTPS del que dependen `main.py` y `ota_update.py`. |
-| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
+| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL, IP estatica de la placa y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
 | `backend_config.py` | USB inicialmente, **actualizable por OTA** despues | Host/puerto del backend. Separado de `wifi_config.py` a proposito: no lleva secretos, asi que se puede migrar de servidor (p.ej. PythonAnywhere -> local) publicando el cambio, sin visitar cada placa. |
 | `lib/mfrc522.py` | USB inicialmente, **actualizable por OTA** despues | Driver del lector. Se incluye en el manifiesto OTA por si hiciera falta un fix sin pasar por USB. |
 | `main.py` | USB inicialmente, **actualizable por OTA** despues | La logica de la placa (leer RFID, avisar con el zumbador, mandar la lectura). Esto es lo que cambiaras normalmente. |
@@ -160,11 +160,20 @@ esptool.py write_flash -z 0x1000 esp32-XXXXXXXX-vX.XX.X.bin
 o `python run_sql.py`, que instala `pyserial`/`mpremote` con el resto de
 `requirements.txt`), conecta la placa por USB y ve a
 **Admin -> Lectores RFID -> 📲 Configurar y subir por USB**: elige el
-puerto, rellena el WiFi y la contraseña de WebREPL que quieras para esa
-placa, y un solo click sube `http_client.py`, `ota_update.py`,
+puerto, rellena el WiFi, la contraseña de WebREPL y la **IP estatica** que
+quieras para esa placa, y un solo click sube `http_client.py`, `ota_update.py`,
 `wifi_config.py` (ya con esas credenciales dentro), `lib/mfrc522.py`,
 `boot.py`, `backend_config.py` y `main.py`, y reinicia la placa. A partir de
 ahi todo lo demas es por WiFi, no hace falta volver a tocar el USB.
+
+La IP estatica no es opcional: la red de planta (`192.168.50.0/24`) esta
+aislada y **no tiene DHCP**, asi que cada placa necesita la suya grabada. La
+app propone la primera libre, comprueba que este en `192.168.50.2-254` y que
+no la tenga ya otra placa, y la anota en la BD para no repetirla ni tener que
+recordarla al reflashear. Que IP tiene cada placa se ve en
+**Admin -> IPs de placas**. Mascara (`255.255.255.0`) y puerta de enlace
+(`192.168.50.5`, el TL-WR802N, que hace tambien de DNS) son fijas para toda
+la instalacion y no se configuran por placa.
 
 Esto **solo funciona con la app corriendo en local** (este PC tiene el
 puerto USB, PythonAnywhere no) -- por eso el primer flasheo es el unico paso
@@ -176,8 +185,9 @@ que no se puede hacer desde el PC corporativo ni por HTTPS.
 pip install mpremote
 
 # Antes: copia esp32/wifi_config.py a un fichero aparte y rellena SSID,
-# PASSWORD y WEBREPL_PASSWORD con tus valores reales (no edites el del
-# repo, que se queda con valores de ejemplo a proposito).
+# PASSWORD, WEBREPL_PASSWORD y STATIC_IP con tus valores reales (no edites
+# el del repo, que se queda con valores de ejemplo a proposito). STATIC_IP
+# tiene que ser una IP libre de 192.168.50.2-254: la red no tiene DHCP.
 
 mpremote connect COM5 cp esp32/http_client.py :http_client.py
 mpremote connect COM5 cp esp32/ota_update.py :ota_update.py
@@ -282,6 +292,11 @@ duplicar la misma pasada de tarjeta.
 
 - Revisa `SSID`/`PASSWORD` en tu copia de `wifi_config.py` (subida por USB).
 - Prueba con una red de 2.4GHz (el ESP32 clasico no soporta 5GHz).
+- Si conecta pero no habla con el servidor, mira `STATIC_IP`: la red de
+  planta no tiene DHCP, asi que con `STATIC_IP = ""` la placa se queda
+  esperando una direccion que nadie reparte. `boot.py` imprime la IP que
+  acaba teniendo (`WiFi OK: (...)`) en el monitor serie. Dos placas con la
+  misma IP tambien dan este sintoma: comprueba **Admin -> IPs de placas**.
 
 ### "Tarjeta detectada" pero no llega nada al servidor
 
@@ -314,7 +329,7 @@ duplicar la misma pasada de tarjeta.
 - `boot.py` -- arranque: WiFi, WebREPL, dispara el OTA. **USB, no se toca por OTA.**
 - `ota_update.py` -- logica de comprobar/descargar/aplicar/revertir el OTA. **USB, no se toca por OTA.**
 - `http_client.py` -- cliente HTTP/HTTPS minimo sin dependencias externas. **USB, no se toca por OTA.**
-- `wifi_config.py` -- credenciales WiFi/WebREPL y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
+- `wifi_config.py` -- credenciales WiFi/WebREPL, IP estatica de la placa y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
 - `backend_config.py` -- host/puerto del backend. **Se actualiza por OTA** (permite migrar de servidor sin USB).
 - `lib/mfrc522.py` -- driver del lector RC522 (vendorizado, MIT license). Actualizable por OTA.
 - `main.py` -- logica de la placa (RFID + zumbador + POST). **Esto es lo que se actualiza por OTA.**

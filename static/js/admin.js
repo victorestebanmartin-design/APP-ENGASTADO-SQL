@@ -1438,7 +1438,7 @@ async function cargarDisplays() {
         cont.innerHTML = `
             <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
                 <thead><tr style="text-align:left;color:#94a3b8;">
-                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th><th>NFC</th>
+                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP fija</th><th>IP</th><th>NFC</th>
                     <th>Carro asignado</th><th>Firmware</th><th>Última señal</th><th></th>
                 </tr></thead>
                 <tbody>` + devs.map(dev => `
@@ -1446,7 +1446,10 @@ async function cargarDisplays() {
                     <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>15s)'}">${dev.online ? '🟢' : '🔴'}</td>
                     <td><input id="disp-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Pantalla..." style="${_dispInputStyle}width:130px;"></td>
                     <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
-                    <td style="font-family:monospace;">${_dispEsc(dev.ip) || '—'}</td>
+                    <td style="font-family:monospace;" title="IP fija asignada a esta pantalla (se cambia en Admin → IPs de placas)">
+                        ${dev.ip_estatica ? _dispEsc(dev.ip_estatica) : '<span style="color:#fbbf24;" title="Sin IP fija asignada: la red de planta no tiene DHCP">⚠️ —</span>'}
+                    </td>
+                    <td style="font-family:monospace;" title="Última IP con la que la pantalla habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
                     <td title="${dev.nfc === 'ok' ? 'Lector NFC respondiendo' : dev.nfc === 'ko' ? 'Lector NFC cableado pero sin responder' : 'Esta pantalla no tiene lector NFC'}">
                         ${dev.nfc === 'ok' ? '🏷️ ok' : dev.nfc === 'ko' ? '<span style="color:#f87171;">⚠️ no responde</span>' : '—'}
                     </td>
@@ -1586,7 +1589,7 @@ async function cargarLectoresRfid() {
         cont.innerHTML = `
             <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
                 <thead><tr style="text-align:left;color:#94a3b8;">
-                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP</th>
+                    <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP fija</th><th>IP</th>
                     <th>Puesto asignado</th><th>Firmware</th><th>Última señal</th><th></th>
                 </tr></thead>
                 <tbody>` + devs.map(dev => `
@@ -1594,7 +1597,10 @@ async function cargarLectoresRfid() {
                     <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>90s)'}">${dev.online ? '🟢' : '🔴'}</td>
                     <td><input id="rfid-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Lector..." style="${_dispInputStyle}width:130px;"></td>
                     <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
-                    <td style="font-family:monospace;">${_dispEsc(dev.ip) || '—'}</td>
+                    <td style="font-family:monospace;" title="IP fija asignada a este lector (se cambia en Admin → IPs de placas)">
+                        ${dev.ip_estatica ? _dispEsc(dev.ip_estatica) : '<span style="color:#fbbf24;" title="Sin IP fija asignada: la red de planta no tiene DHCP">⚠️ —</span>'}
+                    </td>
+                    <td style="font-family:monospace;" title="Última IP con la que el lector habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
                     <td><select id="rfid-puesto-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.puesto_id)}</select></td>
                     <td title="Versión del firmware del lector vs la del servidor (${_dispEsc(versionSrv) || '—'})">
                         ${!dev.fw ? '<span style="color:#64748b;">—</span>'
@@ -1669,6 +1675,127 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 10000);
 });
 
+// ============================================================================
+// IPs DE PLACAS — la red de planta no tiene DHCP, cada ESP32 lleva su IP fija
+// grabada en el firmware. Aqui solo se lleva el registro de cual tiene cada
+// una (la grabacion en si va en "Subir por USB").
+// ============================================================================
+
+function _ipsMsg(texto, esError) {
+    const el = document.getElementById('ips-msg');
+    if (!el) return;
+    el.textContent = texto;
+    el.style.color = esError ? '#f87171' : '#4ade80';
+    if (texto) setTimeout(() => { if (el.textContent === texto) el.textContent = ''; }, 5000);
+}
+
+async function cargarIpsPlacas() {
+    const cont = document.getElementById('ips-lista');
+    if (!cont) return;
+    try {
+        const resp = await fetch('/api/esp32/ips');
+        const d = await resp.json();
+        const placas = d.placas || [];
+        const red = d.red || {};
+
+        const elRed = document.getElementById('ips-red');
+        if (elRed) {
+            const reservadas = Object.entries(red.reservadas || {})
+                .map(([ip, quien]) => `<code>${_dispEsc(ip)}</code> ${_dispEsc(quien)}`)
+                .join(' · ');
+            elRed.innerHTML =
+                `Rango para placas: <code>${_dispEsc(red.rango)}</code><br>` +
+                `Máscara: <code>${_dispEsc(red.mascara)}</code> · ` +
+                `Puerta de enlace y DNS: <code>${_dispEsc(red.gateway)}</code> <em>(fijas)</em><br>` +
+                `Reservadas: ${reservadas || '—'}<br>` +
+                `Primera IP libre: <code>${_dispEsc(d.sugerida) || '— no queda ninguna —'}</code>`;
+        }
+
+        if (placas.length === 0) {
+            cont.innerHTML = '<p class="instruccion">Todavía no hay ninguna placa registrada.<br>' +
+                'Aparecerán aquí al flashear una por USB con su IP, o en cuanto una encendida se registre sola.</p>';
+            return;
+        }
+        cont.innerHTML = `
+            <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                <thead><tr style="text-align:left;color:#94a3b8;">
+                    <th style="padding:8px 6px;">Tipo</th><th>Nombre</th><th>ID</th>
+                    <th>IP asignada</th><th>IP que reporta</th><th>Anotada</th><th></th>
+                </tr></thead>
+                <tbody>` + placas.map(p => `
+                <tr style="border-top:1px solid #334155;">
+                    <td style="padding:8px 6px;">${p.tipo === 'rfid' ? '🏷️' : '🖥️'} ${_dispEsc(p.tipo_label)}</td>
+                    <td>${_dispEsc(p.nombre) || '<span style="color:#64748b;">—</span>'}</td>
+                    <td title="${_dispEsc(p.device_id)}" style="font-family:monospace;">${_dispEsc(p.device_id.slice(-4))}</td>
+                    <td><input id="ip-val-${_dispEsc(p.device_id)}" value="${_dispEsc(p.ip)}"
+                            placeholder="192.168.50.x"
+                            style="${_dispInputStyle}width:150px;font-family:monospace;"></td>
+                    <td style="font-family:monospace;" title="${p.ip_vista ? 'Última IP con la que la placa habló con el servidor' : 'La placa aún no ha contactado'}">
+                        ${!p.ip_vista ? '<span style="color:#64748b;">—</span>'
+                            : p.coincide ? `<span style="color:#4ade80;">🟢 ${_dispEsc(p.ip_vista)}</span>`
+                            : `<span style="color:#fbbf24;" title="No coincide con la IP asignada: la placa aún tiene grabada otra">🟠 ${_dispEsc(p.ip_vista)}</span>`}
+                    </td>
+                    <td style="color:#94a3b8;">${p.updated_at ? _dispEsc(p.updated_at.replace('T', ' ').slice(0, 19)) : '—'}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn-primary" onclick="guardarIpPlaca('${_dispEsc(p.device_id)}', '${_dispEsc(p.tipo)}')" title="Anotar esta IP para la placa">💾 Guardar</button>
+                        ${p.ip ? `<button class="btn-secondary" onclick="liberarIpPlaca('${_dispEsc(p.device_id)}')" title="Liberar la IP (queda disponible para otra placa)">🗑️ Liberar</button>` : ''}
+                    </td>
+                </tr>`).join('') + `
+                </tbody>
+            </table>`;
+    } catch (e) {
+        cont.innerHTML = '<p class="instruccion">Error cargando las IPs. Reintenta con 🔄 Actualizar.</p>';
+    }
+}
+
+async function guardarIpPlaca(deviceId, tipo) {
+    const ip = document.getElementById(`ip-val-${deviceId}`)?.value || '';
+    try {
+        const resp = await fetch('/api/esp32/ips', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId, ip: ip, tipo: tipo })
+        });
+        const d = await resp.json();
+        _ipsMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        if (d.success) cargarIpsPlacas();
+    } catch (e) {
+        _ipsMsg('❌ Error de conexión', true);
+    }
+}
+
+async function liberarIpPlaca(deviceId) {
+    if (!confirm('¿Liberar la IP de esta placa?\n\nLa placa seguirá usando la que tiene grabada hasta que la reflashees, ' +
+                 'pero la IP quedará disponible para asignársela a otra.')) return;
+    try {
+        await fetch(`/api/esp32/ips/${deviceId}`, { method: 'DELETE' });
+        _ipsMsg('✅ IP liberada');
+        cargarIpsPlacas();
+    } catch (e) {
+        _ipsMsg('❌ No se pudo liberar', true);
+    }
+}
+
+// Propone la primera IP libre en los formularios de "Subir por USB". Solo
+// toca campos vacíos o con una propuesta anterior que ya se ha quedado corta
+// (yaUsada): lo que el admin haya escrito a mano no se pisa nunca.
+async function _sugerirIpEnFormulariosUSB(yaUsada) {
+    const campos = [document.getElementById('usb-ip'), document.getElementById('usb-ip-rfid')]
+        .filter(c => c && (!c.value || (yaUsada && c.value === yaUsada)));
+    if (campos.length === 0) return;
+    try {
+        const r = await fetch('/api/esp32/ips');
+        const d = await r.json();
+        if (!d.sugerida) return;
+        campos.forEach(c => { c.value = d.sugerida; });
+    } catch (e) { /* silencioso: si falla, el admin escribe la IP a mano */ }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('ips-lista')) cargarIpsPlacas();
+    _sugerirIpEnFormulariosUSB();
+});
+
 // ── Lectores RFID: configurar y subir por USB (primer flasheo) ─────────────
 // Mismo patron que "Subir firmware por USB" de Display Carro, pero sube
 // TODOS los ficheros base de la placa RFID (no solo el firmware de app),
@@ -1709,9 +1836,15 @@ async function flashUSBRfid() {
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
     const password = document.getElementById('usb-pass-rfid')?.value || '';
     const webrepl_password = document.getElementById('usb-webrepl-rfid')?.value || '';
+    const ip_estatica = document.getElementById('usb-ip-rfid')?.value || '';
     // La contraseña WiFi puede quedar vacia si la red no tiene (red abierta).
     if (!ssid || !webrepl_password) {
         _usbMsgRfid('Rellena SSID y contraseña WebREPL (deja la contraseña WiFi vacía si la red no tiene).', true);
+        return;
+    }
+    // La IP fija no es opcional: la red de planta no reparte direcciones.
+    if (!ip_estatica) {
+        _usbMsgRfid('Rellena la IP estática de esta placa (la red de planta no tiene DHCP).', true);
         return;
     }
     const btn = document.getElementById('usb-flash-rfid-btn');
@@ -1723,11 +1856,19 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, ssid, password, webrepl_password })
+            body: JSON.stringify({ puerto, ssid, password, webrepl_password, ip_estatica })
         });
         const d = await resp.json();
         _usbMsgRfid((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
-        if (d.success) cargarLectoresRfid();
+        if (d.success) {
+            cargarLectoresRfid();
+            cargarIpsPlacas();
+            // La IP recién grabada ya está cogida: proponer la siguiente libre
+            // para la próxima placa, en vez de repetirla sin querer.
+            const campo = document.getElementById('usb-ip-rfid');
+            if (campo) campo.value = '';
+            _sugerirIpEnFormulariosUSB(ip_estatica);
+        }
     } catch (e) {
         _usbMsgRfid('❌ Error de conexión con el servidor', true);
     } finally {
@@ -1782,6 +1923,11 @@ async function flashUSB() {
         _usbMsg('Rellena el SSID (deja la contraseña vacía si la red no tiene).', true);
         return;
     }
+    // La IP fija no es opcional: la red de planta no reparte direcciones.
+    if (!document.getElementById('usb-ip')?.value) {
+        _usbMsg('Rellena la IP estática de esta pantalla (la red de planta no tiene DHCP).', true);
+        return;
+    }
     const btn = document.getElementById('usb-flash-btn');
     btn.disabled = true;
     const txtOriginal = btn.textContent;
@@ -1794,11 +1940,22 @@ async function flashUSB() {
             body: JSON.stringify({
                 puerto: puerto,
                 ssid: document.getElementById('usb-ssid')?.value || '',
-                password: document.getElementById('usb-pass')?.value || ''
+                password: document.getElementById('usb-pass')?.value || '',
+                ip_estatica: document.getElementById('usb-ip')?.value || ''
             })
         });
         const d = await resp.json();
         _usbMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
+        if (d.success) {
+            cargarDisplays();
+            cargarIpsPlacas();
+            // La IP recién grabada ya está cogida: proponer la siguiente libre
+            // para la próxima pantalla, en vez de repetirla sin querer.
+            const campo = document.getElementById('usb-ip');
+            const usada = campo ? campo.value : '';
+            if (campo) campo.value = '';
+            _sugerirIpEnFormulariosUSB(usada);
+        }
     } catch (e) {
         _usbMsg('❌ Error de conexión con el servidor', true);
     } finally {

@@ -10,6 +10,21 @@ SSID = "YOUR_SSID"                # Nombre de tu red WiFi
 PASSWORD = "YOUR_PASSWORD"        # Contrasena de tu red WiFi
 WEBREPL_PASSWORD = "YOUR_WEBREPL_PASSWORD"  # Contrasena de WebREPL (puerto 8266)
 
+# --- IP fija de ESTA placa -------------------------------------------------
+# La red de planta (192.168.50.0/24) no tiene DHCP: si la placa no se
+# autoconfigura la IP, no conecta con nadie. STATIC_IP lo rellena el servidor
+# al flashear por USB (Admin -> Lectores RFID -> "Configurar y subir por USB",
+# campo "IP estatica"); vacio = pedir IP por DHCP, que solo sirve en una red
+# de pruebas que si lo tenga.
+#
+# La mascara y la puerta de enlace son fijas para toda la instalacion
+# (GATEWAY = el TL-WR802N, que hace tambien de DNS), asi que no se tocan por
+# placa. Ver boot.py:_conectar_wifi().
+STATIC_IP = ""                    # p.ej. "192.168.50.21"
+SUBNET_MASK = "255.255.255.0"
+GATEWAY = "192.168.50.5"
+DNS = "192.168.50.5"
+
 # El host del backend REAL vive en backend_config.py, que a diferencia de
 # este fichero SI se actualiza por OTA (para poder migrar de servidor sin
 # visitar cada placa con un cable USB). Lo de abajo es solo una RED DE

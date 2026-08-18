@@ -13,9 +13,28 @@ import network
 import wifi_config as cfg
 
 
+def _aplicar_ip_fija(wlan):
+    """Fija la IP de esta placa ANTES de conectar (la red no tiene DHCP).
+
+    Sin esto la placa se queda esperando una direccion que nadie reparte y
+    no llega al servidor. Si cfg.STATIC_IP esta vacio se deja el DHCP, que
+    es lo que quiere una red de pruebas que si lo tenga.
+    """
+    if not getattr(cfg, "STATIC_IP", ""):
+        return
+    try:
+        wlan.ifconfig((cfg.STATIC_IP,
+                       getattr(cfg, "SUBNET_MASK", "255.255.255.0"),
+                       getattr(cfg, "GATEWAY", "192.168.50.5"),
+                       getattr(cfg, "DNS", "192.168.50.5")))
+    except Exception as e:
+        print("IP fija no aplicada:", e)
+
+
 def _conectar_wifi():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+    _aplicar_ip_fija(wlan)
     if not wlan.isconnected():
         try:
             wlan.disconnect()
