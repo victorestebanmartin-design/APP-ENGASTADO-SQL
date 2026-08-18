@@ -1791,9 +1791,36 @@ async function _sugerirIpEnFormulariosUSB(yaUsada) {
     } catch (e) { /* silencioso: si falla, el admin escribe la IP a mano */ }
 }
 
+// Propone a dónde tienen que llamar las placas: el host ya guardado, o —si
+// la app corre en el propio PC servidor— su IP detectada en la red de planta.
+// Solo rellena campos vacíos, para no pisar lo que el admin haya escrito.
+async function _sugerirHostEnFormulariosUSB() {
+    const campos = [document.getElementById('usb-host'), document.getElementById('usb-host-rfid')]
+        .filter(c => c);
+    if (campos.length === 0) return;
+    try {
+        const r = await fetch('/api/esp32/servidor');
+        const d = await r.json();
+        campos.forEach(c => {
+            if (!c.value && d.sugerido) c.value = d.sugerido;
+            const pista = document.getElementById(c.id + '-pista');
+            if (!pista) return;
+            if (d.host) {
+                pista.textContent = 'el último que usaste';
+            } else if (d.detectado) {
+                pista.textContent = 'IP detectada de este equipo';
+            } else {
+                pista.textContent = 'no se ha podido detectar: escríbela a mano';
+                pista.style.color = '#fbbf24';
+            }
+        });
+    } catch (e) { /* silencioso: si falla, el admin la escribe a mano */ }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     if (document.getElementById('ips-lista')) cargarIpsPlacas();
     _sugerirIpEnFormulariosUSB();
+    _sugerirHostEnFormulariosUSB();
 });
 
 // ── Lectores RFID: configurar y subir por USB (primer flasheo) ─────────────
@@ -1847,6 +1874,10 @@ async function flashUSBRfid() {
         _usbMsgRfid('Rellena la IP estática de esta placa (la red de planta no tiene DHCP).', true);
         return;
     }
+    if (!document.getElementById('usb-host-rfid')?.value) {
+        _usbMsgRfid('Rellena la IP del servidor: es a donde llamará el lector.', true);
+        return;
+    }
     const btn = document.getElementById('usb-flash-rfid-btn');
     btn.disabled = true;
     const txtOriginal = btn.textContent;
@@ -1856,7 +1887,8 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, ssid, password, webrepl_password, ip_estatica })
+            body: JSON.stringify({ puerto, ssid, password, webrepl_password, ip_estatica,
+                                   host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();
         _usbMsgRfid((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
@@ -1928,6 +1960,10 @@ async function flashUSB() {
         _usbMsg('Rellena la IP estática de esta pantalla (la red de planta no tiene DHCP).', true);
         return;
     }
+    if (!document.getElementById('usb-host')?.value) {
+        _usbMsg('Rellena la IP del servidor: es a donde llamará la pantalla.', true);
+        return;
+    }
     const btn = document.getElementById('usb-flash-btn');
     btn.disabled = true;
     const txtOriginal = btn.textContent;
@@ -1941,7 +1977,8 @@ async function flashUSB() {
                 puerto: puerto,
                 ssid: document.getElementById('usb-ssid')?.value || '',
                 password: document.getElementById('usb-pass')?.value || '',
-                ip_estatica: document.getElementById('usb-ip')?.value || ''
+                ip_estatica: document.getElementById('usb-ip')?.value || '',
+                host_servidor: document.getElementById('usb-host')?.value || ''
             })
         });
         const d = await resp.json();

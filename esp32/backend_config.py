@@ -13,7 +13,12 @@
 
 # Servidor LOCAL (planta, sin internet): IP fija del PC servidor y puerto
 # de run_sql.py (5001), sin SSL (HTTP normal en la LAN).
-BACKEND_HOST = "192.168.1.20"
+#
+# El servidor INYECTA aqui el host configurado en Admin, tanto al flashear
+# por USB como al servir este fichero por OTA (ver _firmware_bytes en
+# app/routes/sistema.py), asi que este valor es solo el de por defecto para
+# un flasheo a mano con mpremote.
+BACKEND_HOST = "192.168.50.1"
 BACKEND_PORT = 5001
 BACKEND_USE_SSL = False
 # Alternativa: servidor en PythonAnywhere (requiere que la placa tenga

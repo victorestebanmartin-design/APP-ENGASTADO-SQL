@@ -160,8 +160,9 @@ esptool.py write_flash -z 0x1000 esp32-XXXXXXXX-vX.XX.X.bin
 o `python run_sql.py`, que instala `pyserial`/`mpremote` con el resto de
 `requirements.txt`), conecta la placa por USB y ve a
 **Admin -> Lectores RFID -> 📲 Configurar y subir por USB**: elige el
-puerto, rellena el WiFi, la contraseña de WebREPL y la **IP estatica** que
-quieras para esa placa, y un solo click sube `http_client.py`, `ota_update.py`,
+puerto, rellena el WiFi, la contraseña de WebREPL, la **IP estatica** de esa
+placa y la **IP del servidor** (se propone sola si la app corre en el propio
+PC servidor), y un solo click sube `http_client.py`, `ota_update.py`,
 `wifi_config.py` (ya con esas credenciales dentro), `lib/mfrc522.py`,
 `boot.py`, `backend_config.py` y `main.py`, y reinicia la placa. A partir de
 ahi todo lo demas es por WiFi, no hace falta volver a tocar el USB.
@@ -292,6 +293,11 @@ duplicar la misma pasada de tarjeta.
 
 - Revisa `SSID`/`PASSWORD` en tu copia de `wifi_config.py` (subida por USB).
 - Prueba con una red de 2.4GHz (el ESP32 clasico no soporta 5GHz).
+- Si conecta pero no aparece en Admin, mira `BACKEND_HOST` en
+  `backend_config.py` (o `HOST_IP` en la pantalla): la placa puede tener
+  WiFi e IP correctas y estar llamando a un servidor de otra red, y entonces
+  no se registra nunca. Lo inyecta el servidor con lo que pongas en el campo
+  "IP del servidor" al flashear.
 - Si conecta pero no habla con el servidor, mira `STATIC_IP`: la red de
   planta no tiene DHCP, asi que con `STATIC_IP = ""` la placa se queda
   esperando una direccion que nadie reparte. `boot.py` imprime la IP que

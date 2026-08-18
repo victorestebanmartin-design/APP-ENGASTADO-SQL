@@ -76,7 +76,11 @@ DNS         = "192.168.50.5"
 # Servidor LOCAL (planta, sin internet): IP fija del PC servidor + puerto
 # de run_sql.py (5001). Alternativa remota: "viktor85.pythonanywhere.com"
 # con PORT = 443 (requiere que la placa tenga salida a internet).
-HOST_IP  = "192.168.1.20"
+#
+# El servidor INYECTA aqui el host configurado en Admin (tanto al flashear
+# por USB como al servir el OTA), asi que este valor es solo el de por
+# defecto para un flasheo a mano con mpremote.
+HOST_IP  = "192.168.50.1"
 PORT     = 5001
 POLL_INTERVAL = 3      # segundos entre polls de /api/esp32/current
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente

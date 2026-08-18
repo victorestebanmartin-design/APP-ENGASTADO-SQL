@@ -38,7 +38,7 @@ DNS = "192.168.50.5"
 # bucle infinito -- justo lo que la red de seguridad pretende evitar. Con
 # ellas, la placa arranca igual y ota_update (que si usa backend_config) puede
 # volver a descargar el firmware bueno y curarse sola.
-BACKEND_HOST = "192.168.1.20"
+BACKEND_HOST = "192.168.50.1"
 BACKEND_PORT = 5001
 BACKEND_USE_SSL = False
 

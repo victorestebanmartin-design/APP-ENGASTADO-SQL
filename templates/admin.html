@@ -314,9 +314,20 @@
                                 <em>(fijas)</em>
                             </span>
                         </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="usb-host" placeholder="IP del servidor (ej: 192.168.50.1)"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                            <span style="font-size:0.85em;color:#94a3b8;">
+                                Puerto <code>5001</code> <em>(fijo)</em> — <span id="usb-host-pista">a dónde llamará la placa</span>
+                            </span>
+                        </div>
                         <p class="instruccion" style="margin-bottom:10px;">
-                            La red de planta no tiene DHCP, así que cada pantalla necesita su propia IP fija.
-                            Se propone la primera libre; puedes cambiarla. Qué IP tiene cada placa se ve en
+                            Son <strong>dos IPs distintas</strong>: la de arriba es la que tendrá
+                            esta pantalla (la red de planta no tiene DHCP, así que
+                            cada placa necesita la suya; se propone la primera libre), y la de abajo es la del
+                            <strong>PC servidor</strong>, a donde la pantalla llamará para recibir trabajo. Si esa segunda
+                            está mal, la pantalla conecta al WiFi pero no aparece nunca aquí.
+                            Qué IP tiene cada placa se ve en
                             <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
                         </p>
                         <button class="btn-primary" id="usb-flash-btn" onclick="flashUSB()">📲 Subir firmware a la pantalla</button>
@@ -386,9 +397,20 @@
                                 <em>(fijas)</em>
                             </span>
                         </div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="text" id="usb-host-rfid" placeholder="IP del servidor (ej: 192.168.50.1)"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                            <span style="font-size:0.85em;color:#94a3b8;">
+                                Puerto <code>5001</code> <em>(fijo)</em> — <span id="usb-host-rfid-pista">a dónde llamará la placa</span>
+                            </span>
+                        </div>
                         <p class="instruccion" style="margin-bottom:10px;">
-                            La red de planta no tiene DHCP, así que cada lector necesita su propia IP fija.
-                            Se propone la primera libre; puedes cambiarla. Qué IP tiene cada placa se ve en
+                            Son <strong>dos IPs distintas</strong>: la de arriba es la que tendrá
+                            este lector (la red de planta no tiene DHCP, así que
+                            cada placa necesita la suya; se propone la primera libre), y la de abajo es la del
+                            <strong>PC servidor</strong>, a donde el lector llamará para recibir trabajo. Si esa segunda
+                            está mal, el lector conecta al WiFi pero no aparece nunca aquí.
+                            Qué IP tiene cada placa se ve en
                             <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
                         </p>
                         <button class="btn-primary" id="usb-flash-rfid-btn" onclick="flashUSBRfid()">📲 Subir todo a la placa</button>

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 import os
 import json
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -1078,6 +1079,185 @@ def api_esp32_ips_liberar(device_id):
         return error_interno(e)
 
 
+# ==================== HOST DEL SERVIDOR EN LAS PLACAS ====================
+#
+# A donde llaman las placas. No es por placa: es UNA direccion para toda la
+# instalacion (el PC servidor, 192.168.50.1 en la red de planta), asi que se
+# guarda como ajuste global y no en la tabla de IPs.
+#
+# Se INYECTA en el servidor, no se deja fijo en el repo, y en los DOS sitios
+# donde se produce firmware:
+#
+#   - Al flashear por USB: HOST_IP en app.py (pantalla) y BACKEND_HOST en
+#     backend_config.py (lector).
+#   - Al servir el OTA: los mismos ficheros se sirven inyectados, y el
+#     manifiesto se calcula sobre el contenido ya inyectado para que el
+#     sha256 cuadre.
+#
+# Lo segundo no es un extra: sin ello el primer OTA sobrescribiria el host
+# con el literal del repo y dejaria la placa llamando a un sitio que no
+# existe -- justo el fallo que motivo todo esto.
+
+# Puerto en el que las placas buscan el backend (PORT en main_wifi.py y
+# BACKEND_PORT en backend_config.py). Aqui solo se usa para los mensajes del
+# admin; el que manda sigue siendo el de esos ficheros.
+PUERTO_SERVIDOR_PLACAS = 5001
+
+
+def _servidor_file():
+    return os.path.join(current_app.config['DATA_DIR'], 'servidor_backend.json')
+
+
+def _servidor_host_guardado():
+    """Host configurado para las placas ('' si no se ha fijado ninguno)."""
+    try:
+        with open(_servidor_file()) as f:
+            return str(json.load(f).get('host', '')).strip()
+    except Exception:
+        return ''
+
+
+def _servidor_host_guardar(host):
+    with open(_servidor_file(), 'w') as f:
+        json.dump({'host': host}, f)
+
+
+def _servidor_host_detectado():
+    """IP de ESTE equipo en la red de planta, o '' si no se puede deducir.
+
+    Solo acierta cuando la app corre en el propio PC servidor (run.bat), que
+    es justo el caso en el que se flashean placas. Prioriza una IP de la red
+    de planta: un portatil puede tener varias interfaces (WiFi corporativa,
+    VPN, Docker...) y la buena es la de 192.168.50.0/24.
+    """
+    candidatas = []
+    # Socket UDP "conectado" al punto de acceso: no manda ningun paquete,
+    # solo hace que el SO elija la interfaz con la que llegaria hasta el.
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.settimeout(0.3)
+            s.connect((IP_GATEWAY, 9))
+            candidatas.append(s.getsockname()[0])
+        finally:
+            s.close()
+    except Exception:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            candidatas.append(info[4][0])
+    except Exception:
+        pass
+
+    for ip in candidatas:
+        if ip.startswith(IP_PREFIJO):
+            return ip
+    for ip in candidatas:
+        if ip and not ip.startswith('127.') and ip != '0.0.0.0':
+            return ip
+    return ''
+
+
+def _servidor_host_sugerido():
+    """Lo que se propone en el formulario: lo guardado, o lo detectado."""
+    return _servidor_host_guardado() or _servidor_host_detectado()
+
+
+def _servidor_host_error(host):
+    """Motivo por el que 'host' no vale como destino de las placas, o None.
+
+    Se admite tambien un nombre DNS (p.ej. el PythonAnywhere de respaldo),
+    asi que no se exige que sea una IP; lo que se rechaza es lo que no puede
+    ser ninguna de las dos cosas.
+    """
+    host = str(host or '').strip()
+    if not host:
+        return 'La IP del servidor es obligatoria'
+    if len(host) > 100:
+        return 'La IP del servidor es demasiado larga'
+    if not re.fullmatch(r'[A-Za-z0-9.\-]+', host):
+        return f'"{host}" no es una IP ni un nombre de servidor válido'
+    if re.fullmatch(r'\d{1,3}(\.\d{1,3}){3}', host):
+        if any(int(o) > 255 for o in host.split('.')):
+            return f'"{host}" no es una dirección IPv4 válida'
+    return None
+
+
+def _inyectar_host(contenido, variable, host):
+    """Sustituye 'variable = ...' por el host configurado.
+
+    Devuelve el contenido tal cual si no hay host configurado: mejor dejar
+    el literal del repo que grabar una cadena vacia y que la placa no llame
+    a ningun sitio.
+    """
+    if not host:
+        return contenido
+    return re.sub(r'^%s\s*=.*$' % re.escape(variable),
+                  '%s = %r' % (variable, host), contenido, count=1, flags=re.M)
+
+
+# Que variable lleva el host en cada fichero de firmware. Los que no salen
+# aqui se sirven tal cual.
+_HOST_POR_FICHERO = {
+    'app.py': 'HOST_IP',                    # pantalla de carro (main_wifi.py)
+    'backend_config.py': 'BACKEND_HOST',    # lector RFID
+}
+
+
+def _firmware_bytes(nombre, ruta):
+    """Bytes de un fichero de firmware tal y como se le entregan a la placa.
+
+    Punto unico por el que pasan el OTA (manifiesto y descarga) y nadie mas:
+    si el manifiesto hashease el fichero del disco y la descarga sirviese el
+    inyectado, la placa rechazaria el fichero por sha256 y no actualizaria
+    nunca.
+    """
+    with open(ruta, 'rb') as f:
+        data = f.read()
+    variable = _HOST_POR_FICHERO.get(nombre)
+    host = _servidor_host_guardado()
+    if not variable or not host:
+        return data
+    try:
+        return _inyectar_host(data.decode('utf-8'), variable, host).encode('utf-8')
+    except UnicodeDecodeError:
+        return data
+
+
+@bp.route('/api/esp32/servidor', methods=['GET'])
+@requiere_pin_admin
+def api_esp32_servidor_get():
+    """Host al que llaman las placas: el guardado, el detectado y el que se propone."""
+    try:
+        return jsonify({'success': True,
+                        'host': _servidor_host_guardado(),
+                        'detectado': _servidor_host_detectado(),
+                        'sugerido': _servidor_host_sugerido()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/servidor', methods=['POST'])
+@requiere_pin_admin
+def api_esp32_servidor_set():
+    """Fija el host al que llaman las placas.
+
+    Afecta a las que se flasheen por USB a partir de ahora y a lo que se
+    sirve por OTA; las ya desplegadas siguen con el que tengan grabado hasta
+    que se actualicen.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        host = str(data.get('host', '')).strip()
+        error = _servidor_host_error(host)
+        if error:
+            return jsonify({'success': False, 'message': error}), 400
+        _servidor_host_guardar(host)
+        return jsonify({'success': True, 'host': host})
+    except Exception as e:
+        return error_interno(e)
+
+
 # ==================== ADMIN: DISPLAY CARRO ====================
 
 @bp.route('/api/esp32/devices', methods=['GET'])
@@ -1206,6 +1386,17 @@ def api_esp32_flash_usb():
         contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP   = %r' % ip_estatica,
                            contenido, count=1, flags=re.M)
 
+        # A donde llama la pantalla. Sin esto se grabaria el literal del repo,
+        # que puede ser de otra red y deja la pantalla conectada pero muda
+        # (no se registra en el admin porque su poll no llega a ningun sitio).
+        host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
+        error_host = _servidor_host_error(host_srv)
+        if error_host:
+            return jsonify({'success': False, 'message': error_host}), 400
+        contenido = _inyectar_host(contenido, 'HOST_IP', host_srv)
+        # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
+        _servidor_host_guardar(host_srv)
+
         # Copia temporal (posiblemente parcheada) que es la que se sube
         base = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
         tmp_fw = os.path.join(base, '_fw_upload_tmp.py')
@@ -1291,7 +1482,8 @@ def api_esp32_flash_usb():
 
         cambios = ' (WiFi actualizado)' if (ssid or password) else ''
         extra = f' Módulos: {", ".join(libs)}.' if libs else ''
-        red = f' IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}).'
+        red = (f' IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
+               f'apuntando al servidor {host_srv}:{PUERTO_SERVIDOR_PLACAS}.')
         # Ya grabada en la placa: se anota para que no se le dé a otra.
         if dev_id:
             ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='display')
@@ -1370,12 +1562,15 @@ def _esp32_firmware_version():
 
 
 def _esp32_firmware_manifest():
-    """Lista [{name, sha256, size}] de los ficheros del firmware disponible."""
+    """Lista [{name, sha256, size}] de los ficheros del firmware disponible.
+
+    Se hashea el contenido YA inyectado (ver _firmware_bytes), que es el que
+    la placa va a descargar y verificar.
+    """
     manifest = []
     for nombre, ruta in _esp32_firmware_files():
         try:
-            with open(ruta, 'rb') as f:
-                data = f.read()
+            data = _firmware_bytes(nombre, ruta)
         except Exception:
             continue
         manifest.append({'name': nombre,
@@ -1405,8 +1600,7 @@ def api_esp32_firmware_file():
         ruta = rutas.get(nombre)
         if not ruta or not os.path.exists(ruta):
             return jsonify({'success': False, 'message': 'Fichero no válido'}), 404
-        with open(ruta, 'rb') as f:
-            data = f.read()
+        data = _firmware_bytes(nombre, ruta)
         resp = current_app.make_response(data)
         resp.headers['Content-Type'] = 'application/octet-stream'
         resp.headers['Content-Length'] = str(len(data))
@@ -1475,12 +1669,14 @@ def _rfid_firmware_version():
 
 
 def _rfid_firmware_manifest():
-    """Lista [{name, sha256, size}] de los ficheros del firmware RFID disponible."""
+    """Lista [{name, sha256, size}] de los ficheros del firmware RFID disponible.
+
+    Igual que el de la pantalla: se hashea el contenido ya inyectado.
+    """
     manifest = []
     for nombre, ruta in _rfid_firmware_files():
         try:
-            with open(ruta, 'rb') as f:
-                data = f.read()
+            data = _firmware_bytes(nombre, ruta)
         except Exception:
             continue
         manifest.append({'name': nombre,
@@ -1530,8 +1726,7 @@ def api_esp32_rfid_firmware_file():
         ruta = rutas.get(nombre)
         if not ruta or not os.path.exists(ruta):
             return jsonify({'success': False, 'message': 'Fichero no válido'}), 404
-        with open(ruta, 'rb') as f:
-            data = f.read()
+        data = _firmware_bytes(nombre, ruta)
         resp = current_app.make_response(data)
         resp.headers['Content-Type'] = 'application/octet-stream'
         resp.headers['Content-Length'] = str(len(data))
@@ -1726,6 +1921,13 @@ def api_esp32_rfid_flash_usb():
         if error_ip:
             return jsonify({'success': False, 'message': error_ip}), 400
 
+        # A donde llama el lector (se inyecta en backend_config.py, igual que
+        # hace el OTA al servirlo).
+        host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
+        error_host = _servidor_host_error(host_srv)
+        if error_host:
+            return jsonify({'success': False, 'message': error_host}), 400
+
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')
         cfg_path = os.path.join(base, 'wifi_config.py')
@@ -1750,6 +1952,21 @@ def api_esp32_rfid_flash_usb():
         with open(tmp_cfg, 'w', encoding='utf-8') as f:
             f.write(cfg_contenido)
 
+        # backend_config.py con el host inyectado. Se sube este, no el del
+        # repo: si no, la placa arrancaria llamando a la direccion de ejemplo.
+        # (El OTA sirve este mismo fichero ya inyectado, ver _firmware_bytes,
+        # asi que una actualizacion posterior no lo revierte.)
+        bc_path = os.path.join(base, 'backend_config.py')
+        if not os.path.exists(bc_path):
+            return jsonify({'success': False, 'message': 'No se encuentra esp32/backend_config.py'})
+        with open(bc_path, encoding='utf-8') as f:
+            bc_contenido = _inyectar_host(f.read(), 'BACKEND_HOST', host_srv)
+        tmp_bc = os.path.join(datadir, '_rfid_backend_config_tmp.py')
+        with open(tmp_bc, 'w', encoding='utf-8') as f:
+            f.write(bc_contenido)
+        # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
+        _servidor_host_guardar(host_srv)
+
         def mpremote(*args):
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
@@ -1762,10 +1979,11 @@ def api_esp32_rfid_flash_usb():
         dev_id = _leer_device_id_usb(mpremote)
         otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
         if otra:
-            try:
-                os.remove(tmp_cfg)
-            except OSError:
-                pass
+            for tmp in (tmp_cfg, tmp_bc):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
             return jsonify({'success': False,
                             'message': f'{ip_estatica} ya está asignada a la placa '
                                        f'{otra[-4:]} ({otra}). Elige otra en Admin → IPs de placas.'}), 400
@@ -1796,7 +2014,7 @@ def api_esp32_rfid_flash_usb():
                     if nombre.endswith('.py'):
                         pasos.append((nombre, os.path.join(lib_dir, nombre), nombre))
             pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
-            pasos.append(('backend_config.py', os.path.join(base, 'backend_config.py'), 'backend_config.py'))
+            pasos.append(('backend_config.py', tmp_bc, 'backend_config.py'))
             pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
             # La copia de seguridad del rollback se deja apuntando a ESTE
             # mismo main.py. Si no, main_prev.py conserva el firmware que
@@ -1835,12 +2053,14 @@ def api_esp32_rfid_flash_usb():
 
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
-            try:
-                os.remove(tmp_cfg)
-            except OSError:
-                pass
+            for tmp in (tmp_cfg, tmp_bc):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
-        red = f'IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}). '
+        red = (f'IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
+               f'apuntando al servidor {host_srv}:{PUERTO_SERVIDOR_PLACAS}. ')
         # Ya grabada en la placa: se anota para que no se le dé a otra.
         if dev_id:
             ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='rfid')
