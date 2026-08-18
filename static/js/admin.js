@@ -2088,6 +2088,9 @@ async function cargarDiagnosticoEsp32() {
         const resp = await fetch('/api/esp32/eventos?limite=40');
         const d = await resp.json();
         const eventos = d.eventos || [];
+        // El contador vive en el <summary>, fuera del div que se reescribe: así
+        // se ve si está llegando algo con el desplegable cerrado.
+        _diagContador(eventos.length ? `(${eventos.length})` : '(vacío)');
         if (eventos.length === 0) {
             cont.innerHTML = '<p class="instruccion">Todavía no ha llegado ningún evento. Pulsa un botón o pasa una tarjeta para probar.</p>';
             return;
@@ -2110,8 +2113,14 @@ async function cargarDiagnosticoEsp32() {
             </table>`;
     } catch (e) {
         cont.innerHTML = '<p class="instruccion">Error cargando los eventos. Reintenta con 🔄 Actualizar.</p>';
+        _diagContador('(error)');
         _diagMsg('❌ No se pudo conectar con el servidor', true);
     }
+}
+
+function _diagContador(texto) {
+    const el = document.getElementById('diag-eventos-contador');
+    if (el) el.textContent = texto;
 }
 
 document.addEventListener('DOMContentLoaded', function () {
