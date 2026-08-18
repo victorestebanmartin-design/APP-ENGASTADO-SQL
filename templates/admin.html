@@ -43,7 +43,7 @@
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
                 <button class="admin-nav-item" data-section="wifi-hotspot" onclick="adminNav('wifi-hotspot')"><span class="ico">📶</span> Hotspot WiFi</button>
-                <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico ESP32</button>
+                <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
                 <div class="admin-nav-label">Auditoría</div>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
@@ -307,73 +307,10 @@
                         </div>
                         <button class="btn-primary" id="usb-flash-btn" onclick="flashUSB()">📲 Subir firmware a la pantalla</button>
                         <div id="usb-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
-                    </div>
-
-                    <div class="card" style="margin-top:16px;">
-                        <h2>⚡ Grabar MicroPython (placa nueva)</h2>
-                        <p class="instruccion" style="margin-bottom:12px;">
-                            Solo para una placa <strong>recién sacada de la caja</strong>. El botón de arriba
-                            necesita que la placa ya tenga MicroPython; una placa nueva todavía no lo tiene, así
-                            que primero hay que grabárselo aquí. Después ya puedes subirle el firmware de la
-                            aplicación con el botón de arriba.
-                            <br><strong style="color:#f87171;">⚠ Esto borra por completo la placa</strong>, incluido
-                            el firmware original de fábrica de las pantallas 4D Systems. No tiene vuelta atrás.
+                        <p class="instruccion" style="margin-top:12px;">
+                            ¿Placa nueva, o Windows no le da puerto COM? Eso se hace en
+                            <a href="#" onclick="adminNav('diagnostico');return false;" style="color:#60a5fa;">Diagnóstico y preparación</a>.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="mp-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
-                                <option value="">— sin puertos detectados —</option>
-                            </select>
-                            <select id="mp-firmware" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:320px;">
-                                <option value="">— sin firmwares disponibles —</option>
-                            </select>
-                            <button class="btn-secondary" onclick="cargarGrabadoMicroPython()">🔄 Actualizar</button>
-                        </div>
-                        <button class="btn-primary" id="mp-grabar-btn" onclick="grabarMicroPython()">⚡ Borrar y grabar MicroPython</button>
-                        <div id="mp-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
-
-                        <details style="margin-top:14px;">
-                            <summary style="cursor:pointer;font-size:0.9em;color:#94a3b8;">¿Falta el firmware de tu placa?</summary>
-                            <p class="instruccion" style="margin:10px 0;">
-                                Descarga el <code>.bin</code> de
-                                <a href="https://micropython.org/download/" target="_blank" rel="noopener" style="color:#60a5fa;">micropython.org/download</a>
-                                en cualquier PC con internet y súbelo aquí (se guarda en este servidor, solo hay
-                                que hacerlo una vez por modelo de placa).
-                                <br>Pantalla del carro (4D Systems): <code>ESP32_GENERIC_S3-SPIRAM_OCT-*.bin</code>
-                                <br>Lector RFID (DevKit V1): <code>ESP32_GENERIC-*.bin</code>
-                            </p>
-                            <input type="file" id="mp-fichero" accept=".bin"
-                                style="font-size:0.9em;color:#f1f5f9;margin-bottom:8px;">
-                            <button class="btn-secondary" onclick="subirFirmwareMicroPython()">⬆️ Subir firmware</button>
-                        </details>
-                    </div>
-
-                    <div class="card" style="margin-top:16px;">
-                        <h2>🔌 Drivers USB (no aparece ningún puerto COM)</h2>
-                        <p class="instruccion" style="margin-bottom:12px;">
-                            Si has enchufado la placa y <strong>no sale en la lista de puertos</strong>, casi
-                            siempre es que a Windows le falta el driver del chip USB-serie. Aquí se ve qué chip
-                            lleva la placa y si Windows lo ha reconocido.
-                            <br><em>Al instalar, Windows pedirá confirmación en el PC — hay que aceptarla ahí.</em>
-                        </p>
-                        <div style="margin-bottom:10px;">
-                            <button class="btn-secondary" onclick="cargarDriversUSB()">🔄 Comprobar drivers</button>
-                        </div>
-                        <div id="drivers-lista"><p class="instruccion">Pulsa "Comprobar drivers".</p></div>
-                        <div id="drivers-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
-
-                        <details style="margin-top:14px;">
-                            <summary style="cursor:pointer;font-size:0.9em;color:#94a3b8;">Subir un instalador de driver</summary>
-                            <p class="instruccion" style="margin:10px 0;">
-                                Descarga el instalador del fabricante en un PC con internet y súbelo aquí; a
-                                partir de entonces se instala desde este panel, también en talleres sin internet.
-                                El nombre del fichero debe contener <code>ch341ser</code>, <code>ch340</code>,
-                                <code>cp210x</code> o <code>ftdi</code>. Si viene en <code>.zip</code>,
-                                descomprímelo antes y sube el <code>.exe</code>.
-                            </p>
-                            <input type="file" id="driver-fichero" accept=".exe,.msi"
-                                style="font-size:0.9em;color:#f1f5f9;margin-bottom:8px;">
-                            <button class="btn-secondary" onclick="subirDriverUSB()">⬆️ Subir instalador</button>
-                        </details>
                     </div>
                 </section>
 
@@ -483,8 +420,8 @@
                 <!-- ============ DIAGNÓSTICO ESP32 (chequeo de hardware) ============ -->
                 <section id="sec-diagnostico" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Diagnóstico ESP32</h1>
-                        <p>Comprueba que las pantallas y lectores están vivos, y que sus botones y su NFC responden de verdad</p>
+                        <h1>Diagnóstico y preparación ESP32</h1>
+                        <p>Prepara placas nuevas (MicroPython y drivers USB) y comprueba que las que ya están puestas responden de verdad</p>
                     </div>
 
                     <div class="card">
@@ -518,6 +455,73 @@
                         <div id="diag-eventos-lista" class="tabla-container">
                             <p class="instruccion">Cargando...</p>
                         </div>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>⚡ Grabar MicroPython (placa nueva)</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Primer paso de <strong>cualquier placa recién sacada de la caja</strong>, tanto una
+                            pantalla de carro como un lector RFID. Los botones de "Subir firmware por USB"
+                            (en Display Carro y en Lectores RFID) necesitan que la placa ya tenga MicroPython;
+                            una placa nueva todavía no lo tiene, así que primero hay que grabárselo aquí.
+                            <br><strong style="color:#f87171;">⚠ Esto borra por completo la placa</strong>, incluido
+                            el firmware original de fábrica de las pantallas 4D Systems. No tiene vuelta atrás.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <select id="mp-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                                <option value="">— sin puertos detectados —</option>
+                            </select>
+                            <select id="mp-firmware" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:320px;">
+                                <option value="">— sin firmwares disponibles —</option>
+                            </select>
+                            <button class="btn-secondary" onclick="cargarGrabadoMicroPython()">🔄 Actualizar</button>
+                        </div>
+                        <button class="btn-primary" id="mp-grabar-btn" onclick="grabarMicroPython()">⚡ Borrar y grabar MicroPython</button>
+                        <div id="mp-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
+
+                        <details style="margin-top:14px;">
+                            <summary style="cursor:pointer;font-size:0.9em;color:#94a3b8;">¿Falta el firmware de tu placa?</summary>
+                            <p class="instruccion" style="margin:10px 0;">
+                                Descarga el <code>.bin</code> de
+                                <a href="https://micropython.org/download/" target="_blank" rel="noopener" style="color:#60a5fa;">micropython.org/download</a>
+                                en cualquier PC con internet y súbelo aquí (se guarda en este servidor, solo hay
+                                que hacerlo una vez por modelo de placa).
+                                <br>Pantalla del carro (4D Systems): <code>ESP32_GENERIC_S3-SPIRAM_OCT-*.bin</code>
+                                <br>Lector RFID (DevKit V1): <code>ESP32_GENERIC-*.bin</code>
+                            </p>
+                            <input type="file" id="mp-fichero" accept=".bin"
+                                style="font-size:0.9em;color:#f1f5f9;margin-bottom:8px;">
+                            <button class="btn-secondary" onclick="subirFirmwareMicroPython()">⬆️ Subir firmware</button>
+                        </details>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔌 Drivers USB (no aparece ningún puerto COM)</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Si has enchufado la placa y <strong>no sale en la lista de puertos</strong>, casi
+                            siempre es que a Windows le falta el driver del chip USB-serie. Aquí se ve qué chip
+                            lleva la placa y si Windows lo ha reconocido.
+                            <br><em>Al instalar, Windows pedirá confirmación en el PC — hay que aceptarla ahí.</em>
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <button class="btn-secondary" onclick="cargarDriversUSB()">🔄 Comprobar drivers</button>
+                        </div>
+                        <div id="drivers-lista"><p class="instruccion">Pulsa "Comprobar drivers".</p></div>
+                        <div id="drivers-msg" style="margin-top:10px;font-size:0.9em;display:none;"></div>
+
+                        <details style="margin-top:14px;">
+                            <summary style="cursor:pointer;font-size:0.9em;color:#94a3b8;">Subir un instalador de driver</summary>
+                            <p class="instruccion" style="margin:10px 0;">
+                                Descarga el instalador del fabricante en un PC con internet y súbelo aquí; a
+                                partir de entonces se instala desde este panel, también en talleres sin internet.
+                                El nombre del fichero debe contener <code>ch341ser</code>, <code>ch340</code>,
+                                <code>cp210x</code> o <code>ftdi</code>. Si viene en <code>.zip</code>,
+                                descomprímelo antes y sube el <code>.exe</code>.
+                            </p>
+                            <input type="file" id="driver-fichero" accept=".exe,.msi"
+                                style="font-size:0.9em;color:#f1f5f9;margin-bottom:8px;">
+                            <button class="btn-secondary" onclick="subirDriverUSB()">⬆️ Subir instalador</button>
+                        </details>
                     </div>
                 </section>
 

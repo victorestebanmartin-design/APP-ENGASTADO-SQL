@@ -1,7 +1,7 @@
 # flash_esp32.ps1 — Flashea MicroPython en el 4D Systems gen4-ESP32-24 (ESP32-S3)
 #
 # NOTA: esto ya se puede hacer desde la propia aplicación, sin PowerShell:
-#   Admin -> Display Carro -> "Grabar MicroPython (placa nueva)"
+#   Admin -> Diagnostico y preparacion -> "Grabar MicroPython (placa nueva)"
 # Allí se elige puerto y firmware desde el navegador, se comprueba que el .bin
 # corresponde al chip de la placa y se instala también el driver USB si hace
 # falta. Este script se mantiene como alternativa para uso desde terminal.
@@ -61,7 +61,7 @@ if (-not $SoloSubir) {
         Write-Host "  Busca: ESP32_GENERIC_S3-SPIRAM_OCT-*.bin" -ForegroundColor White
         Write-Host "  Cópialo a: $DirFirmware" -ForegroundColor White
         Write-Host ""
-        Write-Host "O hazlo desde la aplicación: Admin -> Display Carro -> Grabar MicroPython" -ForegroundColor Cyan
+        Write-Host "O hazlo desde la aplicación: Admin -> Diagnóstico y preparación -> Grabar MicroPython" -ForegroundColor Cyan
         exit 0
     }
 
