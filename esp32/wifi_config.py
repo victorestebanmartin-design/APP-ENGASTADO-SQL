@@ -1,14 +1,19 @@
 # wifi_config.py -- Credenciales y configuracion de red de la placa lectora
 # RFID (Engastado V3). NO se toca por OTA: se sube una vez por USB y punto.
 #
-# IMPORTANTE: rellena SSID, PASSWORD y WEBREPL_PASSWORD con los valores REALES
-# en tu copia local antes de subirla a la placa, pero NO subas ese cambio a
-# git con las credenciales reales dentro (este fichero se versiona con
-# valores de ejemplo a proposito).
+# IMPORTANTE: rellena SSID y PASSWORD con los valores REALES en tu copia
+# local antes de subirla a la placa, pero NO subas ese cambio a git con las
+# credenciales reales dentro (este fichero se versiona con valores de
+# ejemplo a proposito).
 
 SSID = "YOUR_SSID"                # Nombre de tu red WiFi
 PASSWORD = "YOUR_PASSWORD"        # Contrasena de tu red WiFi
-WEBREPL_PASSWORD = "YOUR_WEBREPL_PASSWORD"  # Contrasena de WebREPL (puerto 8266)
+
+# WebREPL: consola de Python remota (puerto 8266) para depurar la placa por
+# WiFi en lugar de con el cable USB. OPCIONAL y apagado por defecto: vacio =
+# no se arranca (ver boot.py). Si alguna vez quieres depurar una placa en
+# remoto, pon aqui una contrasena y vuelve a subir este fichero por USB.
+WEBREPL_PASSWORD = ""
 
 # --- IP fija de ESTA placa -------------------------------------------------
 # La red de planta (192.168.50.0/24) no tiene DHCP: si la placa no se

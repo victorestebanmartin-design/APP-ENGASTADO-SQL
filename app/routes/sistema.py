@@ -971,8 +971,10 @@ def _leer_device_id_usb(mpremote):
     Devuelve '' si la placa no contesta (p.ej. sin MicroPython todavía).
     """
     try:
-        r = mpremote('exec', 'import machine,binascii;'
-                             'print(binascii.hexlify(machine.unique_id()).decode())')
+        r = _mpremote_insistiendo(
+            mpremote, 'exec',
+            'import machine,binascii;'
+            'print(binascii.hexlify(machine.unique_id()).decode())')
     except Exception:
         return ''
     if r.returncode != 0:
@@ -1077,6 +1079,64 @@ def api_esp32_ips_liberar(device_id):
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
+
+
+# ==================== MPREMOTE: REINTENTOS ====================
+#
+# "could not enter raw repl" no suele ser un fallo de cable: mpremote tiene
+# que INTERRUMPIR el programa que la placa esta ejecutando para entrar en la
+# consola, y una placa ya configurada esta casi siempre a mitad de algo que
+# bloquea -- boot.py tarda ~12s conectando el WiFi, y luego main.py hace una
+# comprobacion OTA cada minuto (OTA_CHECK_INTERVAL_MS). Durante esas llamadas
+# de red no atiende el Ctrl-C, y mpremote se rinde.
+#
+# La respuesta correcta es insistir: los huecos entre llamadas bloqueantes son
+# cortos pero llegan. Un solo reintento a 1.5s cae dentro de la MISMA llamada
+# que fallo; escalonando hasta ~10s se pilla el hueco casi siempre.
+
+# Errores que merecen otro intento (la placa esta ocupada o el puerto todavia
+# no esta libre). Cualquier otro fallo se devuelve tal cual: reintentar un
+# "fichero no encontrado" solo hace perder tiempo.
+_MPREMOTE_TRANSITORIOS = (
+    'could not enter raw repl',
+    'failed to access',
+    'resource busy',
+    'device or resource busy',
+    'timed out',
+)
+
+# Esperas entre intentos (segundos). La suma marca cuanto se insiste en total.
+_MPREMOTE_ESPERAS = (0.5, 1.5, 3.0, 5.0)
+
+
+def _es_error_transitorio(r):
+    salida = ((r.stderr or '') + (r.stdout or '')).lower()
+    return any(pista in salida for pista in _MPREMOTE_TRANSITORIOS)
+
+
+def _mpremote_insistiendo(mpremote, *args):
+    """Ejecuta mpremote reintentando mientras la placa este ocupada.
+
+    Devuelve el CompletedProcess del ultimo intento (el que haya ido bien, o
+    el ultimo fallo si se agotaron los reintentos).
+    """
+    r = mpremote(*args)
+    for espera in _MPREMOTE_ESPERAS:
+        if r.returncode == 0 or not _es_error_transitorio(r):
+            return r
+        time.sleep(espera)
+        r = mpremote(*args)
+    return r
+
+
+def _consejo_placa_ocupada(err):
+    """Pista accionable para los fallos que no se arreglan reintentando."""
+    if 'could not enter raw repl' not in (err or '').lower():
+        return ''
+    return (' — La placa no deja entrar a la consola: suele ser que está ocupada arrancando '
+            '(el WiFi tarda unos segundos) o que otro programa tiene el puerto abierto. '
+            'Cierra Thonny o cualquier monitor serie, pulsa el botón RESET de la placa y '
+            'dale otra vez en cuanto se encienda.')
 
 
 # ==================== HOST DEL SERVIDOR EN LAS PLACAS ====================
@@ -1434,39 +1494,44 @@ def api_esp32_flash_usb():
                 for nombre in sorted(os.listdir(lib_dir)):
                     if not nombre.endswith('.py'):
                         continue
-                    r = mpremote('cp', os.path.join(lib_dir, nombre), ':' + nombre)
+                    r = _mpremote_insistiendo(mpremote, 'cp', os.path.join(lib_dir, nombre), ':' + nombre)
                     if r.returncode != 0:
                         err = (r.stderr or r.stdout or '').strip()
                         return jsonify({'success': False,
-                                        'message': (f'Error al copiar {nombre}: ' + err)[-400:]})
+                                        'message': (f'Error al copiar {nombre}: ' + err)[-400:]
+                                                   + _consejo_placa_ocupada(err)})
                     libs.append(nombre)
 
-            r = mpremote('cp', tmp_fw, ':app.py')
+            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app.py')
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
                 if 'No module named' in err:
                     return jsonify({'success': False, 'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote  (o actualiza dependencias)'})
-                return jsonify({'success': False, 'message': ('Error al copiar: ' + err)[-400:] or 'Error al copiar (¿puerto ocupado por otro programa?)'})
+                return jsonify({'success': False,
+                                'message': (('Error al copiar: ' + err)[-400:] or 'Error al copiar (¿puerto ocupado por otro programa?)')
+                                           + _consejo_placa_ocupada(err)})
 
             # La copia de seguridad del rollback (launcher.py) se deja
             # apuntando a ESTE mismo app.py. Si no, app_prev.py conserva el
             # firmware anterior al flasheo y un rollback desharia lo que se
             # acaba de subir (incluido el WiFi recien configurado).
-            r = mpremote('cp', tmp_fw, ':app_prev.py')
+            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app_prev.py')
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
                 return jsonify({'success': False,
-                                'message': ('Error al copiar la copia de seguridad: ' + err)[-400:]})
+                                'message': ('Error al copiar la copia de seguridad: ' + err)[-400:]
+                                           + _consejo_placa_ocupada(err)})
 
             # Lanzador estable con autorrecuperacion (main.py). Solo se instala
             # por USB; el OTA por WiFi actualiza app.py, no este.
             launcher = os.path.join(proyecto, 'esp32', 'micropython', 'launcher.py')
             if os.path.exists(launcher):
-                r = mpremote('cp', launcher, ':main.py')
+                r = _mpremote_insistiendo(mpremote, 'cp', launcher, ':main.py')
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()
                     return jsonify({'success': False,
-                                    'message': ('Error al copiar launcher: ' + err)[-400:]})
+                                    'message': ('Error al copiar launcher: ' + err)[-400:]
+                                               + _consejo_placa_ocupada(err)})
 
             # Contador de arranques fallidos a cero: si la pantalla venia de un
             # app.py que no arrancaba, ese contador heredado dispararia un
@@ -1902,12 +1967,16 @@ def api_esp32_rfid_flash_usb():
         # network.WLAN.connect(ssid, "") en MicroPython conecta igual a una
         # red sin clave, asi que aqui NO se exige que tenga contenido.
         password = str(data.get('password', ''))
+        # WebREPL (consola remota por WiFi, puerto 8266): opcional y apagado
+        # por defecto. Ya no se pide en el formulario -- nadie lo usaba y
+        # dejaba un servicio abierto en cada placa. Se sigue admitiendo por
+        # si se llama a la API con una contrasena a proposito.
         webrepl_password = str(data.get('webrepl_password', ''))
-        if not ssid or not webrepl_password:
+        if not ssid:
             return jsonify({'success': False,
-                            'message': 'SSID y contraseña WebREPL son obligatorios '
-                                       '(deja la contraseña WiFi vacía si la red no tiene; '
-                                       'se graban en la placa, no se guardan en el servidor).'}), 400
+                            'message': 'El SSID es obligatorio (deja la contraseña WiFi vacía '
+                                       'si la red no tiene; se graba en la placa, no se guarda '
+                                       'en el servidor).'}), 400
 
         # IP fija: obligatoria porque la red de planta no reparte direcciones.
         # Se valida antes de tocar la placa para no dejarla a medio flashear
@@ -2028,20 +2097,15 @@ def api_esp32_rfid_flash_usb():
                 if not os.path.exists(origen):
                     return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
 
-                r = mpremote('cp', origen, ':' + destino)
-                if r.returncode != 0 and 'could not enter raw repl' in (r.stderr or ''):
-                    # El CP2102 a veces no esta listo justo despues de la
-                    # desconexion anterior: un respiro y un solo reintento
-                    # basta casi siempre (visto en placas reales).
-                    time.sleep(1.5)
-                    r = mpremote('cp', origen, ':' + destino)
+                r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino)
 
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()
                     if 'No module named' in err:
                         return jsonify({'success': False,
                                         'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
-                    return jsonify({'success': False, 'message': _resumen_error(etiqueta, err)})
+                    return jsonify({'success': False,
+                                    'message': _resumen_error(etiqueta, err) + _consejo_placa_ocupada(err)})
 
                 time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
 

@@ -130,8 +130,7 @@ def test_flash_usb_display_rechaza_ip_invalida(admin_client):
 
 def test_flash_usb_rfid_exige_ip_estatica(admin_client):
     r = admin_client.post('/api/esp32/rfid/flash_usb',
-                          json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x',
-                                'webrepl_password': 'y'})
+                          json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x'})
     assert r.status_code == 400
     assert 'IP estática' in r.get_json()['message']
 
@@ -139,7 +138,7 @@ def test_flash_usb_rfid_exige_ip_estatica(admin_client):
 def test_flash_usb_rfid_rechaza_ip_fuera_de_rango(admin_client):
     r = admin_client.post('/api/esp32/rfid/flash_usb',
                           json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x',
-                                'webrepl_password': 'y', 'ip_estatica': '192.168.50.300'})
+                                'ip_estatica': '192.168.50.300'})
     assert r.status_code == 400
     assert '192.168.50.254' in r.get_json()['message']
 

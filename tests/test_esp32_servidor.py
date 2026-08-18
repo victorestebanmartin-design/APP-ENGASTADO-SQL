@@ -111,7 +111,7 @@ def test_flash_usb_display_rechaza_host_invalido(admin_client):
 def test_flash_usb_rfid_rechaza_host_invalido(admin_client):
     r = admin_client.post('/api/esp32/rfid/flash_usb',
                           json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x',
-                                'webrepl_password': 'y', 'ip_estatica': '192.168.50.21',
+                                'ip_estatica': '192.168.50.21',
                                 'host_servidor': '192.168.50.999'})
     assert r.status_code == 400
 
@@ -127,3 +127,97 @@ def test_el_repo_no_apunta_a_la_red_antigua():
                 'esp32/wifi_config.py'):
         with open(os.path.join(base, rel), encoding='utf-8') as f:
             assert '192.168.1.20' not in f.read(), rel
+
+
+# ── Reintentos de mpremote ────────────────────────────────────────────────
+#
+# "could not enter raw repl" no es un fallo de cable: la placa esta ocupada
+# (boot.py bloquea ~12s con el WiFi, main.py hace un OTA cada minuto) y no
+# atiende el Ctrl-C con el que mpremote entra en la consola.
+
+class _Resultado:
+    def __init__(self, returncode, stderr=''):
+        self.returncode = returncode
+        self.stderr = stderr
+        self.stdout = ''
+
+
+def test_insiste_mientras_la_placa_este_ocupada(monkeypatch):
+    from app.routes import sistema
+
+    monkeypatch.setattr(sistema.time, 'sleep', lambda _: None)
+    intentos = []
+
+    def mpremote(*args):
+        intentos.append(args)
+        # Ocupada las tres primeras veces, libre a la cuarta
+        if len(intentos) < 4:
+            return _Resultado(1, 'mpremote.transport.TransportError: could not enter raw repl')
+        return _Resultado(0)
+
+    r = sistema._mpremote_insistiendo(mpremote, 'cp', 'x', ':x')
+    assert r.returncode == 0
+    assert len(intentos) == 4
+
+
+def test_no_insiste_con_un_error_de_verdad(monkeypatch):
+    """Un fallo que no se arregla esperando no debe multiplicar la espera."""
+    from app.routes import sistema
+
+    monkeypatch.setattr(sistema.time, 'sleep', lambda _: None)
+    intentos = []
+
+    def mpremote(*args):
+        intentos.append(args)
+        return _Resultado(1, 'No module named mpremote')
+
+    r = sistema._mpremote_insistiendo(mpremote, 'cp', 'x', ':x')
+    assert r.returncode == 1
+    assert len(intentos) == 1
+
+
+def test_se_rinde_y_devuelve_el_ultimo_fallo(monkeypatch):
+    from app.routes import sistema
+
+    monkeypatch.setattr(sistema.time, 'sleep', lambda _: None)
+    intentos = []
+
+    def mpremote(*args):
+        intentos.append(args)
+        return _Resultado(1, 'could not enter raw repl')
+
+    r = sistema._mpremote_insistiendo(mpremote, 'cp', 'x', ':x')
+    assert r.returncode == 1
+    assert len(intentos) == 1 + len(sistema._MPREMOTE_ESPERAS)
+
+
+def test_el_error_lleva_un_consejo_accionable():
+    from app.routes import sistema
+    consejo = sistema._consejo_placa_ocupada('TransportError: could not enter raw repl')
+    assert 'RESET' in consejo and 'monitor serie' in consejo
+    # Otros errores no llevan ese consejo, que no vendria a cuento
+    assert sistema._consejo_placa_ocupada('No such file') == ''
+
+
+# ── WebREPL apagado por defecto ───────────────────────────────────────────
+
+def test_flash_rfid_ya_no_exige_webrepl(admin_client):
+    """Se quito del formulario: sin el, la validacion debe pasar de largo y
+    fallar por otra cosa (el puerto), no por la contrasena que ya no se pide."""
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x',
+                                'ip_estatica': '192.168.50.21',
+                                'host_servidor': '192.168.50.1'})
+    assert 'WebREPL' not in (r.get_json().get('message') or '')
+
+
+def test_el_firmware_no_arranca_webrepl_sin_contrasena():
+    import os
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(base, 'esp32', 'boot.py'), encoding='utf-8') as f:
+        boot = f.read()
+    # El import de webrepl tiene que quedar DENTRO del if de la contrasena
+    assert 'if getattr(cfg, "WEBREPL_PASSWORD", "")' in boot
+    assert boot.index('WEBREPL_PASSWORD') < boot.index('import webrepl')
+    with open(os.path.join(base, 'esp32', 'wifi_config.py'), encoding='utf-8') as f:
+        assert 'WEBREPL_PASSWORD = ""' in f.read()

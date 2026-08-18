@@ -55,14 +55,18 @@ if conectado:
 else:
     print("WiFi: no se pudo conectar (se sigue arrancando igual; main.py reintentara solo)")
 
-# WebREPL: solo sirve desde redes que permitan salida al puerto 8266 (no la
-# corporativa); util para depurar desde otro sitio. No afecta al OTA por
-# HTTPS, que es independiente de esto.
-try:
-    import webrepl
-    webrepl.start(password=cfg.WEBREPL_PASSWORD)
-except Exception as e:
-    print("WebREPL no arrancado:", e)
+# WebREPL: consola de Python remota (puerto 8266) para depurar la placa por
+# WiFi en vez de con el cable USB. Es opcional y viene APAGADO: dejar un
+# servicio abierto en cada placa que nadie usa no aporta nada. Para activarlo
+# en una placa concreta, pon una contrasena en WEBREPL_PASSWORD de su
+# wifi_config.py y vuelve a subirlo por USB. No afecta al OTA, que es
+# independiente de esto.
+if getattr(cfg, "WEBREPL_PASSWORD", ""):
+    try:
+        import webrepl
+        webrepl.start(password=cfg.WEBREPL_PASSWORD)
+    except Exception as e:
+        print("WebREPL no arrancado:", e)
 
 # OTA: si hay una version nueva publicada en el servidor, se aplica aqui,
 # ANTES de que arranque main.py (asi la placa siempre entra en el bucle

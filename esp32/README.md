@@ -69,7 +69,7 @@ proposito.
 | `boot.py` | **USB, una vez** | Conecta el WiFi y dispara el OTA. Si un OTA rompiera este fichero, la placa no podria ni comprobar actualizaciones -- por eso nunca se toca por WiFi. |
 | `ota_update.py` | **USB, una vez** | El propio mecanismo de OTA. Mismo motivo que `boot.py`. |
 | `http_client.py` | **USB, una vez** | Cliente HTTPS del que dependen `main.py` y `ota_update.py`. |
-| `wifi_config.py` | **USB, una vez** | Credenciales WiFi/WebREPL, IP estatica de la placa y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. |
+| `wifi_config.py` | **USB, una vez** | Credenciales WiFi, IP estatica de la placa y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. (Lleva tambien `WEBREPL_PASSWORD`, vacio = consola remota apagada.) |
 | `backend_config.py` | USB inicialmente, **actualizable por OTA** despues | Host/puerto del backend. Separado de `wifi_config.py` a proposito: no lleva secretos, asi que se puede migrar de servidor (p.ej. PythonAnywhere -> local) publicando el cambio, sin visitar cada placa. |
 | `lib/mfrc522.py` | USB inicialmente, **actualizable por OTA** despues | Driver del lector. Se incluye en el manifiesto OTA por si hiciera falta un fix sin pasar por USB. |
 | `main.py` | USB inicialmente, **actualizable por OTA** despues | La logica de la placa (leer RFID, avisar con el zumbador, mandar la lectura). Esto es lo que cambiaras normalmente. |
@@ -160,9 +160,9 @@ esptool.py write_flash -z 0x1000 esp32-XXXXXXXX-vX.XX.X.bin
 o `python run_sql.py`, que instala `pyserial`/`mpremote` con el resto de
 `requirements.txt`), conecta la placa por USB y ve a
 **Admin -> Lectores RFID -> 📲 Configurar y subir por USB**: elige el
-puerto, rellena el WiFi, la contraseña de WebREPL, la **IP estatica** de esa
-placa y la **IP del servidor** (se propone sola si la app corre en el propio
-PC servidor), y un solo click sube `http_client.py`, `ota_update.py`,
+puerto, rellena el WiFi, la **IP estatica** de esa placa y la **IP del
+servidor** (se propone sola si la app corre en el propio PC servidor), y un
+solo click sube `http_client.py`, `ota_update.py`,
 `wifi_config.py` (ya con esas credenciales dentro), `lib/mfrc522.py`,
 `boot.py`, `backend_config.py` y `main.py`, y reinicia la placa. A partir de
 ahi todo lo demas es por WiFi, no hace falta volver a tocar el USB.
@@ -186,7 +186,7 @@ que no se puede hacer desde el PC corporativo ni por HTTPS.
 pip install mpremote
 
 # Antes: copia esp32/wifi_config.py a un fichero aparte y rellena SSID,
-# PASSWORD, WEBREPL_PASSWORD y STATIC_IP con tus valores reales (no edites
+# PASSWORD y STATIC_IP con tus valores reales (no edites
 # el del repo, que se queda con valores de ejemplo a proposito). STATIC_IP
 # tiene que ser una IP libre de 192.168.50.2-254: la red no tiene DHCP.
 
@@ -332,10 +332,10 @@ duplicar la misma pasada de tarjeta.
 
 ## Ficheros de este directorio
 
-- `boot.py` -- arranque: WiFi, WebREPL, dispara el OTA. **USB, no se toca por OTA.**
+- `boot.py` -- arranque: WiFi (con la IP fija de la placa), WebREPL si esta configurado, dispara el OTA. **USB, no se toca por OTA.**
 - `ota_update.py` -- logica de comprobar/descargar/aplicar/revertir el OTA. **USB, no se toca por OTA.**
 - `http_client.py` -- cliente HTTP/HTTPS minimo sin dependencias externas. **USB, no se toca por OTA.**
-- `wifi_config.py` -- credenciales WiFi/WebREPL, IP estatica de la placa y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
+- `wifi_config.py` -- credenciales WiFi, IP estatica de la placa y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
 - `backend_config.py` -- host/puerto del backend. **Se actualiza por OTA** (permite migrar de servidor sin USB).
 - `lib/mfrc522.py` -- driver del lector RC522 (vendorizado, MIT license). Actualizable por OTA.
 - `main.py` -- logica de la placa (RFID + zumbador + POST). **Esto es lo que se actualiza por OTA.**

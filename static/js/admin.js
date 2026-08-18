@@ -1862,11 +1862,10 @@ async function flashUSBRfid() {
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
     const password = document.getElementById('usb-pass-rfid')?.value || '';
-    const webrepl_password = document.getElementById('usb-webrepl-rfid')?.value || '';
     const ip_estatica = document.getElementById('usb-ip-rfid')?.value || '';
     // La contraseña WiFi puede quedar vacia si la red no tiene (red abierta).
-    if (!ssid || !webrepl_password) {
-        _usbMsgRfid('Rellena SSID y contraseña WebREPL (deja la contraseña WiFi vacía si la red no tiene).', true);
+    if (!ssid) {
+        _usbMsgRfid('Rellena el SSID (deja la contraseña WiFi vacía si la red no tiene).', true);
         return;
     }
     // La IP fija no es opcional: la red de planta no reparte direcciones.
@@ -1887,7 +1886,7 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, ssid, password, webrepl_password, ip_estatica,
+            body: JSON.stringify({ puerto, ssid, password, ip_estatica,
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();
