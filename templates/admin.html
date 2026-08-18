@@ -441,9 +441,10 @@
                             Ve físicamente a cada carro y a cada puesto:
                             <strong>pulsa cada botón</strong> (1-7 y el OK) en la pantalla del carro, y
                             <strong>pasa una tarjeta</strong> por cada lector NFC (el del carro y los de puesto).
-                            Cada pulsación o lectura debe aparecer aquí abajo en segundos. Si no aparece nada al
-                            probar un botón o un lector concreto, el problema está en ese hardware (cableado,
-                            soldadura, chip NFC), no en la red ni en el servidor.
+                            Cada pulsación o lectura debe aparecer en segundos en la lista de abajo
+                            (despliégala para verla). Si no aparece nada al probar un botón o un lector
+                            concreto, el problema está en ese hardware (cableado, soldadura, chip NFC), no
+                            en la red ni en el servidor.
                         </p>
                         <div style="margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
                             <button class="btn-secondary" onclick="cargarDiagnosticoEsp32()">🔄 Actualizar</button>
@@ -452,9 +453,19 @@
                             </label>
                             <span id="diag-msg" style="font-size:0.88em;"></span>
                         </div>
-                        <div id="diag-eventos-lista" class="tabla-container">
-                            <p class="instruccion">Cargando...</p>
-                        </div>
+                        <!-- El <details> envuelve a la lista desde fuera a propósito: el
+                             contenido de #diag-eventos-lista se reescribe cada 3 s, así que
+                             si el desplegable estuviera dentro se cerraría solo en cada
+                             refresco. Igual con el contador del summary. -->
+                        <details id="diag-eventos-det">
+                            <summary style="cursor:pointer;font-size:0.92em;color:#e2e8f0;padding:6px 0;">
+                                Últimos eventos recibidos
+                                <span id="diag-eventos-contador" style="color:#94a3b8;"></span>
+                            </summary>
+                            <div id="diag-eventos-lista" class="tabla-container" style="margin-top:10px;">
+                                <p class="instruccion">Cargando...</p>
+                            </div>
+                        </details>
                     </div>
 
                     <div class="card" style="margin-top:16px;">
