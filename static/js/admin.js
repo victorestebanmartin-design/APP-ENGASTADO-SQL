@@ -2002,7 +2002,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('displays-lista')) return;
     cargarDisplays();
     cargarPuertosUSB();
-    cargarGrabadoMicroPython();
     // Refresco automático mientras la sección está visible (estado online/offline).
     // No refrescar si el admin está editando un campo de la tabla.
     setInterval(() => {
@@ -2118,6 +2117,9 @@ async function cargarDiagnosticoEsp32() {
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('diag-eventos-lista')) return;
     cargarDiagnosticoEsp32();
+    // Puertos y firmwares viven ahora en esta misma sección (grabado de placas
+    // nuevas), asi que se cargan aqui y no con la seccion de Display Carro.
+    cargarGrabadoMicroPython();
     setInterval(() => {
         if (!document.getElementById('sec-diagnostico')?.classList.contains('active')) return;
         const auto = document.getElementById('diag-auto');

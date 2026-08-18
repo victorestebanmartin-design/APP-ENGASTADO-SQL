@@ -18,13 +18,14 @@ absoluto); ver `esp32/backend_config.py`.
 
 Una placa recien sacada de la caja **no lleva MicroPython**, asi que no
 responde a `mpremote` y no se le puede subir el codigo directamente. Son dos
-pasos, y los dos estan en **Admin -> Display Carro**:
+pasos:
 
-1. **Grabar MicroPython (placa nueva)** -- borra la flash y graba el firmware
-   de MicroPython con `esptool`. Solo hace falta la primera vez.
+1. **Admin -> Diagnostico y preparacion -> Grabar MicroPython (placa nueva)**
+   -- borra la flash y graba el firmware de MicroPython con `esptool`. Solo
+   hace falta la primera vez, y vale igual para pantallas y para lectores.
 2. **Subir firmware por USB** -- copia el codigo de la aplicacion con
-   `mpremote`. Esto es lo de siempre, y ya funciona en cualquier placa que
-   tenga MicroPython.
+   `mpremote`, desde **Display Carro** o **Lectores RFID** segun la placa.
+   Esto es lo de siempre, y ya funciona en cualquier placa con MicroPython.
 
 Los firmwares viven en `esp32/firmware/`:
 
@@ -47,8 +48,9 @@ mano ni que el PC del taller tenga internet.
 
 ### Windows no me da puerto COM
 
-Casi siempre falta el driver del puente USB-serie. En **Admin -> Display Carro
--> Drivers USB** se ve que chip lleva la placa y si Windows lo ha reconocido:
+Casi siempre falta el driver del puente USB-serie. En **Admin -> Diagnostico y
+preparacion -> Drivers USB** se ve que chip lleva la placa y si Windows lo ha
+reconocido:
 
 - **CH340/CH341** (VID `1A86`): los DevKit baratos.
 - **CP210x** (VID `10C4`): los oficiales de Espressif.
