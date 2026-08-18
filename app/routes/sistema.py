@@ -962,7 +962,7 @@ def _ip_estatica_guardar(device_id, ip, tipo='display', nombre=''):
     return True, f'IP {ip} asignada a la placa {dev_id[-4:]}'
 
 
-def _leer_device_id_usb(mpremote):
+def _leer_device_id_usb(mpremote, puerto=None):
     """Pregunta a la placa su device_id (MAC) por USB, con el mismo cálculo
     que usa el firmware (binascii.hexlify(machine.unique_id())).
 
@@ -974,7 +974,8 @@ def _leer_device_id_usb(mpremote):
         r = _mpremote_insistiendo(
             mpremote, 'exec',
             'import machine,binascii;'
-            'print(binascii.hexlify(machine.unique_id()).decode())')
+            'print(binascii.hexlify(machine.unique_id()).decode())',
+            puerto=puerto)
     except Exception:
         return ''
     if r.returncode != 0:
@@ -1105,8 +1106,11 @@ _MPREMOTE_TRANSITORIOS = (
     'timed out',
 )
 
-# Esperas entre intentos (segundos). La suma marca cuanto se insiste en total.
-_MPREMOTE_ESPERAS = (0.5, 1.5, 3.0, 5.0)
+# Esperas entre intentos (segundos). El lector RFID es el caso peor: su bucle
+# hace una comprobacion OTA cada 60s y, con el servidor inalcanzable, se queda
+# hasta 15s dentro de una lectura de socket donde el Ctrl-C no entra. Con esta
+# escalera se cubre esa ventana en vez de morir dentro de ella.
+_MPREMOTE_ESPERAS = (0.5, 1.5, 3.0, 5.0, 8.0, 8.0, 8.0)
 
 
 def _es_error_transitorio(r):
@@ -1114,8 +1118,56 @@ def _es_error_transitorio(r):
     return any(pista in salida for pista in _MPREMOTE_TRANSITORIOS)
 
 
-def _mpremote_insistiendo(mpremote, *args):
+def _interrumpir_placa(puerto):
+    """Deja la placa parada en el REPL, sin llegar a ejecutar boot.py/main.py.
+
+    Esperar a que una placa ocupada atienda el Ctrl-C es una carrera que se
+    puede perder: el lector RFID pasa ratos dentro de lecturas de socket
+    bloqueadas donde no lo atiende. Aqui se le da la vuelta -- se resetea por
+    DTR/RTS (el mismo circuito de auto-reset que usa esptool) y se le manda
+    Ctrl-C sin parar durante la ventana de arranque, para pillarla ANTES de
+    que boot.py se meta en el WiFi.
+
+    Es MEJOR ESFUERZO: si no hay pyserial, si la placa no lleva cableado el
+    circuito de auto-reset o si el puerto no se deja abrir, devuelve False y
+    se sigue con los reintentos normales.
+    """
+    try:
+        import serial
+    except ImportError:
+        return False
+    try:
+        with serial.Serial(puerto, 115200, timeout=0.1) as s:
+            # El reset por hardware va aparte: no todos los puentes USB-serie
+            # ni todos los drivers dejan tocar DTR/RTS. Si no se puede, el
+            # Ctrl-C de abajo sigue mereciendo la pena -- es la mitad portable
+            # de la maniobra y basta cuando la placa esta en un time.sleep().
+            try:
+                s.dtr = False   # IO0 alto: arranque normal, NO modo descarga
+                s.rts = True    # EN a masa: la placa entra en reset
+                time.sleep(0.15)
+                s.rts = False   # se suelta EN: la placa arranca
+            except Exception:
+                pass
+            # Ctrl-C sin parar mientras arranca: interrumpe boot.py y, si se
+            # cuela, tambien el main.py que venga detras.
+            fin = time.monotonic() + 3.0
+            while time.monotonic() < fin:
+                s.write(b'\x03')
+                s.flush()
+                time.sleep(0.05)
+        time.sleep(0.4)         # que el SO libere el puerto antes de mpremote
+        return True
+    except Exception:
+        return False
+
+
+def _mpremote_insistiendo(mpremote, *args, puerto=None):
     """Ejecuta mpremote reintentando mientras la placa este ocupada.
+
+    Con el puerto a mano, ante el primer fallo transitorio se resetea la placa
+    y se la para en el REPL (_interrumpir_placa) antes de reintentar: esperar
+    a que se libere sola puede no llegar nunca; resetearla, si.
 
     Devuelve el CompletedProcess del ultimo intento (el que haya ido bien, o
     el ultimo fallo si se agotaron los reintentos).
@@ -1124,6 +1176,8 @@ def _mpremote_insistiendo(mpremote, *args):
     for espera in _MPREMOTE_ESPERAS:
         if r.returncode == 0 or not _es_error_transitorio(r):
             return r
+        if puerto:
+            _interrumpir_placa(puerto)
         time.sleep(espera)
         r = mpremote(*args)
     return r
@@ -1133,10 +1187,11 @@ def _consejo_placa_ocupada(err):
     """Pista accionable para los fallos que no se arreglan reintentando."""
     if 'could not enter raw repl' not in (err or '').lower():
         return ''
-    return (' — La placa no deja entrar a la consola: suele ser que está ocupada arrancando '
-            '(el WiFi tarda unos segundos) o que otro programa tiene el puerto abierto. '
-            'Cierra Thonny o cualquier monitor serie, pulsa el botón RESET de la placa y '
-            'dale otra vez en cuanto se encienda.')
+    return (' — La placa no deja entrar a la consola ni reseteándola. Comprueba que ningún '
+            'otro programa tenga el puerto abierto (Thonny, un monitor serie). Si sigue igual, '
+            'su firmware actual la tiene demasiado ocupada para atender: ve a "Diagnóstico y '
+            'preparación" → "Borrar y grabar MicroPython", que la deja limpia y sin nada '
+            'ejecutándose, y vuelve a subir aquí.')
 
 
 # ==================== HOST DEL SERVIDOR EN LAS PLACAS ====================
@@ -1468,12 +1523,17 @@ def api_esp32_flash_usb():
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=90)
 
+        # Primer contacto: es el que falla. La placa viene ejecutando su
+        # firmware y puede estar dentro de una llamada bloqueante, asi que se
+        # la resetea y se la para en el REPL antes de pedirle nada.
+        _interrumpir_placa(puerto)
+
         # El device_id (MAC) se lee ANTES de copiar nada: es el identificador
         # con el que se anota la IP y con el que la pantalla se registrara
         # luego sola. Con el en la mano se comprueba ya que la IP no sea de
         # otra placa, para no dejar la flash a medias por un choque evitable.
         # La anotacion en si se guarda al final, cuando el flasheo ha ido bien.
-        dev_id = _leer_device_id_usb(mpremote)
+        dev_id = _leer_device_id_usb(mpremote, puerto)
         otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
         if otra:
             try:
@@ -1494,7 +1554,8 @@ def api_esp32_flash_usb():
                 for nombre in sorted(os.listdir(lib_dir)):
                     if not nombre.endswith('.py'):
                         continue
-                    r = _mpremote_insistiendo(mpremote, 'cp', os.path.join(lib_dir, nombre), ':' + nombre)
+                    r = _mpremote_insistiendo(mpremote, 'cp', os.path.join(lib_dir, nombre), ':' + nombre,
+                                                       puerto=puerto)
                     if r.returncode != 0:
                         err = (r.stderr or r.stdout or '').strip()
                         return jsonify({'success': False,
@@ -1502,7 +1563,7 @@ def api_esp32_flash_usb():
                                                    + _consejo_placa_ocupada(err)})
                     libs.append(nombre)
 
-            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app.py')
+            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app.py', puerto=puerto)
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
                 if 'No module named' in err:
@@ -1515,7 +1576,7 @@ def api_esp32_flash_usb():
             # apuntando a ESTE mismo app.py. Si no, app_prev.py conserva el
             # firmware anterior al flasheo y un rollback desharia lo que se
             # acaba de subir (incluido el WiFi recien configurado).
-            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app_prev.py')
+            r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app_prev.py', puerto=puerto)
             if r.returncode != 0:
                 err = (r.stderr or r.stdout or '').strip()
                 return jsonify({'success': False,
@@ -1526,7 +1587,7 @@ def api_esp32_flash_usb():
             # por USB; el OTA por WiFi actualiza app.py, no este.
             launcher = os.path.join(proyecto, 'esp32', 'micropython', 'launcher.py')
             if os.path.exists(launcher):
-                r = _mpremote_insistiendo(mpremote, 'cp', launcher, ':main.py')
+                r = _mpremote_insistiendo(mpremote, 'cp', launcher, ':main.py', puerto=puerto)
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()
                     return jsonify({'success': False,
@@ -2041,11 +2102,17 @@ def api_esp32_rfid_flash_usb():
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=90)
 
+        # Primer contacto: es el que falla. El lector pasa ratos dentro de
+        # lecturas de socket bloqueadas (comprobacion OTA cada minuto) donde
+        # no atiende el Ctrl-C, asi que se le resetea y se le para en el REPL
+        # antes de pedirle nada.
+        _interrumpir_placa(puerto)
+
         # device_id (MAC) de la placa: con el se anota la IP y con el se
         # registra ella sola despues, asi que se lee ANTES de escribir nada y
         # se comprueba ya que la IP no sea de otra placa. La anotacion se
         # guarda al final, cuando el flasheo ha ido bien.
-        dev_id = _leer_device_id_usb(mpremote)
+        dev_id = _leer_device_id_usb(mpremote, puerto)
         otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
         if otra:
             for tmp in (tmp_cfg, tmp_bc):
@@ -2097,7 +2164,7 @@ def api_esp32_rfid_flash_usb():
                 if not os.path.exists(origen):
                     return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
 
-                r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino)
+                r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino, puerto=puerto)
 
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()

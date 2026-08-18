@@ -194,7 +194,7 @@ def test_se_rinde_y_devuelve_el_ultimo_fallo(monkeypatch):
 def test_el_error_lleva_un_consejo_accionable():
     from app.routes import sistema
     consejo = sistema._consejo_placa_ocupada('TransportError: could not enter raw repl')
-    assert 'RESET' in consejo and 'monitor serie' in consejo
+    assert 'monitor serie' in consejo
     # Otros errores no llevan ese consejo, que no vendria a cuento
     assert sistema._consejo_placa_ocupada('No such file') == ''
 
@@ -221,3 +221,98 @@ def test_el_firmware_no_arranca_webrepl_sin_contrasena():
     assert boot.index('WEBREPL_PASSWORD') < boot.index('import webrepl')
     with open(os.path.join(base, 'esp32', 'wifi_config.py'), encoding='utf-8') as f:
         assert 'WEBREPL_PASSWORD = ""' in f.read()
+
+
+# ── Resetear la placa cuando no atiende ───────────────────────────────────
+#
+# El lector RFID pasa hasta 15s dentro de una lectura de socket bloqueada
+# (comprobacion OTA con el servidor inalcanzable) y ahi no atiende el Ctrl-C
+# con el que mpremote entra. Esperar puede no bastar; resetearla, si.
+
+def test_ante_un_fallo_transitorio_se_resetea_la_placa(monkeypatch):
+    from app.routes import sistema
+
+    monkeypatch.setattr(sistema.time, 'sleep', lambda _: None)
+    reseteos = []
+    monkeypatch.setattr(sistema, '_interrumpir_placa',
+                        lambda puerto: reseteos.append(puerto) or True)
+
+    intentos = []
+
+    def mpremote(*args):
+        intentos.append(args)
+        if len(intentos) < 3:
+            return _Resultado(1, 'could not enter raw repl')
+        return _Resultado(0)
+
+    r = sistema._mpremote_insistiendo(mpremote, 'cp', 'x', ':x', puerto='COM3')
+    assert r.returncode == 0
+    assert reseteos == ['COM3', 'COM3']      # uno antes de cada reintento
+
+
+def test_sin_puerto_no_se_intenta_resetear(monkeypatch):
+    """Los tests y las llamadas sin puerto no deben tocar ningun serie."""
+    from app.routes import sistema
+
+    monkeypatch.setattr(sistema.time, 'sleep', lambda _: None)
+    def _explota(puerto):
+        raise AssertionError('no deberia resetear sin puerto')
+    monkeypatch.setattr(sistema, '_interrumpir_placa', _explota)
+
+    r = sistema._mpremote_insistiendo(lambda *a: _Resultado(1, 'could not enter raw repl'),
+                                      'cp', 'x', ':x')
+    assert r.returncode == 1
+
+
+def test_interrumpir_placa_no_revienta_sin_puerto(monkeypatch):
+    """Mejor esfuerzo: si el puerto no se deja abrir, se sigue igual."""
+    from app.routes import sistema
+    assert sistema._interrumpir_placa('/dev/no-existe-este-puerto') is False
+
+
+def test_interrumpir_placa_manda_ctrl_c_aunque_no_haya_dtr_rts():
+    """Un pty no deja tocar DTR/RTS, igual que algunos puentes USB-serie
+    reales. El reset por hardware es un extra: el Ctrl-C tiene que salir
+    igualmente, que es lo que para una placa que esta en un time.sleep()."""
+    import os
+    import pty
+    import threading
+    import time as _t
+    import pytest
+    from app.routes import sistema
+
+    if not hasattr(pty, 'openpty'):
+        pytest.skip('sin pty en esta plataforma')
+
+    maestro, esclavo = pty.openpty()
+    recibido = bytearray()
+    parar = threading.Event()
+
+    def leer():
+        while not parar.is_set():
+            try:
+                trozo = os.read(maestro, 1024)
+            except OSError:
+                break
+            if trozo:
+                recibido.extend(trozo)
+
+    hilo = threading.Thread(target=leer, daemon=True)
+    hilo.start()
+    try:
+        assert sistema._interrumpir_placa(os.ttyname(esclavo)) is True
+    finally:
+        parar.set()
+        os.close(maestro)
+        os.close(esclavo)
+
+    assert recibido.count(b'\x03') > 10        # Ctrl-C repetido, no uno suelto
+    assert set(recibido) == {3}                # y nada mas en la linea
+
+
+def test_el_consejo_manda_a_borrar_micropython():
+    """Cuando ni reseteando se entra, la salida garantizada es dejar la placa
+    sin nada ejecutandose (esptool), no seguir peleando con mpremote."""
+    from app.routes import sistema
+    consejo = sistema._consejo_placa_ocupada('could not enter raw repl')
+    assert 'Borrar y grabar MicroPython' in consejo
