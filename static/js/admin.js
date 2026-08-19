@@ -1660,12 +1660,21 @@ async function cargarIpsPlacas() {
             const reservadas = Object.entries(red.reservadas || {})
                 .map(([ip, quien]) => `<code>${_dispEsc(ip)}</code> ${_dispEsc(quien)}`)
                 .join(' · ');
+            const _ultimo = ip => parseInt(String(ip).split('.').pop(), 10) || 0;
+            const bloques = Object.entries(d.bloques || {})
+                .sort((a, b) => _ultimo(a[1].desde) - _ultimo(b[1].desde))
+                .map(([t, b]) =>
+                `<code>${_dispEsc(b.desde)} – ${_dispEsc(b.hasta)}</code> ${_dispEsc(b.label)}` +
+                (d.sugeridas && d.sugeridas[t] ? ` <span style="color:#64748b;">(libre: ${_dispEsc(d.sugeridas[t])})</span>` : '')
+            ).join('<br>');
             elRed.innerHTML =
-                `Rango para placas: <code>${_dispEsc(red.rango)}</code><br>` +
                 `Máscara: <code>${_dispEsc(red.mascara)}</code> · ` +
                 `Puerta de enlace y DNS: <code>${_dispEsc(red.gateway)}</code> <em>(fijas)</em><br>` +
                 `Reservadas: ${reservadas || '—'}<br>` +
-                `Primera IP libre: <code>${_dispEsc(d.sugerida) || '— no queda ninguna —'}</code>`;
+                (bloques ? `<div style="margin-top:8px;">Bloques por tipo:<br>${bloques}</div>` : '') +
+                `<div style="margin-top:8px;color:#94a3b8;font-size:0.95em;">Los bloques son una convención ` +
+                `para saber qué es cada equipo de un vistazo y no pisarse: no afectan a la velocidad, ` +
+                `porque todos están en la misma subred.</div>`;
         }
 
         // Colisiones: dos placas con la misma IP. Es el fallo mas desconcertante
@@ -1705,11 +1714,19 @@ async function cargarIpsPlacas() {
                     <td style="padding:8px 6px;">${p.pendiente ? '⏳' : (p.tipo === 'rfid' ? '🏷️' : '🖥️')} ${_dispEsc(p.tipo_label)}</td>
                     <td>${p.pendiente
                             ? '<span style="color:#fbbf24;" title="IP reservada al flashear una placa cuya MAC no se pudo leer. Se asignará sola cuando la placa se registre.">reserva sin identificar</span>'
-                            : (_dispEsc(p.nombre) || '<span style="color:#64748b;">—</span>')}</td>
+                            : `<input id="ip-nom-${_dispEsc(p.device_id)}" value="${_dispEsc(p.nombre)}"
+                                   placeholder="${p.tipo === 'pc' ? 'Nombre del PC...' : 'Nombre...'}"
+                                   style="${_dispInputStyle}width:150px;">`}</td>
                     <td title="${_dispEsc(p.device_id)}" style="font-family:monospace;">${_dispEsc(p.device_id.slice(-4))}</td>
-                    <td><input id="ip-val-${_dispEsc(p.device_id)}" value="${_dispEsc(p.ip)}"
+                    <td>
+                        <input id="ip-val-${_dispEsc(p.device_id)}"
+                            value="${_dispEsc(p.ip || (p.tipo === 'pc' ? p.ip_vista : ''))}"
                             placeholder="192.168.50.x"
-                            style="${_dispInputStyle}width:150px;font-family:monospace;"></td>
+                            style="${_dispInputStyle}width:150px;font-family:monospace;">
+                        ${p.fuera_de_bloque
+                            ? '<div style="color:#94a3b8;font-size:0.85em;margin-top:3px;" title="Funciona igual, pero queda fuera del bloque de su tipo">fuera de bloque</div>'
+                            : ''}
+                    </td>
                     <td style="font-family:monospace;" title="${p.ip_vista ? 'Última IP con la que la placa habló con el servidor' : 'La placa aún no ha contactado'}">
                         ${!p.ip_vista ? '<span style="color:#64748b;">—</span>'
                             : p.colision ? `<span style="color:#f87171;" title="¡Otra placa dice tener esta misma IP!">🔴 ${_dispEsc(p.ip_vista)}</span>`
@@ -1731,11 +1748,12 @@ async function cargarIpsPlacas() {
 
 async function guardarIpPlaca(deviceId, tipo) {
     const ip = document.getElementById(`ip-val-${deviceId}`)?.value || '';
+    const nombre = document.getElementById(`ip-nom-${deviceId}`)?.value || '';
     try {
         const resp = await fetch('/api/esp32/ips', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id: deviceId, ip: ip, tipo: tipo })
+            body: JSON.stringify({ device_id: deviceId, ip: ip, tipo: tipo, nombre: nombre })
         });
         const d = await resp.json();
         _ipsMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
@@ -1761,14 +1779,19 @@ async function liberarIpPlaca(deviceId) {
 // toca campos vacíos o con una propuesta anterior que ya se ha quedado corta
 // (yaUsada): lo que el admin haya escrito a mano no se pisa nunca.
 async function _sugerirIpEnFormulariosUSB(yaUsada) {
-    const campos = [document.getElementById('usb-ip'), document.getElementById('usb-ip-rfid')]
-        .filter(c => c && (!c.value || (yaUsada && c.value === yaUsada)));
+    // Cada formulario propone dentro del bloque de SU tipo, no la primera
+    // libre de toda la red: asi las placas van saliendo ya ordenadas.
+    const campos = [['usb-ip', 'display'], ['usb-ip-rfid', 'rfid']]
+        .map(([id, tipo]) => [document.getElementById(id), tipo])
+        .filter(([c]) => c && (!c.value || (yaUsada && c.value === yaUsada)));
     if (campos.length === 0) return;
     try {
         const r = await fetch('/api/esp32/ips');
         const d = await r.json();
-        if (!d.sugerida) return;
-        campos.forEach(c => { c.value = d.sugerida; });
+        campos.forEach(([c, tipo]) => {
+            const sug = (d.sugeridas && d.sugeridas[tipo]) || d.sugerida;
+            if (sug) c.value = sug;
+        });
     } catch (e) { /* silencioso: si falla, el admin escribe la IP a mano */ }
 }
 

@@ -328,6 +328,13 @@ def api_operario_logins_get():
     sondeo sin filtro (usado hoy por Engastado V3) sigue funcionando igual.
     """
     try:
+        # Este sondeo lo hace el navegador de cada PC de puesto, asi que es el
+        # sitio natural para detectar en que IP esta cada PC y poder anotarla
+        # en Admin -> Red y placas (la funcion lleva su propio freno de
+        # escritura: el sondeo es cada 750 ms).
+        from app.routes.sistema import _pc_registrar
+        _pc_registrar(request.remote_addr)
+
         puesto_id = (request.args.get('puesto_id') or '').strip() or None
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)

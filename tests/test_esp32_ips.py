@@ -87,13 +87,13 @@ def test_listado_devuelve_placas_y_parametros_de_red(admin_client):
 
 
 def test_listado_ordena_por_ip_y_sugiere_la_primera_libre(admin_client):
-    assert admin_client.get('/api/esp32/ips').get_json()['sugerida'] == '192.168.50.2'
-    _asignar(admin_client, 'aaa1', '192.168.50.3')
-    _asignar(admin_client, 'aaa2', '192.168.50.2')
+    # Sin nada asignado, la propuesta arranca al principio del bloque display
+    assert admin_client.get('/api/esp32/ips').get_json()['sugerida'] == '192.168.50.100'
+    _asignar(admin_client, 'aaa1', '192.168.50.101')
+    _asignar(admin_client, 'aaa2', '192.168.50.100')
     d = admin_client.get('/api/esp32/ips').get_json()
-    assert [p['ip'] for p in d['placas']] == ['192.168.50.2', '192.168.50.3']
-    # .4 es la siguiente libre (.1 y .5 están reservadas)
-    assert d['sugerida'] == '192.168.50.4'
+    assert [p['ip'] for p in d['placas']] == ['192.168.50.100', '192.168.50.101']
+    assert d['sugerida'] == '192.168.50.102'
 
 
 def test_listado_incluye_placas_detectadas_sin_ip(client, admin_client):
@@ -226,8 +226,8 @@ def test_migracion_crea_la_tabla_en_una_bd_antigua(tmp_path):
 def test_no_se_sugiere_una_ip_que_una_placa_ya_esta_usando(client, admin_client):
     """Aunque no haya fila en la BD: si una placa dice estar en esa IP, esta
     cogida. Mirar solo la BD fue justo el fallo."""
-    client.get('/api/esp32/current?id=aabbccddee01&esp32_ip=192.168.50.2')
-    assert admin_client.get('/api/esp32/ips').get_json()['sugerida'] == '192.168.50.3'
+    client.get('/api/esp32/current?id=aabbccddee01&esp32_ip=192.168.50.100')
+    assert admin_client.get('/api/esp32/ips').get_json()['sugerida'] == '192.168.50.101'
 
 
 def test_la_ip_se_reserva_aunque_no_se_sepa_de_que_placa_es(admin_client):
@@ -235,11 +235,11 @@ def test_la_ip_se_reserva_aunque_no_se_sepa_de_que_placa_es(admin_client):
     placa: reservarla es obligatorio, o se le ofrece a la siguiente."""
     from app.routes import sistema
     with admin_client.application.test_request_context():
-        ok, _ = sistema._ip_estatica_reservar_sin_placa('192.168.50.2', tipo='rfid')
+        ok, _ = sistema._ip_estatica_reservar_sin_placa('192.168.50.150', tipo='rfid')
     assert ok
     d = admin_client.get('/api/esp32/ips').get_json()
-    assert d['sugerida'] == '192.168.50.3'
-    reserva = next(p for p in d['placas'] if p['ip'] == '192.168.50.2')
+    assert d['sugeridas']['rfid'] == '192.168.50.151'
+    reserva = next(p for p in d['placas'] if p['ip'] == '192.168.50.150')
     assert reserva['pendiente']
 
 
@@ -293,3 +293,80 @@ def test_las_credenciales_wifi_siguen_guardandose(admin_client):
     assert admin_client.post('/api/hotspot/credenciales',
                              json={'ssid': 'TP-Link_5A40', 'password': 'x'}).get_json()['success']
     assert admin_client.get('/api/hotspot/credenciales').get_json()['ssid'] == 'TP-Link_5A40'
+
+
+# ── Bloques por tipo de equipo ────────────────────────────────────────────
+#
+# Misma subred para todos (cambiar de subred romperia la red: el AP es un
+# puente, no enruta). Los bloques son solo una convencion para saber que es
+# cada equipo y no pisarse.
+
+def test_cada_tipo_se_sugiere_dentro_de_su_bloque(admin_client):
+    d = admin_client.get('/api/esp32/ips').get_json()
+    assert d['sugeridas']['pc'] == '192.168.50.10'
+    assert d['sugeridas']['display'] == '192.168.50.100'
+    assert d['sugeridas']['rfid'] == '192.168.50.150'
+
+
+def test_la_sugerencia_avanza_dentro_del_bloque(admin_client):
+    _asignar(admin_client, 'disp1', '192.168.50.100', tipo='display')
+    _asignar(admin_client, 'disp2', '192.168.50.101', tipo='display')
+    d = admin_client.get('/api/esp32/ips').get_json()
+    assert d['sugeridas']['display'] == '192.168.50.102'
+    # Y no invade el bloque de otro tipo
+    assert d['sugeridas']['rfid'] == '192.168.50.150'
+
+
+def test_una_ip_fuera_de_su_bloque_se_acepta_pero_se_marca(admin_client):
+    """No puede ser una camisa de fuerza: las placas ya flasheadas en .2/.3
+    tienen que seguir funcionando y solo verse como pendientes de ordenar."""
+    assert _asignar(admin_client, 'disp1', '192.168.50.2', tipo='display').get_json()['success']
+    placa = next(p for p in admin_client.get('/api/esp32/ips').get_json()['placas']
+                 if p['device_id'] == 'disp1')
+    assert placa['fuera_de_bloque']
+
+
+def test_dentro_del_bloque_no_se_marca(admin_client):
+    _asignar(admin_client, 'disp1', '192.168.50.100', tipo='display')
+    placa = next(p for p in admin_client.get('/api/esp32/ips').get_json()['placas']
+                 if p['device_id'] == 'disp1')
+    assert not placa['fuera_de_bloque']
+
+
+# ── PCs de puesto ─────────────────────────────────────────────────────────
+
+def test_un_pc_aparece_solo_al_hablar_con_el_servidor(client, admin_client):
+    """La IP se detecta de la direccion de origen; no hay que apuntarla."""
+    client.get('/api/operarios/logins', environ_overrides={'REMOTE_ADDR': '192.168.50.21'})
+    pcs = [p for p in admin_client.get('/api/esp32/ips').get_json()['placas'] if p['tipo'] == 'pc']
+    assert len(pcs) == 1 and pcs[0]['ip_vista'] == '192.168.50.21'
+
+
+def test_al_pc_se_le_puede_poner_nombre_y_reservar_su_ip(client, admin_client):
+    client.get('/api/operarios/logins', environ_overrides={'REMOTE_ADDR': '192.168.50.21'})
+    pc = next(p for p in admin_client.get('/api/esp32/ips').get_json()['placas'] if p['tipo'] == 'pc')
+
+    r = admin_client.post('/api/esp32/ips', json={'device_id': pc['device_id'],
+                                                  'ip': '192.168.50.21', 'tipo': 'pc',
+                                                  'nombre': 'PC PUNTERAS'})
+    assert r.get_json()['success']
+    d = admin_client.get('/api/esp32/ips').get_json()
+    guardado = next(p for p in d['placas'] if p['device_id'] == pc['device_id'])
+    assert guardado['nombre'] == 'PC PUNTERAS' and guardado['ip'] == '192.168.50.21'
+    # Y a partir de ahi esa IP ya no se ofrece a nadie
+    assert d['sugeridas']['pc'] != '192.168.50.21'
+
+
+def test_no_se_registran_ips_de_fuera_de_la_red_de_planta(client, admin_client):
+    """Un navegador de otra red (o localhost en pruebas) no es un PC de puesto."""
+    client.get('/api/operarios/logins', environ_overrides={'REMOTE_ADDR': '127.0.0.1'})
+    client.get('/api/operarios/logins', environ_overrides={'REMOTE_ADDR': '10.0.0.5'})
+    assert [p for p in admin_client.get('/api/esp32/ips').get_json()['placas']
+            if p['tipo'] == 'pc'] == []
+
+
+def test_el_servidor_y_el_ap_no_se_registran_como_pc(client, admin_client):
+    for ip in ('192.168.50.1', '192.168.50.5'):
+        client.get('/api/operarios/logins', environ_overrides={'REMOTE_ADDR': ip})
+    assert [p for p in admin_client.get('/api/esp32/ips').get_json()['placas']
+            if p['tipo'] == 'pc'] == []

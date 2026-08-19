@@ -535,6 +535,9 @@ def api_esp32_push():
         return resp
     try:
         data = request.get_json(force=True) or {}
+        # Quien manda trabajo es el navegador de un PC de puesto: se aprovecha
+        # para anotar su IP en la tabla de red (ver _pc_registrar).
+        _pc_registrar(request.remote_addr)
         from datetime import datetime
         ts = datetime.now().isoformat()
         _esp32_write_channel(_esp32_file(), data, ts)
@@ -842,8 +845,87 @@ IP_RESERVADAS = {
     '192.168.50.1': 'PC servidor',
     IP_GATEWAY: 'punto de acceso TL-WR802N',
 }
-# Tipos de placa que gestiona la app (los dos flujos de "Subir por USB").
-IP_TIPOS = {'display': 'Pantalla de carro', 'rfid': 'Lector RFID'}
+# Tipos de equipo que aparecen en la tabla de IPs. Los dos primeros son las
+# placas que se flashean desde aqui; 'pc' son los ordenadores de puesto, que se
+# configuran a mano en Windows y solo se anotan para no pisarles la direccion.
+IP_TIPOS = {'display': 'Pantalla de carro', 'rfid': 'Lector RFID', 'pc': 'PC de puesto'}
+
+# Bloque del ultimo octeto por tipo. NO cambia nada de rendimiento -- dentro de
+# una misma subred da igual el numero -- pero se ve de un vistazo que es cada
+# equipo y hace mucho mas dificil que un PC configurado a mano pise a una placa.
+# No es una camisa de fuerza: una IP fuera de su bloque se acepta y solo se
+# marca como tal, para no invalidar lo que ya estuviera puesto.
+IP_BLOQUES = {
+    'pc':      (10, 49),
+    'display': (100, 149),
+    'rfid':    (150, 199),
+}
+
+
+def _ip_bloque_de(tipo):
+    return IP_BLOQUES.get(tipo if tipo in IP_BLOQUES else 'display')
+
+
+def _ip_en_su_bloque(ip, tipo):
+    """True si la IP cae en el bloque recomendado para ese tipo de equipo."""
+    ini, fin = _ip_bloque_de(tipo)
+    try:
+        ultimo = int(str(ip).rsplit('.', 1)[-1])
+    except ValueError:
+        return False
+    return ini <= ultimo <= fin
+
+
+# ── PCs de puesto ────────────────────────────────────────────────────────
+#
+# No se flashean: su IP se pone a mano en Windows (la red no tiene DHCP). Pero
+# comparten rango con las placas, asi que si no se anotan es cuestion de tiempo
+# que alguien le de a una placa la IP de un PC.
+#
+# Detectarlos es gratis: el servidor ya ve la direccion de origen de cada
+# peticion del navegador (request.remote_addr). El NOMBRE no se puede deducir
+# de forma fiable -- en esta red no hay DNS que resolver a la inversa -- asi
+# que ese lo pone el admin a mano.
+
+def _pcs_vistos_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'pcs_vistos.json')
+
+
+def _pcs_vistos_cargar():
+    try:
+        with open(_pcs_vistos_file()) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# Cada cuanto se refresca el last_seen de un PC. Los endpoints por los que se
+# le detecta los sondea el navegador cada 750 ms: sin este freno se estaria
+# reescribiendo el fichero constantemente y sin ninguna ganancia.
+_PC_REFRESCO_S = 30
+
+
+def _pc_registrar(ip):
+    """Anota que se ha visto un PC en esa IP. Silencioso y con freno."""
+    ip = (ip or '').strip()
+    if not ip or not ip.startswith(IP_PREFIJO) or ip in IP_RESERVADAS:
+        return
+    try:
+        pcs = _pcs_vistos_cargar()
+        ahora = datetime.now()
+        anterior = pcs.get(ip, {}).get('last_seen', '')
+        if anterior:
+            try:
+                if (ahora - datetime.fromisoformat(anterior)).total_seconds() < _PC_REFRESCO_S:
+                    return
+            except ValueError:
+                pass
+        pcs[ip] = {'last_seen': ahora.isoformat()}
+        with open(_pcs_vistos_file(), 'w') as f:
+            json.dump(pcs, f)
+    except Exception:
+        pass   # detectar PCs es un extra: nunca puede tumbar la peticion real
 
 
 def _ip_estatica_normalizar(ip):
@@ -929,20 +1011,32 @@ def _ips_en_uso_por_placas():
     return ips
 
 
-def _ip_estatica_libre_sugerida():
-    """Primera IP del rango que no esté cogida ('' si no queda ninguna).
+def _ips_cogidas():
+    """Todo lo que no se puede volver a repartir.
 
-    'Cogida' es la union de tres cosas: las reservadas de la instalacion, las
-    asignadas en la BD y las que las placas estan reportando. Mirar solo la BD
-    fue el fallo que dejo dos placas en la misma IP.
+    Union de tres fuentes: las reservadas de la instalacion, las asignadas en
+    la BD y las que los equipos estan REPORTANDO. Mirar solo la BD fue el
+    fallo que dejo dos placas en la misma IP.
     """
-    usadas = ({f['ip'] for f in _ips_estaticas_todas()}
-              | set(IP_RESERVADAS)
-              | _ips_en_uso_por_placas())
-    for n in range(IP_ULTIMO_MIN, IP_ULTIMO_MAX + 1):
-        ip = f'{IP_PREFIJO}{n}'
-        if ip not in usadas:
-            return ip
+    return ({f['ip'] for f in _ips_estaticas_todas()}
+            | set(IP_RESERVADAS)
+            | _ips_en_uso_por_placas())
+
+
+def _ip_estatica_libre_sugerida(tipo='display'):
+    """Primera IP libre DEL BLOQUE de ese tipo ('' si no queda ninguna).
+
+    Si el bloque se llena se sigue por el resto del rango: quedarse sin poder
+    dar de alta una placa seria mucho peor que romper la convencion.
+    """
+    usadas = _ips_cogidas()
+    ini, fin = _ip_bloque_de(tipo)
+    for tramo in (range(ini, fin + 1),
+                  range(IP_ULTIMO_MIN, IP_ULTIMO_MAX + 1)):
+        for n in tramo:
+            ip = f'{IP_PREFIJO}{n}'
+            if ip not in usadas:
+                return ip
     return ''
 
 
@@ -1074,6 +1168,15 @@ def api_esp32_ips():
                 'detectada': did in detectadas,
                 'updated_at': fila['updated_at'],
             })
+        # PCs de puesto detectados por su IP de origen. Su "device_id" es la
+        # propia IP (no tienen MAC que preguntar), asi que el admin les pone
+        # nombre y quedan igual que una placa a efectos de no repetir IPs.
+        for ip_pc, info in _pcs_vistos_cargar().items():
+            did_pc = _esp32_device_id('pc' + ip_pc.replace('.', ''))
+            if did_pc in asignadas:
+                continue
+            detectadas[did_pc] = ('pc', '', ip_pc)
+
         for did, (tipo, nombre, ip_vista) in sorted(detectadas.items()):
             if did in asignadas:
                 continue
@@ -1103,12 +1206,20 @@ def api_esp32_ips():
         for p in placas:
             p['colision'] = bool(p['ip_vista']) and len(vistas.get(p['ip_vista'], [])) > 1
             p['pendiente'] = _es_ip_pendiente(p['device_id'])
+            # Fuera de bloque no es un error, solo una convencion rota: se
+            # marca para poder ordenarlo cuando toque, no para bloquear nada.
+            ip_ref = p['ip'] or p['ip_vista']
+            p['fuera_de_bloque'] = bool(ip_ref) and not _ip_en_su_bloque(ip_ref, p['tipo'])
 
         return jsonify({
             'success': True,
             'placas': placas,
             'colisiones': colisiones,
             'sugerida': _ip_estatica_libre_sugerida(),
+            'sugeridas': {t: _ip_estatica_libre_sugerida(t) for t in IP_BLOQUES},
+            'bloques': {t: {'desde': f'{IP_PREFIJO}{ini}', 'hasta': f'{IP_PREFIJO}{fin}',
+                            'label': IP_TIPOS.get(t, t)}
+                        for t, (ini, fin) in IP_BLOQUES.items()},
             'red': {
                 'mascara': IP_MASCARA,
                 'gateway': IP_GATEWAY,
@@ -1124,10 +1235,12 @@ def api_esp32_ips():
 @bp.route('/api/esp32/ips', methods=['POST'])
 @requiere_pin_admin
 def api_esp32_ips_asignar():
-    """Asigna (o cambia) la IP fija de una placa (Admin).
+    """Asigna (o cambia) la IP fija de un equipo (Admin).
 
-    Solo toca el registro: la placa no se entera hasta que se le vuelve a
-    flashear el firmware por USB con esta IP dentro.
+    Solo toca el registro. Una placa no se entera hasta que se le vuelve a
+    flashear por USB con esta IP dentro; un PC de puesto hay que cambiarlo a
+    mano en Windows. Anotarlo aqui sirve para que nadie reparta esa direccion
+    dos veces.
     """
     try:
         data = request.get_json(silent=True) or {}
