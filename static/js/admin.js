@@ -1733,10 +1733,14 @@ async function cargarIpsPlacas() {
                             : p.coincide ? `<span style="color:#4ade80;">🟢 ${_dispEsc(p.ip_vista)}</span>`
                             : `<span style="color:#fbbf24;" title="No coincide con la IP asignada: la placa aún tiene grabada otra">🟠 ${_dispEsc(p.ip_vista)}</span>`}
                     </td>
-                    <td style="color:#94a3b8;">${p.updated_at ? _dispEsc(p.updated_at.replace('T', ' ').slice(0, 19)) : '—'}</td>
+                    <td style="color:#94a3b8;">
+                        ${p.updated_at ? _dispEsc(p.updated_at.replace('T', ' ').slice(0, 19)) : '—'}
+                        ${_ipsVistoHace(p)}
+                    </td>
                     <td style="white-space:nowrap;">
                         <button class="btn-primary" onclick="guardarIpPlaca('${_dispEsc(p.device_id)}', '${_dispEsc(p.tipo)}')" title="Anotar esta IP para la placa">💾 Guardar</button>
                         ${p.ip ? `<button class="btn-secondary" onclick="liberarIpPlaca('${_dispEsc(p.device_id)}')" title="Liberar la IP (queda disponible para otra placa)">🗑️ Liberar</button>` : ''}
+                        ${p.olvidable ? `<button class="btn-secondary" onclick="olvidarPcDetectado('${_dispEsc(p.ip_vista)}')" title="Sacar este PC de la lista. Si sigue encendido, volverá a aparecer solo.">🗑️ Olvidar</button>` : ''}
                     </td>
                 </tr>`).join('') + `
                 </tbody>
@@ -1758,6 +1762,33 @@ async function guardarIpPlaca(deviceId, tipo) {
         const d = await resp.json();
         _ipsMsg((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
         if (d.success) cargarIpsPlacas();
+    } catch (e) {
+        _ipsMsg('❌ Error de conexión', true);
+    }
+}
+
+// "Visto hace" de un PC detectado: es lo que distingue el equipo que está
+// trabajando ahora del que se quedó anotado con una IP que ya no usa.
+function _ipsVistoHace(p) {
+    if (p.tipo !== 'pc' || p.visto_hace_min === null || p.visto_hace_min === undefined) return '';
+    const min = p.visto_hace_min;
+    if (min < 2)   return '<div style="color:#4ade80;font-size:0.85em;">🟢 ahora mismo</div>';
+    if (min < 60)  return `<div style="color:#94a3b8;font-size:0.85em;">hace ${min} min</div>`;
+    const horas = Math.floor(min / 60);
+    if (horas < 24) return `<div style="color:#fbbf24;font-size:0.85em;">hace ${horas} h</div>`;
+    return `<div style="color:#f87171;font-size:0.85em;">hace ${Math.floor(horas / 24)} día(s) — ¿sigue existiendo?</div>`;
+}
+
+async function olvidarPcDetectado(ip) {
+    if (!confirm(`¿Sacar el PC ${ip} de la lista?\n\n` +
+                 'Solo se borra la anotación de que se vio un PC en esa dirección. ' +
+                 'No se toca ninguna placa ni la configuración del equipo.\n\n' +
+                 'Si ese PC sigue encendido y usando la app, volverá a aparecer solo.')) return;
+    try {
+        const resp = await fetch(`/api/red/pcs/${encodeURIComponent(ip)}`, { method: 'DELETE' });
+        const d = await resp.json();
+        _ipsMsg(d.success ? `✅ PC ${ip} olvidado` : `❌ ${d.message || 'No se pudo olvidar'}`, !d.success);
+        cargarIpsPlacas();
     } catch (e) {
         _ipsMsg('❌ Error de conexión', true);
     }

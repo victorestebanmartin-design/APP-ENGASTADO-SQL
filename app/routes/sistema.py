@@ -900,10 +900,43 @@ def _pcs_vistos_cargar():
         return {}
 
 
+def _pcs_vistos_guardar(pcs):
+    with open(_pcs_vistos_file(), 'w') as f:
+        json.dump(pcs, f)
+
+
 # Cada cuanto se refresca el last_seen de un PC. Los endpoints por los que se
 # le detecta los sondea el navegador cada 750 ms: sin este freno se estaria
 # reescribiendo el fichero constantemente y sin ninguna ganancia.
 _PC_REFRESCO_S = 30
+
+# Cuanto se recuerda un PC que ya no aparece. Al cambiarle la IP a un PC, la
+# vieja se quedaba en la lista para siempre ensuciandola con un equipo que ya
+# no existe. Se olvida sola pasado este tiempo -- y si el PC sigue vivo vuelve
+# a salir en cuanto su navegador hable con el servidor, asi que no se pierde
+# nada. Tres dias: aguanta un fin de semana largo con el taller parado.
+_PC_OLVIDO_DIAS = 3
+
+
+def _pc_antiguedad_segundos(info, ahora=None):
+    """Segundos desde que se vio ese PC, o None si no se sabe."""
+    try:
+        return ((ahora or datetime.now())
+                - datetime.fromisoformat(info.get('last_seen', ''))).total_seconds()
+    except Exception:
+        return None
+
+
+def _pcs_vistos_activos():
+    """PCs vistos hace poco. Los caducados ni se enseñan ni cuentan."""
+    ahora = datetime.now()
+    limite = _PC_OLVIDO_DIAS * 86400
+    vivos = {}
+    for ip, info in _pcs_vistos_cargar().items():
+        edad = _pc_antiguedad_segundos(info, ahora)
+        if edad is None or edad <= limite:
+            vivos[ip] = info
+    return vivos
 
 
 def _pc_registrar(ip):
@@ -921,11 +954,26 @@ def _pc_registrar(ip):
                     return
             except ValueError:
                 pass
+        # Se aprovecha la escritura (como mucho una cada 30 s) para tirar los
+        # caducados: asi el fichero se limpia solo sin tarea de mantenimiento.
+        limite = _PC_OLVIDO_DIAS * 86400
+        pcs = {k: v for k, v in pcs.items()
+               if (_pc_antiguedad_segundos(v, ahora) or 0) <= limite}
         pcs[ip] = {'last_seen': ahora.isoformat()}
-        with open(_pcs_vistos_file(), 'w') as f:
-            json.dump(pcs, f)
+        _pcs_vistos_guardar(pcs)
     except Exception:
         pass   # detectar PCs es un extra: nunca puede tumbar la peticion real
+
+
+def _pc_olvidar(ip):
+    """Borra la anotacion de un PC detectado. True si habia algo que borrar."""
+    ip = (ip or '').strip()
+    pcs = _pcs_vistos_cargar()
+    if ip not in pcs:
+        return False
+    del pcs[ip]
+    _pcs_vistos_guardar(pcs)
+    return True
 
 
 def _ip_estatica_normalizar(ip):
@@ -1171,7 +1219,8 @@ def api_esp32_ips():
         # PCs de puesto detectados por su IP de origen. Su "device_id" es la
         # propia IP (no tienen MAC que preguntar), asi que el admin les pone
         # nombre y quedan igual que una placa a efectos de no repetir IPs.
-        for ip_pc, info in _pcs_vistos_cargar().items():
+        pcs_vistos = _pcs_vistos_activos()
+        for ip_pc, info in pcs_vistos.items():
             did_pc = _esp32_device_id('pc' + ip_pc.replace('.', ''))
             if did_pc in asignadas:
                 continue
@@ -1180,7 +1229,7 @@ def api_esp32_ips():
         for did, (tipo, nombre, ip_vista) in sorted(detectadas.items()):
             if did in asignadas:
                 continue
-            placas.append({
+            fila = {
                 'device_id': did,
                 'tipo': tipo,
                 'tipo_label': IP_TIPOS.get(tipo, tipo),
@@ -1190,7 +1239,17 @@ def api_esp32_ips():
                 'coincide': False,
                 'detectada': True,
                 'updated_at': '',
-            })
+            }
+            # Un PC detectado no tiene IP que "liberar" (no se le asigna nada
+            # desde aqui), pero SI se puede olvidar: es el unico modo de sacar
+            # de la lista el que se quedo con una IP que ya no usa.
+            if tipo == 'pc':
+                info = pcs_vistos.get(ip_vista, {})
+                edad = _pc_antiguedad_segundos(info)
+                fila['olvidable'] = True
+                fila['updated_at'] = info.get('last_seen', '')
+                fila['visto_hace_min'] = int(edad // 60) if edad is not None else None
+            placas.append(fila)
 
         # Colision: dos placas distintas diciendo tener la misma IP. En una red
         # sin DHCP nadie lo impide, y el sintoma es desconcertante -- el PC va
@@ -1265,6 +1324,24 @@ def api_esp32_ips_liberar(device_id):
                          {'d': _esp32_device_id(device_id)})
             conn.commit()
         return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/red/pcs/<ip>', methods=['DELETE'])
+@requiere_pin_admin
+def api_red_pc_olvidar(ip):
+    """Olvida un PC detectado por su IP (Admin -> Red y placas).
+
+    Solo borra la anotación de "se ha visto un PC aquí": no toca la identidad
+    del equipo (a qué puesto o módulo está dedicado, ver pc_equipos) ni la IP
+    de ninguna placa. Si el PC sigue vivo volverá a aparecer solo en cuanto su
+    navegador hable con el servidor, así que borrarlo nunca rompe nada.
+    """
+    try:
+        if _pc_olvidar(ip):
+            return jsonify({'success': True, 'message': f'PC {ip} olvidado'})
+        return jsonify({'success': False, 'message': f'No hay ningún PC anotado en {ip}'}), 404
     except Exception as e:
         return error_interno(e)
 
