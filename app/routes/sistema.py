@@ -2111,10 +2111,15 @@ def api_esp32_rfid_devices():
                 online = (ahora - datetime.fromisoformat(d.get('last_seen', ''))).total_seconds() < 90
             except Exception:
                 pass
+            # Un lector puede estar asignado a un PUESTO de engastado o
+            # directamente a un MODULO (mangueras/manguitos, que no tienen
+            # puestos). En el desplegable ambos casos son una sola lista: los
+            # modulos viajan con el id 'modulo:<slug>'.
+            modulo = d.get('modulo', '')
             out.append({
                 'id': did,
                 'nombre': d.get('nombre', ''),
-                'puesto_id': d.get('puesto_id', ''),
+                'puesto_id': f'modulo:{modulo}' if modulo else d.get('puesto_id', ''),
                 'puesto_nombre': d.get('puesto_nombre', ''),
                 'ip': d.get('ip', ''),
                 'ip_estatica': _ip_estatica_de(did),
@@ -2124,10 +2129,16 @@ def api_esp32_rfid_devices():
                 'ota_pedido': bool(d.get('ota_pedido')),
             })
         try:
-            puestos = [{'id': p['id'], 'nombre': p['nombre']}
+            puestos = [{'id': p['id'], 'nombre': f"🔧 Engastado — {p['nombre']}"}
                       for p in PuestoRepository(db).obtener_todos_puestos()]
         except Exception:
             puestos = []
+        # Mangueras y manguitos no tienen puestos: el lector se asigna al
+        # modulo entero (ver app/routes/puestos.py:_pc_identidad).
+        puestos += [
+            {'id': 'modulo:mangueras', 'nombre': '🌊 Mangueras (módulo completo)'},
+            {'id': 'modulo:manguitos', 'nombre': '🔩 Manguitos (módulo completo)'},
+        ]
         return jsonify({'success': True, 'devices': out, 'puestos': puestos,
                         'firmware_version': version_srv})
     except Exception as e:
@@ -2146,14 +2157,25 @@ def api_esp32_rfid_device_update(device_id):
         if 'nombre' in data:
             dev['nombre'] = (data.get('nombre') or '').strip()[:60]
         if 'puesto_id' in data:
-            puesto_id = (data.get('puesto_id') or '').strip()
-            if puesto_id:
-                puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+            from app.routes.puestos import MODULOS_SIN_PUESTO, MODULOS_APP_LABEL
+            destino = (data.get('puesto_id') or '').strip()
+            if destino.startswith('modulo:'):
+                # Lector de un modulo sin puestos (mangueras/manguitos)
+                slug = destino.split(':', 1)[1]
+                if slug not in MODULOS_SIN_PUESTO:
+                    return jsonify({'success': False, 'message': 'Módulo no válido'}), 400
+                dev['modulo'] = slug
+                dev['puesto_id'] = ''
+                dev['puesto_nombre'] = MODULOS_APP_LABEL.get(slug, slug)
+            elif destino:
+                puesto = PuestoRepository(db).obtener_puesto(destino)
                 if not puesto:
                     return jsonify({'success': False, 'message': 'Puesto no encontrado'}), 404
-                dev['puesto_id'] = puesto_id
+                dev['modulo'] = ''
+                dev['puesto_id'] = destino
                 dev['puesto_nombre'] = puesto['nombre']
             else:
+                dev['modulo'] = ''
                 dev['puesto_id'] = ''
                 dev['puesto_nombre'] = ''
         _rfid_save_devices(devs)

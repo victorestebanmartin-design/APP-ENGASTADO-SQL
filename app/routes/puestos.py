@@ -48,20 +48,37 @@ from app.routes.progreso import _crimps_por_terminal_archivo
 BOTONES_PUESTO_MAX = 7
 
 
-# ==================== PC <-> PUESTO (identidad del equipo) ====================
+# ==================== IDENTIDAD DEL PC (modulo + puesto) ====================
 #
-# Cada PC vive fisicamente en un puesto fijo. Un navegador no tiene ninguna
-# identidad propia por defecto, asi que se la damos con una cookie de muy
-# larga duracion (no la sesion de Flask, que dura horas): la primera vez que
-# se abre la app en un PC se pregunta "que puesto es este equipo" y se
-# recuerda para siempre (hasta que un admin lo reasigne). Esto es lo que
-# permite que /api/operarios/logins?puesto_id=X (ver operarios.py) sepa a que
-# puesto pertenece cada navegador, sin mezclar logins entre puestos.
+# Cada PC de planta esta dedicado a UN modulo. El modulo es una propiedad del
+# EQUIPO, no un puesto de la BD:
+#
+#   - engastado -> ademas necesita saber QUE puesto es (MANUAL, PINES RACK,
+#     PUNTERAS...), porque el trabajo de engastado se organiza por puestos.
+#   - mangueras / manguitos -> NO tienen puestos. El PC entra directo al
+#     modulo; no hay nada que elegir ni que dar de alta en Gestion de Puestos.
+#
+# La identidad se recuerda de dos formas complementarias:
+#   1. Por IP (tabla pc_equipos): la red de planta tiene IPs fijas, sin DHCP,
+#      asi que la IP es la identidad mas fiable -- sobrevive a borrar la cache
+#      del navegador y a cambiar de navegador. Se anota sola al configurar.
+#   2. Por cookie de 10 anios (metodo anterior): sigue funcionando como
+#      respaldo si el PC cambia de IP o se accede desde fuera de la red.
 
 COOKIE_PUESTO_PC = 'puesto_pc_id'
+COOKIE_PC_MODULO = 'pc_modulo'
 COOKIE_PUESTO_PC_MAX_AGE = 315360000  # ~10 anios
 
-MODULOS_PUESTO = ('engastado', 'mangueras', 'manguitos')
+# Modulos a los que se puede dedicar un PC.
+MODULOS_PC = ('engastado', 'mangueras', 'manguitos')
+# De esos, los que NO llevan puesto asociado (entran directos al modulo).
+MODULOS_SIN_PUESTO = ('mangueras', 'manguitos')
+# Como se llaman de cara al operario (pantallas de login y de configuracion).
+MODULOS_APP_LABEL = {
+    'engastado': 'Engastado',
+    'mangueras': 'Preparación de Mangueras',
+    'manguitos': 'Colocación de Manguitos',
+}
 
 
 def _ip_cliente():
@@ -72,41 +89,179 @@ def _ip_cliente():
     return (request.remote_addr or '').strip()
 
 
-def _puesto_pc_actual():
-    """(puesto_id, nombre) del puesto asignado a ESTE navegador, o (None, None).
+def _pc_equipo_por_ip(ip):
+    """Fila de pc_equipos para esa IP, o None."""
+    if not ip:
+        return None
+    try:
+        with db.engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT modulo, puesto_id FROM pc_equipos WHERE ip = :ip"
+            ), {'ip': ip}).fetchone()
+        return {'modulo': row[0], 'puesto_id': row[1]} if row else None
+    except Exception:
+        return None
 
-    Prioridad:
-      1. IP fija configurada para este puesto en la BD → identificación automática.
-      2. Cookie de larga duración (método anterior, sigue funcionando como fallback).
+
+def _pc_equipo_guardar(ip, modulo, puesto_id=None):
+    """Anota (o actualiza) la identidad de este PC para su IP fija."""
+    if not ip:
+        return
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO pc_equipos (ip, modulo, puesto_id, updated_at)
+                VALUES (:ip, :m, :p, datetime('now'))
+                ON CONFLICT(ip) DO UPDATE
+                    SET modulo     = excluded.modulo,
+                        puesto_id  = excluded.puesto_id,
+                        updated_at = excluded.updated_at
+            """), {'ip': ip, 'm': modulo, 'p': puesto_id})
+            conn.commit()
+    except Exception:
+        current_app.logger.exception('No se pudo anotar la identidad del PC por IP')
+
+
+def _pc_identidad():
+    """(modulo, puesto_id, puesto_nombre) de ESTE equipo.
+
+    modulo es None si el PC todavia no esta configurado. puesto_id/nombre solo
+    tienen valor en engastado; en mangueras y manguitos son None a proposito
+    (esos modulos no tienen puestos).
+
+    Prioridad: IP fija del puesto (override manual del admin) -> pc_equipos
+    (anotado al configurar el PC) -> cookies.
     """
     repo = PuestoRepository(db)
-
-    # 1. Identificación por IP estática
     ip = _ip_cliente()
+
+    # 1. IP fija asignada a mano a un puesto desde Gestion de Puestos.
     if ip:
         puesto = repo.obtener_puesto_por_ip(ip)
         if puesto:
-            return puesto['id'], puesto['nombre']
+            return 'engastado', puesto['id'], puesto['nombre']
 
-    # 2. Identificación por cookie
+    # 2. Identidad anotada por IP al configurar el equipo.
+    equipo = _pc_equipo_por_ip(ip)
+    if equipo:
+        modulo = equipo['modulo']
+        if modulo in MODULOS_SIN_PUESTO:
+            return modulo, None, None
+        puesto = repo.obtener_puesto(equipo['puesto_id']) if equipo['puesto_id'] else None
+        if puesto:
+            return 'engastado', puesto['id'], puesto['nombre']
+
+    # 3. Cookies. El modulo puede estar sin puesto (mangueras/manguitos); si es
+    #    engastado hace falta ademas un puesto valido.
+    modulo_cookie = (request.cookies.get(COOKIE_PC_MODULO) or '').strip().lower()
+    if modulo_cookie in MODULOS_SIN_PUESTO:
+        return modulo_cookie, None, None
+
     puesto_id = (request.cookies.get(COOKIE_PUESTO_PC) or '').strip()
-    if not puesto_id:
-        return None, None
-    puesto = repo.obtener_puesto(puesto_id)
-    if not puesto:
-        return None, None
-    return puesto_id, puesto['nombre']
+    if puesto_id:
+        puesto = repo.obtener_puesto(puesto_id)
+        if puesto:
+            return 'engastado', puesto_id, puesto['nombre']
+
+    return None, None, None
+
+
+def _puesto_pc_actual():
+    """(puesto_id, nombre) del puesto de engastado de este PC, o (None, None).
+
+    Se conserva porque lo usan las rutas y APIs que solo entienden de puestos
+    (engastado). Para saber a que modulo esta dedicado el equipo, usar
+    _pc_identidad().
+    """
+    _, puesto_id, nombre = _pc_identidad()
+    return puesto_id, nombre
+
+
+def _destino_modulo(modulo):
+    """Ruta a la que entra directamente un PC dedicado a ese modulo."""
+    return {
+        'mangueras': '/mangueras',
+        'manguitos': '/manguitos',
+    }.get(modulo, '/modules')
+
+
+@bp.route('/api/pc', methods=['GET'])
+def api_pc_get():
+    """Identidad de ESTE equipo: modulo + (si es engastado) su puesto."""
+    modulo, puesto_id, nombre = _pc_identidad()
+    return jsonify({
+        'success': True,
+        'modulo': modulo,
+        'puesto_id': puesto_id,
+        'puesto_nombre': nombre,
+        'configurado': bool(modulo),
+        'destino': _destino_modulo(modulo) if modulo else None,
+    })
+
+
+@bp.route('/api/pc/configurar', methods=['POST'])
+def api_pc_configurar():
+    """Fija a que modulo (y puesto, si es engastado) esta dedicado este PC.
+
+    La primera vez es autoservicio, sin PIN: es la configuracion de un equipo
+    recien instalado. Reconfigurar un PC que YA tenia identidad es una accion
+    de infraestructura y exige la misma sesion de admin que el resto del panel.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        modulo = (data.get('modulo') or '').strip().lower()
+        if modulo not in MODULOS_PC:
+            return jsonify({'success': False,
+                            'error': f'Módulo no válido (usa: {", ".join(MODULOS_PC)})'}), 400
+
+        # Reconfiguracion: exige PIN si la proteccion esta activa.
+        modulo_actual, _, _ = _pc_identidad()
+        if modulo_actual and proteccion_activa() and not sesion_admin_valida():
+            return jsonify({'success': False,
+                            'error': 'Este equipo ya está configurado. '
+                                     'Hace falta el PIN de administración para cambiarlo.'}), 401
+
+        puesto_id, puesto_nombre = None, None
+        if modulo == 'engastado':
+            puesto_id = (data.get('puesto_id') or '').strip()
+            if not puesto_id:
+                return jsonify({'success': False,
+                                'error': 'Un PC de engastado necesita un puesto'}), 400
+            puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+            if not puesto:
+                return jsonify({'success': False, 'error': 'Puesto no encontrado'}), 404
+            puesto_nombre = puesto['nombre']
+
+        # Anotar por IP (identidad principal en la red de planta, sin DHCP)
+        _pc_equipo_guardar(_ip_cliente(), modulo, puesto_id)
+
+        resp = jsonify({
+            'success': True,
+            'modulo': modulo,
+            'puesto_id': puesto_id,
+            'puesto_nombre': puesto_nombre,
+            'destino': _destino_modulo(modulo),
+        })
+        resp.set_cookie(COOKIE_PC_MODULO, modulo, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                        httponly=True, samesite='Lax')
+        if puesto_id:
+            resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                            httponly=True, samesite='Lax')
+        else:
+            # Mangueras/manguitos no tienen puesto: limpiar el que hubiera.
+            resp.set_cookie(COOKIE_PUESTO_PC, '', max_age=0, expires=0,
+                            httponly=True, samesite='Lax')
+        return resp
+    except Exception as e:
+        return error_interno(e)
 
 
 @bp.route('/api/puesto/pc', methods=['GET'])
 def api_puesto_pc_get():
     """Puesto asignado a este navegador (o null si aun no se ha elegido)."""
-    puesto_id, nombre = _puesto_pc_actual()
-    modulo = None
-    if puesto_id:
-        puesto = PuestoRepository(db).obtener_puesto(puesto_id)
-        modulo = puesto.get('modulo') if puesto else None
-    return jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': nombre, 'modulo': modulo})
+    modulo, puesto_id, nombre = _pc_identidad()
+    return jsonify({'success': True, 'puesto_id': puesto_id,
+                    'puesto_nombre': nombre, 'modulo': modulo})
 
 
 @bp.route('/api/puesto/pc', methods=['POST'])
@@ -121,8 +276,11 @@ def api_puesto_pc_set():
         puesto = PuestoRepository(db).obtener_puesto(puesto_id)
         if not puesto:
             return jsonify({'success': False, 'error': 'Puesto no encontrado'}), 404
+        _pc_equipo_guardar(_ip_cliente(), 'engastado', puesto_id)
         resp = jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': puesto['nombre']})
         resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                        httponly=True, samesite='Lax')
+        resp.set_cookie(COOKIE_PC_MODULO, 'engastado', max_age=COOKIE_PUESTO_PC_MAX_AGE,
                         httponly=True, samesite='Lax')
         return resp
     except Exception as e:
@@ -143,8 +301,11 @@ def api_puesto_pc_reasignar():
         puesto = PuestoRepository(db).obtener_puesto(puesto_id)
         if not puesto:
             return jsonify({'success': False, 'error': 'Puesto no encontrado'}), 404
+        _pc_equipo_guardar(_ip_cliente(), 'engastado', puesto_id)
         resp = jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': puesto['nombre']})
         resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
+                        httponly=True, samesite='Lax')
+        resp.set_cookie(COOKIE_PC_MODULO, 'engastado', max_age=COOKIE_PUESTO_PC_MAX_AGE,
                         httponly=True, samesite='Lax')
         return resp
     except Exception as e:
@@ -154,7 +315,7 @@ def api_puesto_pc_reasignar():
 @bp.route('/api/puesto/pc/liberar', methods=['POST'])
 @requiere_pin_admin
 def api_puesto_pc_liberar():
-    """Libera la identidad de puesto de ESTE navegador (borra la cookie).
+    """Libera la identidad de ESTE equipo: cookies y anotación por IP.
 
     Útil para reasignar rápidamente el equipo sin esperar a caducidades.
     Además cierra la sesión de operario local para evitar que el gate de
@@ -162,16 +323,21 @@ def api_puesto_pc_liberar():
     """
     try:
         login_id = session.get('operario_login_id')
-        if login_id:
-            with db.engine.connect() as conn:
+        with db.engine.connect() as conn:
+            if login_id:
                 conn.execute(text("UPDATE operario_logins SET activo=0 WHERE id=:id"), {'id': login_id})
-                conn.commit()
+            # Sin esto el PC se re-identificaria solo por su IP fija y la
+            # liberacion no serviria de nada en la red de planta.
+            conn.execute(text("DELETE FROM pc_equipos WHERE ip = :ip"), {'ip': _ip_cliente()})
+            conn.commit()
 
         session.pop('operario_actual', None)
         session.pop('operario_login_id', None)
 
-        resp = jsonify({'success': True, 'message': 'Puesto del PC liberado'})
+        resp = jsonify({'success': True, 'message': 'Identidad del PC liberada'})
         resp.set_cookie(COOKIE_PUESTO_PC, '', max_age=0, expires=0,
+                        httponly=True, samesite='Lax')
+        resp.set_cookie(COOKIE_PC_MODULO, '', max_age=0, expires=0,
                         httponly=True, samesite='Lax')
         return resp
     except Exception as e:
@@ -227,9 +393,8 @@ def api_crear_puesto():
 
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
-        modulo = (data.get('modulo') or 'engastado').strip().lower()
-        if modulo not in MODULOS_PUESTO:
-            modulo = 'engastado'
+        # Los puestos son siempre de engastado: mangueras y manguitos no
+        # tienen puestos, se asignan al PC entero (ver _pc_identidad).
         ip_fija = (data.get('ip_fija') or '').strip() or None
 
         if not nombre:
@@ -259,7 +424,7 @@ def api_crear_puesto():
         while any(p['id'] == new_id for p in puestos_existentes):
             new_id = f"puesto_{len(puestos_existentes) + 1:03d}_{random.randint(100, 999)}"
 
-        if puesto_repo.crear_puesto(new_id, nombre, descripcion, modulo=modulo, ip_fija=ip_fija):
+        if puesto_repo.crear_puesto(new_id, nombre, descripcion, modulo='engastado', ip_fija=ip_fija):
             nuevo_puesto = puesto_repo.obtener_puesto(new_id)
             return jsonify({'success': True, 'puesto': nuevo_puesto})
         else:
@@ -313,13 +478,6 @@ def api_actualizar_puesto(puesto_id):
                                     'message': f'El botón {boton} ya está asignado al puesto '
                                                f'"{ocupado["nombre"]}"'}), 409
 
-        # Módulo del puesto: 'engastado' | 'mangueras' | 'manguitos'
-        modulo = None
-        if 'modulo' in data:
-            modulo = (data.get('modulo') or 'engastado').strip().lower()
-            if modulo not in MODULOS_PUESTO:
-                modulo = 'engastado'
-
         # IP fija: dirección IP estática o '' para limpiar
         ip_fija, limpiar_ip = None, False
         if 'ip_fija' in data:
@@ -342,7 +500,6 @@ def api_actualizar_puesto(puesto_id):
 
         if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion,
                                          boton=boton, limpiar_boton=limpiar_boton,
-                                         modulo=modulo,
                                          ip_fija=ip_fija, limpiar_ip=limpiar_ip):
             puesto_actualizado = puesto_repo.obtener_puesto(puesto_id)
             return jsonify({'success': True, 'puesto': puesto_actualizado})

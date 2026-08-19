@@ -207,6 +207,33 @@ def _apply_migrations(db_path):
     except Exception:
         pass  # ya existe
 
+    # Migración: modulo en operario_logins. Un lector RFID puede estar
+    # asignado a un PUESTO (engastado) o directamente a un MODULO
+    # (mangueras/manguitos, que no tienen puestos). Se guarda aquí para que
+    # el PC sepa si un login es "suyo" sondeando por modulo en vez de por
+    # puesto. Ver app/routes/operarios.py:api_operario_logins_get.
+    try:
+        cur.execute("ALTER TABLE operario_logins ADD COLUMN modulo TEXT")
+        conn.commit()
+    except Exception:
+        pass  # ya existe
+
+    # Migración: tabla pc_equipos (identidad de cada PC por IP).
+    # La red de planta tiene IPs fijas (sin DHCP), asi que la IP identifica
+    # al equipo mejor que una cookie: sobrevive a borrar la cache y a cambiar
+    # de navegador. Se rellena sola al configurar el PC en /puesto/seleccionar.
+    # modulo = engastado | mangueras | manguitos; puesto_id solo aplica a
+    # engastado (mangueras y manguitos NO tienen puestos).
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pc_equipos (
+            ip         TEXT PRIMARY KEY,
+            modulo     TEXT NOT NULL DEFAULT 'engastado',
+            puesto_id  TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.commit()
+
     # Migración: tabla terminales_imagenes (iconos/fotos de cada terminal)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS terminales_imagenes (

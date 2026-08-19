@@ -819,24 +819,14 @@
                 <textarea id="puesto-descripcion" placeholder="Descripción del puesto de trabajo"></textarea>
             </div>
             <div class="p-form-group">
-                <label for="puesto-modulo">Módulo de este puesto</label>
-                <select id="puesto-modulo">
-                    <option value="engastado">🔧 Engastado (operario de engaste)</option>
-                    <option value="mangueras">🌊 Mangueras (preparación de mangueras)</option>
-                    <option value="manguitos">🔩 Manguitos (colocación de manguitos)</option>
-                </select>
+                <label for="puesto-ip">IP fija del PC de este puesto</label>
+                <input type="text" id="puesto-ip" placeholder="Ej: 192.168.50.11 (opcional)">
                 <small style="display:block;margin-top:6px;color:var(--text-muted);font-size:0.78rem;">
-                    Determina a qué módulo va este equipo al arrancar: engastado → panel de
-                    engaste; mangueras/manguitos → módulo directo sin pasar por la rejilla.
-                </small>
-            </div>
-            <div class="p-form-group">
-                <label for="puesto-ip">IP fija de este equipo</label>
-                <input type="text" id="puesto-ip" placeholder="Ej: 192.168.1.101 (dejar vacío para usar cookie)">
-                <small style="display:block;margin-top:6px;color:var(--text-muted);font-size:0.78rem;">
-                    Si se rellena, el equipo con esa IP se identifica automáticamente como este
-                    puesto sin necesidad de cookie. Requiere que los puestos tengan IP estática.
-                    Dejar vacío para usar el método tradicional (cookie en el navegador).
+                    Los puestos son siempre de <strong>engastado</strong>: mangueras y manguitos
+                    no tienen puestos, se asignan al PC entero desde el propio equipo.<br>
+                    Si rellenas la IP, el PC con esa dirección se reconoce como este puesto sin
+                    depender de la cookie del navegador. Dejar vacío es correcto: al configurar
+                    el equipo desde él mismo, su IP se anota sola.
                 </small>
             </div>
             <div class="p-form-group">

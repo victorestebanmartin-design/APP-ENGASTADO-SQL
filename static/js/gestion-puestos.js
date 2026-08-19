@@ -43,9 +43,6 @@ async function cargarPuestos() {
 /**
  * Mostrar lista de puestos
  */
-const MODULO_ICONOS = { engastado: '🔧', mangueras: '🌊', manguitos: '🔩' };
-const MODULO_LABELS = { engastado: 'Engastado', mangueras: 'Mangueras', manguitos: 'Manguitos' };
-
 function mostrarListaPuestos(puestos) {
     const container = document.getElementById('lista-puestos');
 
@@ -66,16 +63,13 @@ function mostrarListaPuestos(puestos) {
     container.innerHTML = `
         <div class="puestos-grid">
             ${puestos.map(puesto => {
-                const modulo = puesto.modulo || 'engastado';
-                const icono  = MODULO_ICONOS[modulo] || '🔧';
-                const label  = MODULO_LABELS[modulo] || modulo;
                 const ipBadge = puesto.ip_fija
                     ? `<span class="stat" title="IP fija configurada — identificación automática">🖧 ${puesto.ip_fija}</span>`
                     : `<span class="stat" title="Sin IP fija — usa cookie de navegador" style="opacity:.5">🍪 cookie</span>`;
                 return `
                 <div class="puesto-card" data-id="${puesto.id}">
                     <div class="puesto-header">
-                        <h4>${icono} ${puesto.nombre}</h4>
+                        <h4>🔧 ${puesto.nombre}</h4>
                         <div class="puesto-actions">
                             <button class="btn-icon" onclick="editarPuesto('${puesto.id}')" title="Editar">✏️</button>
                             <button class="btn-icon" onclick="eliminarPuesto('${puesto.id}')" title="Eliminar">🗑️</button>
@@ -83,9 +77,6 @@ function mostrarListaPuestos(puestos) {
                     </div>
                     <p class="puesto-descripcion">${puesto.descripcion || 'Sin descripción'}</p>
                     <div class="puesto-stats">
-                        <span class="stat" title="Módulo al que va este puesto al arrancar">
-                            ${icono} ${label}
-                        </span>
                         <span class="stat">⚙️ ${puesto.maquinas ? puesto.maquinas.length : 0} máq.</span>
                         <span class="stat" title="Identificación en pantalla del carro">
                             ${puesto.boton ? `🔘 B${puesto.boton}` : '⚪ sin botón'}
@@ -127,14 +118,12 @@ function mostrarModalPuesto(puestoId = null) {
         if (puesto) {
             document.getElementById('puesto-nombre').value = puesto.nombre;
             document.getElementById('puesto-descripcion').value = puesto.descripcion || '';
-            document.getElementById('puesto-modulo').value = puesto.modulo || 'engastado';
             document.getElementById('puesto-ip').value = puesto.ip_fija || '';
         }
     } else {
         titulo.textContent = 'Nuevo Puesto';
         document.getElementById('puesto-nombre').value = '';
         document.getElementById('puesto-descripcion').value = '';
-        document.getElementById('puesto-modulo').value = 'engastado';
         document.getElementById('puesto-ip').value = '';
     }
     
@@ -149,7 +138,6 @@ async function guardarPuesto() {
     const nombre      = document.getElementById('puesto-nombre').value.trim();
     const descripcion = document.getElementById('puesto-descripcion').value.trim();
     const boton       = document.getElementById('puesto-boton')?.value || '';
-    const modulo      = document.getElementById('puesto-modulo')?.value || 'engastado';
     const ip_fija     = document.getElementById('puesto-ip')?.value.trim() || '';
     const editId      = document.getElementById('modal-puesto').dataset.editId;
 
@@ -169,7 +157,6 @@ async function guardarPuesto() {
                 nombre,
                 descripcion,
                 boton:    boton === '' ? null : parseInt(boton, 10),
-                modulo,
                 ip_fija:  ip_fija || '',
             })
         });

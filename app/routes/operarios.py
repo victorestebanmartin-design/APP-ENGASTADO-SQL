@@ -336,19 +336,24 @@ def api_operario_logins_get():
         _pc_registrar(request.remote_addr)
 
         puesto_id = (request.args.get('puesto_id') or '').strip() or None
+        # Los PCs de mangueras/manguitos no tienen puesto: filtran por modulo,
+        # que es lo que graba el lector RFID asignado a ese modulo.
+        modulo = (request.args.get('modulo') or '').strip() or None
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)
             conn.commit()
             rows = conn.execute(text(
                 "SELECT ol.id, ol.operario_nombre, ol.timestamp_login, ol.ultimo_latido, "
-                "       ol.puesto_id, p.nombre "
+                "       ol.puesto_id, p.nombre, ol.modulo "
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
-                "WHERE ol.activo=1 AND (:puesto_id IS NULL OR ol.puesto_id = :puesto_id) "
+                "WHERE ol.activo=1 "
+                "  AND (:puesto_id IS NULL OR ol.puesto_id = :puesto_id) "
+                "  AND (:modulo IS NULL OR ol.modulo = :modulo) "
                 "ORDER BY ol.timestamp_login"
-            ), {'puesto_id': puesto_id}).fetchall()
+            ), {'puesto_id': puesto_id, 'modulo': modulo}).fetchall()
         return jsonify({'success': True, 'logins': [
             {'id': r[0], 'operario': r[1], 'desde': r[2], 'ultimo_latido': r[3],
-             'puesto_id': r[4], 'puesto_nombre': r[5]}
+             'puesto_id': r[4], 'puesto_nombre': r[5], 'modulo': r[6]}
             for r in rows
         ]})
     except Exception as e:
@@ -381,9 +386,24 @@ def api_sesion_operario_adoptar():
             ), {'id': login_id}).fetchone()
         if not row:
             return jsonify({'success': False, 'error': 'Ese login ya no está activo'}), 404
-        session['operario_actual'] = row[0]
+        nombre = row[0]
+        session['operario_actual'] = nombre
         session['operario_login_id'] = login_id
-        return jsonify({'success': True, 'operario_nombre': row[0]})
+
+        # Permisos: dedicar un PC a un modulo NO da acceso a ese modulo. Se
+        # comprueba aqui para que la pantalla de login pueda avisar en el
+        # acto ("falta de permisos, avisa al admin") en vez de mandar al
+        # operario a una pagina 403 (ver app/auth.py:requiere_modulo).
+        from app.routes.puestos import _pc_identidad
+        from app.routes.base import operario_puede
+        from app.auth import gate_operario_activo
+        modulo, _, _ = _pc_identidad()
+        permitido = True
+        if gate_operario_activo() and modulo:
+            permitido = operario_puede(nombre, modulo)
+
+        return jsonify({'success': True, 'operario_nombre': nombre,
+                        'modulo': modulo, 'permitido': permitido})
     except Exception as e:
         return error_interno(e)
 
@@ -489,18 +509,29 @@ def _rfid_devices_file_path():
     return os.path.join(base, 'esp32_rfid_devices.json')
 
 
-def _puesto_asignado_al_lector(device_id):
-    """(puesto_id, puesto_nombre) asignados a ese lector, o (None, None)."""
+def _destino_del_lector(device_id):
+    """(puesto_id, puesto_nombre, modulo) asignados a ese lector.
+
+    Un lector se asigna, desde Admin -> Lectores RFID, o bien a un PUESTO de
+    engastado, o bien a un MODULO completo (mangueras/manguitos, que no
+    tienen puestos). Cualquiera de los dos sirve para que el PC sepa que
+    logins son suyos al sondear /api/operarios/logins.
+    """
     if not device_id:
-        return None, None
+        return None, None, None
     try:
         with open(_rfid_devices_file_path()) as f:
             devs = json.load(f)
     except Exception:
-        return None, None
+        return None, None, None
     dev = devs.get(device_id) or {}
+    modulo = dev.get('modulo') or None
+    if modulo:
+        return None, dev.get('puesto_nombre') or None, modulo
     puesto_id = dev.get('puesto_id') or None
-    return (puesto_id, dev.get('puesto_nombre') or None) if puesto_id else (None, None)
+    if puesto_id:
+        return puesto_id, dev.get('puesto_nombre') or None, 'engastado'
+    return None, None, None
 
 
 def _rfid_estado_file_path():
@@ -639,7 +670,7 @@ def api_engastado_v3_entrada():
             except Exception:
                 current_app.logger.exception('No se pudo registrar el evento de entrada RFID')
 
-        puesto_id, puesto_nombre = _puesto_asignado_al_lector(device_id)
+        puesto_id, puesto_nombre, modulo_lector = _destino_del_lector(device_id)
 
         with db.engine.connect() as conn:
             # Look up operario by RFID tag
@@ -666,10 +697,10 @@ def api_engastado_v3_entrada():
                 # Reuse existing session. Refresca el puesto por si el
                 # operario ha vuelto a pasar la tarjeta en un lector distinto.
                 login_id = existente[0]
-                if puesto_id:
+                if puesto_id or modulo_lector:
                     conn.execute(text(
-                        "UPDATE operario_logins SET puesto_id=:p WHERE id=:id"
-                    ), {'p': puesto_id, 'id': login_id})
+                        "UPDATE operario_logins SET puesto_id=:p, modulo=:m WHERE id=:id"
+                    ), {'p': puesto_id, 'm': modulo_lector, 'id': login_id})
                     conn.commit()
                 _log('Sesión existente reutilizada', nombre)
                 _rfid_estado_registrar('ok', 'Sesión existente reutilizada', 'OK_REUSED',
@@ -692,9 +723,9 @@ def api_engastado_v3_entrada():
             try:
                 conn.execute(text(
                     "INSERT INTO operario_logins "
-                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id) "
-                    "VALUES (:id, :n, :t, :t, 1, :p)"
-                ), {'id': login_id, 'n': nombre, 't': ahora, 'p': puesto_id})
+                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id, modulo) "
+                    "VALUES (:id, :n, :t, :t, 1, :p, :m)"
+                ), {'id': login_id, 'n': nombre, 't': ahora, 'p': puesto_id, 'm': modulo_lector})
                 conn.commit()
             except IntegrityError:
                 # Race condition: operario logged in from another workstation

@@ -29,6 +29,7 @@ from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
 from app.auth import (
     requiere_pin_admin,
+    requiere_modulo,
     proteccion_activa,
     sesion_admin_valida,
     marcar_sesion_admin,
@@ -66,18 +67,26 @@ def _respuesta_descarga_manguitos(ficheros: dict, ref: str, edicion: str):
 
 
 @bp.route('/manguitos')
+@requiere_modulo('manguitos')
 def manguitos():
-    """Guiado de colocación y pedidos de manguitos."""
-    from app.routes.puestos import _puesto_pc_actual
-    puesto_id, puesto_nombre = _puesto_pc_actual()
+    """Guiado de colocación y pedidos de manguitos.
+
+    No tiene puestos: el PC entero se dedica a este módulo (ver
+    app/routes/puestos.py:_pc_identidad). puesto_id/nombre van igualmente a
+    la plantilla porque un PC de engastado también puede abrir esta página
+    desde /modules si tiene el módulo permitido.
+    """
+    from app.routes.puestos import _pc_identidad
+    _, puesto_id, puesto_nombre = _pc_identidad()
     return render_template('manguitos.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
 
 
 @bp.route('/mangueras')
+@requiere_modulo('mangueras')
 def mangueras():
-    """Preparación de mangueras."""
-    from app.routes.puestos import _puesto_pc_actual
-    puesto_id, puesto_nombre = _puesto_pc_actual()
+    """Preparación de mangueras. Sin puestos, igual que manguitos."""
+    from app.routes.puestos import _pc_identidad
+    _, puesto_id, puesto_nombre = _pc_identidad()
     return render_template('mangueras.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
 
 

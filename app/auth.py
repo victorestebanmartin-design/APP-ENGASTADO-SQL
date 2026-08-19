@@ -107,14 +107,44 @@ def fijar_gate_operario(activo):
         json.dump({'enabled': bool(activo)}, f)
 
 
+def _operario_en_sesion_valido():
+    """Nombre del operario adoptado en este navegador si su login sigue vivo
+    en el servidor; None si no hay ninguno o ya caducó (y entonces limpia la
+    sesión local para no arrastrar una identidad muerta)."""
+    from app.routes.base import db
+    from sqlalchemy import text as _text
+    nombre = session.get('operario_actual')
+    login_id = session.get('operario_login_id')
+    if nombre and login_id:
+        with db.engine.connect() as conn:
+            vivo = conn.execute(_text(
+                "SELECT 1 FROM operario_logins WHERE id=:id AND activo=1"
+            ), {'id': login_id}).fetchone()
+        if vivo:
+            return nombre
+    session.pop('operario_actual', None)
+    session.pop('operario_login_id', None)
+    return None
+
+
+def _pc_configurado_o_redirect():
+    """(modulo, respuesta_redirect). Si el PC no está configurado devuelve el
+    redirect a /puesto/seleccionar en el segundo elemento."""
+    from app.routes.puestos import _pc_identidad
+    modulo, _, _ = _pc_identidad()
+    if not modulo:
+        return None, redirect(url_for('main.puesto_seleccionar'))
+    return modulo, None
+
+
 def requiere_operario(f):
-    """Decorador: exige que este PC tenga puesto asignado y que su navegador
-    tenga adoptada la sesión de un operario (ver /puesto/seleccionar,
-    /login y app/routes/operarios.py:api_sesion_operario_adoptar).
+    """Decorador: exige que este PC esté configurado (módulo, y puesto si es
+    engastado) y que su navegador tenga adoptada la sesión de un operario
+    (ver /puesto/seleccionar, /login y operarios.py:api_sesion_operario_adoptar).
 
     - Si el gate no está activo (ver gate_operario_activo), deja pasar.
-    - Sin puesto asignado a este PC -> /puesto/seleccionar.
-    - Con puesto pero sin operario en sesión (o con un login ya caducado en
+    - PC sin configurar -> /puesto/seleccionar.
+    - Configurado pero sin operario en sesión (o con un login ya caducado en
       el servidor) -> /login.
     - Con ambos -> deja pasar.
     """
@@ -123,26 +153,55 @@ def requiere_operario(f):
         if not gate_operario_activo():
             return f(*args, **kwargs)
 
-        from app.routes.puestos import _puesto_pc_actual
-        puesto_id, _ = _puesto_pc_actual()
-        if not puesto_id:
-            return redirect(url_for('main.puesto_seleccionar'))
+        _, redir = _pc_configurado_o_redirect()
+        if redir:
+            return redir
 
-        from app.routes.base import db
-        from sqlalchemy import text as _text
-        nombre = session.get('operario_actual')
-        login_id = session.get('operario_login_id')
-        operario_valido = False
-        if nombre and login_id:
-            with db.engine.connect() as conn:
-                vivo = conn.execute(_text(
-                    "SELECT 1 FROM operario_logins WHERE id=:id AND activo=1"
-                ), {'id': login_id}).fetchone()
-                operario_valido = bool(vivo)
-        if not operario_valido:
-            session.pop('operario_actual', None)
-            session.pop('operario_login_id', None)
+        if not _operario_en_sesion_valido():
             return redirect(url_for('main.login_operario'))
 
         return f(*args, **kwargs)
     return wrapper
+
+
+def requiere_modulo(modulo):
+    """Decorador para la página de un módulo: además de exigir PC configurado
+    y operario identificado (igual que requiere_operario), comprueba que ESE
+    operario tenga permiso para ESE módulo.
+
+    Es lo que impide que dedicar un PC a manguitos sirva de puerta trasera:
+    da igual en qué equipo pases la tarjeta, si Admin -> Operarios no te ha
+    habilitado el módulo, no entras. Sin permiso -> pantalla de "falta de
+    permisos" (403), no un redirect silencioso, para que el operario sepa
+    que tiene que hablar con el administrador.
+    """
+    def decorador(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if not gate_operario_activo():
+                return f(*args, **kwargs)
+
+            _, redir = _pc_configurado_o_redirect()
+            if redir:
+                return redir
+
+            nombre = _operario_en_sesion_valido()
+            if not nombre:
+                return redirect(url_for('main.login_operario'))
+
+            from app.routes.base import operario_puede, MODULOS_APP
+            if not operario_puede(nombre, modulo):
+                from flask import render_template
+                etiqueta = MODULOS_APP.get(modulo, {}).get('label', modulo)
+                if _es_peticion_api():
+                    return jsonify({
+                        'success': False,
+                        'error': f'{nombre} no tiene permiso para {etiqueta}'
+                    }), 403
+                return render_template('sin_permisos.html',
+                                       operario=nombre,
+                                       modulo_label=etiqueta), 403
+
+            return f(*args, **kwargs)
+        return wrapper
+    return decorador

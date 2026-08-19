@@ -183,8 +183,8 @@ CREATE TABLE puestos (
     -- navegador. Si se rellena, cualquier peticion desde esa IP se
     -- identifica automaticamente como este puesto sin necesitar cookie.
     ip_fija TEXT,
-    -- Modulo al que pertenece este puesto: 'engastado' | 'mangueras' | 'manguitos'
-    -- Determina a que pagina redirige al arrancar este equipo.
+    -- Legado: todos los puestos son de engastado. Mangueras y manguitos NO
+    -- tienen puestos -- se asignan al PC entero (ver tabla pc_equipos).
     modulo TEXT DEFAULT 'engastado',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -203,6 +203,24 @@ CREATE UNIQUE INDEX idx_puestos_tag ON puestos(tag_uid)
 -- Una IP fija solo puede pertenecer a un puesto activo
 CREATE UNIQUE INDEX idx_puestos_ip ON puestos(ip_fija)
     WHERE ip_fija IS NOT NULL AND activo = 1;
+
+-- =====================================================
+-- EQUIPOS (PCs de planta): a que modulo esta dedicado cada uno
+-- =====================================================
+-- Cada PC de planta trabaja en UN modulo. El modulo es del EQUIPO, no un
+-- puesto: engastado necesita ademas saber que puesto es, mientras que
+-- mangueras y manguitos entran directos (no tienen puestos).
+-- La red de planta usa IPs fijas (sin DHCP), asi que la IP identifica al
+-- equipo mejor que una cookie: sobrevive a borrar la cache del navegador.
+-- Se rellena sola al configurar el equipo en /puesto/seleccionar.
+CREATE TABLE pc_equipos (
+    ip         TEXT PRIMARY KEY,
+    -- 'engastado' | 'mangueras' | 'manguitos'
+    modulo     TEXT NOT NULL DEFAULT 'engastado',
+    -- Solo para engastado; NULL en mangueras y manguitos
+    puesto_id  TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- =====================================================
 -- TABLA: maquinas

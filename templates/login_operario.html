@@ -62,12 +62,12 @@
 <body>
     <div class="login-card">
         <div class="login-logo">COJO<span class="sw">sw</span></div>
-        <div class="login-puesto">📍 {{ puesto_nombre }}</div>
+        <div class="login-puesto">📍 {{ puesto_nombre or modulo_label }}</div>
         <div class="login-icon">📇</div>
         <div id="login-msg" class="login-msg">Pasa tu tarjeta por el lector...</div>
 
         <a href="#" class="login-reasignar" onclick="reasignarPuesto(); return false;">
-            ¿Este equipo no es {{ puesto_nombre }}?
+            ¿Este equipo no es {{ puesto_nombre or modulo_label }}?
         </a>
         <br>
         <a href="{{ url_for('main.admin_pin') }}?next=/admin&amp;force=1" class="login-reasignar">🆘 SOS Admin (PIN)</a>
@@ -76,6 +76,17 @@
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
     <script>
         const PUESTO_ID = {{ puesto_id | tojson }};
+        const MODULO = {{ modulo | tojson }};
+        const MODULO_LABEL = {{ modulo_label | tojson }};
+        const DESTINO = {{ destino | tojson }};
+
+        // Un PC de engastado se identifica por su puesto; los de mangueras y
+        // manguitos no tienen puesto, asi que sondean por modulo (es lo que
+        // graba el lector RFID asignado a ese modulo -- ver operarios.py).
+        const FILTRO_LOGINS = PUESTO_ID
+            ? `puesto_id=${encodeURIComponent(PUESTO_ID)}`
+            : `modulo=${encodeURIComponent(MODULO)}`;
+
         let _rfidEstadoSince = '';
         let _rfidEstadoTimer = null;
         let _rfidEstadoInicializado = false;
@@ -101,7 +112,8 @@
             if (_rfidEstadoTimer) clearInterval(_rfidEstadoTimer);
             _rfidEstadoTimer = setInterval(async () => {
                 try {
-                    const q = new URLSearchParams({ puesto_id: String(PUESTO_ID) });
+                    const q = new URLSearchParams();
+                    if (PUESTO_ID) q.set('puesto_id', String(PUESTO_ID));
                     if (_rfidEstadoSince) q.set('since', _rfidEstadoSince);
                     const r = await fetch(`/api/rfid/entrada/estado?${q.toString()}`);
                     const d = await r.json();
@@ -123,7 +135,7 @@
 
         _iniciarSondeoEstadoRfid();
 
-        iniciarDeteccionRfid(`/api/operarios/logins?puesto_id=${encodeURIComponent(PUESTO_ID)}`, function (login) {
+        iniciarDeteccionRfid(`/api/operarios/logins?${FILTRO_LOGINS}`, function (login) {
             const msg = document.getElementById('login-msg');
             msg.textContent = `✓ ${login.operario}`;
             msg.style.color = '#4ade80';
@@ -135,12 +147,24 @@
             })
                 .then(r => r.json())
                 .then(d => {
-                    if (d.success) {
-                        window.location.href = '/modules';
-                    } else {
+                    if (!d.success) {
                         msg.textContent = d.error || 'No se pudo entrar. Vuelve a pasar la tarjeta.';
                         msg.style.color = '#f87171';
+                        return;
                     }
+                    // Estar identificado no basta: el operario tiene que tener
+                    // permitido el modulo de ESTE equipo (Admin -> Operarios).
+                    if (d.permitido === false) {
+                        msg.innerHTML =
+                            `🚫 ${login.operario} no tiene permiso para ${MODULO_LABEL}<br>` +
+                            `<span style="font-size:.8em;color:#94a3b8;">Avisa al administrador</span>`;
+                        msg.style.color = '#f87171';
+                        fetch('/api/sesion/operario/salir', { method: 'POST' }).catch(() => {});
+                        setTimeout(() => window.location.reload(), 6000);
+                        return;
+                    }
+                    // Entrada directa al modulo de este PC
+                    window.location.href = DESTINO || '/modules';
                 })
                 .catch(() => {
                     msg.textContent = 'Error de conexión. Vuelve a pasar la tarjeta.';

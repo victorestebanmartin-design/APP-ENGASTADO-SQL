@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+    <title>Sin permisos — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        .np-card {
+            background: #1e293b;
+            border: 1px solid rgba(239,68,68,.28);
+            border-radius: 16px;
+            padding: 40px 34px;
+            width: 100%;
+            max-width: 430px;
+            box-shadow: 0 18px 50px rgba(0,0,0,.45);
+            text-align: center;
+        }
+        .np-logo {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.2em;
+            letter-spacing: 2px;
+            margin-bottom: 18px;
+        }
+        .np-logo .sw { color: #3b82f6; }
+        .np-icon { font-size: 3.2em; line-height: 1; margin-bottom: 14px; }
+        .np-title {
+            font-size: 1.25em;
+            font-weight: 700;
+            color: #fca5a5;
+            margin-bottom: 14px;
+        }
+        .np-quien {
+            display: inline-block;
+            background: rgba(148,163,184,.12);
+            border: 1px solid rgba(148,163,184,.28);
+            border-radius: 999px;
+            padding: 5px 16px;
+            font-size: 0.88em;
+            color: #cbd5e1;
+            margin-bottom: 18px;
+        }
+        .np-modulo {
+            font-family: 'DM Mono', monospace;
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+        .np-msg {
+            color: #94a3b8;
+            font-size: 0.95em;
+            line-height: 1.6;
+            margin-bottom: 26px;
+        }
+        .np-acciones { display: flex; flex-direction: column; gap: 10px; }
+        .np-btn {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            border: none;
+            border-radius: 10px;
+            padding: 13px;
+            font-size: 0.98em;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background .15s;
+        }
+        .np-btn-primary { background: #3b82f6; color: #fff; }
+        .np-btn-primary:hover { background: #2563eb; }
+        .np-btn-sec {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid rgba(148,163,184,.28);
+        }
+        .np-btn-sec:hover { color: #f1f5f9; border-color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="np-card">
+        <div class="np-logo">COJO<span class="sw">sw</span></div>
+        <div class="np-icon">🚫</div>
+        <div class="np-title">No tienes permiso para este módulo</div>
+
+        <div class="np-quien">👤 {{ operario }}</div>
+
+        <div class="np-msg">
+            Tu usuario no está habilitado para
+            <span class="np-modulo">{{ modulo_label }}</span>.<br>
+            Contacta con el administrador para que te dé acceso
+            (Admin → Operarios → Módulos permitidos).
+        </div>
+
+        <div class="np-acciones">
+            <a href="{{ url_for('main.modules') }}" class="np-btn np-btn-primary">← Volver a mis módulos</a>
+            <button class="np-btn np-btn-sec" onclick="salir()">Salir e identificar a otro operario</button>
+        </div>
+    </div>
+
+    <script>
+        async function salir() {
+            try {
+                await fetch('/api/sesion/operario/salir', { method: 'POST' });
+            } catch (e) {
+                // Si falla, el redirect igualmente lleva al lector de tarjetas.
+            }
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

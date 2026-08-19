@@ -30,6 +30,7 @@ from app.excel_manager import ExcelManager
 from app.auth import (
     requiere_pin_admin,
     requiere_operario,
+    requiere_modulo,
     proteccion_activa,
     sesion_admin_valida,
     marcar_sesion_admin,
@@ -108,60 +109,52 @@ def modules():
 
 @bp.route('/puesto/seleccionar')
 def puesto_seleccionar():
-    """Configuración inicial (o reasignación) del puesto de este PC.
+    """Configuración de ESTE equipo: a qué módulo está dedicado y, solo si es
+    engastado, a qué puesto.
 
-    Sin puesto asignado a este navegador, main.home/main.modules redirigen
-    aquí (ver requiere_operario en app/auth.py) y NO hace falta PIN: es la
-    configuración de un equipo recién instalado, autoservicio. Pero si el PC
-    YA tenía un puesto asignado, esto es una reasignación -- exige la misma
-    sesión de admin que el resto del panel, así que se manda por el PIN
-    (con next= de vuelta aquí) antes de mostrar nada.
+    Sin configurar, main.home/main.modules redirigen aquí (ver
+    requiere_operario en app/auth.py) y NO hace falta PIN: es la instalación
+    de un equipo nuevo, autoservicio. Pero si el PC YA estaba configurado,
+    llegar aquí es una reconfiguración -- exige la misma sesión de admin que
+    el resto del panel, así que se manda por el PIN (con next= de vuelta
+    aquí) antes de mostrar nada.
 
-    Si se identifica automáticamente por IP, redirige directo al módulo del puesto.
+    Mangueras y manguitos NO tienen puestos: se elige el módulo y se acabó.
     """
-    from app.routes.puestos import _puesto_pc_actual, _ip_cliente
+    from app.routes.puestos import _pc_identidad
     from repositories.puesto_repository import PuestoRepository
 
-    repo = PuestoRepository(db)
-
-    # Si la IP del cliente ya está mapeada a un puesto, redirigir directamente
-    ip = _ip_cliente()
-    if ip:
-        puesto_ip = repo.obtener_puesto_por_ip(ip)
-        if puesto_ip:
-            return _redirigir_segun_modulo(puesto_ip.get('modulo') or 'engastado')
-
-    puesto_id_actual, _ = _puesto_pc_actual()
-    if puesto_id_actual and proteccion_activa() and not sesion_admin_valida():
+    modulo_actual, puesto_id_actual, _ = _pc_identidad()
+    if modulo_actual and proteccion_activa() and not sesion_admin_valida():
         return redirect(url_for('main.admin_pin', next=url_for('main.puesto_seleccionar')))
 
-    puestos = repo.obtener_todos_puestos()
-    return render_template('puesto_selector.html', puestos=puestos, puesto_actual_id=puesto_id_actual)
-
-
-def _redirigir_segun_modulo(modulo: str):
-    """Devuelve redirect al módulo correcto según el tipo de puesto."""
-    destinos = {
-        'mangueras': url_for('main.mangueras'),
-        'manguitos': url_for('main.manguitos'),
-    }
-    return redirect(destinos.get(modulo, url_for('main.modules')))
+    puestos = PuestoRepository(db).obtener_todos_puestos()
+    return render_template('puesto_selector.html',
+                           puestos=puestos,
+                           modulo_actual=modulo_actual,
+                           puesto_actual_id=puesto_id_actual)
 
 
 @bp.route('/login')
 def login_operario():
     """Pantalla "pasa tu tarjeta": puerta de entrada a toda la app.
 
-    Requiere que este PC ya tenga puesto asignado (si no, main.home/
-    main.modules ya lo habrían mandado antes a /puesto/seleccionar). Sondea
-    los logins de ESE puesto (evita adoptar el login de otro puesto) y, al
-    detectar uno, adopta la sesión y sigue a /modules.
+    Requiere que este PC ya esté configurado (si no, main.home/main.modules
+    ya lo habrían mandado antes a /puesto/seleccionar). Sondea solo los logins
+    que le corresponden -- por puesto en engastado, por módulo en mangueras y
+    manguitos -- para no adoptar el login de otro equipo. Al detectar uno,
+    adopta la sesión y entra DIRECTAMENTE al módulo de este PC.
     """
-    from app.routes.puestos import _puesto_pc_actual
-    puesto_id, puesto_nombre = _puesto_pc_actual()
-    if not puesto_id:
+    from app.routes.puestos import _pc_identidad, _destino_modulo, MODULOS_APP_LABEL
+    modulo, puesto_id, puesto_nombre = _pc_identidad()
+    if not modulo:
         return redirect(url_for('main.puesto_seleccionar'))
-    return render_template('login_operario.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
+    return render_template('login_operario.html',
+                           modulo=modulo,
+                           modulo_label=MODULOS_APP_LABEL.get(modulo, modulo),
+                           puesto_id=puesto_id,
+                           puesto_nombre=puesto_nombre,
+                           destino=_destino_modulo(modulo))
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
@@ -180,6 +173,7 @@ def manual():
 
 
 @bp.route('/v3')
+@requiere_modulo('engastado')
 def index_v3():
     """Vista principal V3 - Sistema de bonos"""
     return render_template('index-v3.html')

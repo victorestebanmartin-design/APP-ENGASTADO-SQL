@@ -78,6 +78,34 @@ def modulos_permitidos_de(modulos_permitidos_raw):
         return None
 
 
+def modulos_permitidos_operario(nombre):
+    """Set de modulos que ese operario tiene permitidos.
+
+    Devuelve el mismo criterio que usa la rejilla de /modules: sin permisos
+    explicitos en BD (NULL) => todos menos 'admin', para no conceder el panel
+    de administracion por defecto tras una migracion. Un operario inexistente
+    o sin nombre no tiene ninguno.
+    """
+    from sqlalchemy import text as _text
+    if not nombre:
+        return set()
+    with db.engine.connect() as conn:
+        row = conn.execute(_text(
+            "SELECT modulos_permitidos FROM operarios WHERE nombre=:n AND activo=1"
+        ), {'n': nombre}).fetchone()
+    if not row:
+        return set()
+    calculados = modulos_permitidos_de(row[0])
+    if calculados is None:
+        return {m for m in MODULOS_APP.keys() if m != 'admin'}
+    return calculados
+
+
+def operario_puede(nombre, modulo):
+    """True si ese operario puede entrar a ese modulo."""
+    return modulo in modulos_permitidos_operario(nombre)
+
+
 def _ahora_iso() -> str:
     """Hora local real (Europe/Madrid) en isoformat naive.
 
