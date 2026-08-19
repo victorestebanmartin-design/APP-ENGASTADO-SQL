@@ -142,7 +142,12 @@
   <div class="mg-topbar">
     <div class="mg-topbar-inner">
       <div class="mg-topbar-title">🛠️ Preparación de Mangueras</div>
+      {% if pc_dedicado %}
+      <a href="#" class="mg-back-btn" title="Cerrar sesión y volver al lector de tarjetas"
+         onclick="salirModulo('Preparación de Mangueras'); return false;">🚪 Cerrar sesión</a>
+      {% else %}
       <a href="{{ url_for('main.modules') }}" class="mg-back-btn">← Volver a módulos</a>
+      {% endif %}
     </div>
   </div>
 
@@ -192,7 +197,12 @@
   <!-- Modal selección de corte -->
   <div id="modal-corte" class="modal-operario-overlay">
     <div class="modal-bono-card">
+      {% if pc_dedicado %}
+      <a href="#" class="btn-cerrar-modal" title="Cerrar sesión y volver al lector de tarjetas"
+         onclick="salirModulo('Preparación de Mangueras'); return false;">&times;</a>
+      {% else %}
       <a href="{{ url_for('main.modules') }}" class="btn-cerrar-modal" title="Volver a módulos">&times;</a>
+      {% endif %}
 
       <!-- Vista 1: elegir método -->
       <div id="modal-corte-metodo">
@@ -249,6 +259,7 @@
     </div>
   </div>
 
+  <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}?v=1"></script>
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
   <script src="{{ url_for('static', filename='js/mangueras.js') }}?v=5"></script>
 </body>

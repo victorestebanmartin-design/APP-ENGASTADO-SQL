@@ -89,9 +89,23 @@ def modules():
     activo: si se desactiva, no debe importar qué sesión de operario haya
     quedado colgada de antes -- todo vuelve a verse, sin excepciones."""
     from app.auth import gate_operario_activo
+    from app.routes.puestos import _pc_identidad, _destino_modulo, MODULOS_SIN_PUESTO
     permitidos = set(MODULOS_APP.keys())  # por defecto, todos
     if gate_operario_activo():
         nombre = session.get('operario_actual')
+
+        # Un PC dedicado a mangueras/manguitos no tiene nada que hacer en la
+        # rejilla: entra directo a su módulo. Así llegar aquí a mano (o con el
+        # botón atrás del navegador) tampoco abre la puerta al resto de
+        # módulos. Si el operario NO tiene permiso para el módulo del equipo
+        # se deja pasar a la rejilla a propósito: redirigir le mandaría a un
+        # 403 del que no podría salir.
+        modulo_pc, _, _ = _pc_identidad()
+        if modulo_pc in MODULOS_SIN_PUESTO:
+            from app.routes.base import operario_puede
+            if nombre and operario_puede(nombre, modulo_pc):
+                return redirect(_destino_modulo(modulo_pc))
+
         if nombre:
             with db.engine.connect() as conn:
                 row = conn.execute(text(

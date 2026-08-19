@@ -163,7 +163,12 @@
   <div class="mg-topbar">
     <div class="mg-topbar-inner">
       <div class="mg-topbar-title">🔧 Manguitos</div>
+      {% if pc_dedicado %}
+      <a href="#" class="mg-back-btn" title="Cerrar sesión y volver al lector de tarjetas"
+         onclick="salirModulo('Manguitos'); return false;">🚪 Cerrar sesión</a>
+      {% else %}
       <a href="{{ url_for('main.modules') }}" class="mg-back-btn">← Volver a módulos</a>
+      {% endif %}
     </div>
   </div>
 
@@ -220,7 +225,12 @@
   <!-- ============ MODAL WIZARD MANGUITOS ============ -->
   <div id="modal-mg" class="modal-operario-overlay">
     <div class="modal-bono-card">
+      {% if pc_dedicado %}
+      <a href="#" class="btn-cerrar-modal" title="Cerrar sesión y volver al lector de tarjetas"
+         onclick="salirModulo('Manguitos'); return false;">&times;</a>
+      {% else %}
       <a href="{{ url_for('main.modules') }}" class="btn-cerrar-modal" title="Volver a módulos">&times;</a>
+      {% endif %}
 
       <!-- Vista 1: modo (Guiado / Generar TXT) -->
       <div id="modal-mg-modo">
@@ -367,6 +377,7 @@
     </div>
   </div>
 
+  <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}?v=1"></script>
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
   <script src="{{ url_for('static', filename='js/manguitos.js') }}?v=9"></script>
 </body>

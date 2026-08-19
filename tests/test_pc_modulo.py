@@ -215,6 +215,69 @@ def test_logins_se_filtran_por_modulo(app, client):
     assert [l['operario'] for l in solo_mangueras] == ['Gema']
 
 
+# ==================== Salir del modulo en un PC dedicado ====================
+
+def test_pc_dedicado_ofrece_cerrar_sesion_no_volver_a_modulos(app, client):
+    """Cerrar el modulo en su PC es una salida, no un paseo a la rejilla."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    _operario_dentro(app, client, 'Iris', modulos=['manguitos'], modulo_login='manguitos')
+
+    cuerpo = client.get('/manguitos').get_data(as_text=True)
+    assert 'Cerrar sesión' in cuerpo
+    assert 'salirModulo' in cuerpo
+    assert 'Volver a módulos' not in cuerpo
+
+
+def test_pc_de_engastado_sigue_volviendo_a_la_rejilla(app, client, admin_client):
+    """Abrir mangueras desde /modules en un PC de engastado no es una salida."""
+    _activar_gate(app)
+    puesto = _crear_puesto(admin_client)
+    client.post('/api/pc/configurar', json={'modulo': 'engastado', 'puesto_id': puesto['id']})
+    _operario_dentro(app, client, 'Jon', modulos=['engastado', 'mangueras'],
+                     puesto_id=puesto['id'])
+
+    cuerpo = client.get('/mangueras').get_data(as_text=True)
+    assert 'Volver a módulos' in cuerpo
+    assert 'salirModulo' not in cuerpo
+
+
+def test_salir_desactiva_el_login_y_exige_tarjeta_nueva(app, client):
+    """El siguiente que llegue al PC no puede heredar la sesion del anterior."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    _operario_dentro(app, client, 'Kira', modulos=['manguitos'], modulo_login='manguitos')
+    assert client.get('/manguitos').status_code == 200
+
+    client.post('/api/sesion/operario/salir')
+
+    r = client.get('/manguitos')
+    assert r.status_code == 302
+    assert '/login' in r.headers['Location']
+    # y el login ya no esta vivo, asi que no se puede readoptar sin tarjeta
+    assert client.get('/api/operarios/logins?modulo=manguitos').get_json()['logins'] == []
+
+
+def test_pc_dedicado_no_puede_colarse_en_la_rejilla(app, client):
+    """Ir a /modules a mano en un PC de manguitos entra al modulo, no a la rejilla."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    _operario_dentro(app, client, 'Leo', modulos=['manguitos', 'etiquetas'],
+                     modulo_login='manguitos')
+
+    r = client.get('/modules')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/manguitos')
+
+
+def test_sin_permiso_para_el_modulo_del_pc_no_hay_bucle(app, client):
+    """Sin permiso, /modules muestra la rejilla en vez de rebotar a un 403."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    _operario_dentro(app, client, 'Mar', modulos=['etiquetas'], modulo_login='manguitos')
+    assert client.get('/modules').status_code == 200
+
+
 def test_adoptar_avisa_de_la_falta_de_permisos(app, client):
     """La pantalla de login puede avisar en el acto, sin mandar a un 403."""
     _activar_gate(app)
