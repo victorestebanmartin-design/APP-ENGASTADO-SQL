@@ -4,7 +4,7 @@
 # Este fichero SI se actualiza por OTA (ver ota_update.py): sube la version
 # aqui, publicalo con el deploy habitual del repo y la placa se autoactualiza
 # sola en su siguiente comprobacion (arranque o periodica).
-FW_VERSION = "2026-08-14a"
+FW_VERSION = "2026-08-19a"
 
 import time
 from machine import Pin
@@ -48,7 +48,8 @@ def beep_confirmacion_ok():
 
 
 def beep_rechazo_funcional():
-    # Rechazo de negocio (tarjeta no registrada / operario ya activo).
+    # Rechazo de negocio (tarjeta no registrada / operario ya activo / sin
+    # permiso para el modulo de este lector).
     beep(2, 140, 80)
 
 
@@ -89,8 +90,14 @@ def enviar_entrada(tag_uid):
         led.on(); time.sleep(1); led.off()
         return "ok", (data.get("message") or "Entrada registrada")
 
-    if status in (400, 404, 409):
-        motivo = (data or {}).get("error") or "Rechazado"
+    # CUALQUIER 4xx es una decision del servidor sobre esta tarjeta (tarjeta
+    # no registrada, operario ya dentro, 403 = sin permiso para el modulo de
+    # este lector...), no una averia: se pita rechazo y se dice el motivo que
+    # manda el servidor. Antes solo se contemplaban 400/404/409, asi que un
+    # 403 caia en la rama de abajo y un "acceso denegado" se anunciaba como
+    # error del servidor -- justo cuando el sistema estaba funcionando bien.
+    if status and 400 <= status < 500:
+        motivo = (data or {}).get("error") or "Acceso denegado"
         print("Rechazado (%s):" % status, motivo)
         print("POST entrada rechazo en %d ms" % dt)
         beep_rechazo_funcional()

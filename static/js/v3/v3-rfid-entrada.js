@@ -116,11 +116,17 @@ function _render_estado_rfid(evento) {
     if (!rfidMsgDiv) return;
 
     const base = evento.motivo || 'No se pudo procesar la tarjeta.';
+    // El consejo ("contacta con el administrador", "vuelve a pasar la
+    // tarjeta") es la mitad util del mensaje: sin el, el operario sabe que no
+    // entra pero no que hacer. Ya viaja en el evento; aqui solo se pinta.
+    const consejo = evento.consejo
+        ? `<div style="font-size:.8em;color:#64748b;margin-top:6px;">${evento.consejo}</div>`
+        : '';
     if (evento.estado === 'rechazo') {
-        rfidMsgDiv.innerHTML = `✗ ${base}`;
+        rfidMsgDiv.innerHTML = `✗ ${base}${consejo}`;
         rfidMsgDiv.style.color = '#dc2626';
     } else {
-        rfidMsgDiv.innerHTML = `⚠ ${base}`;
+        rfidMsgDiv.innerHTML = `⚠ ${base}${consejo}`;
         rfidMsgDiv.style.color = '#b45309';
     }
 

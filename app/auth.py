@@ -236,7 +236,8 @@ def requiere_modulo(modulo):
                 if _es_peticion_api():
                     return jsonify({
                         'success': False,
-                        'error': f'{nombre} no tiene permiso para {etiqueta}'
+                        'error': f'Acceso denegado a {etiqueta}: {nombre} no tiene '
+                                 f'permiso para este módulo'
                     }), 403
                 return render_template('sin_permisos.html',
                                        operario=nombre,

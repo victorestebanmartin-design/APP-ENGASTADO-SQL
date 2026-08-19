@@ -445,15 +445,48 @@ def test_sin_permiso_se_rechaza_en_el_lector_con_su_motivo(app, client):
 
     r = _pasar_tarjeta(client, 'AABBCCDD')
     assert r.status_code == 403
+    # El mensaje tiene que decir que es una decision de permisos, no un fallo:
+    # el lector lo pita como rechazo y la pantalla lo pinta tal cual.
+    assert 'Acceso denegado' in r.get_json()['error']
     assert 'no tiene permiso' in r.get_json()['error']
 
     ev = _estado(client, modulo='manguitos')[-1]
     assert ev['error_code'] == 'SIN_PERMISO'
+    assert 'Acceso denegado' in ev['motivo']
     assert 'Olga' in ev['motivo']
+    assert 'administrador' in ev['consejo']
     assert 'Módulos permitidos' in ev['consejo']
 
     # y no se ha gastado el login exclusivo del operario
     assert client.get('/api/operarios/logins').get_json()['logins'] == []
+
+
+def test_fallo_interno_avisa_solo_a_su_pantalla_y_dice_que_hacer(app, client, admin_client,
+                                                                 monkeypatch):
+    """Un fallo del servidor no puede quedarse en "error interno": el operario
+    necesita saber que hacer, y el aviso solo le incumbe a SU puesto."""
+    from app.routes import operarios as mod
+
+    p1 = _crear_puesto(admin_client, 'PUESTO UNO')
+    p2 = _crear_puesto(admin_client, 'PUESTO DOS')
+    _asignar_lector(app, 'lector01', p1['id'])
+
+    def _peta(*a, **k):
+        raise RuntimeError('boom')
+    monkeypatch.setattr(mod, '_operario_por_tag', _peta)
+
+    r = _pasar_tarjeta(client, 'AABBCCDD')
+    assert r.status_code == 500
+    assert r.get_json()['error']            # el lector lee 'error', no 'message'
+
+    ev = _estado(client, puesto_id=p1['id'])[-1]
+    assert ev['error_code'] == 'SERVER_ERR'
+    assert 'error interno' not in ev['motivo'].lower()
+    assert ev['consejo']
+    assert ev['puesto_id'] == p1['id']
+    # y no ensucia la pantalla del puesto de al lado
+    assert [e for e in _estado(client, puesto_id=p2['id'])
+            if e['error_code'] == 'SERVER_ERR'] == []
 
 
 def test_con_permiso_si_entra(app, client):

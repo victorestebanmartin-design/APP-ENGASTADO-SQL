@@ -668,6 +668,11 @@ def api_engastado_v3_entrada():
         "error": "Juan Pérez ya está dentro del módulo en otro puesto"
       }
     """
+    # Fuera del try: si algo peta mas abajo, el except de esta funcion sigue
+    # sabiendo de que lector y de que tarjeta venia el escaneo, para que el
+    # aviso llegue SOLO a la pantalla que le corresponde.
+    tag_uid, device_id = '', None
+    puesto_id, puesto_nombre, modulo_lector = None, None, None
     try:
         data = request.get_json(silent=True) or {}
         tag_uid = (data.get('tag_uid') or '').strip().upper()
@@ -752,9 +757,10 @@ def api_engastado_v3_entrada():
                 from app.routes.base import operario_puede, MODULOS_APP
                 if not operario_puede(nombre, modulo_lector):
                     etiqueta = MODULOS_APP.get(modulo_lector, {}).get('label', modulo_lector)
-                    motivo = f'{nombre} no tiene permiso para {etiqueta}'
+                    motivo = (f'Acceso denegado a {etiqueta}: '
+                              f'{nombre} no tiene permiso para este módulo')
                     _rechazo(motivo, 'SIN_PERMISO', operario=nombre,
-                             consejo='Avisa al administrador para que te habilite el módulo '
+                             consejo='Contacta con el administrador para que te dé acceso '
                                      '(Admin → Operarios → Módulos permitidos).')
                     return jsonify({'success': False, 'error': motivo}), 403
 
@@ -821,8 +827,18 @@ def api_engastado_v3_entrada():
             }), 200
 
     except Exception as e:
+        # Al operario que esta delante del lector un "error interno del
+        # servidor" no le dice nada ni le deja hacer nada: se le da el motivo
+        # en su idioma y el paso siguiente. El detalle tecnico va al log con
+        # su referencia (ver error_interno).
         try:
-            _rfid_estado_registrar('error', 'Error interno del servidor', 'SERVER_ERR')
+            _rfid_estado_registrar(
+                'rechazo', 'No se pudo procesar la tarjeta (fallo del servidor)',
+                'SERVER_ERR',
+                consejo='Vuelve a pasar la tarjeta. Si sigue igual, avisa al administrador.',
+                device_id=device_id, tag_uid=tag_uid,
+                puesto_id=puesto_id, puesto_nombre=puesto_nombre,
+                modulo=modulo_lector)
         except Exception:
             pass
-        return error_interno(e)
+        return error_interno(e, clave='error')

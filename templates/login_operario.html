@@ -187,8 +187,9 @@
                     // permitido el modulo de ESTE equipo (Admin -> Operarios).
                     if (d.permitido === false) {
                         mostrarMotivo('rechazo',
-                            `${login.operario} no tiene permiso para ${MODULO_LABEL}`,
-                            'Avisa al administrador para que te habilite el módulo ' +
+                            `Acceso denegado a ${MODULO_LABEL}: ${login.operario} ` +
+                            'no tiene permiso para este módulo',
+                            'Contacta con el administrador para que te dé acceso ' +
                             '(Admin → Operarios → Módulos permitidos).');
                         fetch('/api/sesion/operario/salir', { method: 'POST' }).catch(() => {});
                         setTimeout(() => window.location.reload(), 12000);
