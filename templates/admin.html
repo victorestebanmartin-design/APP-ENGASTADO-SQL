@@ -469,6 +469,40 @@
                             <p class="instruccion">Cargando...</p>
                         </div>
                     </div>
+
+                    <div class="admin-card">
+                        <h2>🔓 Quitar el aviso «No es seguro» de un PC</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Ese aviso no lo pone la aplicación: lo pone el <strong>navegador</strong>, porque se
+                            entra por <code>http://</code> en vez de <code>https://</code>. Los navegadores marcan
+                            así todo lo que no sea https salvo <code>localhost</code> — por eso aquí en el servidor
+                            no sale y en los puestos sí. Da igual que la red esté aislada y sin internet.
+                            <br><br>
+                            Una página web <strong>no puede</strong> cambiar la configuración del ordenador que la
+                            abre: justo esa frontera es lo que hace seguro a un navegador. Así que esto hay que
+                            ejecutarlo <strong>una vez en cada PC de puesto</strong>. El archivo de abajo ya viene
+                            relleno con las direcciones correctas de este servidor: descárgalo en el PC del puesto,
+                            doble clic, aceptar, y <strong>cierra el navegador del todo</strong> antes de volver a
+                            abrirlo.
+                            <br><br>
+                            De paso arregla algo que no se ve: sobre <code>http</code> el navegador no deja
+                            registrar el <em>service worker</em>, así que en los puestos nunca aparecía
+                            <strong>«Instalar aplicación»</strong>. Después de esto, sí.
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <a class="btn-primary" href="/api/red/pc-puesto.reg"
+                               style="text-decoration:none;display:inline-block;"
+                               title="Descargar el archivo .reg ya configurado para este servidor">
+                                ⬇️ Descargar configuración del PC de puesto (.reg)
+                            </a>
+                        </div>
+                        <p class="instruccion" style="font-size:0.85em;color:#94a3b8;">
+                            Hace falta ser administrador en ese PC (Windows lo pedirá al abrir el archivo).
+                            Para comprobar que se aplicó: <code>chrome://policy</code> o <code>edge://policy</code>.
+                            <br>Alternativa por consola, si prefieres lanzarlo en remoto:
+                            <code>_scripts_utiles\configurar_pc_puesto.ps1</code>
+                        </p>
+                    </div>
                 </section>
 
 

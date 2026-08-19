@@ -1328,6 +1328,94 @@ def api_esp32_ips_liberar(device_id):
         return error_interno(e)
 
 
+def _origenes_de_la_app():
+    """Origenes por los que se entra a esta app (esquema + host + puerto).
+
+    Se listan todos los que pueden aparecer en la barra del navegador de un
+    PC de puesto: el que ha usado quien pide el fichero, y el de la IP de
+    planta del servidor. Sobra con que esten de mas -- la politica es una
+    lista y un origen que nadie use no molesta -- pero faltar uno significa
+    que ese PC concreto seguiria viendo el aviso.
+    """
+    origenes = []
+
+    # El que ha usado quien esta pidiendo el fichero ahora mismo.
+    actual = (request.host_url or '').rstrip('/')
+    if actual:
+        origenes.append(actual)
+
+    # El de la red de planta. Si el admin baja el fichero desde el propio
+    # servidor, el de arriba seria 'localhost' y NO serviria en los puestos.
+    try:
+        import socket
+        puerto = request.host.split(':')[-1] if ':' in request.host else '5001'
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))     # no envia nada: solo elige interfaz
+            ip_local = s.getsockname()[0]
+        finally:
+            s.close()
+        lan = f'http://{ip_local}:{puerto}'
+        if lan not in origenes:
+            origenes.append(lan)
+    except Exception:
+        pass
+
+    return origenes
+
+
+@bp.route('/api/red/pc-puesto.reg', methods=['GET'])
+@requiere_pin_admin
+def api_red_pc_puesto_reg():
+    """Fichero .reg que quita el aviso "No es seguro" en un PC de puesto.
+
+    El aviso lo pone el NAVEGADOR, no la app: marca como insegura cualquier
+    direccion que no sea https, salvo localhost. Da igual que la red este
+    aislada. Y una pagina web no puede tocar la configuracion del equipo que
+    la abre -- justo esa frontera es lo que hace seguro un navegador -- asi
+    que esto no se puede aplicar solo: hay que ejecutarlo una vez en cada PC.
+
+    Lo que se genera aqui es el fichero ya relleno con los origenes correctos,
+    para que en el PC de puesto solo haya que abrirlo y aceptar.
+    """
+    try:
+        origenes = _origenes_de_la_app()
+        lineas = [
+            'Windows Registry Editor Version 5.00',
+            '',
+            '; COJOsw - marcar el servidor como origen de confianza',
+            '; Generado por el propio servidor: los origenes de abajo son los',
+            '; que se estan usando de verdad para entrar a la aplicacion.',
+            ';',
+            '; Que hace: le dice a Chrome y a Edge que traten estas direcciones',
+            '; como seguras. Con eso desaparece el aviso "No es seguro" y la app',
+            '; vuelve a poder instalarse ("Instalar aplicacion"), que sobre http',
+            '; el navegador no lo permite.',
+            ';',
+            '; Como se usa: doble clic, aceptar, y CERRAR EL NAVEGADOR DEL TODO',
+            '; (todas las ventanas) antes de volver a abrirlo.',
+            '',
+        ]
+        for clave in (r'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome',
+                      r'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge'):
+            lineas.append(f'[{clave}\\OverrideSecurityRestrictionsOnInsecureOrigin]')
+            for i, origen in enumerate(origenes, start=1):
+                lineas.append(f'"{i}"="{origen}"')
+            lineas.append('')
+
+        # El Bloc de notas y regedit esperan CRLF; sin esto el fichero se ve
+        # en una sola linea y regedit puede rechazarlo.
+        contenido = '\r\n'.join(lineas)
+        return current_app.response_class(
+            contenido.encode('utf-8-sig'),   # regedit quiere BOM
+            mimetype='application/octet-stream',
+            headers={'Content-Disposition':
+                     'attachment; filename=COJOsw-pc-de-puesto.reg'},
+        )
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/red/pcs/<ip>', methods=['DELETE'])
 @requiere_pin_admin
 def api_red_pc_olvidar(ip):

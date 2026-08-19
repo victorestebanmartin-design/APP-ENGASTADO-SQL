@@ -3,6 +3,29 @@ setlocal enabledelayedexpansion
 title ENGASTADO SQL - Servidor
 cd /d "%~dp0"
 
+REM ── 0) Relanzarse MINIMIZADO ───────────────────────────────────────────
+REM Arranca solo al encender el PC, asi que la ventana no debe estorbar en
+REM medio de la pantalla. Minimizada (no oculta) sigue estando en la barra de
+REM tareas: si algo peta se puede abrir y ver que dice.
+REM El argumento MINIMIZADO evita que se relance en bucle infinito.
+if /i not "%~1"=="MINIMIZADO" (
+    start /min "" "%~f0" MINIMIZADO
+    exit /b
+)
+
+REM ── 0.1) Carpeta de logs ───────────────────────────────────────────────
+if not exist "logs" mkdir "logs"
+
+REM Marca de tiempo ORDENABLE para el nombre del log. Se pide a PowerShell a
+REM proposito: %DATE% y %TIME% cambian de formato segun la configuracion
+REM regional de Windows (dd/MM vs MM/dd, ':' vs '.'), y acaban generando
+REM nombres invalidos o imposibles de ordenar.
+set TS=
+for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss" 2^>nul') do set TS=%%i
+if "!TS!"=="" set TS=sin-fecha_%RANDOM%
+
+set "LOG=%~dp0logs\servidor_!TS!.log"
+
 REM Activar entorno virtual
 call venv\Scripts\activate.bat
 
@@ -12,6 +35,9 @@ echo ===========================================================================
 echo  SISTEMA DE ENGASTADO AUTOMATICO - SQLite V2.0
 echo  (Watchdog activo - reinicio automatico habilitado)
 echo ================================================================================
+echo.
+echo  Registro de esta sesion:
+echo    !LOG!
 echo.
 echo  Abriendo COJOsw en http://localhost:5001 ...
 timeout /t 2 /nobreak >nul
@@ -74,17 +100,35 @@ if not "%NAVEGADOR_APP%"=="" (
 )
 
 :SERVIDOR
-python run_sql.py
-set EXIT_CODE=%errorlevel%
+REM Todo lo que escupa la app (stdout y stderr) va al log de esta sesion, no
+REM a una consola que nadie esta mirando. Se abre en modo AÑADIR (>>) para
+REM que un reinicio por OTA no borre lo que fallo justo antes: el motivo del
+REM problema suele estar en las lineas anteriores al reinicio.
+echo. >> "!LOG!" 2>nul
+echo ================================================================================ >> "!LOG!" 2>nul
+echo  Arranque del servidor >> "!LOG!" 2>nul
+echo ================================================================================ >> "!LOG!" 2>nul
+
+python run_sql.py >> "!LOG!" 2>&1
+set EXIT_CODE=!errorlevel!
 
 REM Codigo 42 = reinicio solicitado por actualizacion OTA
-if %EXIT_CODE% == 42 (
+if !EXIT_CODE! == 42 (
+    echo. >> "!LOG!" 2>nul
+    echo  -- Reinicio solicitado por actualizacion OTA -- >> "!LOG!" 2>nul
     echo.
     echo  Reiniciando servidor tras actualizacion...
     timeout /t 2 /nobreak >nul
     goto INICIO
 )
 
+echo. >> "!LOG!" 2>nul
+echo  -- El servidor se ha detenido (codigo: !EXIT_CODE!) -- >> "!LOG!" 2>nul
+
 echo.
-echo El servidor se ha detenido (codigo: %EXIT_CODE%).
+echo El servidor se ha detenido (codigo: !EXIT_CODE!).
+echo.
+echo Los detalles del fallo estan en:
+echo   !LOG!
+echo.
 pause
