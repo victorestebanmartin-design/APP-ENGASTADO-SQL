@@ -14,7 +14,7 @@ def _anotar_pc(app, ip, hace_dias=0):
         from app.routes.sistema import _pcs_vistos_file, _pcs_vistos_cargar
         pcs = _pcs_vistos_cargar()
         pcs[ip] = {'last_seen': (datetime.now() - timedelta(days=hace_dias)).isoformat()}
-        with open(_pcs_vistos_file(), 'w') as f:
+        with open(_pcs_vistos_file(), 'w', encoding='utf-8') as f:
             json.dump(pcs, f)
 
 

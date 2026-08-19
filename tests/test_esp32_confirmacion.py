@@ -170,12 +170,12 @@ def test_entrada_sin_latido_caduca(client, app):
 
     _push(client)
     ruta = os.path.join(app.config['DATA_DIR'], 'esp32_current_3.json')
-    with open(ruta) as f:
+    with open(ruta, encoding='utf-8') as f:
         payload = _json.load(f)
     viejo = (datetime.now() - timedelta(seconds=sistema.ESP32_TTL_S + 60)).isoformat()
     for v in payload['ops'].values():
         v['ts'] = viejo
-    with open(ruta, 'w') as f:
+    with open(ruta, 'w', encoding='utf-8') as f:
         _json.dump(payload, f)
 
     assert _puestos_en_pantalla(client) == []

@@ -46,7 +46,7 @@ def test_orden_hereda_archivo_del_codigo_corte(admin_client, app):
     import os
     # Registrar un código de corte apuntando a un Excel existente
     ruta = os.path.join(app.config['UPLOAD_FOLDER'], 'corte_test.xlsx')
-    with open(ruta, 'w') as f:
+    with open(ruta, 'w', encoding='utf-8') as f:
         f.write('x')
     r = admin_client.post('/api/add_corte', json={
         'codigo_barras': 'CODBAR1',

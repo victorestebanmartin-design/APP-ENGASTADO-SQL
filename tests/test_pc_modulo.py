@@ -21,7 +21,7 @@ def _activar_gate(app, activo=True):
     import os
     with app.app_context():
         ruta = os.path.join(app.config['DATA_DIR'], 'operario_gate.json')
-        with open(ruta, 'w') as f:
+        with open(ruta, 'w', encoding='utf-8') as f:
             json.dump({'enabled': activo}, f)
 
 
@@ -368,7 +368,7 @@ def _asignar_lector(app, device_id, destino):
     import time as _time
     with app.app_context():
         ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
-        with open(ruta, 'w') as f:
+        with open(ruta, 'w', encoding='utf-8') as f:
             json.dump({device_id: {}}, f)
 
     # El endpoint esta protegido por PIN: hace falta sesion de admin.

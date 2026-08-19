@@ -16,7 +16,7 @@ def test_delete_file_rechaza_traversal(admin_client, app, tmp_path):
 def test_delete_file_legitimo_funciona(admin_client, app):
     upload = app.config['UPLOAD_FOLDER']
     ruta = os.path.join(upload, 'borrar.xlsx')
-    with open(ruta, 'w') as f:
+    with open(ruta, 'w', encoding='utf-8') as f:
         f.write('x')
 
     r = admin_client.post('/api/delete_file', json={'filename': 'borrar.xlsx'})
