@@ -236,19 +236,40 @@ def test_gate_on_con_puesto_sin_operario_redirige_a_login(client, admin_client):
 
 
 def test_gate_on_filtra_modulos_por_permiso(client, admin_client):
+    """La rejilla solo muestra lo que el operario tiene permitido.
+
+    Un PC de engastado normalmente ni llega aquí (entra directo a /v3), así
+    que se usa el caso en el que sí se renderiza: un operario sin permiso
+    para el módulo de su propio equipo. Ver main.modules."""
     admin_client.post('/api/sistema/gate_operario', json={'activo': True})
     client.post('/api/puesto/pc', json={'puesto_id': 'puesto_001'})
 
     op = _crear_operario_con_tag(client, 'Op Filtrado', 'EEEEEEEE')
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
+    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['etiquetas']})
     login_id = client.post('/api/puestos/engastado_v3/entrada',
                            json={'tag_uid': 'EEEEEEEE'}).get_json()['login_id']
     client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
 
     r = client.get('/modules')
     assert r.status_code == 200
-    assert b'Iniciar Engastado' in r.data
-    assert b'Etiquetar' not in r.data
+    assert b'Etiquetar' in r.data
+    assert b'Iniciar Engastado' not in r.data
+
+
+def test_pc_de_engastado_entra_directo_a_v3(client, admin_client):
+    """Un puesto de engastado entra a engastar, no a la rejilla."""
+    admin_client.post('/api/sistema/gate_operario', json={'activo': True})
+    client.post('/api/puesto/pc', json={'puesto_id': 'puesto_001'})
+
+    op = _crear_operario_con_tag(client, 'Op Directo', 'EEEEEEE1')
+    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
+    login_id = client.post('/api/puestos/engastado_v3/entrada',
+                           json={'tag_uid': 'EEEEEEE1'}).get_json()['login_id']
+    client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
+
+    r = client.get('/modules')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/v3')
 
 
 def test_gate_desactivar_ignora_sesion_colgada(client, admin_client):

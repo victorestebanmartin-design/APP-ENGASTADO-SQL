@@ -13,7 +13,12 @@
     <!-- Modal identificación operario -->
     <div id="modal-operario" class="modal-operario-overlay">
         <div class="modal-operario-card">
+            {% if pc_dedicado %}
+            <a href="#" class="btn-cerrar-modal" title="Cerrar sesión y volver al lector de tarjetas"
+               onclick="salirModulo('Engastado'); return false;">&times;</a>
+            {% else %}
             <a href="{{ url_for('main.modules') }}" class="btn-cerrar-modal" title="Volver a módulos">&times;</a>
+            {% endif %}
             <div class="modal-operario-header">
                 <div class="modal-operario-icon">⚡</div>
                 <h2>Sistema de Engastado V3.0</h2>
@@ -44,7 +49,12 @@
     <!-- Modal selección de bono -->
     <div id="modal-bono" class="modal-operario-overlay hidden">
         <div class="modal-bono-card">
+            {% if pc_dedicado %}
+            <a href="#" class="btn-cerrar-modal" title="Cerrar sesión y volver al lector de tarjetas"
+               onclick="salirModulo('Engastado'); return false;">&times;</a>
+            {% else %}
             <a href="{{ url_for('main.modules') }}" class="btn-cerrar-modal" title="Volver a módulos">&times;</a>
+            {% endif %}
 
             <!-- Vista 1: elegir método -->
             <div id="modal-bono-metodo">
@@ -304,6 +314,13 @@
 
     <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}?v=1"></script>
+    <script>
+        // En un PC dedicado a engastado no hay rejilla a la que "volver": ese
+        // equipo solo engasta, así que salir del módulo es cerrar la sesión y
+        // volver al lector. Lo lee salirEngastadoV3() (v3-modales.js).
+        const PC_DEDICADO_ENGASTADO = {{ pc_dedicado | tojson }};
+    </script>
     <!-- Antiguo main-v3.js troceado por flujo; comparten ámbito global: el orden importa -->
     <script src="{{ url_for('static', filename='js/v3/v3-estado.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-rfid-entrada.js') }}"></script>

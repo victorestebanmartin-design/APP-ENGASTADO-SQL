@@ -91,7 +91,7 @@ def test_configurar_pc_de_engastado_con_puesto(client, admin_client):
                     json={'modulo': 'engastado', 'puesto_id': puesto['id']}).get_json()
     assert d['success']
     assert d['puesto_id'] == puesto['id']
-    assert d['destino'] == '/modules'
+    assert d['destino'] == '/v3'      # a engastar, no a la rejilla
 
     estado = client.get('/api/pc').get_json()
     assert estado['modulo'] == 'engastado'
@@ -215,7 +215,88 @@ def test_logins_se_filtran_por_modulo(app, client):
     assert [l['operario'] for l in solo_mangueras] == ['Gema']
 
 
+# ==================== El servidor: suite completa, sin tarjeta ====================
+
+def test_configurar_el_pc_como_servidor(client):
+    d = client.post('/api/pc/configurar', json={'modulo': 'servidor'}).get_json()
+    assert d['success']
+    assert d['puesto_id'] is None
+    assert d['destino'] == '/modules'
+
+
+def test_el_servidor_no_pide_tarjeta(app, client):
+    """Con el gate activo, el servidor entra igualmente y sin identificarse."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'servidor'})
+    assert client.get('/modules').status_code == 200
+
+
+def test_el_servidor_ve_la_rejilla_entera(app, client):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'servidor'})
+    cuerpo = client.get('/modules').get_data(as_text=True)
+    assert 'Iniciar Engastado' in cuerpo
+    assert 'Etiquetar' in cuerpo
+
+
+def test_el_servidor_entra_a_cualquier_modulo_sin_permisos(app, client):
+    """No hay operario en sesión y aun así se abre todo."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'servidor'})
+    assert client.get('/manguitos').status_code == 200
+    assert client.get('/mangueras').status_code == 200
+    assert client.get('/v3').status_code == 200
+
+
+def test_en_el_servidor_cerrar_un_modulo_vuelve_a_la_rejilla(app, client):
+    """El servidor sí tiene rejilla a la que volver: no es una salida."""
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'servidor'})
+    cuerpo = client.get('/manguitos').get_data(as_text=True)
+    assert 'Volver a módulos' in cuerpo
+    assert 'salirModulo' not in cuerpo
+
+
+def test_la_raiz_en_un_pc_de_planta_lleva_a_su_modulo(app, client):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    _operario_dentro(app, client, 'Quim', modulos=['manguitos'], modulo_login='manguitos')
+
+    r = client.get('/', follow_redirects=False)
+    assert r.status_code == 302
+    r2 = client.get(r.headers['Location'], follow_redirects=False)
+    assert r2.headers['Location'].endswith('/manguitos')
+
+
+def test_la_raiz_en_el_servidor_sigue_siendo_la_home(app, client):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'servidor'})
+    assert client.get('/').status_code == 200
+
+
+def test_un_pc_de_planta_no_es_servidor(app, client, admin_client):
+    _activar_gate(app)
+    puesto = _crear_puesto(admin_client)
+    client.post('/api/pc/configurar', json={'modulo': 'engastado', 'puesto_id': puesto['id']})
+    r = client.get('/modules')
+    assert r.status_code == 302        # sigue pidiendo tarjeta
+    assert '/login' in r.headers['Location']
+
+
 # ==================== Salir del modulo en un PC dedicado ====================
+
+def test_pc_de_engastado_cierra_sesion_al_salir_de_v3(app, client, admin_client):
+    """En un PC de engastado, cerrar V3 es salir al lector, no ir a la rejilla."""
+    _activar_gate(app)
+    puesto = _crear_puesto(admin_client)
+    client.post('/api/pc/configurar', json={'modulo': 'engastado', 'puesto_id': puesto['id']})
+    _operario_dentro(app, client, 'Rosa', modulos=['engastado'], puesto_id=puesto['id'])
+
+    cuerpo = client.get('/v3').get_data(as_text=True)
+    assert 'salirModulo' in cuerpo
+    assert 'PC_DEDICADO_ENGASTADO = true' in cuerpo
+
+
 
 def test_pc_dedicado_ofrece_cerrar_sesion_no_volver_a_modulos(app, client):
     """Cerrar el modulo en su PC es una salida, no un paseo a la rejilla."""

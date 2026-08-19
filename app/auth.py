@@ -137,6 +137,36 @@ def _pc_configurado_o_redirect():
     return modulo, None
 
 
+def es_servidor():
+    """True si ESTE equipo está configurado como el servidor.
+
+    El servidor no es un puesto de trabajo: es la máquina desde la que se
+    administra la planta, y ahí no se pide tarjeta ni se filtran módulos. El
+    control de acceso ahí es físico (quién puede sentarse delante) más el PIN
+    de administración, que sigue protegiendo /admin igual que siempre.
+    """
+    from app.routes.puestos import _pc_identidad, ROL_SERVIDOR
+    modulo, _, _ = _pc_identidad()
+    return modulo == ROL_SERVIDOR
+
+
+def pc_dedicado_a(modulo):
+    """True si ESTE equipo está dedicado a ese módulo y hay gate de login.
+
+    Distingue los dos modos de llegar a la página de un módulo:
+      - PC de planta dedicado: el módulo es todo lo que hace ese equipo, así
+        que cerrarlo es una salida -> se cierra la sesión y se vuelve al
+        lector de tarjetas.
+      - El servidor, que ha abierto el módulo desde la rejilla de /modules:
+        cerrar es simplemente volver a la rejilla.
+    """
+    from app.routes.puestos import _pc_identidad
+    if not gate_operario_activo():
+        return False
+    modulo_pc, _, _ = _pc_identidad()
+    return modulo_pc == modulo
+
+
 def requiere_operario(f):
     """Decorador: exige que este PC esté configurado (módulo, y puesto si es
     engastado) y que su navegador tenga adoptada la sesión de un operario
@@ -153,9 +183,14 @@ def requiere_operario(f):
         if not gate_operario_activo():
             return f(*args, **kwargs)
 
-        _, redir = _pc_configurado_o_redirect()
+        modulo, redir = _pc_configurado_o_redirect()
         if redir:
             return redir
+
+        # El servidor entra sin tarjeta y con acceso a todo.
+        from app.routes.puestos import ROL_SERVIDOR
+        if modulo == ROL_SERVIDOR:
+            return f(*args, **kwargs)
 
         if not _operario_en_sesion_valido():
             return redirect(url_for('main.login_operario'))
@@ -181,9 +216,14 @@ def requiere_modulo(modulo):
             if not gate_operario_activo():
                 return f(*args, **kwargs)
 
-            _, redir = _pc_configurado_o_redirect()
+            modulo_pc, redir = _pc_configurado_o_redirect()
             if redir:
                 return redir
+
+            # El servidor no pasa por tarjeta ni por permisos de operario.
+            from app.routes.puestos import ROL_SERVIDOR
+            if modulo_pc == ROL_SERVIDOR:
+                return f(*args, **kwargs)
 
             nombre = _operario_en_sesion_valido()
             if not nombre:

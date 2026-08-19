@@ -74,34 +74,49 @@ def service_worker():
 @bp.route('/')
 @requiere_operario
 def home():
-    """Página de inicio"""
+    """Página de inicio.
+
+    En un PC de planta no pinta nada: ese equipo va a su módulo. Se delega en
+    main.modules, que ya sabe a dónde mandar a cada rol (y qué hacer si el
+    operario no tiene permiso para el módulo de su propio equipo).
+    """
+    from app.auth import gate_operario_activo
+    from app.routes.puestos import _pc_identidad, MODULOS_PC
+    if gate_operario_activo():
+        modulo_pc, _, _ = _pc_identidad()
+        if modulo_pc in MODULOS_PC:
+            return redirect(url_for('main.modules'))
     return render_template('home.html')
 
 
 @bp.route('/modules')
 @requiere_operario
 def modules():
-    """Página de módulos del sistema, filtrada por lo que el operario en
-    sesión tiene permitido (ver MODULOS_APP/modulos_permitidos_de en
-    app/routes/base.py). Con el gate desactivado, o para un operario sin
-    modulos_permitidos configurado (NULL = "todos"), se ve la rejilla
-    completa, igual que siempre. El filtrado SOLO se aplica con el gate
-    activo: si se desactiva, no debe importar qué sesión de operario haya
-    quedado colgada de antes -- todo vuelve a verse, sin excepciones."""
+    """Rejilla de módulos. En la práctica es la pantalla DEL SERVIDOR.
+
+    Un PC de planta está dedicado a un módulo y entra directo a él (ver
+    _destino_modulo): el operario de un puesto entra a trabajar, no a elegir.
+    Por eso aquí se redirige a los PCs dedicados -- también si llegan a mano o
+    con el botón atrás del navegador, que si no sería la puerta de atrás a
+    todo lo que ese operario tenga permitido.
+
+    En el servidor sí se ve la rejilla entera y sin pedir tarjeta. Con el gate
+    desactivado se comporta como siempre: todo visible, sin filtrar."""
     from app.auth import gate_operario_activo
-    from app.routes.puestos import _pc_identidad, _destino_modulo, MODULOS_SIN_PUESTO
+    from app.routes.puestos import _pc_identidad, _destino_modulo, MODULOS_PC, ROL_SERVIDOR
     permitidos = set(MODULOS_APP.keys())  # por defecto, todos
     if gate_operario_activo():
         nombre = session.get('operario_actual')
-
-        # Un PC dedicado a mangueras/manguitos no tiene nada que hacer en la
-        # rejilla: entra directo a su módulo. Así llegar aquí a mano (o con el
-        # botón atrás del navegador) tampoco abre la puerta al resto de
-        # módulos. Si el operario NO tiene permiso para el módulo del equipo
-        # se deja pasar a la rejilla a propósito: redirigir le mandaría a un
-        # 403 del que no podría salir.
         modulo_pc, _, _ = _pc_identidad()
-        if modulo_pc in MODULOS_SIN_PUESTO:
+
+        # El servidor ve y puede todo, sin tarjeta.
+        if modulo_pc == ROL_SERVIDOR:
+            return render_template('modules.html', permitidos=permitidos)
+
+        # PC de planta: a su módulo. Si el operario NO tiene permiso para el
+        # módulo del equipo se le deja ver la rejilla a propósito: redirigirle
+        # le mandaría a un 403 del que no podría salir.
+        if modulo_pc in MODULOS_PC:
             from app.routes.base import operario_puede
             if nombre and operario_puede(nombre, modulo_pc):
                 return redirect(_destino_modulo(modulo_pc))
@@ -189,8 +204,14 @@ def manual():
 @bp.route('/v3')
 @requiere_modulo('engastado')
 def index_v3():
-    """Vista principal V3 - Sistema de bonos"""
-    return render_template('index-v3.html')
+    """Vista principal V3 - Sistema de bonos.
+
+    Es el destino directo de un PC de engastado: al pasar la tarjeta se entra
+    aquí, no a la rejilla. Por eso pc_dedicado -- en ese caso cerrar V3 es
+    salir (volver al lector), no volver a /modules.
+    """
+    from app.auth import pc_dedicado_a
+    return render_template('index-v3.html', pc_dedicado=pc_dedicado_a('engastado'))
 
 
 @bp.route('/admin')

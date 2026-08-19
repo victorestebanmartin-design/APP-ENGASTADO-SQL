@@ -30,6 +30,7 @@ from app.excel_manager import ExcelManager
 from app.auth import (
     requiere_pin_admin,
     requiere_modulo,
+    pc_dedicado_a,
     proteccion_activa,
     sesion_admin_valida,
     marcar_sesion_admin,
@@ -66,24 +67,6 @@ def _respuesta_descarga_manguitos(ficheros: dict, ref: str, edicion: str):
                      download_name=zip_nombre)
 
 
-def _pc_dedicado_a(modulo):
-    """True si ESTE equipo está dedicado a ese módulo y hay gate de login.
-
-    Distingue los dos modos de llegar a la página:
-      - PC dedicado (mangueras/manguitos): el módulo es todo lo que hace ese
-        equipo, así que cerrarlo es una salida -> se cierra la sesión y se
-        vuelve al lector de tarjetas.
-      - PC de engastado o el servidor, que ha abierto el módulo desde la
-        rejilla de /modules: cerrar es simplemente volver a la rejilla.
-    """
-    from app.routes.puestos import _pc_identidad
-    from app.auth import gate_operario_activo
-    if not gate_operario_activo():
-        return False
-    modulo_pc, _, _ = _pc_identidad()
-    return modulo_pc == modulo
-
-
 @bp.route('/manguitos')
 @requiere_modulo('manguitos')
 def manguitos():
@@ -98,7 +81,7 @@ def manguitos():
     _, puesto_id, puesto_nombre = _pc_identidad()
     return render_template('manguitos.html', puesto_id=puesto_id,
                            puesto_nombre=puesto_nombre,
-                           pc_dedicado=_pc_dedicado_a('manguitos'))
+                           pc_dedicado=pc_dedicado_a('manguitos'))
 
 
 @bp.route('/mangueras')
@@ -109,7 +92,7 @@ def mangueras():
     _, puesto_id, puesto_nombre = _pc_identidad()
     return render_template('mangueras.html', puesto_id=puesto_id,
                            puesto_nombre=puesto_nombre,
-                           pc_dedicado=_pc_dedicado_a('mangueras'))
+                           pc_dedicado=pc_dedicado_a('mangueras'))
 
 
 @bp.route('/api/mangueras/datos', methods=['POST'])

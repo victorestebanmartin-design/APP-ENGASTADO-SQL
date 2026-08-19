@@ -70,8 +70,17 @@ async function salirEngastadoV3() {
     operarioTagUid = null;
     sessionStorage.removeItem('operario_actual');
 
+    // Además del login de trabajo, cerrar la sesión global del navegador: si
+    // no, en un PC dedicado el siguiente que llegara entraría sin tarjeta.
+    try {
+        await fetch('/api/sesion/operario/salir', { method: 'POST' });
+    } catch (_) { /* continuar igualmente */ }
+
     // beforeunload también limpia bloqueos/sesión de trabajo al abandonar.
-    window.location.href = '/modules';
+    // En un PC dedicado a engastado se vuelve al lector; en el servidor, a la
+    // rejilla de módulos, que es su pantalla natural.
+    const dedicado = typeof PC_DEDICADO_ENGASTADO !== 'undefined' && PC_DEDICADO_ENGASTADO;
+    window.location.href = dedicado ? '/login' : '/modules';
 }
 
 function _activarOperario(nombre) {

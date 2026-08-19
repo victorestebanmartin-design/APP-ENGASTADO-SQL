@@ -77,6 +77,8 @@
         .mod-card.engastado:hover { border-color: #a78bfa; background: rgba(167,139,250,.08); }
         .mod-card.mangueras:hover { border-color: #38bdf8; background: rgba(56,189,248,.08); }
         .mod-card.manguitos:hover { border-color: #34d399; background: rgba(52,211,153,.08); }
+        .mod-card.servidor { border-style: dashed; }
+        .mod-card.servidor:hover { border-color: #fbbf24; background: rgba(251,191,36,.08); }
 
         /* ── Paso 2: puesto de engastado ── */
         .back-btn {
@@ -213,10 +215,19 @@
                         <div class="mc-des">Entrada directa, sin puestos</div>
                     </span>
                 </button>
+                <button class="mod-card servidor" onclick="elegirModulo('servidor')">
+                    <span class="mc-ico">🖥️</span>
+                    <span>
+                        <div class="mc-nom">Servidor</div>
+                        <div class="mc-des">Todos los módulos, sin pedir tarjeta</div>
+                    </span>
+                </button>
             </div>
             <div class="sel-nota">
-                El operario tendrá que seguir pasando su tarjeta, y solo entrará
-                si tiene ese módulo permitido en Admin → Operarios.
+                En un PC de planta el operario entra <strong>directo a su módulo</strong>
+                pasando la tarjeta, y solo si lo tiene permitido en Admin → Operarios.
+                El <strong>servidor</strong> es la excepción: ve la rejilla completa y no
+                pide tarjeta (ahí manda el acceso físico y el PIN de administración).
             </div>
         </div>
 

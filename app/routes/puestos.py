@@ -69,15 +69,29 @@ COOKIE_PUESTO_PC = 'puesto_pc_id'
 COOKIE_PC_MODULO = 'pc_modulo'
 COOKIE_PUESTO_PC_MAX_AGE = 315360000  # ~10 anios
 
-# Modulos a los que se puede dedicar un PC.
+# Modulos a los que se puede dedicar un PC de planta. Un PC dedicado entra
+# DIRECTO a su modulo al identificarse: nunca ve la rejilla de /modules.
 MODULOS_PC = ('engastado', 'mangueras', 'manguitos')
-# De esos, los que NO llevan puesto asociado (entran directos al modulo).
+
+# El servidor es el caso aparte: no es un puesto de trabajo, es la maquina
+# desde la que se administra todo. Ahi si tiene sentido la rejilla completa,
+# y sin pedir tarjeta -- el control de quien la toca es fisico (quien puede
+# sentarse delante) mas el PIN de administracion.
+ROL_SERVIDOR = 'servidor'
+
+# Todo lo que puede ser un PC.
+ROLES_PC = MODULOS_PC + (ROL_SERVIDOR,)
+# De esos, los que NO llevan puesto asociado.
+ROLES_SIN_PUESTO = ('mangueras', 'manguitos', ROL_SERVIDOR)
+# Compatibilidad: los modulos (sin el servidor) que no llevan puesto.
 MODULOS_SIN_PUESTO = ('mangueras', 'manguitos')
+
 # Como se llaman de cara al operario (pantallas de login y de configuracion).
 MODULOS_APP_LABEL = {
     'engastado': 'Engastado',
     'mangueras': 'Preparación de Mangueras',
     'manguitos': 'Colocación de Manguitos',
+    ROL_SERVIDOR: 'Servidor',
 }
 
 
@@ -145,16 +159,16 @@ def _pc_identidad():
     equipo = _pc_equipo_por_ip(ip)
     if equipo:
         modulo = equipo['modulo']
-        if modulo in MODULOS_SIN_PUESTO:
+        if modulo in ROLES_SIN_PUESTO:
             return modulo, None, None
         puesto = repo.obtener_puesto(equipo['puesto_id']) if equipo['puesto_id'] else None
         if puesto:
             return 'engastado', puesto['id'], puesto['nombre']
 
-    # 3. Cookies. El modulo puede estar sin puesto (mangueras/manguitos); si es
-    #    engastado hace falta ademas un puesto valido.
+    # 3. Cookies. El rol puede no llevar puesto (mangueras/manguitos/servidor);
+    #    si es engastado hace falta ademas un puesto valido.
     modulo_cookie = (request.cookies.get(COOKIE_PC_MODULO) or '').strip().lower()
-    if modulo_cookie in MODULOS_SIN_PUESTO:
+    if modulo_cookie in ROLES_SIN_PUESTO:
         return modulo_cookie, None, None
 
     puesto_id = (request.cookies.get(COOKIE_PUESTO_PC) or '').strip()
@@ -178,10 +192,17 @@ def _puesto_pc_actual():
 
 
 def _destino_modulo(modulo):
-    """Ruta a la que entra directamente un PC dedicado a ese modulo."""
+    """Ruta a la que entra directamente un PC segun su rol.
+
+    Un PC de planta va a SU modulo, no a la rejilla: el operario de un puesto
+    de engastado entra a engastar, no a elegir. La rejilla de /modules es cosa
+    del servidor, que es el unico que hace de todo.
+    """
     return {
+        'engastado': '/v3',
         'mangueras': '/mangueras',
         'manguitos': '/manguitos',
+        ROL_SERVIDOR: '/modules',
     }.get(modulo, '/modules')
 
 
@@ -210,9 +231,9 @@ def api_pc_configurar():
     try:
         data = request.get_json(silent=True) or {}
         modulo = (data.get('modulo') or '').strip().lower()
-        if modulo not in MODULOS_PC:
+        if modulo not in ROLES_PC:
             return jsonify({'success': False,
-                            'error': f'Módulo no válido (usa: {", ".join(MODULOS_PC)})'}), 400
+                            'error': f'Rol no válido (usa: {", ".join(ROLES_PC)})'}), 400
 
         # Reconfiguracion: exige PIN si la proteccion esta activa.
         modulo_actual, _, _ = _pc_identidad()
