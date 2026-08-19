@@ -6,6 +6,46 @@ tareas puntuales (insertar datos, diagnosticar errores, arreglar algo roto).
 
 ---
 
+## Puesta en marcha de un PC de puesto
+
+| Archivo | Para qué sirve |
+|---------|----------------|
+| `configurar_pc_puesto.ps1` | Quita el «No es seguro» del navegador y crea el acceso directo sin barra de direcciones |
+| `generar_pin_hash.py` | Generar el `ADMIN_PIN_HASH` del `.env` |
+
+### El aviso «No es seguro»
+
+No lo pone la app: lo pone el navegador porque se entra por `http://` en vez
+de `https://`. Los navegadores marcan así **todo** origen que no sea https,
+con la única excepción de `localhost` — da igual que la red esté aislada y sin
+internet. Por eso el servidor no lo ve (entra por `localhost`) y los puestos sí
+(entran por `http://192.168.50.1:5001`).
+
+Montar https de verdad pediría un certificado y meterlo en el almacén de
+confianza de cada PC, para no ganar nada: en una red de planta cerrada no hay
+nadie en medio de quien protegerse. La alternativa práctica es decirle al
+navegador, por política de empresa, que ese origen concreto es de fiar:
+
+```powershell
+# En el PC del puesto, como administrador:
+powershell -ExecutionPolicy Bypass -File .\configurar_pc_puesto.ps1
+```
+
+Luego hay que **cerrar el navegador del todo** y volver a abrirlo. Para
+comprobar que la política está puesta: `chrome://policy`.
+
+De paso arregla algo que estaba roto sin que se notara: sobre `http://` con
+una IP, el navegador no permite registrar el *service worker*, así que la app
+nunca ofrecía **«Instalar aplicación»** en los puestos (ver
+`templates/_head_pwa.html`). Al marcar el origen como de confianza pasa a ser
+«contexto seguro» y la instalación vuelve a estar disponible.
+
+El acceso directo que crea abre la app con `--app=`, es decir sin barra de
+direcciones, sin pestañas y sin botones de navegación: en un puesto el
+operario no tiene por qué ver ninguna URL ni poder irse a otro sitio.
+
+---
+
 ## Scripts de verificación / diagnóstico
 
 | Archivo | Para qué sirvió |
