@@ -25,7 +25,7 @@
             border-radius: 16px;
             padding: 38px 34px;
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             box-shadow: 0 18px 50px rgba(0,0,0,.45);
             text-align: center;
         }
@@ -95,6 +95,18 @@
             font-size: 0.8em;
         }
         .sel-admin-link:hover { color: #94a3b8; }
+
+        /* badges de módulo en el select */
+        .sel-modulo-hint {
+            font-size: 0.78em;
+            color: #64748b;
+            margin-bottom: 10px;
+            font-family: 'DM Mono', monospace;
+            letter-spacing: .06em;
+        }
+        .mod-badge-engastado { color: #a78bfa; }
+        .mod-badge-mangueras { color: #94a3b8; }
+        .mod-badge-manguitos { color: #38bdf8; }
     </style>
 </head>
 <body>
@@ -109,12 +121,26 @@
 
         <div id="sel-error" class="sel-error"></div>
 
-        <select id="sel-puesto" class="sel-select">
-            <option value="">— Selecciona un puesto —</option>
+        <p class="sel-modulo-hint">
+            <span class="mod-badge-engastado">■ engastado</span> &nbsp;
+            <span class="mod-badge-mangueras">■ mangueras</span> &nbsp;
+            <span class="mod-badge-manguitos">■ manguitos</span>
+        </p>
+
+        <select id="sel-puesto" class="sel-select" onchange="actualizarModuloBadge()">
+            <option value="" data-modulo="">— Selecciona un puesto —</option>
             {% for p in puestos %}
-            <option value="{{ p.id }}" {{ 'selected' if p.id == puesto_actual_id else '' }}>{{ p.nombre }}</option>
+            {% set modulo = p.modulo or 'engastado' %}
+            {% set icono = '🔧' if modulo == 'engastado' else ('🌊' if modulo == 'mangueras' else '🔩') %}
+            <option value="{{ p.id }}"
+                    data-modulo="{{ modulo }}"
+                    {{ 'selected' if p.id == puesto_actual_id else '' }}>
+                {{ icono }} {{ p.nombre }}{% if p.ip_fija %} [IP: {{ p.ip_fija }}]{% endif %}
+            </option>
             {% endfor %}
         </select>
+
+        <div id="sel-modulo-info" style="font-size:0.82em; color:#64748b; margin-bottom:14px; font-family:'DM Mono',monospace; display:none;"></div>
 
         <button id="sel-btn" class="sel-btn" onclick="confirmarPuestoPC()">Confirmar</button>
 
@@ -129,11 +155,42 @@
         const PUESTO_ACTUAL_ID = {{ puesto_actual_id | tojson }};
         const URL_GUARDAR = PUESTO_ACTUAL_ID ? '/api/puesto/pc/reasignar' : '/api/puesto/pc';
 
+        // Destinos por módulo
+        const DESTINOS_MODULO = {
+            engastado:  '/modules',
+            mangueras:  '/mangueras',
+            manguitos:  '/manguitos',
+        };
+        const LABELS_MODULO = {
+            engastado:  '→ irá al panel de engastado',
+            mangueras:  '→ irá directamente a Preparación Mangueras',
+            manguitos:  '→ irá directamente a Manguitos',
+        };
+
+        function actualizarModuloBadge() {
+            const sel = document.getElementById('sel-puesto');
+            const opt = sel.options[sel.selectedIndex];
+            const modulo = opt ? (opt.dataset.modulo || '') : '';
+            const info = document.getElementById('sel-modulo-info');
+            if (modulo && LABELS_MODULO[modulo]) {
+                info.textContent = LABELS_MODULO[modulo];
+                info.style.display = 'block';
+            } else {
+                info.style.display = 'none';
+            }
+        }
+
+        // Inicializar badge si hay selección previa
+        actualizarModuloBadge();
+
         async function confirmarPuestoPC() {
             const sel = document.getElementById('sel-puesto');
             const err = document.getElementById('sel-error');
             const btn = document.getElementById('sel-btn');
             const puestoId = sel.value;
+            const opt = sel.options[sel.selectedIndex];
+            const modulo = (opt ? opt.dataset.modulo : '') || 'engastado';
+
             if (!puestoId) {
                 err.textContent = 'Elige un puesto de la lista.';
                 err.style.display = 'block';
@@ -150,7 +207,8 @@
                 });
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'Error al guardar');
-                window.location.href = '/modules';
+                // Redirigir al módulo correcto según el tipo de puesto
+                window.location.href = DESTINOS_MODULO[modulo] || '/modules';
             } catch (e) {
                 err.textContent = e.message || 'No se pudo guardar. Reintenta.';
                 err.style.display = 'block';

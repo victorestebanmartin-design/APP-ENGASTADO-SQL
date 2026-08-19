@@ -67,14 +67,18 @@ def _respuesta_descarga_manguitos(ficheros: dict, ref: str, edicion: str):
 
 @bp.route('/manguitos')
 def manguitos():
-    """Guiado de colocación y pedidos de manguitos"""
-    return render_template('manguitos.html')
+    """Guiado de colocación y pedidos de manguitos."""
+    from app.routes.puestos import _puesto_pc_actual
+    puesto_id, puesto_nombre = _puesto_pc_actual()
+    return render_template('manguitos.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
 
 
 @bp.route('/mangueras')
 def mangueras():
-    """Preparación de mangueras"""
-    return render_template('mangueras.html')
+    """Preparación de mangueras."""
+    from app.routes.puestos import _puesto_pc_actual
+    puesto_id, puesto_nombre = _puesto_pc_actual()
+    return render_template('mangueras.html', puesto_id=puesto_id, puesto_nombre=puesto_nombre)
 
 
 @bp.route('/api/mangueras/datos', methods=['POST'])

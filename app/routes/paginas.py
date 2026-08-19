@@ -116,15 +116,36 @@ def puesto_seleccionar():
     YA tenía un puesto asignado, esto es una reasignación -- exige la misma
     sesión de admin que el resto del panel, así que se manda por el PIN
     (con next= de vuelta aquí) antes de mostrar nada.
+
+    Si se identifica automáticamente por IP, redirige directo al módulo del puesto.
     """
-    from app.routes.puestos import _puesto_pc_actual
+    from app.routes.puestos import _puesto_pc_actual, _ip_cliente
+    from repositories.puesto_repository import PuestoRepository
+
+    repo = PuestoRepository(db)
+
+    # Si la IP del cliente ya está mapeada a un puesto, redirigir directamente
+    ip = _ip_cliente()
+    if ip:
+        puesto_ip = repo.obtener_puesto_por_ip(ip)
+        if puesto_ip:
+            return _redirigir_segun_modulo(puesto_ip.get('modulo') or 'engastado')
+
     puesto_id_actual, _ = _puesto_pc_actual()
     if puesto_id_actual and proteccion_activa() and not sesion_admin_valida():
         return redirect(url_for('main.admin_pin', next=url_for('main.puesto_seleccionar')))
 
-    from repositories.puesto_repository import PuestoRepository
-    puestos = PuestoRepository(db).obtener_todos_puestos()
+    puestos = repo.obtener_todos_puestos()
     return render_template('puesto_selector.html', puestos=puestos, puesto_actual_id=puesto_id_actual)
+
+
+def _redirigir_segun_modulo(modulo: str):
+    """Devuelve redirect al módulo correcto según el tipo de puesto."""
+    destinos = {
+        'mangueras': url_for('main.mangueras'),
+        'manguitos': url_for('main.manguitos'),
+    }
+    return redirect(destinos.get(modulo, url_for('main.modules')))
 
 
 @bp.route('/login')

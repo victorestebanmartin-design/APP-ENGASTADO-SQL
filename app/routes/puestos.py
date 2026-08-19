@@ -61,14 +61,38 @@ BOTONES_PUESTO_MAX = 7
 COOKIE_PUESTO_PC = 'puesto_pc_id'
 COOKIE_PUESTO_PC_MAX_AGE = 315360000  # ~10 anios
 
+MODULOS_PUESTO = ('engastado', 'mangueras', 'manguitos')
+
+
+def _ip_cliente():
+    """IP real del cliente considerando cabeceras de proxy."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return (request.remote_addr or '').strip()
+
 
 def _puesto_pc_actual():
-    """(puesto_id, nombre) del puesto asignado a ESTE navegador, o (None, None)
-    si no hay cookie o el puesto ya no existe/esta inactivo."""
+    """(puesto_id, nombre) del puesto asignado a ESTE navegador, o (None, None).
+
+    Prioridad:
+      1. IP fija configurada para este puesto en la BD → identificación automática.
+      2. Cookie de larga duración (método anterior, sigue funcionando como fallback).
+    """
+    repo = PuestoRepository(db)
+
+    # 1. Identificación por IP estática
+    ip = _ip_cliente()
+    if ip:
+        puesto = repo.obtener_puesto_por_ip(ip)
+        if puesto:
+            return puesto['id'], puesto['nombre']
+
+    # 2. Identificación por cookie
     puesto_id = (request.cookies.get(COOKIE_PUESTO_PC) or '').strip()
     if not puesto_id:
         return None, None
-    puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+    puesto = repo.obtener_puesto(puesto_id)
     if not puesto:
         return None, None
     return puesto_id, puesto['nombre']
@@ -78,7 +102,11 @@ def _puesto_pc_actual():
 def api_puesto_pc_get():
     """Puesto asignado a este navegador (o null si aun no se ha elegido)."""
     puesto_id, nombre = _puesto_pc_actual()
-    return jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': nombre})
+    modulo = None
+    if puesto_id:
+        puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+        modulo = puesto.get('modulo') if puesto else None
+    return jsonify({'success': True, 'puesto_id': puesto_id, 'puesto_nombre': nombre, 'modulo': modulo})
 
 
 @bp.route('/api/puesto/pc', methods=['POST'])
@@ -196,38 +224,47 @@ def api_crear_puesto():
     """Crear nuevo puesto"""
     try:
         data = request.get_json()
-        
+
         nombre = data.get('nombre', '').strip()
         descripcion = data.get('descripcion', '').strip()
-        
+        modulo = (data.get('modulo') or 'engastado').strip().lower()
+        if modulo not in MODULOS_PUESTO:
+            modulo = 'engastado'
+        ip_fija = (data.get('ip_fija') or '').strip() or None
+
         if not nombre:
-            return jsonify({
-                'success': False,
-                'message': 'El nombre del puesto es obligatorio'
-            }), 400
-        
-        # Generar ID único
+            return jsonify({'success': False, 'message': 'El nombre del puesto es obligatorio'}), 400
+
+        # Validar IP si se proporcionó
+        if ip_fija:
+            import ipaddress
+            try:
+                ipaddress.ip_address(ip_fija)
+            except ValueError:
+                return jsonify({'success': False, 'message': 'IP no válida'}), 400
+
         puesto_repo = PuestoRepository(db)
+
+        # Comprobar IP no duplicada
+        if ip_fija:
+            existente = puesto_repo.obtener_puesto_por_ip(ip_fija)
+            if existente:
+                return jsonify({'success': False,
+                                'message': f'La IP {ip_fija} ya está asignada al puesto "{existente["nombre"]}"'}), 409
+
         puestos_existentes = puesto_repo.obtener_todos_puestos(solo_activos=False)
-        
+
         import random
         new_id = f"puesto_{len(puestos_existentes) + 1:03d}"
         while any(p['id'] == new_id for p in puestos_existentes):
             new_id = f"puesto_{len(puestos_existentes) + 1:03d}_{random.randint(100, 999)}"
-        
-        # Crear puesto
-        if puesto_repo.crear_puesto(new_id, nombre, descripcion):
+
+        if puesto_repo.crear_puesto(new_id, nombre, descripcion, modulo=modulo, ip_fija=ip_fija):
             nuevo_puesto = puesto_repo.obtener_puesto(new_id)
-            return jsonify({
-                'success': True,
-                'puesto': nuevo_puesto
-            })
+            return jsonify({'success': True, 'puesto': nuevo_puesto})
         else:
-            return jsonify({
-                'success': False,
-                'message': 'Error al crear el puesto'
-            }), 500
-            
+            return jsonify({'success': False, 'message': 'Error al crear el puesto'}), 500
+
     except Exception as e:
         return error_interno(e, 'Error al crear puesto')
 
@@ -276,18 +313,41 @@ def api_actualizar_puesto(puesto_id):
                                     'message': f'El botón {boton} ya está asignado al puesto '
                                                f'"{ocupado["nombre"]}"'}), 409
 
+        # Módulo del puesto: 'engastado' | 'mangueras' | 'manguitos'
+        modulo = None
+        if 'modulo' in data:
+            modulo = (data.get('modulo') or 'engastado').strip().lower()
+            if modulo not in MODULOS_PUESTO:
+                modulo = 'engastado'
+
+        # IP fija: dirección IP estática o '' para limpiar
+        ip_fija, limpiar_ip = None, False
+        if 'ip_fija' in data:
+            crudo_ip = (data.get('ip_fija') or '').strip()
+            if not crudo_ip:
+                limpiar_ip = True
+            else:
+                import ipaddress
+                try:
+                    ipaddress.ip_address(crudo_ip)
+                    ip_fija = crudo_ip
+                except ValueError:
+                    return jsonify({'success': False, 'message': 'IP no válida'}), 400
+                # Comprobar que no la use otro puesto
+                otro = puesto_repo.obtener_puesto_por_ip(ip_fija)
+                if otro and otro['id'] != puesto_id:
+                    return jsonify({'success': False,
+                                    'message': f'La IP {ip_fija} ya está asignada al puesto '
+                                               f'"{otro["nombre"]}"'}), 409
+
         if puesto_repo.actualizar_puesto(puesto_id, nombre, descripcion,
-                                         boton=boton, limpiar_boton=limpiar_boton):
+                                         boton=boton, limpiar_boton=limpiar_boton,
+                                         modulo=modulo,
+                                         ip_fija=ip_fija, limpiar_ip=limpiar_ip):
             puesto_actualizado = puesto_repo.obtener_puesto(puesto_id)
-            return jsonify({
-                'success': True,
-                'puesto': puesto_actualizado
-            })
+            return jsonify({'success': True, 'puesto': puesto_actualizado})
         else:
-            return jsonify({
-                'success': False,
-                'message': 'No se realizaron cambios'
-            }), 400
+            return jsonify({'success': False, 'message': 'No se realizaron cambios'}), 400
             
     except Exception as e:
         return error_interno(e, 'Error al actualizar puesto')

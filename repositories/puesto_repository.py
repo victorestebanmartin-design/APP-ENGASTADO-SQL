@@ -7,56 +7,49 @@ from .base_repository import BaseRepository
 
 class PuestoRepository(BaseRepository):
     """Repositorio para puestos de trabajo"""
-    
-    def crear_puesto(self, id: str, nombre: str, descripcion: Optional[str] = None) -> bool:
-        """
-        Crear nuevo puesto de trabajo
-        
-        Args:
-            id: ID único del puesto
-            nombre: Nombre del puesto
-            descripcion: Descripción opcional
-        
-        Returns:
-            True si se creó correctamente
-        """
+
+    def crear_puesto(self, id: str, nombre: str, descripcion: Optional[str] = None,
+                     modulo: str = 'engastado', ip_fija: Optional[str] = None) -> bool:
+        """Crear nuevo puesto de trabajo."""
         query = """
-            INSERT INTO puestos (id, nombre, descripcion, activo)
-            VALUES (:id, :nombre, :descripcion, 1)
+            INSERT INTO puestos (id, nombre, descripcion, activo, modulo, ip_fija)
+            VALUES (:id, :nombre, :descripcion, 1, :modulo, :ip_fija)
         """
         params = {
             'id': id,
             'nombre': nombre,
-            'descripcion': descripcion
+            'descripcion': descripcion,
+            'modulo': modulo or 'engastado',
+            'ip_fija': ip_fija or None,
         }
         try:
             self.execute_insert(query, params)
             return True
         except Exception:
             return False
-    
+
     def obtener_puesto(self, id: str) -> Optional[Dict]:
         """Obtener un puesto por ID"""
         query = "SELECT * FROM puestos WHERE id = :id AND activo = 1"
         resultados = self.execute_select(query, {'id': id})
         return resultados[0] if resultados else None
-    
+
+    def obtener_puesto_por_ip(self, ip: str) -> Optional[Dict]:
+        """Puesto activo cuya ip_fija coincide con la IP del cliente."""
+        if not ip:
+            return None
+        query = "SELECT * FROM puestos WHERE ip_fija = :ip AND activo = 1"
+        resultados = self.execute_select(query, {'ip': ip})
+        return resultados[0] if resultados else None
+
     def obtener_todos_puestos(self, solo_activos: bool = True) -> List[Dict]:
-        """
-        Obtener todos los puestos
-        
-        Args:
-            solo_activos: Si True, solo retorna puestos activos
-        
-        Returns:
-            Lista de puestos
-        """
+        """Obtener todos los puestos."""
         if solo_activos:
             query = "SELECT * FROM puestos WHERE activo = 1 ORDER BY nombre"
         else:
             query = "SELECT * FROM puestos ORDER BY nombre"
         return self.execute_select(query)
-    
+
     def obtener_puesto_por_boton(self, boton: int) -> Optional[Dict]:
         """Puesto activo asociado a un botón de la pantalla del carro (1-7)."""
         query = "SELECT * FROM puestos WHERE boton = :b AND activo = 1"
@@ -64,14 +57,17 @@ class PuestoRepository(BaseRepository):
         return resultados[0] if resultados else None
 
     def actualizar_puesto(self, id: str, nombre: Optional[str] = None,
-                         descripcion: Optional[str] = None,
-                         boton: Optional[int] = None,
-                         limpiar_boton: bool = False) -> bool:
+                          descripcion: Optional[str] = None,
+                          boton: Optional[int] = None,
+                          limpiar_boton: bool = False,
+                          modulo: Optional[str] = None,
+                          ip_fija: Optional[str] = None,
+                          limpiar_ip: bool = False) -> bool:
         """Actualizar información de un puesto.
 
-        boton: número de pulsador (1-7) con el que este puesto se identifica
-               en la pantalla del carro. Para quitarlo se usa limpiar_boton
-               (pasar None significa 'no tocar ese campo').
+        boton: pulsador (1-7). limpiar_boton=True lo pone a NULL.
+        ip_fija: IP estática. limpiar_ip=True la pone a NULL.
+        modulo: 'engastado' | 'mangueras' | 'manguitos'.
         """
         updates = []
         params = {'id': id}
@@ -90,13 +86,23 @@ class PuestoRepository(BaseRepository):
             updates.append("boton = :boton")
             params['boton'] = boton
 
+        if modulo is not None:
+            updates.append("modulo = :modulo")
+            params['modulo'] = modulo
+
+        if limpiar_ip:
+            updates.append("ip_fija = NULL")
+        elif ip_fija is not None:
+            updates.append("ip_fija = :ip_fija")
+            params['ip_fija'] = ip_fija
+
         if not updates:
             return False
-        
+
         updates.append("updated_at = datetime('now')")
-        
+
         query = f"""
-            UPDATE puestos 
+            UPDATE puestos
             SET {', '.join(updates)}
             WHERE id = :id
         """

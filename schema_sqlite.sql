@@ -179,6 +179,13 @@ CREATE TABLE puestos (
     -- UID (hex) de la tarjeta NFC de este puesto: alternativa al boton, el
     -- operario la pasa por el lector del carro. NULL = puesto sin tarjeta.
     tag_uid TEXT,
+    -- IP estatica de la PC de este puesto: alternativa a la cookie del
+    -- navegador. Si se rellena, cualquier peticion desde esa IP se
+    -- identifica automaticamente como este puesto sin necesitar cookie.
+    ip_fija TEXT,
+    -- Modulo al que pertenece este puesto: 'engastado' | 'mangueras' | 'manguitos'
+    -- Determina a que pagina redirige al arrancar este equipo.
+    modulo TEXT DEFAULT 'engastado',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -192,6 +199,10 @@ CREATE UNIQUE INDEX idx_puestos_boton ON puestos(boton)
 -- Una tarjeta solo puede pertenecer a un puesto activo
 CREATE UNIQUE INDEX idx_puestos_tag ON puestos(tag_uid)
     WHERE tag_uid IS NOT NULL AND activo = 1;
+
+-- Una IP fija solo puede pertenecer a un puesto activo
+CREATE UNIQUE INDEX idx_puestos_ip ON puestos(ip_fija)
+    WHERE ip_fija IS NOT NULL AND activo = 1;
 
 -- =====================================================
 -- TABLA: maquinas
