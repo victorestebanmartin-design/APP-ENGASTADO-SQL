@@ -159,6 +159,12 @@ def _apply_migrations(db_path):
     if p_cols and 'tag_uid' not in p_cols:
         cur.execute("ALTER TABLE puestos ADD COLUMN tag_uid TEXT")
         conn.commit()
+    if p_cols and 'ip_fija' not in p_cols:
+        cur.execute("ALTER TABLE puestos ADD COLUMN ip_fija TEXT")
+        conn.commit()
+    if p_cols and 'modulo' not in p_cols:
+        cur.execute("ALTER TABLE puestos ADD COLUMN modulo TEXT DEFAULT 'engastado'")
+        conn.commit()
     if p_cols:
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_boton ON puestos(boton)
@@ -167,6 +173,10 @@ def _apply_migrations(db_path):
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_tag ON puestos(tag_uid)
             WHERE tag_uid IS NOT NULL AND activo = 1
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_ip ON puestos(ip_fija)
+            WHERE ip_fija IS NOT NULL AND activo = 1
         """)
         conn.commit()
 
