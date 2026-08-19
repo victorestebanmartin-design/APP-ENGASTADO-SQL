@@ -91,21 +91,44 @@
         let _rfidEstadoTimer = null;
         let _rfidEstadoInicializado = false;
 
+        let _limpiarMsgTimer = null;
+
+        function _mensajeEspera() {
+            const msg = document.getElementById('login-msg');
+            msg.innerHTML = 'Pasa tu tarjeta por el lector...';
+            msg.style.color = '#cbd5e1';
+        }
+
+        /**
+         * Pinta el motivo por el que NO se ha podido entrar, con el consejo
+         * de qué hacer. Antes un rechazo dejaba la pantalla igual que si no
+         * hubieras pasado la tarjeta: no entrabas y no sabías por qué.
+         */
+        function mostrarMotivo(estado, motivo, consejo) {
+            const msg = document.getElementById('login-msg');
+            const rechazo = estado !== 'aviso';
+            const icono = rechazo ? '🚫' : '⚠️';
+            const color = rechazo ? '#f87171' : '#fbbf24';
+            const texto = motivo || 'No se pudo procesar la tarjeta.';
+
+            msg.innerHTML =
+                `<div style="font-size:1.5em;line-height:1;margin-bottom:8px;">${icono}</div>` +
+                `<div style="font-weight:600;">${texto}</div>` +
+                (consejo
+                    ? `<div style="font-size:.8em;color:#94a3b8;margin-top:10px;line-height:1.5;">${consejo}</div>`
+                    : '') +
+                `<div style="font-size:.75em;color:#64748b;margin-top:12px;">Puedes volver a pasar la tarjeta.</div>`;
+            msg.style.color = color;
+
+            // Estos mensajes hay que poder leerlos enteros: 12 s, y cualquier
+            // aviso nuevo cancela la limpieza del anterior.
+            if (_limpiarMsgTimer) clearTimeout(_limpiarMsgTimer);
+            _limpiarMsgTimer = setTimeout(_mensajeEspera, 12000);
+        }
+
         function _renderEstadoRfid(evento) {
             if (!evento || evento.estado === 'ok') return;
-            const msg = document.getElementById('login-msg');
-            const texto = evento.motivo || 'No se pudo procesar la tarjeta. Vuelve a pasarla.';
-            if (evento.estado === 'rechazo') {
-                msg.textContent = `✗ ${texto}`;
-                msg.style.color = '#f87171';
-            } else {
-                msg.textContent = `⚠ ${texto}`;
-                msg.style.color = '#fbbf24';
-            }
-            setTimeout(() => {
-                msg.textContent = 'Pasa tu tarjeta por el lector...';
-                msg.style.color = '#cbd5e1';
-            }, 7000);
+            mostrarMotivo(evento.estado, evento.motivo, evento.consejo);
         }
 
         function _iniciarSondeoEstadoRfid() {
@@ -114,19 +137,26 @@
                 try {
                     const q = new URLSearchParams();
                     if (PUESTO_ID) q.set('puesto_id', String(PUESTO_ID));
+                    else if (MODULO) q.set('modulo', String(MODULO));
                     if (_rfidEstadoSince) q.set('since', _rfidEstadoSince);
                     const r = await fetch(`/api/rfid/entrada/estado?${q.toString()}`);
                     const d = await r.json();
-                    const ev = d && d.success ? d.evento : null;
-                    if (ev && ev.ts) {
-                        if (!_rfidEstadoInicializado) {
-                            _rfidEstadoInicializado = true;
-                            _rfidEstadoSince = ev.ts;
-                            return;
-                        }
-                        _rfidEstadoSince = ev.ts;
-                        _renderEstadoRfid(ev);
+                    const evs = (d && d.success && d.eventos) ? d.eventos : [];
+                    if (!evs.length) return;
+
+                    const ultimo = evs[evs.length - 1];
+                    if (ultimo.ts) _rfidEstadoSince = ultimo.ts;
+
+                    // Al abrir la pantalla solo se fija la base: lo que ya
+                    // hubiera pasado antes no es asunto de esta sesión.
+                    if (!_rfidEstadoInicializado) {
+                        _rfidEstadoInicializado = true;
+                        return;
                     }
+                    // De todo lo nuevo interesa el último problema, no el
+                    // último evento a secas (un 'ok' posterior lo taparía).
+                    const problema = [...evs].reverse().find(e => e.estado !== 'ok');
+                    if (problema) _renderEstadoRfid(problema);
                 } catch (_) {
                     // Silencioso: si falla el sondeo, el login principal sigue activo.
                 }
@@ -148,27 +178,28 @@
                 .then(r => r.json())
                 .then(d => {
                     if (!d.success) {
-                        msg.textContent = d.error || 'No se pudo entrar. Vuelve a pasar la tarjeta.';
-                        msg.style.color = '#f87171';
+                        mostrarMotivo('rechazo',
+                            d.error || 'No se pudo entrar.',
+                            'Vuelve a pasar la tarjeta. Si sigue igual, avisa al administrador.');
                         return;
                     }
                     // Estar identificado no basta: el operario tiene que tener
                     // permitido el modulo de ESTE equipo (Admin -> Operarios).
                     if (d.permitido === false) {
-                        msg.innerHTML =
-                            `🚫 ${login.operario} no tiene permiso para ${MODULO_LABEL}<br>` +
-                            `<span style="font-size:.8em;color:#94a3b8;">Avisa al administrador</span>`;
-                        msg.style.color = '#f87171';
+                        mostrarMotivo('rechazo',
+                            `${login.operario} no tiene permiso para ${MODULO_LABEL}`,
+                            'Avisa al administrador para que te habilite el módulo ' +
+                            '(Admin → Operarios → Módulos permitidos).');
                         fetch('/api/sesion/operario/salir', { method: 'POST' }).catch(() => {});
-                        setTimeout(() => window.location.reload(), 6000);
+                        setTimeout(() => window.location.reload(), 12000);
                         return;
                     }
                     // Entrada directa al modulo de este PC
                     window.location.href = DESTINO || '/modules';
                 })
                 .catch(() => {
-                    msg.textContent = 'Error de conexión. Vuelve a pasar la tarjeta.';
-                    msg.style.color = '#f87171';
+                    mostrarMotivo('rechazo', 'Error de conexión con el servidor.',
+                        'Comprueba la red y vuelve a pasar la tarjeta.');
                 });
         });
 

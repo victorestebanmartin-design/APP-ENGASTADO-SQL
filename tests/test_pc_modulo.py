@@ -278,6 +278,127 @@ def test_sin_permiso_para_el_modulo_del_pc_no_hay_bucle(app, client):
     assert client.get('/modules').status_code == 200
 
 
+# ==================== Motivo del rechazo en el lector RFID ====================
+
+def _asignar_lector(app, device_id, destino):
+    """Asigna el lector desde Admin. destino: id de puesto o 'modulo:manguitos'."""
+    import json
+    import os
+    import time as _time
+    with app.app_context():
+        ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+        with open(ruta, 'w') as f:
+            json.dump({device_id: {}}, f)
+
+    # El endpoint esta protegido por PIN: hace falta sesion de admin.
+    admin = app.test_client()
+    with admin.session_transaction() as s:
+        s['admin_verificado'] = True
+        s['admin_verificado_ts'] = _time.time()
+    r = admin.post(f'/api/esp32/rfid/devices/{device_id}', json={'puesto_id': destino})
+    assert r.get_json()['success'], r.get_json()
+    return r
+
+
+def _pasar_tarjeta(client, uid, device_id='lector01'):
+    return client.post('/api/puestos/engastado_v3/entrada',
+                       json={'tag_uid': uid, 'device_id': device_id})
+
+
+def _estado(client, **params):
+    from urllib.parse import urlencode
+    d = client.get(f'/api/rfid/entrada/estado?{urlencode(params)}').get_json()
+    return d['eventos']
+
+
+def test_pantalla_login_de_un_pc_de_modulo(client):
+    """Sin puesto, la pantalla sondea por módulo y sabe a dónde entrar."""
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
+    cuerpo = client.get('/login').get_data(as_text=True)
+    assert 'modulo=' in cuerpo or 'MODULO' in cuerpo
+    assert 'Colocación de Manguitos' in cuerpo
+    assert 'mostrarMotivo' in cuerpo
+
+
+def test_pantalla_login_de_un_puesto_de_engastado(client, admin_client):
+    puesto = _crear_puesto(admin_client)
+    client.post('/api/pc/configurar', json={'modulo': 'engastado', 'puesto_id': puesto['id']})
+    cuerpo = client.get('/login').get_data(as_text=True)
+    assert 'PUNTERAS' in cuerpo
+
+
+def test_tarjeta_no_registrada_dice_el_motivo_y_que_hacer(app, client, admin_client):
+    puesto = _crear_puesto(admin_client)
+    _asignar_lector(app, 'lector01', puesto['id'])
+
+    r = _pasar_tarjeta(client, 'AABBCCDD')
+    assert r.status_code == 404
+
+    ev = _estado(client, puesto_id=puesto['id'])[-1]
+    assert ev['estado'] == 'rechazo'
+    assert ev['error_code'] == 'TAG_NO_REG'
+    assert 'no registrada' in ev['motivo']
+    assert 'administrador' in ev['consejo']
+
+
+def test_lector_sin_asignar_avisa_en_todas_las_pantallas(app, client):
+    """El lector que nadie ha casado no es de ningún PC: el aviso va a todos."""
+    op = client.post('/api/operarios', json={'nombre': 'Nora'}).get_json()['operario']
+    client.put(f"/api/operarios/{op['id']}", json={'tag_uid': 'AABBCCDD'})
+
+    _pasar_tarjeta(client, 'AABBCCDD', device_id='huerfano')
+
+    avisos = [e for e in _estado(client, modulo='manguitos')
+              if e['error_code'] == 'LECTOR_SIN_ASIGNAR']
+    assert avisos, 'el aviso de lector sin asignar debe llegar igualmente'
+    assert 'Lectores RFID' in avisos[-1]['consejo']
+
+
+def test_sin_permiso_se_rechaza_en_el_lector_con_su_motivo(app, client):
+    """Mejor rechazar en el lector que crear un login y rebotarlo después."""
+    _activar_gate(app)
+    _asignar_lector(app, 'lector01', 'modulo:manguitos')
+    op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
+    client.put(f"/api/operarios/{op['id']}",
+               json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
+
+    r = _pasar_tarjeta(client, 'AABBCCDD')
+    assert r.status_code == 403
+    assert 'no tiene permiso' in r.get_json()['error']
+
+    ev = _estado(client, modulo='manguitos')[-1]
+    assert ev['error_code'] == 'SIN_PERMISO'
+    assert 'Olga' in ev['motivo']
+    assert 'Módulos permitidos' in ev['consejo']
+
+    # y no se ha gastado el login exclusivo del operario
+    assert client.get('/api/operarios/logins').get_json()['logins'] == []
+
+
+def test_con_permiso_si_entra(app, client):
+    _activar_gate(app)
+    _asignar_lector(app, 'lector01', 'modulo:manguitos')
+    op = client.post('/api/operarios', json={'nombre': 'Pau'}).get_json()['operario']
+    client.put(f"/api/operarios/{op['id']}",
+               json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['manguitos']})
+
+    r = _pasar_tarjeta(client, 'AABBCCDD')
+    assert r.status_code == 200
+    logins = client.get('/api/operarios/logins?modulo=manguitos').get_json()['logins']
+    assert [l['operario'] for l in logins] == ['Pau']
+
+
+def test_los_rechazos_de_otro_puesto_no_ensucian_mi_pantalla(app, client, admin_client):
+    p1 = _crear_puesto(admin_client, 'PUESTO UNO')
+    p2 = _crear_puesto(admin_client, 'PUESTO DOS')
+    _asignar_lector(app, 'lector01', p1['id'])
+    _pasar_tarjeta(client, 'AABBCCDD')          # tarjeta desconocida en p1
+
+    ajenos = [e for e in _estado(client, puesto_id=p2['id'])
+              if e['error_code'] == 'TAG_NO_REG']
+    assert ajenos == []
+
+
 def test_adoptar_avisa_de_la_falta_de_permisos(app, client):
     """La pantalla de login puede avisar en el acto, sin mandar a un 403."""
     _activar_gate(app)

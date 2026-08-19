@@ -29,6 +29,7 @@ from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
 from app.auth import (
     requiere_pin_admin,
+    gate_operario_activo,
     proteccion_activa,
     sesion_admin_valida,
     marcar_sesion_admin,
@@ -540,11 +541,17 @@ def _rfid_estado_file_path():
 
 
 def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag_uid=None,
-                           puesto_id=None, puesto_nombre=None, operario_nombre=None):
+                           puesto_id=None, puesto_nombre=None, operario_nombre=None,
+                           modulo=None, consejo=''):
     """Guarda el ultimo estado de entrada RFID para mostrar feedback en UI.
 
     Se conserva un historial corto (ultimos 120) para tolerar que haya varias
     pantallas sondeando a la vez y no perder un rechazo entre sondeos.
+
+    modulo se guarda porque los PCs de mangueras/manguitos no tienen puesto y
+    filtran por ahi. consejo es la accion concreta que puede hacer quien lee
+    el mensaje ("avisa al administrador", "pasa la tarjeta otra vez"...): sin
+    eso un rechazo deja al operario parado sin saber que hacer.
     """
     try:
         with open(_rfid_estado_file_path()) as f:
@@ -556,11 +563,13 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
         'ts': datetime.now().isoformat(),
         'estado': estado,
         'motivo': motivo or '',
+        'consejo': consejo or '',
         'error_code': error_code or '',
         'device_id': (device_id or '')[:32],
         'tag_uid': (tag_uid or '')[:20],
         'puesto_id': (puesto_id or '')[:24],
         'puesto_nombre': puesto_nombre or '',
+        'modulo': (modulo or '')[:24],
         'operario_nombre': operario_nombre or '',
     })
     with open(_rfid_estado_file_path(), 'w') as f:
@@ -569,14 +578,22 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
 
 @bp.route('/api/rfid/entrada/estado', methods=['GET'])
 def api_rfid_entrada_estado():
-    """Devuelve el último evento de entrada RFID (opcionalmente por puesto).
+    """Devuelve el último evento de entrada RFID que le incumbe a este PC.
 
     Query params:
-      - puesto_id: filtra por puesto
-      - since: devuelve solo eventos con ts > since (ISO datetime)
+      - puesto_id: este PC es ese puesto de engastado
+      - modulo:    este PC esta dedicado a ese modulo (mangueras/manguitos)
+      - since:     devuelve solo eventos con ts > since (ISO datetime)
+
+    Un evento le incumbe a un PC si viene de SU puesto, de SU modulo, o de un
+    lector SIN ASIGNAR. Ese ultimo caso es a proposito: un lector que nadie ha
+    casado con un puesto ni con un modulo no "pertenece" a ningun PC, asi que
+    si no se enseñara en todos, el operario se quedaria mirando la pantalla
+    sin que pasara nada y sin saber por que.
     """
     try:
         puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        modulo = (request.args.get('modulo') or '').strip()[:24]
         since = (request.args.get('since') or '').strip()
 
         try:
@@ -585,17 +602,35 @@ def api_rfid_entrada_estado():
         except Exception:
             eventos = []
 
-        evento = None
-        for ev in reversed(eventos):
-            if puesto_id and (ev.get('puesto_id') or '') != puesto_id:
+        def _me_incumbe(ev):
+            ev_puesto = (ev.get('puesto_id') or '').strip()
+            ev_modulo = (ev.get('modulo') or '').strip()
+            if not ev_puesto and not ev_modulo:
+                return True                      # lector sin asignar
+            if puesto_id and ev_puesto == puesto_id:
+                return True
+            if modulo and ev_modulo == modulo:
+                return True
+            # Un PC que no dice quien es (Engastado V3 clasico) lo ve todo
+            return not puesto_id and not modulo
+
+        # Se devuelven TODOS los nuevos, no solo el ultimo: un mismo escaneo
+        # puede dejar un aviso ('este lector no esta asignado') seguido de un
+        # 'ok', y quedarnos con el ultimo se comeria el aviso. 'evento' se
+        # mantiene (= el mas reciente) por compatibilidad con Engastado V3.
+        nuevos = []
+        for ev in eventos:
+            if not _me_incumbe(ev):
                 continue
             ts = ev.get('ts') or ''
             if since and ts and ts <= since:
                 continue
-            evento = ev
-            break
+            nuevos.append(ev)
 
-        return jsonify({'success': True, 'evento': evento})
+        nuevos = nuevos[-20:]
+        return jsonify({'success': True,
+                        'evento': nuevos[-1] if nuevos else None,
+                        'eventos': nuevos})
     except Exception as e:
         return error_interno(e)
 
@@ -672,20 +707,56 @@ def api_engastado_v3_entrada():
 
         puesto_id, puesto_nombre, modulo_lector = _destino_del_lector(device_id)
 
+        # Todos los rechazos de aqui abajo comparten estos datos: se fijan una
+        # vez para que ninguno se quede sin decir de que lector viene ni a que
+        # PC le incumbe (es lo que hace que el mensaje llegue a la pantalla).
+        def _rechazo(motivo, code, consejo='', operario=''):
+            _log(motivo, operario)
+            _rfid_estado_registrar('rechazo', motivo, code, consejo=consejo,
+                                   device_id=device_id, tag_uid=tag_uid,
+                                   puesto_id=puesto_id, puesto_nombre=puesto_nombre,
+                                   modulo=modulo_lector, operario_nombre=operario)
+
+        # Lector que nadie ha casado con un puesto ni con un modulo: el login
+        # se crea igual (Engastado V3 clasico sondea sin filtrar y sigue
+        # funcionando), pero ningun PC con identidad lo va a reconocer como
+        # suyo. Sin este aviso, el operario pasa la tarjeta y no pasa NADA.
+        if not puesto_id and not modulo_lector:
+            _rfid_estado_registrar(
+                'aviso',
+                'Este lector no está asignado a ningún puesto ni módulo',
+                'LECTOR_SIN_ASIGNAR',
+                consejo='Avisa al administrador: Admin → Lectores RFID, '
+                        'asigna este lector a su puesto o a su módulo.',
+                device_id=device_id, tag_uid=tag_uid)
+
         with db.engine.connect() as conn:
             # Look up operario by RFID tag
             op = _operario_por_tag(conn, tag_uid)
             if not op:
-                _log('Tarjeta no registrada')
-                _rfid_estado_registrar('rechazo', 'Tarjeta RFID no registrada', 'TAG_NO_REG',
-                                       device_id=device_id, tag_uid=tag_uid,
-                                       puesto_id=puesto_id, puesto_nombre=puesto_nombre)
+                _rechazo('Tarjeta RFID no registrada', 'TAG_NO_REG',
+                         consejo='Avisa al administrador para que dé de alta tu tarjeta '
+                                 '(Admin → Operarios → Capturar tag).')
                 return jsonify({
                     'success': False,
                     'error': 'Tarjeta RFID no registrada'
                 }), 404
 
             op_id, nombre = op
+
+            # Permisos: si el lector sabe a que modulo pertenece, se comprueba
+            # AQUI, antes de crear el login. Si no, se crearia un login que el
+            # PC adoptaria para rebotarlo acto seguido, gastando de paso el
+            # login exclusivo del operario para nada.
+            if modulo_lector and gate_operario_activo():
+                from app.routes.base import operario_puede, MODULOS_APP
+                if not operario_puede(nombre, modulo_lector):
+                    etiqueta = MODULOS_APP.get(modulo_lector, {}).get('label', modulo_lector)
+                    motivo = f'{nombre} no tiene permiso para {etiqueta}'
+                    _rechazo(motivo, 'SIN_PERMISO', operario=nombre,
+                             consejo='Avisa al administrador para que te habilite el módulo '
+                                     '(Admin → Operarios → Módulos permitidos).')
+                    return jsonify({'success': False, 'error': motivo}), 403
 
             # Check if operario already has active session
             _expirar_logins_fantasma(conn)
@@ -706,7 +777,7 @@ def api_engastado_v3_entrada():
                 _rfid_estado_registrar('ok', 'Sesión existente reutilizada', 'OK_REUSED',
                                        device_id=device_id, tag_uid=tag_uid,
                                        puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                       operario_nombre=nombre)
+                                       modulo=modulo_lector, operario_nombre=nombre)
                 return jsonify({
                     'success': True,
                     'operario_nombre': nombre,
@@ -729,21 +800,17 @@ def api_engastado_v3_entrada():
                 conn.commit()
             except IntegrityError:
                 # Race condition: operario logged in from another workstation
-                _log(f'{nombre} ya está dentro del módulo en otro puesto', nombre)
-                _rfid_estado_registrar('rechazo', f'{nombre} ya está dentro del módulo en otro puesto',
-                                       'ALREADY_ACTIVE', device_id=device_id, tag_uid=tag_uid,
-                                       puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                       operario_nombre=nombre)
-                return jsonify({
-                    'success': False,
-                    'error': f'{nombre} ya está dentro del módulo en otro puesto'
-                }), 409
+                motivo = f'{nombre} ya está dentro del módulo en otro puesto'
+                _rechazo(motivo, 'ALREADY_ACTIVE', operario=nombre,
+                         consejo='Cierra la sesión en el otro puesto, o pide a un '
+                                 'administrador que la libere (Admin → Operarios).')
+                return jsonify({'success': False, 'error': motivo}), 409
 
             _log('Entrada registrada', nombre)
             _rfid_estado_registrar('ok', 'Entrada registrada', 'OK_NEW',
                                    device_id=device_id, tag_uid=tag_uid,
                                    puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                   operario_nombre=nombre)
+                                   modulo=modulo_lector, operario_nombre=nombre)
             return jsonify({
                 'success': True,
                 'operario_nombre': nombre,
