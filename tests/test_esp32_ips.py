@@ -215,3 +215,81 @@ def test_migracion_crea_la_tabla_en_una_bd_antigua(tmp_path):
     except sqlite3.IntegrityError:
         pass
     conn.close()
+
+
+# ── Que dos placas no puedan acabar con la misma IP ───────────────────────
+#
+# Paso de verdad: al flashear un lector no se pudo leer su MAC, la IP no se
+# registro, y al flashear la siguiente placa el sistema volvio a ofrecer esa
+# misma IP. Dos placas en 192.168.50.2 -> se pisan y parpadean.
+
+def test_no_se_sugiere_una_ip_que_una_placa_ya_esta_usando(client, admin_client):
+    """Aunque no haya fila en la BD: si una placa dice estar en esa IP, esta
+    cogida. Mirar solo la BD fue justo el fallo."""
+    client.get('/api/esp32/current?id=aabbccddee01&esp32_ip=192.168.50.2')
+    assert admin_client.get('/api/esp32/ips').get_json()['sugerida'] == '192.168.50.3'
+
+
+def test_la_ip_se_reserva_aunque_no_se_sepa_de_que_placa_es(admin_client):
+    """Si al flashear no se pudo leer la MAC, la IP YA esta grabada en la
+    placa: reservarla es obligatorio, o se le ofrece a la siguiente."""
+    from app.routes import sistema
+    with admin_client.application.test_request_context():
+        ok, _ = sistema._ip_estatica_reservar_sin_placa('192.168.50.2', tipo='rfid')
+    assert ok
+    d = admin_client.get('/api/esp32/ips').get_json()
+    assert d['sugerida'] == '192.168.50.3'
+    reserva = next(p for p in d['placas'] if p['ip'] == '192.168.50.2')
+    assert reserva['pendiente']
+
+
+def test_la_reserva_se_retira_sola_al_identificar_la_placa(admin_client):
+    """Cuando la placa aparece y se le asigna esa IP, la reserva a ciegas
+    sobra: no puede quedarse ocupando sitio para siempre."""
+    from app.routes import sistema
+    with admin_client.application.test_request_context():
+        sistema._ip_estatica_reservar_sin_placa('192.168.50.2', tipo='rfid')
+    assert _asignar(admin_client, 'aabbccddee01', '192.168.50.2').get_json()['success']
+
+    placas = admin_client.get('/api/esp32/ips').get_json()['placas']
+    con_esa_ip = [p for p in placas if p['ip'] == '192.168.50.2']
+    assert len(con_esa_ip) == 1 and con_esa_ip[0]['device_id'] == 'aabbccddee01'
+    assert not con_esa_ip[0]['pendiente']
+
+
+def test_se_avisa_cuando_dos_placas_dicen_tener_la_misma_ip(client, admin_client):
+    """El sintoma en planta (placas parpadeando entre en linea y sin señal) es
+    dificil de atribuir: hay que decirlo explicitamente."""
+    client.get('/api/esp32/current?id=aabbccddee01&esp32_ip=192.168.50.2')
+    client.get('/api/esp32/rfid/firmware/version?id=ffee00112233&ip=192.168.50.2&fw=x')
+
+    d = admin_client.get('/api/esp32/ips').get_json()
+    colisiones = d['colisiones']
+    assert len(colisiones) == 1
+    assert colisiones[0]['ip'] == '192.168.50.2'
+    assert set(colisiones[0]['placas']) == {'aabbccddee01', 'ffee00112233'}
+    assert all(p['colision'] for p in d['placas'] if p['ip_vista'] == '192.168.50.2')
+
+
+def test_sin_colision_no_se_avisa_de_nada(client, admin_client):
+    client.get('/api/esp32/current?id=aabbccddee01&esp32_ip=192.168.50.2')
+    client.get('/api/esp32/rfid/firmware/version?id=ffee00112233&ip=192.168.50.3&fw=x')
+    assert admin_client.get('/api/esp32/ips').get_json()['colisiones'] == []
+
+
+# ── El control netsh del hotspot ya no existe ─────────────────────────────
+
+def test_el_control_del_hotspot_por_netsh_ya_no_existe(admin_client):
+    """La planta usa un punto de acceso fisico; ese mecanismo estaba obsoleto
+    en Windows y solo podia dar problemas."""
+    for ruta in ('/api/hotspot/estado',):
+        assert admin_client.get(ruta).status_code == 404, ruta
+    for ruta in ('/api/hotspot/iniciar', '/api/hotspot/detener'):
+        assert admin_client.post(ruta).status_code == 404, ruta
+
+
+def test_las_credenciales_wifi_siguen_guardandose(admin_client):
+    """Eso si se queda: precarga los formularios de 'Subir por USB'."""
+    assert admin_client.post('/api/hotspot/credenciales',
+                             json={'ssid': 'TP-Link_5A40', 'password': 'x'}).get_json()['success']
+    assert admin_client.get('/api/hotspot/credenciales').get_json()['ssid'] == 'TP-Link_5A40'

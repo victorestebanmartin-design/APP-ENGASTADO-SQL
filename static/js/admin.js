@@ -69,7 +69,10 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // ============================================================================
-// HOTSPOT WIFI — credenciales guardadas + control netsh (Admin -> Hotspot WiFi)
+// WIFI DE LAS PLACAS — SSID/clave del punto de acceso de planta, guardados
+// para precargar los formularios de "Subir por USB" (Admin -> Red y placas).
+// El antiguo control del hotspot por netsh se quito: la planta usa un punto
+// de acceso fisico y aquel mecanismo estaba obsoleto en Windows.
 // ============================================================================
 
 function _hotspotMsg(id, texto, esError) {
@@ -108,49 +111,6 @@ async function guardarCredencialesHotspot() {
     }
 }
 
-async function cargarEstadoHotspot() {
-    const badge = document.getElementById('hotspot-estado-badge');
-    if (badge) badge.textContent = 'Comprobando estado…';
-    try {
-        const r = await fetch('/api/hotspot/estado');
-        const d = await r.json();
-        if (!badge) return;
-        if (!d.soportado) {
-            badge.textContent = '⚪ ' + (d.mensaje || 'No soportado en este servidor');
-        } else if (d.activo) {
-            badge.textContent = '🟢 Hotspot iniciado';
-        } else {
-            badge.textContent = '🔴 Hotspot detenido';
-        }
-    } catch (e) {
-        if (badge) badge.textContent = '❌ No se pudo comprobar';
-    }
-}
-
-async function iniciarHotspot() {
-    _hotspotMsg('hotspot-control-msg', 'Iniciando…');
-    try {
-        const r = await fetch('/api/hotspot/iniciar', { method: 'POST' });
-        const d = await r.json();
-        _hotspotMsg('hotspot-control-msg', (d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
-        cargarEstadoHotspot();
-    } catch (e) {
-        _hotspotMsg('hotspot-control-msg', '❌ Error de conexión', true);
-    }
-}
-
-async function detenerHotspot() {
-    _hotspotMsg('hotspot-control-msg', 'Deteniendo…');
-    try {
-        const r = await fetch('/api/hotspot/detener', { method: 'POST' });
-        const d = await r.json();
-        _hotspotMsg('hotspot-control-msg', (d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
-        cargarEstadoHotspot();
-    } catch (e) {
-        _hotspotMsg('hotspot-control-msg', '❌ Error de conexión', true);
-    }
-}
-
 // Precarga las credenciales guardadas en los formularios de "Subir por USB"
 // (Display Carro y Lectores RFID), solo si el campo está vacío -- para no
 // pisar algo que el admin ya haya escrito a mano en esta misma visita.
@@ -172,10 +132,7 @@ async function _precargarHotspotEnFormulariosUSB() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    if (document.getElementById('hotspot-ssid')) {
-        cargarCredencialesHotspot();
-        cargarEstadoHotspot();
-    }
+    if (document.getElementById('hotspot-ssid')) cargarCredencialesHotspot();
     _precargarHotspotEnFormulariosUSB();
 });
 
@@ -1711,6 +1668,27 @@ async function cargarIpsPlacas() {
                 `Primera IP libre: <code>${_dispEsc(d.sugerida) || '— no queda ninguna —'}</code>`;
         }
 
+        // Colisiones: dos placas con la misma IP. Es el fallo mas desconcertante
+        // de una red sin DHCP (las placas parpadean entre en línea y sin señal),
+        // así que se avisa arriba y en grande, no escondido en una columna.
+        const avisoCol = document.getElementById('ips-colisiones');
+        if (avisoCol) {
+            const cols = d.colisiones || [];
+            if (cols.length === 0) {
+                avisoCol.style.display = 'none';
+            } else {
+                avisoCol.style.display = 'block';
+                avisoCol.innerHTML = '<strong>⚠️ IP repetida</strong><br>' + cols.map(c =>
+                    `<code>${_dispEsc(c.ip)}</code> la están usando ${c.placas.length} placas ` +
+                    `(${c.placas.map(id => _dispEsc(String(id).slice(-4))).join(', ')}).`
+                ).join('<br>') +
+                '<br><span style="color:#cbd5e1;">Dos placas con la misma dirección se pisan: el PC va ' +
+                'cambiando a cuál apunta, así que parpadean entre “en línea” y “sin señal” y las ' +
+                'conexiones se van a la equivocada. Cámbiale la IP a una de ellas aquí abajo y ' +
+                '<strong>vuelve a flashearla por USB</strong> para que se la grabe.</span>';
+            }
+        }
+
         if (placas.length === 0) {
             cont.innerHTML = '<p class="instruccion">Todavía no hay ninguna placa registrada.<br>' +
                 'Aparecerán aquí al flashear una por USB con su IP, o en cuanto una encendida se registre sola.</p>';
@@ -1724,14 +1702,17 @@ async function cargarIpsPlacas() {
                 </tr></thead>
                 <tbody>` + placas.map(p => `
                 <tr style="border-top:1px solid #334155;">
-                    <td style="padding:8px 6px;">${p.tipo === 'rfid' ? '🏷️' : '🖥️'} ${_dispEsc(p.tipo_label)}</td>
-                    <td>${_dispEsc(p.nombre) || '<span style="color:#64748b;">—</span>'}</td>
+                    <td style="padding:8px 6px;">${p.pendiente ? '⏳' : (p.tipo === 'rfid' ? '🏷️' : '🖥️')} ${_dispEsc(p.tipo_label)}</td>
+                    <td>${p.pendiente
+                            ? '<span style="color:#fbbf24;" title="IP reservada al flashear una placa cuya MAC no se pudo leer. Se asignará sola cuando la placa se registre.">reserva sin identificar</span>'
+                            : (_dispEsc(p.nombre) || '<span style="color:#64748b;">—</span>')}</td>
                     <td title="${_dispEsc(p.device_id)}" style="font-family:monospace;">${_dispEsc(p.device_id.slice(-4))}</td>
                     <td><input id="ip-val-${_dispEsc(p.device_id)}" value="${_dispEsc(p.ip)}"
                             placeholder="192.168.50.x"
                             style="${_dispInputStyle}width:150px;font-family:monospace;"></td>
                     <td style="font-family:monospace;" title="${p.ip_vista ? 'Última IP con la que la placa habló con el servidor' : 'La placa aún no ha contactado'}">
                         ${!p.ip_vista ? '<span style="color:#64748b;">—</span>'
+                            : p.colision ? `<span style="color:#f87171;" title="¡Otra placa dice tener esta misma IP!">🔴 ${_dispEsc(p.ip_vista)}</span>`
                             : p.coincide ? `<span style="color:#4ade80;">🟢 ${_dispEsc(p.ip_vista)}</span>`
                             : `<span style="color:#fbbf24;" title="No coincide con la IP asignada: la placa aún tiene grabada otra">🟠 ${_dispEsc(p.ip_vista)}</span>`}
                     </td>

@@ -898,9 +898,47 @@ def _ip_estatica_de(device_id):
     return fila[0] if fila else ''
 
 
+# Clave con la que se reserva una IP cuando NO se pudo leer la MAC de la
+# placa al flashearla. Sin esto la IP quedaba sin registrar y el sistema se la
+# volvia a ofrecer a la siguiente placa -- que es como acabaron dos placas con
+# la misma direccion. Se reconcilia sola: en cuanto una placa de verdad se
+# queda con esa IP, la reserva desaparece (ver _ip_estatica_guardar).
+_IP_PENDIENTE_PREFIJO = 'pend'
+
+
+def _ip_pendiente_id(ip):
+    return _esp32_device_id(_IP_PENDIENTE_PREFIJO + str(ip).replace('.', ''))
+
+
+def _es_ip_pendiente(device_id):
+    return str(device_id or '').startswith(_IP_PENDIENTE_PREFIJO)
+
+
+def _ips_en_uso_por_placas():
+    """IPs que las placas dicen estar usando ahora mismo.
+
+    No basta con mirar la BD: una placa flasheada cuando no se pudo leer su
+    MAC no tiene fila, pero SI esta ocupando una IP y hay que respetarla.
+    """
+    ips = set()
+    for origen in (_esp32_load_devices(), _rfid_load_devices()):
+        for d in origen.values():
+            ip = (d.get('ip') or '').strip()
+            if ip:
+                ips.add(ip)
+    return ips
+
+
 def _ip_estatica_libre_sugerida():
-    """Primera IP del rango que no esté cogida ('' si no queda ninguna)."""
-    usadas = {f['ip'] for f in _ips_estaticas_todas()} | set(IP_RESERVADAS)
+    """Primera IP del rango que no esté cogida ('' si no queda ninguna).
+
+    'Cogida' es la union de tres cosas: las reservadas de la instalacion, las
+    asignadas en la BD y las que las placas estan reportando. Mirar solo la BD
+    fue el fallo que dejo dos placas en la misma IP.
+    """
+    usadas = ({f['ip'] for f in _ips_estaticas_todas()}
+              | set(IP_RESERVADAS)
+              | _ips_en_uso_por_placas())
     for n in range(IP_ULTIMO_MIN, IP_ULTIMO_MAX + 1):
         ip = f'{IP_PREFIJO}{n}'
         if ip not in usadas:
@@ -918,9 +956,15 @@ def _ip_estatica_ocupada_por_otra(device_id, ip):
             text('SELECT device_id FROM esp32_ips WHERE ip = :ip'),
             {'ip': _ip_estatica_normalizar(ip)}
         ).fetchone()
-    if fila and fila[0] != _esp32_device_id(device_id):
-        return fila[0]
-    return ''
+    if not fila or fila[0] == _esp32_device_id(device_id):
+        return ''
+    # Una reserva "a ciegas" (IP grabada en una placa cuya MAC no se pudo
+    # leer) no es un choque: es justo esta placa apareciendo por fin. Se
+    # absorbe, no se rechaza -- si no, la reserva impediria arreglar el
+    # problema que ella misma existe para señalar.
+    if _es_ip_pendiente(fila[0]):
+        return ''
+    return fila[0]
 
 
 def _ip_estatica_guardar(device_id, ip, tipo='display', nombre=''):
@@ -943,6 +987,12 @@ def _ip_estatica_guardar(device_id, ip, tipo='display', nombre=''):
 
     with db.engine.connect() as conn:
         tipo = tipo if tipo in IP_TIPOS else 'display'
+        # La reserva a ciegas de esta IP se retira ANTES de insertar: el UNIQUE
+        # sobre ip saltaria si siguiera ahi, y entonces la placa de verdad no
+        # podria quedarse con la direccion que ya tiene grabada.
+        if not _es_ip_pendiente(dev_id):
+            conn.execute(text('DELETE FROM esp32_ips WHERE device_id = :p'),
+                         {'p': _ip_pendiente_id(ip)})
         try:
             conn.execute(text("""
                 INSERT INTO esp32_ips (device_id, tipo, nombre, ip, updated_at)
@@ -960,6 +1010,14 @@ def _ip_estatica_guardar(device_id, ip, tipo='display', nombre=''):
             conn.rollback()
             return False, f'{ip} acaba de asignarse a otra placa, elige otra'
     return True, f'IP {ip} asignada a la placa {dev_id[-4:]}'
+
+
+def _ip_estatica_reservar_sin_placa(ip, tipo='display'):
+    """Reserva una IP que YA se ha grabado en una placa cuya MAC no se pudo
+    leer. Que no sepamos de quien es no la hace estar libre: sin esta reserva
+    el sistema se la volveria a ofrecer a la siguiente placa."""
+    return _ip_estatica_guardar(_ip_pendiente_id(ip), ip, tipo=tipo,
+                                nombre='(sin identificar al flashear)')
 
 
 def _leer_device_id_usb(mpremote, puerto=None):
@@ -1031,9 +1089,25 @@ def api_esp32_ips():
                 'updated_at': '',
             })
 
+        # Colision: dos placas distintas diciendo tener la misma IP. En una red
+        # sin DHCP nadie lo impide, y el sintoma es desconcertante -- el PC va
+        # cambiando a que MAC apunta esa IP, asi que las placas parpadean entre
+        # "en linea" y "sin señal" y las conexiones se van a la equivocada.
+        # Vale la pena gritarlo aqui en vez de dejar que lo sufra el taller.
+        vistas = {}
+        for p in placas:
+            if p['ip_vista']:
+                vistas.setdefault(p['ip_vista'], []).append(p['device_id'])
+        colisiones = [{'ip': ip, 'placas': ids} for ip, ids in sorted(vistas.items())
+                      if len(ids) > 1]
+        for p in placas:
+            p['colision'] = bool(p['ip_vista']) and len(vistas.get(p['ip_vista'], [])) > 1
+            p['pendiente'] = _es_ip_pendiente(p['device_id'])
+
         return jsonify({
             'success': True,
             'placas': placas,
+            'colisiones': colisiones,
             'sugerida': _ip_estatica_libre_sugerida(),
             'red': {
                 'mascara': IP_MASCARA,
@@ -1616,8 +1690,12 @@ def api_esp32_flash_usb():
             if not ok_ip:
                 red += f' AVISO: la IP no se pudo anotar en la app ({msg_ip}).'
         else:
-            red += (' AVISO: no se pudo leer el identificador de la placa, así que la IP no queda '
-                    'registrada en la app — anótala en Admin → IPs de placas cuando la pantalla aparezca.')
+            # La IP ya esta grabada en la placa: se reserva aunque no sepamos
+            # de quien es, o el sistema se la ofreceria a la siguiente.
+            _ip_estatica_reservar_sin_placa(ip_estatica, tipo='display')
+            red += (' AVISO: no se pudo leer el identificador de la pantalla. La IP queda reservada '
+                    'para que no se le dé a otra placa, y se asignará sola en cuanto la pantalla '
+                    'aparezca en Admin → IPs de placas.')
         return jsonify({'success': True,
                         'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.{extra}{red}'})
     except subprocess.TimeoutExpired:
@@ -2198,8 +2276,10 @@ def api_esp32_rfid_flash_usb():
             if not ok_ip:
                 red += f'AVISO: la IP no se pudo anotar en la app ({msg_ip}). '
         else:
-            red += ('AVISO: no se pudo leer el identificador de la placa, así que la IP no queda '
-                    'registrada en la app — anótala en Admin → IPs de placas cuando el lector aparezca. ')
+            _ip_estatica_reservar_sin_placa(ip_estatica, tipo='rfid')
+            red += ('AVISO: no se pudo leer el identificador del lector. La IP queda reservada para '
+                    'que no se le dé a otra placa, y se asignará sola en cuanto el lector aparezca '
+                    'en Admin → IPs de placas. ')
         return jsonify({'success': True,
                         'message': f'Lector configurado y firmware subido por {puerto}. {red}'
                                    f'A partir de ahora se actualiza solo por WiFi cuando publiques una '
@@ -2712,19 +2792,18 @@ def api_esp32_driver_subir():
         return error_interno(e, 'Error al subir el instalador')
 
 
-# ==================== HOTSPOT WIFI (PC servidor) ====================
+# ==================== CREDENCIALES WIFI DE LAS PLACAS ====================
 #
-# Dos piezas independientes:
-# 1. Credenciales guardadas (bajo riesgo, siempre util): se recuerdan una vez
-#    y precargan los formularios de "Subir por USB" (Display Carro y
-#    Lectores RFID), para no tener que reescribirlas en cada placa.
-# 2. Control del hotspot en si (mejor esfuerzo): usa el mecanismo clasico de
-#    Windows (`netsh wlan set/start/stop hostednetwork`). Esta OBSOLETO en
-#    Windows moderno y depende del driver del adaptador WiFi -- puede
-#    simplemente no funcionar en algunos PCs. El error de netsh se muestra
-#    tal cual en el admin, sin esconderlo, y la alternativa manual (activar
-#    el Hotspot movil de Windows a mano, una vez, desde Ajustes) sigue
-#    funcionando igual: solo hace falta guardar aqui el mismo SSID/clave.
+# SSID y clave de la red a la que se conectan las placas (hoy el TL-WR802N de
+# planta). Se guardan una vez y precargan los formularios de "Subir por USB",
+# para no reescribirlas en cada placa.
+#
+# Aqui hubo tambien un control del "hosted network" de Windows (netsh) para
+# levantar un hotspot desde el propio PC. Se ha quitado: la planta usa un
+# punto de acceso fisico, ese mecanismo esta obsoleto en Windows moderno y
+# dependia del driver del adaptador, asi que era codigo que solo podia dar
+# problemas. Si algun dia hiciera falta, se activa el Hotspot movil de Windows
+# a mano y basta con guardar aqui el mismo SSID/clave.
 
 def _hotspot_file():
     return os.path.join(current_app.config['DATA_DIR'], 'wifi_hotspot.json')
@@ -2761,94 +2840,6 @@ def api_hotspot_credenciales_set():
         with open(_hotspot_file(), 'w') as f:
             json.dump({'ssid': ssid, 'password': password}, f)
         return jsonify({'success': True})
-    except Exception as e:
-        return error_interno(e)
-
-
-def _netsh_hostednetwork(*args, timeout=30):
-    return subprocess.run(
-        ['netsh', 'wlan'] + list(args),
-        capture_output=True, text=True, timeout=timeout)
-
-
-@bp.route('/api/hotspot/estado', methods=['GET'])
-@requiere_pin_admin
-def api_hotspot_estado():
-    """Estado del hotspot 'hosted network' de Windows (netsh wlan).
-
-    Solo tiene sentido en el servidor local (run.bat); en PythonAnywhere
-    netsh no existe y esto devuelve 'no soportado' sin liar nada.
-    """
-    try:
-        try:
-            r = _netsh_hostednetwork('show', 'hostednetwork')
-        except FileNotFoundError:
-            return jsonify({'success': True, 'soportado': False,
-                            'mensaje': 'netsh no está disponible en este servidor (no es Windows local).'})
-        salida = (r.stdout or '') + (r.stderr or '')
-        activo = 'Estado                 : Iniciado' in salida or 'Status                 : Started' in salida
-        return jsonify({'success': True, 'soportado': True, 'activo': activo, 'salida_netsh': salida.strip()})
-    except subprocess.TimeoutExpired:
-        return jsonify({'success': False, 'message': 'Timeout consultando el estado con netsh'})
-    except Exception as e:
-        return error_interno(e)
-
-
-@bp.route('/api/hotspot/iniciar', methods=['POST'])
-@requiere_pin_admin
-def api_hotspot_iniciar():
-    """Configura y arranca el hotspot con las credenciales guardadas.
-
-    Usa el mecanismo 'hosted network' de netsh (obsoleto, depende del driver
-    del adaptador). Si falla, se devuelve el error de netsh tal cual: no hay
-    forma fiable de "arreglarlo" desde aquí, mejor que el admin vea el motivo
-    real y recurra a la alternativa manual (Hotspot móvil de Windows) si hace
-    falta.
-    """
-    try:
-        cred = _hotspot_cargar()
-        if not cred.get('ssid'):
-            return jsonify({'success': False,
-                            'message': 'Guarda primero un SSID y contraseña en "Credenciales del hotspot"'}), 400
-        try:
-            r1 = _netsh_hostednetwork('set', 'hostednetwork', 'mode=allow',
-                                      f"ssid={cred['ssid']}", f"key={cred['password']}")
-        except FileNotFoundError:
-            return jsonify({'success': False,
-                            'message': 'netsh no está disponible en este servidor (no es Windows local).'})
-        if r1.returncode != 0:
-            return jsonify({'success': False,
-                            'message': ('Error al configurar: ' + (r1.stdout or r1.stderr or '')).strip()[-400:]})
-        r2 = _netsh_hostednetwork('start', 'hostednetwork')
-        if r2.returncode != 0:
-            salida = (r2.stdout or r2.stderr or '').strip()
-            return jsonify({'success': False,
-                            'message': ('Error al arrancar el hotspot: ' + salida)[-400:] +
-                                       ' — Si el adaptador WiFi no soporta redes "hosted", usa el Hotspot '
-                                       'móvil de Windows manualmente (Ajustes) y guarda aquí el mismo SSID/clave.'})
-        return jsonify({'success': True, 'message': f"Hotspot '{cred['ssid']}' iniciado."})
-    except subprocess.TimeoutExpired:
-        return jsonify({'success': False, 'message': 'Timeout arrancando el hotspot con netsh'})
-    except Exception as e:
-        return error_interno(e)
-
-
-@bp.route('/api/hotspot/detener', methods=['POST'])
-@requiere_pin_admin
-def api_hotspot_detener():
-    """Para el hotspot iniciado por /api/hotspot/iniciar."""
-    try:
-        try:
-            r = _netsh_hostednetwork('stop', 'hostednetwork')
-        except FileNotFoundError:
-            return jsonify({'success': False,
-                            'message': 'netsh no está disponible en este servidor (no es Windows local).'})
-        if r.returncode != 0:
-            return jsonify({'success': False,
-                            'message': ('Error al detener: ' + (r.stdout or r.stderr or '')).strip()[-400:]})
-        return jsonify({'success': True, 'message': 'Hotspot detenido.'})
-    except subprocess.TimeoutExpired:
-        return jsonify({'success': False, 'message': 'Timeout deteniendo el hotspot con netsh'})
     except Exception as e:
         return error_interno(e)
 
