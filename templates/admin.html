@@ -492,16 +492,40 @@
                         <div style="margin-bottom:10px;">
                             <a class="btn-primary" href="/api/red/pc-puesto.reg"
                                style="text-decoration:none;display:inline-block;"
-                               title="Descargar el archivo .reg ya configurado para este servidor">
-                                ⬇️ Descargar configuración del PC de puesto (.reg)
+                               title="Doble clic y listo: no necesita permisos de administrador">
+                                ⬇️ Descargar (.reg) — doble clic, sin permisos
                             </a>
                         </div>
-                        <p class="instruccion" style="font-size:0.85em;color:#94a3b8;">
-                            Hace falta ser administrador en ese PC (Windows lo pedirá al abrir el archivo).
-                            Para comprobar que se aplicó: <code>chrome://policy</code> o <code>edge://policy</code>.
-                            <br>Alternativa por consola, si prefieres lanzarlo en remoto:
-                            <code>_scripts_utiles\configurar_pc_puesto.ps1</code>
+                        <p class="instruccion" style="font-size:0.85em;color:#94a3b8;margin-bottom:14px;">
+                            Se aplica al <strong>usuario de Windows</strong> que lo ejecute, que en un PC de
+                            puesto es el único que se usa. Descárgalo en ese PC, doble clic, aceptar, y cierra
+                            el navegador del todo.
+                            <br>Para comprobar que se aplicó: <code>edge://policy</code> o
+                            <code>chrome://policy</code>.
                         </p>
+
+                        <details style="font-size:0.88em;color:#94a3b8;">
+                            <summary style="cursor:pointer;color:#cbd5e1;">
+                                ¿Y si el PC lo usan varias cuentas de Windows?
+                            </summary>
+                            <div style="margin-top:10px;line-height:1.7;">
+                                Entonces hace falta aplicarlo a todo el equipo, y eso
+                                <strong>sí</strong> necesita permisos de administrador. Ojo: un doble clic
+                                normal <strong>no</strong> vale — falla con «error de acceso al registro»,
+                                porque abrir un <code>.reg</code> no eleva permisos por sí solo.
+                                <br><br>
+                                <a href="/api/red/pc-puesto.reg?ambito=equipo" style="color:#60a5fa;">
+                                    ⬇️ Descargar la versión para todo el equipo (.reg)
+                                </a>
+                                <br><br>
+                                Y para aplicarlo, en una consola abierta <strong>como administrador</strong>:
+                                <br><code>reg import "%USERPROFILE%\Downloads\COJOsw-pc-de-puesto-equipo.reg"</code>
+                                <br><br>
+                                O, si prefieres hacerlo todo de una vez (política + acceso directo sin barra
+                                de direcciones): <code>_scripts_utiles\configurar_pc_puesto.ps1</code>,
+                                también como administrador.
+                            </div>
+                        </details>
                     </div>
                 </section>
 

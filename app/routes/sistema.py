@@ -1377,8 +1377,21 @@ def api_red_pc_puesto_reg():
 
     Lo que se genera aqui es el fichero ya relleno con los origenes correctos,
     para que en el PC de puesto solo haya que abrirlo y aceptar.
+
+    ?ambito=usuario (por defecto) escribe en HKEY_CURRENT_USER: un doble clic
+    basta, sin permisos de administrador. Es lo que se quiere en un PC de
+    puesto, donde solo se usa una cuenta de Windows.
+
+    ?ambito=equipo escribe en HKEY_LOCAL_MACHINE, para TODAS las cuentas del
+    PC. Eso SI necesita administrador, y un doble clic normal falla con "error
+    de acceso al registro": hay que importarlo desde una consola elevada
+    (reg import fichero.reg) o usar _scripts_utiles/configurar_pc_puesto.ps1.
     """
     try:
+        ambito = (request.args.get('ambito') or 'usuario').strip().lower()
+        equipo = ambito == 'equipo'
+        raiz = 'HKEY_LOCAL_MACHINE' if equipo else 'HKEY_CURRENT_USER'
+
         origenes = _origenes_de_la_app()
         lineas = [
             'Windows Registry Editor Version 5.00',
@@ -1392,13 +1405,33 @@ def api_red_pc_puesto_reg():
             '; vuelve a poder instalarse ("Instalar aplicacion"), que sobre http',
             '; el navegador no lo permite.',
             ';',
-            '; Como se usa: doble clic, aceptar, y CERRAR EL NAVEGADOR DEL TODO',
-            '; (todas las ventanas) antes de volver a abrirlo.',
+        ]
+        if equipo:
+            lineas += [
+                '; AMBITO: TODO EL EQUIPO (HKEY_LOCAL_MACHINE).',
+                '; Necesita permisos de administrador. Un doble clic normal NO',
+                '; basta: falla con "error de acceso al registro". Importalo',
+                '; desde una consola abierta como administrador:',
+                ';',
+                ';     reg import "COJOsw-pc-de-puesto-equipo.reg"',
+                ';',
+            ]
+        else:
+            lineas += [
+                '; AMBITO: el usuario de Windows que lo ejecute (HKEY_CURRENT_USER).',
+                '; No hace falta ser administrador.',
+                ';',
+            ]
+        lineas += [
+            '; Despues hay que CERRAR EL NAVEGADOR DEL TODO (todas las',
+            '; ventanas) antes de volver a abrirlo.',
             '',
         ]
-        for clave in (r'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome',
-                      r'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge'):
-            lineas.append(f'[{clave}\\OverrideSecurityRestrictionsOnInsecureOrigin]')
+
+        for producto in (r'SOFTWARE\Policies\Google\Chrome',
+                         r'SOFTWARE\Policies\Microsoft\Edge'):
+            lineas.append(
+                f'[{raiz}\\{producto}\\OverrideSecurityRestrictionsOnInsecureOrigin]')
             for i, origen in enumerate(origenes, start=1):
                 lineas.append(f'"{i}"="{origen}"')
             lineas.append('')
@@ -1406,11 +1439,12 @@ def api_red_pc_puesto_reg():
         # El Bloc de notas y regedit esperan CRLF; sin esto el fichero se ve
         # en una sola linea y regedit puede rechazarlo.
         contenido = '\r\n'.join(lineas)
+        nombre = ('COJOsw-pc-de-puesto-equipo.reg' if equipo
+                  else 'COJOsw-pc-de-puesto.reg')
         return current_app.response_class(
             contenido.encode('utf-8-sig'),   # regedit quiere BOM
             mimetype='application/octet-stream',
-            headers={'Content-Disposition':
-                     'attachment; filename=COJOsw-pc-de-puesto.reg'},
+            headers={'Content-Disposition': f'attachment; filename={nombre}'},
         )
     except Exception as e:
         return error_interno(e)

@@ -24,7 +24,16 @@ internet. Por eso el servidor no lo ve (entra por `localhost`) y los puestos sí
 Montar https de verdad pediría un certificado y meterlo en el almacén de
 confianza de cada PC, para no ganar nada: en una red de planta cerrada no hay
 nadie en medio de quien protegerse. La alternativa práctica es decirle al
-navegador, por política de empresa, que ese origen concreto es de fiar:
+navegador, por política de empresa, que ese origen concreto es de fiar.
+
+**La forma más cómoda** es el botón de *Admin → Red y placas → Quitar el aviso
+«No es seguro»*: descarga un `.reg` ya relleno con las direcciones reales de
+ese servidor. Se aplica al usuario de Windows que lo ejecute, así que basta un
+doble clic **sin permisos de administrador**.
+
+Este script es la alternativa para cuando se quiere aplicar a **todo el equipo**
+(todas las cuentas de Windows) o lanzarlo en remoto sobre varios PCs, y de paso
+crea el acceso directo sin barra de direcciones:
 
 ```powershell
 # En el PC del puesto, como administrador:
@@ -32,7 +41,12 @@ powershell -ExecutionPolicy Bypass -File .\configurar_pc_puesto.ps1
 ```
 
 Luego hay que **cerrar el navegador del todo** y volver a abrirlo. Para
-comprobar que la política está puesta: `chrome://policy`.
+comprobar que la política está puesta: `chrome://policy` o `edge://policy`.
+
+> **Cuidado con el ámbito del equipo:** escribir en `HKEY_LOCAL_MACHINE` exige
+> administrador, y abrir un `.reg` con doble clic **no** eleva permisos por sí
+> solo — falla con *«error de acceso al registro»*. Para esa versión hay que
+> importarlo desde una consola elevada: `reg import fichero.reg`.
 
 De paso arregla algo que estaba roto sin que se notara: sobre `http://` con
 una IP, el navegador no permite registrar el *service worker*, así que la app

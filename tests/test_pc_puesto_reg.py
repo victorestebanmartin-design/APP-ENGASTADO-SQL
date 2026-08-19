@@ -34,6 +34,29 @@ def test_cubre_chrome_y_edge(admin_client):
     assert r'SOFTWARE\Policies\Microsoft\Edge\OverrideSecurityRestrictionsOnInsecureOrigin' in texto
 
 
+def test_por_defecto_va_al_usuario_para_no_pedir_administrador(admin_client):
+    """Abrir un .reg NO eleva permisos: si escribiera en HKLM, el doble clic
+    fallaría con "error de acceso al registro"."""
+    texto = _texto(admin_client)
+    assert 'HKEY_CURRENT_USER' in texto
+    assert 'HKEY_LOCAL_MACHINE' not in texto
+
+
+def test_la_version_de_equipo_usa_hklm_y_avisa_de_que_hace_falta_admin(admin_client):
+    texto = admin_client.get('/api/red/pc-puesto.reg?ambito=equipo').get_data().decode('utf-8-sig')
+    assert 'HKEY_LOCAL_MACHINE' in texto
+    assert 'HKEY_CURRENT_USER' not in texto
+    assert 'administrador' in texto
+    assert 'reg import' in texto
+
+
+def test_cada_ambito_se_descarga_con_su_propio_nombre(admin_client):
+    usuario = admin_client.get('/api/red/pc-puesto.reg')
+    equipo = admin_client.get('/api/red/pc-puesto.reg?ambito=equipo')
+    assert 'COJOsw-pc-de-puesto.reg' in usuario.headers['Content-Disposition']
+    assert 'COJOsw-pc-de-puesto-equipo.reg' in equipo.headers['Content-Disposition']
+
+
 def test_los_origenes_van_numerados_como_lista(admin_client):
     """La politica es una lista: los valores son "1", "2"... no un solo valor."""
     texto = _texto(admin_client)
