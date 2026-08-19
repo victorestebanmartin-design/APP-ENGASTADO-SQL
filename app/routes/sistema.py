@@ -1450,6 +1450,93 @@ def api_red_pc_puesto_reg():
         return error_interno(e)
 
 
+@bp.route('/api/red/pc-puesto.bat', methods=['GET'])
+@requiere_pin_admin
+def api_red_pc_puesto_bat():
+    """Instalador que se AUTOELEVA y deja el aviso quitado para TODO el PC.
+
+    El .reg de usuario solo arregla la cuenta que lo ejecuta, y desde una
+    cuenta sin permisos no hay forma de elevarlo: los .reg no tienen "Ejecutar
+    como administrador" en el menu del boton derecho, asi que un operario se
+    queda atascado.
+
+    Un .bat si puede pedir permisos el solo (UAC): se ejecuta desde la cuenta
+    normal, Windows pide la contraseña de administrador una vez, y escribe la
+    politica en HKEY_LOCAL_MACHINE, que vale para todas las cuentas del equipo.
+    """
+    try:
+        origenes = _origenes_de_la_app()
+
+        lineas = [
+            '@echo off',
+            'setlocal',
+            'title COJOsw - Quitar el aviso "No es seguro"',
+            '',
+            'REM Generado por el propio servidor COJOsw: los origenes de abajo',
+            'REM son los que se usan de verdad para entrar a la aplicacion.',
+            'REM',
+            'REM Escribe la politica en HKEY_LOCAL_MACHINE (todo el equipo), asi',
+            'REM que vale para TODAS las cuentas de Windows de este PC.',
+            '',
+            'REM -- Pedir permisos de administrador si no se tienen ------------',
+            'REM net session solo funciona con permisos elevados: es la forma',
+            'REM clasica de saber si ya los tenemos.',
+            'net session >nul 2>&1',
+            'if %errorlevel% neq 0 (',
+            '    echo.',
+            '    echo  Hacen falta permisos de administrador.',
+            '    echo  Windows va a pedirlos ahora...',
+            '    echo.',
+            '    powershell -NoProfile -Command "Start-Process -FilePath \'%~f0\' -Verb RunAs"',
+            '    exit /b',
+            ')',
+            '',
+            'echo ================================================================',
+            'echo  COJOsw - marcando el servidor como origen de confianza',
+            'echo ================================================================',
+            'echo.',
+        ]
+
+        claves = [
+            ('Google Chrome',
+             r'HKLM\SOFTWARE\Policies\Google\Chrome\OverrideSecurityRestrictionsOnInsecureOrigin'),
+            ('Microsoft Edge',
+             r'HKLM\SOFTWARE\Policies\Microsoft\Edge\OverrideSecurityRestrictionsOnInsecureOrigin'),
+        ]
+        for etiqueta, clave in claves:
+            lineas.append(f'echo  {etiqueta}:')
+            for i, origen in enumerate(origenes, start=1):
+                lineas.append(f'echo    {origen}')
+                lineas.append(
+                    f'reg add "{clave}" /v {i} /t REG_SZ /d "{origen}" /f >nul')
+            lineas.append('echo.')
+
+        lineas += [
+            'echo ================================================================',
+            'echo  Listo.',
+            'echo.',
+            'echo  AHORA: cierra el navegador DEL TODO (todas las ventanas)',
+            'echo  y vuelve a abrirlo. Con una sola ventana abierta no se aplica.',
+            'echo.',
+            'echo  Para comprobarlo: edge://policy  o  chrome://policy',
+            'echo ================================================================',
+            'echo.',
+            'pause',
+        ]
+
+        contenido = '\r\n'.join(lineas) + '\r\n'
+        return current_app.response_class(
+            # cp1252: un .bat con acentos en UTF-8 sale con caracteres raros
+            # en la consola de Windows, que usa una tabla de codigos antigua.
+            contenido.encode('cp1252', errors='replace'),
+            mimetype='application/octet-stream',
+            headers={'Content-Disposition':
+                     'attachment; filename=COJOsw-quitar-aviso-todo-el-PC.bat'},
+        )
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/red/pcs/<ip>', methods=['DELETE'])
 @requiere_pin_admin
 def api_red_pc_olvidar(ip):

@@ -50,6 +50,51 @@ def test_la_version_de_equipo_usa_hklm_y_avisa_de_que_hace_falta_admin(admin_cli
     assert 'reg import' in texto
 
 
+def test_el_bat_exige_pin(client):
+    assert client.get('/api/red/pc-puesto.bat').status_code == 401
+
+
+def _bat(admin_client):
+    r = admin_client.get('/api/red/pc-puesto.bat')
+    assert r.status_code == 200
+    return r.get_data().decode('cp1252')
+
+
+def test_el_bat_se_autoeleva(admin_client):
+    """Es lo que resuelve el caso de la cuenta sin permisos: los .reg no
+    tienen "Ejecutar como administrador", un .bat puede pedirlo el solo."""
+    texto = _bat(admin_client)
+    assert 'net session' in texto
+    assert '-Verb RunAs' in texto
+
+
+def test_el_bat_escribe_para_todo_el_equipo(admin_client):
+    texto = _bat(admin_client)
+    assert r'HKLM\SOFTWARE\Policies\Google\Chrome' in texto
+    assert r'HKLM\SOFTWARE\Policies\Microsoft\Edge' in texto
+    assert 'HKCU' not in texto
+
+
+def test_el_bat_lleva_los_origenes_reales(app):
+    from app.routes.sistema import _origenes_de_la_app
+    with app.test_request_context('/', base_url='http://192.168.50.1:5001'):
+        origenes = _origenes_de_la_app()
+    assert 'http://192.168.50.1:5001' in origenes
+
+
+def test_el_bat_se_descarga_con_extension_bat(admin_client):
+    cd = admin_client.get('/api/red/pc-puesto.bat').headers['Content-Disposition']
+    assert 'attachment' in cd
+    assert cd.strip().endswith('.bat')
+
+
+def test_el_bat_usa_saltos_de_linea_de_windows(admin_client):
+    """Un .bat con saltos LF se ejecuta mal en cmd."""
+    crudo = admin_client.get('/api/red/pc-puesto.bat').get_data()
+    assert b'\r\n' in crudo
+    assert b'\n' not in crudo.replace(b'\r\n', b'')
+
+
 def test_cada_ambito_se_descarga_con_su_propio_nombre(admin_client):
     usuario = admin_client.get('/api/red/pc-puesto.reg')
     equipo = admin_client.get('/api/red/pc-puesto.reg?ambito=equipo')
