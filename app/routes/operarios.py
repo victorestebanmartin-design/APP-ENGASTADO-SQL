@@ -521,7 +521,7 @@ def _destino_del_lector(device_id):
     if not device_id:
         return None, None, None
     try:
-        with open(_rfid_devices_file_path()) as f:
+        with open(_rfid_devices_file_path(), encoding='utf-8') as f:
             devs = json.load(f)
     except Exception:
         return None, None, None
@@ -554,7 +554,7 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
     eso un rechazo deja al operario parado sin saber que hacer.
     """
     try:
-        with open(_rfid_estado_file_path()) as f:
+        with open(_rfid_estado_file_path(), encoding='utf-8') as f:
             eventos = json.load(f)
     except Exception:
         eventos = []
@@ -572,7 +572,13 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
         'modulo': (modulo or '')[:24],
         'operario_nombre': operario_nombre or '',
     })
-    with open(_rfid_estado_file_path(), 'w') as f:
+    # encoding='utf-8' explicito, aqui y al leer: los motivos y consejos llevan
+    # acentos y flechas ('Admin -> Operarios' se escribe con '\u2192'), y sin
+    # esto open() usa la codificacion por defecto del sistema. En un servidor
+    # Windows eso es cp1252, que no sabe escribir esa flecha: el registro del
+    # rechazo petaba y el operario acababa viendo un fallo del servidor en vez
+    # del motivo real (una tarjeta sin permisos o sin dar de alta).
+    with open(_rfid_estado_file_path(), 'w', encoding='utf-8') as f:
         json.dump(eventos[-120:], f, ensure_ascii=False)
 
 
@@ -597,7 +603,7 @@ def api_rfid_entrada_estado():
         since = (request.args.get('since') or '').strip()
 
         try:
-            with open(_rfid_estado_file_path()) as f:
+            with open(_rfid_estado_file_path(), encoding='utf-8') as f:
                 eventos = json.load(f)
         except Exception:
             eventos = []
@@ -689,7 +695,7 @@ def api_engastado_v3_entrada():
         # de tarjetas nuevas depende solo de los lectores RFID de la entrada.
         try:
             from app.routes.sistema import _esp32_tags_file
-            with open(_esp32_tags_file(), 'w') as f:
+            with open(_esp32_tags_file(), 'w', encoding='utf-8') as f:
                 json.dump({'uid': tag_uid, 'device_id': device_id, 'carro': '',
                           'ts': datetime.now().isoformat()}, f)
         except Exception:

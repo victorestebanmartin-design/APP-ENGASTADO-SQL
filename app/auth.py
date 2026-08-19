@@ -94,7 +94,7 @@ def gate_operario_activo():
     """True si el gate de login global esta activo ahora mismo."""
     try:
         import json
-        with open(_gate_operario_file()) as f:
+        with open(_gate_operario_file(), encoding='utf-8') as f:
             return bool(json.load(f).get('enabled'))
     except Exception:
         return bool(current_app.config.get('OPERARIO_GATE_ENABLED'))
@@ -103,7 +103,7 @@ def gate_operario_activo():
 def fijar_gate_operario(activo):
     """Activa/desactiva el gate en caliente (llamado desde Admin -> Sistema)."""
     import json
-    with open(_gate_operario_file(), 'w') as f:
+    with open(_gate_operario_file(), 'w', encoding='utf-8') as f:
         json.dump({'enabled': bool(activo)}, f)
 
 

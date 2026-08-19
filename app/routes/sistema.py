@@ -383,7 +383,7 @@ def api_display():
         esp32_ip = request.args.get('esp32_ip')
         if esp32_ip:
             ip_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_ip.txt')
-            with open(ip_file, 'w') as f:
+            with open(ip_file, 'w', encoding='utf-8') as f:
                 f.write(esp32_ip.strip())
 
         orden_repo = OrdenRepository(db)
@@ -408,7 +408,7 @@ def api_esp32_ip():
         ip_file = os.path.join(os.path.dirname(current_app.root_path), 'data', 'esp32_ip.txt')
         ip = None
         if os.path.exists(ip_file):
-            with open(ip_file) as f:
+            with open(ip_file, encoding='utf-8') as f:
                 ip = f.read().strip() or None
         from flask import make_response
         resp = make_response(jsonify({'ip': ip}))
@@ -434,14 +434,14 @@ def _esp32_devices_file():
 
 def _esp32_load_devices():
     try:
-        with open(_esp32_devices_file()) as f:
+        with open(_esp32_devices_file(), encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _esp32_save_devices(devs):
-    with open(_esp32_devices_file(), 'w') as f:
+    with open(_esp32_devices_file(), 'w', encoding='utf-8') as f:
         json.dump(devs, f)
 
 
@@ -487,7 +487,7 @@ def _esp32_load_ops(path):
     Descarta entradas expiradas o con 'clear'.
     """
     try:
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             payload = json.load(f)
     except Exception:
         return {}
@@ -513,7 +513,7 @@ def _esp32_write_channel(path, data, ts):
         # Limite de seguridad: si hay demasiados, caen los mas antiguos
         while len(ops) > ESP32_MAX_OPS:
             ops.pop(min(ops, key=lambda k: ops[k].get('ts', '')))
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump({'ops': ops}, f)
 
 
@@ -632,12 +632,12 @@ def _esp32_registrar_evento(evento):
     api_engastado_v3_entrada en operarios.py), para que ambos tipos de
     hardware aparezcan en el mismo panel de chequeo."""
     try:
-        with open(_esp32_eventos_file()) as f:
+        with open(_esp32_eventos_file(), encoding='utf-8') as f:
             eventos = json.load(f)
     except Exception:
         eventos = []
     eventos.append(evento)
-    with open(_esp32_eventos_file(), 'w') as f:
+    with open(_esp32_eventos_file(), 'w', encoding='utf-8') as f:
         json.dump(eventos[-100:], f, ensure_ascii=False)
 
 
@@ -690,7 +690,7 @@ def api_esp32_evento():
         # Confirmación: guardar la última por (carro, puesto)
         if evento['tipo'] in ('confirmacion', 'confirmacion_manual'):
             try:
-                with open(_esp32_confirmaciones_file()) as f:
+                with open(_esp32_confirmaciones_file(), encoding='utf-8') as f:
                     confs = json.load(f)
             except Exception:
                 confs = {}
@@ -701,7 +701,7 @@ def api_esp32_evento():
                 'fase': evento['fase'], 'tipo': evento['tipo'],
                 'operario': evento['operario'], 'ts': evento['ts'],
             }
-            with open(_esp32_confirmaciones_file(), 'w') as f:
+            with open(_esp32_confirmaciones_file(), 'w', encoding='utf-8') as f:
                 json.dump(confs, f, ensure_ascii=False)
 
         return jsonify({'success': True})
@@ -722,7 +722,7 @@ def api_esp32_eventos():
     """
     try:
         try:
-            with open(_esp32_eventos_file()) as f:
+            with open(_esp32_eventos_file(), encoding='utf-8') as f:
                 eventos = json.load(f)
         except Exception:
             eventos = []
@@ -755,7 +755,7 @@ def api_esp32_ultimo_tag():
     """
     try:
         try:
-            with open(_esp32_tags_file()) as f:
+            with open(_esp32_tags_file(), encoding='utf-8') as f:
                 tag = json.load(f)
         except Exception:
             return jsonify({'success': True, 'tag': None})
@@ -805,7 +805,7 @@ def api_esp32_estado_carro():
         confirmacion = None
         if clave:
             try:
-                with open(_esp32_confirmaciones_file()) as f:
+                with open(_esp32_confirmaciones_file(), encoding='utf-8') as f:
                     confirmacion = json.load(f).get(_esp32_conf_key(carro, clave))
             except Exception:
                 confirmacion = None
@@ -894,14 +894,14 @@ def _pcs_vistos_file():
 
 def _pcs_vistos_cargar():
     try:
-        with open(_pcs_vistos_file()) as f:
+        with open(_pcs_vistos_file(), encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _pcs_vistos_guardar(pcs):
-    with open(_pcs_vistos_file(), 'w') as f:
+    with open(_pcs_vistos_file(), 'w', encoding='utf-8') as f:
         json.dump(pcs, f)
 
 
@@ -1699,14 +1699,14 @@ def _servidor_file():
 def _servidor_host_guardado():
     """Host configurado para las placas ('' si no se ha fijado ninguno)."""
     try:
-        with open(_servidor_file()) as f:
+        with open(_servidor_file(), encoding='utf-8') as f:
             return str(json.load(f).get('host', '')).strip()
     except Exception:
         return ''
 
 
 def _servidor_host_guardar(host):
-    with open(_servidor_file(), 'w') as f:
+    with open(_servidor_file(), 'w', encoding='utf-8') as f:
         json.dump({'host': host}, f)
 
 
@@ -2357,14 +2357,14 @@ def _rfid_devices_file():
 
 def _rfid_load_devices():
     try:
-        with open(_rfid_devices_file()) as f:
+        with open(_rfid_devices_file(), encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _rfid_save_devices(devs):
-    with open(_rfid_devices_file(), 'w') as f:
+    with open(_rfid_devices_file(), 'w', encoding='utf-8') as f:
         json.dump(devs, f)
 
 
@@ -3232,7 +3232,7 @@ def _hotspot_file():
 
 def _hotspot_cargar():
     try:
-        with open(_hotspot_file()) as f:
+        with open(_hotspot_file(), encoding='utf-8') as f:
             return json.load(f)
     except Exception:
         return {'ssid': '', 'password': ''}
@@ -3258,7 +3258,7 @@ def api_hotspot_credenciales_set():
         password = str(data.get('password', ''))
         if not ssid:
             return jsonify({'success': False, 'message': 'El SSID es obligatorio'}), 400
-        with open(_hotspot_file(), 'w') as f:
+        with open(_hotspot_file(), 'w', encoding='utf-8') as f:
             json.dump({'ssid': ssid, 'password': password}, f)
         return jsonify({'success': True})
     except Exception as e:

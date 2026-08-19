@@ -489,6 +489,54 @@ def test_fallo_interno_avisa_solo_a_su_pantalla_y_dice_que_hacer(app, client, ad
             if e['error_code'] == 'SERVER_ERR'] == []
 
 
+def _simular_windows(monkeypatch, *modulos):
+    """Hace que los open() en modo texto SIN encoding explicito se comporten
+    como en un servidor Windows (cp1252): ahi no cabe la flecha '→' que llevan
+    todos los consejos, asi que cualquier open() sin encoding revienta."""
+    import builtins
+    real = builtins.open
+
+    def open_cp1252(fichero, modo='r', *args, **kwargs):
+        if 'b' not in modo and 'encoding' not in kwargs:
+            kwargs['encoding'] = 'cp1252'
+        return real(fichero, modo, *args, **kwargs)
+
+    for mod in modulos:
+        monkeypatch.setattr(mod, 'open', open_cp1252, raising=False)
+
+
+def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, monkeypatch):
+    """El motivo y el consejo llevan acentos y '→'. Si el fichero de estado se
+    escribe con la codificacion por defecto del sistema, en Windows peta al
+    registrar el rechazo y el operario ve un fallo del servidor en vez de
+    saber que su tarjeta no tiene permiso (o no esta dada de alta)."""
+    from app import auth as mod_auth
+    from app.routes import operarios as mod_op
+    from app.routes import sistema as mod_sis
+
+    _activar_gate(app)
+    _asignar_lector(app, 'lector01', 'modulo:manguitos')
+    op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
+    client.put(f"/api/operarios/{op['id']}",
+               json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
+
+    _simular_windows(monkeypatch, mod_auth, mod_op, mod_sis)
+
+    # Tarjeta conocida, sin permiso para el modulo de este lector
+    r = _pasar_tarjeta(client, 'AABBCCDD')
+    assert r.status_code == 403
+    ev = _estado(client, modulo='manguitos')[-1]
+    assert ev['error_code'] == 'SIN_PERMISO'
+    assert '→' in ev['consejo']
+
+    # Tarjeta que no esta dada de alta
+    r = _pasar_tarjeta(client, '11223344')
+    assert r.status_code == 404
+    ev = _estado(client, modulo='manguitos')[-1]
+    assert ev['error_code'] == 'TAG_NO_REG'
+    assert '→' in ev['consejo']
+
+
 def test_con_permiso_si_entra(app, client):
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
