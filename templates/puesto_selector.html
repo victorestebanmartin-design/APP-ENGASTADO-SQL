@@ -44,6 +44,66 @@
             margin-bottom: 24px;
             line-height: 1.5;
         }
+
+        /* ---- Step 1: Módulo cards ---- */
+        .modulo-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .modulo-card {
+            background: #0f172a;
+            border: 2px solid rgba(148,163,184,.2);
+            border-radius: 12px;
+            padding: 16px 8px;
+            cursor: pointer;
+            font-family: inherit;
+            color: #94a3b8;
+            font-size: 0.82em;
+            font-weight: 600;
+            transition: border-color .15s, color .15s, background .15s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .modulo-card .mc-icon { font-size: 1.9em; line-height: 1; }
+        .modulo-card:hover { border-color: #3b82f6; color: #f1f5f9; }
+        .modulo-card.engastado:hover, .modulo-card.engastado.active { border-color: #a78bfa; color: #a78bfa; background: rgba(167,139,250,.07); }
+        .modulo-card.mangueras:hover, .modulo-card.mangueras.active { border-color: #38bdf8; color: #38bdf8; background: rgba(56,189,248,.07); }
+        .modulo-card.manguitos:hover, .modulo-card.manguitos.active { border-color: #34d399; color: #34d399; background: rgba(52,211,153,.07); }
+
+        /* ---- Step 2: Puesto ---- */
+        .back-btn {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 0.82em;
+            cursor: pointer;
+            font-family: inherit;
+            padding: 0;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .back-btn:hover { color: #94a3b8; }
+        .modulo-elegido-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 0.88em;
+            font-weight: 700;
+            margin-bottom: 18px;
+            letter-spacing: .02em;
+        }
+        .badge-engastado { background: rgba(167,139,250,.12); color: #a78bfa; border: 1px solid rgba(167,139,250,.3); }
+        .badge-mangueras { background: rgba(56,189,248,.12); color: #38bdf8; border: 1px solid rgba(56,189,248,.3); }
+        .badge-manguitos { background: rgba(52,211,153,.12); color: #34d399; border: 1px solid rgba(52,211,153,.3); }
+
         .sel-select {
             width: 100%;
             box-sizing: border-box;
@@ -87,6 +147,18 @@
             font-size: 0.9em;
             display: none;
         }
+        .sel-warn {
+            background: rgba(234,179,8,.1);
+            border: 1px solid rgba(234,179,8,.35);
+            color: #fde68a;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            font-size: 0.88em;
+            line-height: 1.5;
+            display: none;
+            text-align: left;
+        }
         .sel-admin-link {
             display: inline-block;
             margin-top: 22px;
@@ -96,100 +168,167 @@
         }
         .sel-admin-link:hover { color: #94a3b8; }
 
-        /* badges de módulo en el select */
-        .sel-modulo-hint {
-            font-size: 0.78em;
-            color: #64748b;
-            margin-bottom: 10px;
-            font-family: 'DM Mono', monospace;
-            letter-spacing: .06em;
+        /* Stepper */
+        .sel-steps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 20px;
         }
-        .mod-badge-engastado { color: #a78bfa; }
-        .mod-badge-mangueras { color: #94a3b8; }
-        .mod-badge-manguitos { color: #38bdf8; }
+        .sel-step {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #334155;
+            transition: background .2s;
+        }
+        .sel-step.active { background: #3b82f6; width: 22px; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="sel-card">
         <div class="sel-logo">COJO<span class="sw">sw</span></div>
         <div class="sel-title">¿Qué puesto es este equipo?</div>
-        <div class="sel-sub">
-            Se pregunta una sola vez por PC. A partir de ahora, cuando alguien
-            pase su tarjeta en el lector de este puesto, esta pantalla lo
-            reconocerá sola.
+        <div class="sel-sub">Se pregunta una sola vez. A partir de ahora este PC se reconocerá solo.</div>
+
+        <div class="sel-steps">
+            <div class="sel-step active" id="dot1"></div>
+            <div class="sel-step" id="dot2"></div>
         </div>
 
-        <div id="sel-error" class="sel-error"></div>
+        <!-- ── PASO 1: elegir módulo ── -->
+        <div id="step1">
+            <p style="font-size:0.85em;color:#64748b;margin:0 0 12px;text-align:left;">
+                Paso 1 — ¿Qué módulo usa este PC?
+            </p>
+            <div class="modulo-grid">
+                <button class="modulo-card engastado" onclick="elegirModulo('engastado')">
+                    <span class="mc-icon">🔧</span>
+                    Engastado
+                </button>
+                <button class="modulo-card mangueras" onclick="elegirModulo('mangueras')">
+                    <span class="mc-icon">🌊</span>
+                    Mangueras
+                </button>
+                <button class="modulo-card manguitos" onclick="elegirModulo('manguitos')">
+                    <span class="mc-icon">🔩</span>
+                    Manguitos
+                </button>
+            </div>
+        </div>
 
-        <p class="sel-modulo-hint">
-            <span class="mod-badge-engastado">■ engastado</span> &nbsp;
-            <span class="mod-badge-mangueras">■ mangueras</span> &nbsp;
-            <span class="mod-badge-manguitos">■ manguitos</span>
-        </p>
+        <!-- ── PASO 2: elegir puesto ── -->
+        <div id="step2" style="display:none">
+            <button class="back-btn" onclick="volverPaso1()">← Cambiar módulo</button>
 
-        <select id="sel-puesto" class="sel-select" onchange="actualizarModuloBadge()">
-            <option value="" data-modulo="">— Selecciona un puesto —</option>
-            {% for p in puestos %}
-            {% set modulo = p.modulo or 'engastado' %}
-            {% set icono = '🔧' if modulo == 'engastado' else ('🌊' if modulo == 'mangueras' else '🔩') %}
-            <option value="{{ p.id }}"
-                    data-modulo="{{ modulo }}"
-                    {{ 'selected' if p.id == puesto_actual_id else '' }}>
-                {{ icono }} {{ p.nombre }}{% if p.ip_fija %} [IP: {{ p.ip_fija }}]{% endif %}
-            </option>
-            {% endfor %}
-        </select>
+            <div id="modulo-badge" class="modulo-elegido-badge"></div>
 
-        <div id="sel-modulo-info" style="font-size:0.82em; color:#64748b; margin-bottom:14px; font-family:'DM Mono',monospace; display:none;"></div>
+            <p style="font-size:0.85em;color:#64748b;margin:0 0 12px;text-align:left;">
+                Paso 2 — ¿Qué puesto concreto es este equipo?
+            </p>
 
-        <button id="sel-btn" class="sel-btn" onclick="confirmarPuestoPC()">Confirmar</button>
+            <div id="warn-sin-puestos" class="sel-warn">
+                No hay puestos configurados para este módulo todavía.<br>
+                Ve a <strong>Admin → Gestión de Puestos</strong>, crea un puesto y
+                asígnale el módulo correspondiente. Luego vuelve aquí.
+            </div>
+
+            <select id="sel-puesto" class="sel-select">
+                <option value="">— Selecciona un puesto —</option>
+            </select>
+
+            <div id="sel-error" class="sel-error"></div>
+            <button id="sel-btn" class="sel-btn" onclick="confirmarPuestoPC()">Confirmar este puesto</button>
+        </div>
 
         <a href="{{ url_for('main.admin_pin') }}?next=/admin&amp;force=1" class="sel-admin-link">🆘 SOS Admin (PIN)</a>
     </div>
 
     <script>
-        // Si este PC ya tenía puesto asignado, esto es una reasignación: la
-        // página ya exigió PIN antes de llegar aquí (ver paginas.py), así
-        // que el endpoint protegido funcionará. Si es la primera vez, va por
-        // el endpoint abierto (autoservicio).
         const PUESTO_ACTUAL_ID = {{ puesto_actual_id | tojson }};
         const URL_GUARDAR = PUESTO_ACTUAL_ID ? '/api/puesto/pc/reasignar' : '/api/puesto/pc';
 
-        // Destinos por módulo
+        // Todos los puestos con su módulo
+        const TODOS_PUESTOS = {{ puestos | tojson }};
+
         const DESTINOS_MODULO = {
             engastado:  '/modules',
             mangueras:  '/mangueras',
             manguitos:  '/manguitos',
         };
-        const LABELS_MODULO = {
-            engastado:  '→ irá al panel de engastado',
-            mangueras:  '→ irá directamente a Preparación Mangueras',
-            manguitos:  '→ irá directamente a Manguitos',
+        const ICONOS_MODULO = {
+            engastado: '🔧', mangueras: '🌊', manguitos: '🔩',
+        };
+        const BADGE_CLASE = {
+            engastado: 'badge-engastado',
+            mangueras: 'badge-mangueras',
+            manguitos: 'badge-manguitos',
+        };
+        const NOMBRES_MODULO = {
+            engastado: 'Engastado', mangueras: 'Mangueras', manguitos: 'Manguitos',
         };
 
-        function actualizarModuloBadge() {
+        let moduloElegido = null;
+
+        function elegirModulo(modulo) {
+            moduloElegido = modulo;
+
+            // Filtrar puestos para este módulo
+            const filtrados = TODOS_PUESTOS.filter(p => (p.modulo || 'engastado') === modulo);
+
+            // Actualizar badge
+            const badge = document.getElementById('modulo-badge');
+            badge.className = 'modulo-elegido-badge ' + (BADGE_CLASE[modulo] || '');
+            badge.textContent = (ICONOS_MODULO[modulo] || '') + ' ' + (NOMBRES_MODULO[modulo] || modulo);
+
+            // Rellenar select
             const sel = document.getElementById('sel-puesto');
-            const opt = sel.options[sel.selectedIndex];
-            const modulo = opt ? (opt.dataset.modulo || '') : '';
-            const info = document.getElementById('sel-modulo-info');
-            if (modulo && LABELS_MODULO[modulo]) {
-                info.textContent = LABELS_MODULO[modulo];
-                info.style.display = 'block';
+            sel.innerHTML = '<option value="">— Selecciona un puesto —</option>';
+            filtrados.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                const ip = p.ip_fija ? ' [IP: ' + p.ip_fija + ']' : '';
+                opt.textContent = p.nombre + ip;
+                if (p.id === PUESTO_ACTUAL_ID) opt.selected = true;
+                sel.appendChild(opt);
+            });
+
+            // Si hay solo uno, auto-seleccionarlo
+            if (filtrados.length === 1) sel.value = filtrados[0].id;
+
+            const sinPuestos = document.getElementById('warn-sin-puestos');
+            if (filtrados.length === 0) {
+                sinPuestos.style.display = 'block';
+                sel.style.display = 'none';
+                document.getElementById('sel-btn').style.display = 'none';
             } else {
-                info.style.display = 'none';
+                sinPuestos.style.display = 'none';
+                sel.style.display = 'block';
+                document.getElementById('sel-btn').style.display = 'block';
             }
+
+            document.getElementById('sel-error').style.display = 'none';
+
+            // Cambiar paso
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+            document.getElementById('dot1').classList.remove('active');
+            document.getElementById('dot2').classList.add('active');
         }
 
-        // Inicializar badge si hay selección previa
-        actualizarModuloBadge();
+        function volverPaso1() {
+            moduloElegido = null;
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step1').style.display = 'block';
+            document.getElementById('dot2').classList.remove('active');
+            document.getElementById('dot1').classList.add('active');
+        }
 
         async function confirmarPuestoPC() {
             const sel = document.getElementById('sel-puesto');
             const err = document.getElementById('sel-error');
             const btn = document.getElementById('sel-btn');
             const puestoId = sel.value;
-            const opt = sel.options[sel.selectedIndex];
-            const modulo = (opt ? opt.dataset.modulo : '') || 'engastado';
 
             if (!puestoId) {
                 err.textContent = 'Elige un puesto de la lista.';
@@ -207,13 +346,12 @@
                 });
                 const d = await r.json();
                 if (!d.success) throw new Error(d.error || 'Error al guardar');
-                // Redirigir al módulo correcto según el tipo de puesto
-                window.location.href = DESTINOS_MODULO[modulo] || '/modules';
+                window.location.href = DESTINOS_MODULO[moduloElegido] || '/modules';
             } catch (e) {
                 err.textContent = e.message || 'No se pudo guardar. Reintenta.';
                 err.style.display = 'block';
                 btn.disabled = false;
-                btn.textContent = 'Confirmar';
+                btn.textContent = 'Confirmar este puesto';
             }
         }
     </script>
