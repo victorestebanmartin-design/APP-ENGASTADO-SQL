@@ -236,10 +236,14 @@ def api_pick_to_light_probar():
         if not puesto_id and terminal:
             puesto_id = _puesto_del_terminal(terminal)
         apagar = bool(datos.get('apagar'))
-        try:
-            led = int(datos.get('led') or 0)
-        except (TypeError, ValueError):
-            led = 0
+
+        # Mismo criterio que al guardar la gaveta (app/routes/puestos.py): un
+        # numero que no se podria guardar tampoco se manda a la placa.
+        from app.routes.puestos import _led_gaveta_valido
+        led, error_led = _led_gaveta_valido(datos.get('led'))
+        if not apagar and (error_led or not led):
+            return jsonify({'success': False,
+                            'message': error_led or 'Falta el numero de gaveta'}), 400
 
         device_id, ip = _placa_del_puesto(puesto_id)
         if not device_id:

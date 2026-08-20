@@ -248,6 +248,16 @@ def test_probar_un_terminal_sin_maquina_lo_dice_claro(admin_client, con_placa):
     assert 'no esta asignado a ninguna maquina' in r.get_json()['message']
 
 
+def test_probar_un_led_fuera_de_rango_no_llega_a_la_placa(app, admin_client, con_placa):
+    """Un numero que no se podria guardar tampoco se manda a la placa."""
+    _registrar_lector(app)
+    for valor in (0, 129, 'x'):
+        r = admin_client.post('/api/pick-to-light/probar',
+                              json={'terminal': '640204', 'led': valor})
+        assert r.status_code == 400, (valor, r.get_json())
+    assert con_placa == []
+
+
 def test_probar_necesita_pin_de_admin(client, con_placa):
     r = client.post('/api/pick-to-light/probar', json={'terminal': '640204', 'led': 5})
     assert r.status_code in (401, 403)

@@ -1342,30 +1342,29 @@ function editarGaveta(codigo, chipEl) {
 
     const caja = document.createElement('span');
     caja.className = 'tr-gaveta-edit';
-    caja.style.cssText = 'display:inline-flex; gap:4px; align-items:center;';
 
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'tr-gaveta-input';
     input.value = valorActual;
-    input.placeholder = 'Ej: A-12 ó Bandeja 3';
+    input.placeholder = 'Ej: A-12';
+    input.title = 'Etiqueta que ve el operario (ej: A-12, Bandeja 3)';
     input.maxLength = 80;
 
     const inputLed = document.createElement('input');
     inputLed.type = 'number';
-    inputLed.className = 'tr-gaveta-input';
+    inputLed.className = 'tr-gaveta-input tr-gaveta-led';
     inputLed.value = ledActual;
-    inputLed.placeholder = 'LED';
+    inputLed.placeholder = 'nº';
     inputLed.min = 1;
     inputLed.max = 128;
     inputLed.title = 'Numero de gaveta en la tira de LEDs (vacio = sin luz)';
-    inputLed.style.width = '4.5em';
 
     const btnProbar = document.createElement('button');
     btnProbar.type = 'button';
+    btnProbar.className = 'tr-gaveta-probar';
     btnProbar.textContent = '💡';
     btnProbar.title = 'Encender esta gaveta para ver cual es';
-    btnProbar.style.cssText = 'cursor:pointer; border:1px solid #ced4da; border-radius:4px; background:#fff;';
 
     caja.append(input, inputLed, btnProbar);
     chipEl.replaceWith(caja);
@@ -1376,7 +1375,8 @@ function editarGaveta(codigo, chipEl) {
     const confirmar = () => {
         if (cerrado) return;
         cerrado = true;
-        guardarGaveta(codigo, input.value.trim(), inputLed.value.trim(), caja);
+        guardarGaveta(codigo, input.value.trim(), inputLed.value.trim(), caja,
+                      valorActual, ledActual);
     };
     const cancelar = () => {
         if (cerrado) return;
@@ -1394,10 +1394,12 @@ function editarGaveta(codigo, chipEl) {
         if (e.key === 'Escape') { cancelar(); }
     });
 
+    btnProbar.addEventListener('mousedown', e => e.preventDefault());
     btnProbar.addEventListener('click', e => {
         e.preventDefault();
         e.stopPropagation();
-        probarGaveta(codigo, inputLed.value.trim());
+        input.focus();   // el foco se queda dentro: probar no es guardar
+        probarGaveta(codigo, inputLed.value.trim(), btnProbar);
     });
 }
 
@@ -1420,8 +1422,14 @@ function _crearChipGaveta(codigo, gaveta, led) {
     return span;
 }
 
-/** Llama a la API y actualiza el chip en el DOM */
-async function guardarGaveta(codigo, gaveta, led, cajaEl) {
+/** Llama a la API y actualiza el chip en el DOM.
+ *
+ * Si el guardado falla, el chip vuelve a lo que HABIA, no a lo tecleado: un
+ * chip que enseña una gaveta que el servidor no acepto es peor que no verla,
+ * porque nadie vuelve a intentarlo.
+ */
+async function guardarGaveta(codigo, gaveta, led, cajaEl, gavetaPrevia, ledPrevio) {
+    let okGaveta = gaveta, okLed = led;
     try {
         let resp;
         if (gaveta) {
@@ -1435,26 +1443,27 @@ async function guardarGaveta(codigo, gaveta, led, cajaEl) {
             resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
                 method: 'DELETE'
             });
-            led = '';
+            okLed = '';
         }
         const data = await resp.json();
         if (!data.success) {
-            alert('Error: ' + data.message);
-            // El servidor rechazo el LED (fuera de rango): no enseñar como
-            // guardado algo que no lo esta.
-            led = '';
+            alert('Error: ' + (data.message || 'no se pudo guardar la gaveta'));
+            okGaveta = gavetaPrevia || '';
+            okLed = ledPrevio || '';
         }
     } catch (e) {
         console.error('Error al guardar gaveta', e);
+        okGaveta = gavetaPrevia || '';
+        okLed = ledPrevio || '';
     } finally {
-        // Siempre restaurar el chip (con el valor nuevo o sin él)
-        cajaEl.replaceWith(_crearChipGaveta(codigo, gaveta, led));
+        cajaEl.replaceWith(_crearChipGaveta(codigo, okGaveta, okLed));
     }
 }
 
 /** Enciende una gaveta desde admin, para saber qué cajón es cada número */
-async function probarGaveta(codigo, led) {
-    if (!led) { alert('Escribe primero el número de LED.'); return; }
+async function probarGaveta(codigo, led, btn) {
+    if (!led) { alert('Escribe primero el número de gaveta en la tira de LEDs.'); return; }
+    if (btn) btn.disabled = true;
     try {
         const resp = await fetch('/api/pick-to-light/probar', {
             method: 'POST',
@@ -1465,6 +1474,8 @@ async function probarGaveta(codigo, led) {
         if (!data.success) alert(data.message || 'No se pudo encender la gaveta');
     } catch (e) {
         alert('No se pudo hablar con la placa de las gavetas.');
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 

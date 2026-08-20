@@ -265,12 +265,33 @@
             background: transparent;
         }
         .tr-gaveta.empty:hover { border-color: rgba(139,92,246,.5); color: rgba(167,139,250,.7); }
+        /* La fila es un flex donde solo .tr-assign cede espacio. Si la caja de
+           edicion no se planta con flex-shrink:0, el navegador la encoge a ella
+           pero no a sus hijos (que sí lo llevan): se desbordan y acaban pintados
+           encima del badge y de los botones de la derecha. */
+        .tr-gaveta-edit {
+            display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+        }
         .tr-gaveta-input {
             font-family: 'DM Mono', monospace; font-size: 0.72rem;
             background: #1e293b; border: 1px solid #7c3aed;
             border-radius: 20px; color: #f1f5f9; padding: 2px 8px;
-            outline: none; width: 110px; flex-shrink: 0;
+            outline: none; width: 92px; flex-shrink: 0; min-width: 0;
         }
+        .tr-gaveta-led { width: 46px; text-align: center; }
+        /* Las flechitas del input number se comen el ancho que necesita el numero */
+        .tr-gaveta-led::-webkit-outer-spin-button,
+        .tr-gaveta-led::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .tr-gaveta-led { -moz-appearance: textfield; appearance: textfield; }
+        .tr-gaveta-probar {
+            flex-shrink: 0; width: 24px; height: 21px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; line-height: 1; cursor: pointer;
+            border-radius: 20px; border: 1px solid rgba(139,92,246,.35);
+            background: rgba(139,92,246,.1); color: #e9d5ff; transition: all .14s;
+        }
+        .tr-gaveta-probar:hover { background: rgba(139,92,246,.25); border-color: rgba(139,92,246,.7); }
+        .tr-gaveta-probar:disabled { opacity: .45; cursor: default; }
 
         /* Badge tipo operación */
         .badge-tipo {
