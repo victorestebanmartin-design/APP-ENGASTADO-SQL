@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {% include '_head_pwa.html' %}
     <title>Sistema de Engastado V3.0 - Modo Avanzado</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=v3-1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-v3.css') }}">
 </head>
 <body>
@@ -312,9 +312,9 @@
 
     </div>
 
-    <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/cable-colors.js') }}"></script>
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}"></script>
     <script>
         // En un PC dedicado a engastado no hay rejilla a la que "volver": ese
         // equipo solo engasta, así que salir del módulo es cerrar la sesión y

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {% include '_head_pwa.html' %}
   <title>Generador de Etiquetas - Sistema de Engastado</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=etiquetas1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <style>
     .etiquetas-container {
       max-width: 1200px;
@@ -382,8 +382,8 @@
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='js/cable-colors.js') }}?v=4"></script>
-  <script src="{{ url_for('static', filename='js/etiquetas.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='js/cable-colors.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/etiquetas.js') }}"></script>
 
   <!-- Modal Reagrupar -->
   <div id="modal-reagrupar" class="modal-overlay">

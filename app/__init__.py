@@ -373,6 +373,8 @@ def create_app(config_class=Config):
     from app import routes
     routes.init_routes(app)
 
+    _versionar_estaticos(app)
+
     # Handler global para excepciones no controladas
     @app.errorhandler(Exception)
     def _manejar_excepcion_no_controlada(e):
@@ -387,6 +389,32 @@ def create_app(config_class=Config):
         }), 500
 
     return app
+
+
+def _versionar_estaticos(app):
+    """Cuelga la fecha del fichero de cada URL de /static/.
+
+    Flask sirve los estaticos con 12 horas de cache. Sin nada que distinga una
+    version de otra, desplegar un cambio de JS o CSS no lo hace llegar: el
+    navegador sigue con el fichero que ya tenia y la pagina se comporta como
+    antes del cambio. En planta eso se lee como "no funciona", y peor aun, se
+    mezcla: el HTML viene del servidor (fresco) y el JS de la cache (viejo),
+    asi que media pantalla es nueva y la otra media no.
+
+    Se venia parcheando a mano poniendo ?v=13 detras de algunos ficheros, que
+    hay que acordarse de subir uno a uno. Con la fecha de modificacion en la
+    URL, un fichero nuevo es una URL nueva y el navegador lo pide solo, sin
+    que nadie tenga que acordarse de nada ni pulsar Ctrl+F5.
+    """
+    @app.url_defaults
+    def _anadir_version(endpoint, values):
+        if endpoint != 'static' or 'filename' not in values or 'v' in values:
+            return
+        try:
+            ruta = os.path.join(app.static_folder, values['filename'])
+            values['v'] = int(os.stat(ruta).st_mtime)
+        except OSError:
+            pass   # fichero que no esta: que falle el 404, no el render
 
 
 def _configurar_logging(app):
