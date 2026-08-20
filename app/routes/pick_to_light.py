@@ -31,6 +31,9 @@ from app.routes.base import bp, db, error_interno
 
 PUERTO_PLACA = 80          # el mini servidor HTTP de esp32/lib/gavetas.py
 TIMEOUT_PLACA = 1.5        # segundos: en LAN sobra, y un corte se nota ya
+TIMEOUT_PLACA_PROBAR = 4.0 # 'probar' es una accion de admin sin prisa: la
+                           # placa lee los expansores I2C antes de responder
+                           # y eso a veces tarda mas que el timeout normal
 RUTA_PLACA = '/gaveta'
 MAX_EVENTOS_PUESTO = 20    # historial corto por puesto, para no crecer sin fin
 
@@ -79,7 +82,7 @@ def _puesto_de_la_placa(device_id):
     return dev.get('puesto_id') or ''
 
 
-def _enviar_a_placa(ip, payload):
+def _enviar_a_placa(ip, payload, timeout=TIMEOUT_PLACA):
     """POST corto al mini servidor de la placa. Devuelve (ok, motivo).
 
     Nunca lanza: un fallo de red aqui significa "sin luz", no "peticion rota".
@@ -89,7 +92,7 @@ def _enviar_a_placa(ip, payload):
     cuerpo = json.dumps(payload).encode('utf-8')
     conexion = None
     try:
-        conexion = http.client.HTTPConnection(ip, PUERTO_PLACA, timeout=TIMEOUT_PLACA)
+        conexion = http.client.HTTPConnection(ip, PUERTO_PLACA, timeout=timeout)
         conexion.request('POST', RUTA_PLACA, body=cuerpo,
                          headers={'Content-Type': 'application/json'})
         respuesta = conexion.getresponse()
@@ -254,7 +257,7 @@ def api_pick_to_light_probar():
             return jsonify({'success': False, 'message': mensaje}), 404
 
         payload = {'apagar': True} if apagar else {'led': led}
-        ok, motivo = _enviar_a_placa(ip, payload)
+        ok, motivo = _enviar_a_placa(ip, payload, timeout=TIMEOUT_PLACA_PROBAR)
         if not ok:
             return jsonify({'success': False, 'message': motivo}), 502
         return jsonify({'success': True})
