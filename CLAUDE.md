@@ -20,6 +20,26 @@ desarrollo funcionaba perfecto.
 un `open()` de texto sin `encoding`. Si salta, no lo silencies: añade el
 `encoding='utf-8'`.
 
+**Lo mismo vale para `print()`.** `run.bat` manda la salida a un fichero de log,
+y sin consola Python usa cp1252 para stdout: un emoji en un mensaje de log
+lanzaba `UnicodeEncodeError`. Y como `UnicodeEncodeError` hereda de
+`ValueError`, se colaba por los `except ValueError` de la ruta y tumbaba la
+petición: "Regenerar etiquetas" devolvía `'charmap' codec can't encode...` (y
+dejaba la tabla vacía), y elegir un terminal en engastado no encontraba
+paquetes porque el print de después de cargar el Excel reventaba.
+
+Los arranques (`run_sql.py`, `wsgi.py`) llaman a `consola_utf8.forzar_utf8()` lo
+primero de todo, y `run.bat` fija `PYTHONIOENCODING=utf-8`. Lo vigila
+`tests/test_encoding_consola.py`. No metas nada por delante de esa llamada.
+
+## Regenerar es sustituir
+
+Al rehacer datos derivados de un Excel (`_regenerar_etiquetas_archivo`), calcula
+primero y borra después, en la misma transacción. Si se borra con `commit` y el
+Excel falla luego, el archivo se queda sin etiquetas y engastado da el terminal
+por completado sin enseñar un paquete: el operario no ve un error, ve trabajo
+que ya no existe.
+
 ## Firmware de las placas ESP32
 
 `esp32/` es MicroPython, no CPython: su `open()` **no** acepta `encoding` (por eso

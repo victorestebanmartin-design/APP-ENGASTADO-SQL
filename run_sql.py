@@ -2,6 +2,11 @@
 Script principal para ejecutar la aplicación SQL
 Versión 2.0 - SQLite (sin permisos admin)
 """
+# Lo PRIMERO, antes de cualquier print: run.bat manda la salida a un fichero
+# de log y en Windows eso deja stdout en cp1252, donde no cabe un emoji.
+from consola_utf8 import forzar_utf8
+forzar_utf8()
+
 import socket
 import sys
 import logging

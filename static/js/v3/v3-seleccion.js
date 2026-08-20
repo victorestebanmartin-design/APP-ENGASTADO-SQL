@@ -584,16 +584,31 @@ async function mostrarSeleccionCarro() {
         return;
     }
 
-    // Filtrar carros que realmente tienen datos para este terminal
+    // Filtrar carros que realmente tienen datos para este terminal.
+    // "El servidor no ha podido contestar" NO es lo mismo que "no hay trabajo":
+    // si se confunden, el operario ve el terminal dado por completado sin haber
+    // engastado nada. Ante un fallo se deja pasar el carro y se avisa.
     const carrosPendientesFiltrados = [];
+    let fallosServidor = 0;
     for (const carro of carrosPendientes) {
         try {
             const r = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}`);
             const d = await r.json();
-            if (d.success && d.paquetes && d.paquetes.length > 0) {
+            if (!d.success) {
+                fallosServidor++;
+                console.error(`Carro ${carro.carro}: ${d.message || 'error del servidor'}`);
+                carrosPendientesFiltrados.push(carro);
+            } else if (d.paquetes && d.paquetes.length > 0) {
                 carrosPendientesFiltrados.push(carro);
             }
-        } catch(e) { carrosPendientesFiltrados.push(carro); }
+        } catch(e) {
+            fallosServidor++;
+            carrosPendientesFiltrados.push(carro);
+        }
+    }
+
+    if (fallosServidor > 0) {
+        mostrarMensaje(`⚠️ No se han podido leer ${fallosServidor} carro(s). Avisa al administrador: Admin → Archivos → Etiquetas.`, 'error');
     }
 
     if (carrosPendientesFiltrados.length === 0) {

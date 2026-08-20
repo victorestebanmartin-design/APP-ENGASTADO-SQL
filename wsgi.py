@@ -2,6 +2,9 @@
 WSGI entry point para despliegue en producción (Railway, Render, etc.)
 Uso: gunicorn wsgi:app
 """
+from consola_utf8 import forzar_utf8
+forzar_utf8()
+
 import os
 import sqlite3
 

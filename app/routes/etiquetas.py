@@ -666,7 +666,16 @@ def api_etiquetas_regenerar():
 
     except FileNotFoundError as e:
         return jsonify({'success': False, 'message': str(e)}), 404
+    except UnicodeError as e:
+        # UnicodeEncodeError hereda de ValueError, asi que sin esta rama se
+        # colaba por la de abajo y el navegador recibia tal cual "'charmap'
+        # codec can't encode characters in position 0-1", que no le dice nada
+        # a nadie. Es un fallo del servidor: al log con su referencia.
+        return error_interno(e, 'Error al regenerar')
     except ValueError as e:
+        # Aqui solo deben llegar los motivos que se explican solos (p.ej.
+        # faltan columnas en el Excel), porque este texto se le enseña tal
+        # cual al que pulsa el boton.
         return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
         return error_interno(e, 'Error al regenerar')
@@ -674,21 +683,20 @@ def api_etiquetas_regenerar():
 
 def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     """
-    Borra las etiquetas existentes de 'archivo' y las regenera desde el Excel.
+    Sustituye las etiquetas de 'archivo' por las que salgan del Excel actual.
     Devuelve el número de etiquetas generadas.
+
+    Si algo falla, las etiquetas anteriores siguen intactas.
     """
     if not os.path.exists(excel_path):
         raise FileNotFoundError(f'Archivo no encontrado: {archivo}')
 
-    # 1. Borrar las existentes
-    with db.engine.connect() as conn:
-        deleted = conn.execute(
-            text("DELETE FROM etiquetas_elementos WHERE archivo_excel = :a"), {'a': archivo}
-        ).rowcount
-        conn.commit()
-    print(f"🗑️  Etiquetas eliminadas para {archivo}: {deleted} filas")
-
-    # 2. Leer Excel y regenerar
+    # 1. Leer Excel y calcular las etiquetas nuevas.
+    #    Las viejas NO se tocan todavia: si el Excel no se puede leer o le
+    #    faltan columnas, el archivo se queda con las etiquetas que ya tenia.
+    #    (Antes se borraba aqui y se hacia commit: cualquier fallo posterior
+    #    dejaba el archivo sin ninguna etiqueta, y engastado daba el terminal
+    #    por completado porque no encontraba paquetes.)
     df = leer_excel_cacheado(excel_path)
 
     if 'Cod. cable' not in df.columns or 'De Elemento Etiquetas' not in df.columns:
@@ -802,7 +810,8 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
         })
         numero_etiqueta += 1
 
-    # 3. Guardar
+    # 2. Sustituir: borrado e insercion en la MISMA transaccion. O queda el
+    #    juego nuevo entero, o se queda el viejo; nunca la tabla a medias.
     query_ins = """
         INSERT INTO etiquetas_elementos
         (archivo_excel, codigo_corte, numero_etiqueta, sub_numero, es_grupo_padre,
@@ -813,6 +822,9 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
                 :de_terminal, :num_cables, :num_terminales)
     """
     with db.engine.connect() as conn:
+        conn.execute(
+            text("DELETE FROM etiquetas_elementos WHERE archivo_excel = :a"), {'a': archivo}
+        )
         for g in grupos_generados:
             conn.execute(text(query_ins), {
                 'archivo': g['archivo'], 'codigo_corte': g['codigo_corte'],

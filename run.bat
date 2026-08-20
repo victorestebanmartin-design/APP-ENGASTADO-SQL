@@ -26,6 +26,14 @@ if "!TS!"=="" set TS=sin-fecha_%RANDOM%
 
 set "LOG=%~dp0logs\servidor_!TS!.log"
 
+REM ── 0.2) Salida en UTF-8 ───────────────────────────────────────────────
+REM La salida de la app va a un fichero (ver mas abajo), no a la consola, y
+REM entonces Python usa la codificacion regional de Windows (cp1252) para
+REM stdout. Un solo emoji en un print lanza UnicodeEncodeError y tumba la
+REM peticion que lo estuviera imprimiendo. Con esto el proceso entero -
+REM incluidos los avisos de arranque y los traceback - habla UTF-8.
+set PYTHONIOENCODING=utf-8
+
 REM Activar entorno virtual
 call venv\Scripts\activate.bat
 
