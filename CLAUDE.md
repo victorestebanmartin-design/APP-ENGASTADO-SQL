@@ -74,3 +74,27 @@ python -m pytest          # la suite entera, ~2 min
 
 Cada test recibe su propia BD SQLite temporal creada desde `schema_sqlite.sql`
 (ver `tests/conftest.py`); nunca se toca `data/engastado.db`.
+
+## El PC servidor no puede dormirse
+
+En fábrica la app corre en un PC de oficina, y un PC de oficina se suspende
+solo a los pocos minutos sin teclado ni ratón — que es exactamente lo que hace
+el servidor: nadie lo toca. Suspendido no va lento, está parado: se apaga la
+tarjeta de red y el puerto 5001 deja de existir. Los puestos ven «no se puede
+acceder a este sitio», las placas se quedan sin respuesta (pitido de error
+técnico) y en los logs de la app no hay ningún error, hay un hueco. Mover el
+ratón del servidor lo arregla, así que parece cosa de la red.
+
+`mantener_despierto.py` se lo pide a Windows al arrancar
+(`SetThreadExecutionState`, sin permisos de administrador) y `run_sql.py` lo
+llama antes de `serve()`. Dos detalles que no se pueden tocar:
+
+- **Desde el hilo principal.** Windows guarda la petición por hilo y la olvida
+  cuando ese hilo termina; el principal es el que se queda dentro de `serve()`.
+  Lo vigila `tests/test_mantener_despierto.py`.
+- **Sin `ES_DISPLAY_REQUIRED`.** La pantalla puede apagarse: eso no para el
+  servidor.
+
+El log de arranque deja escrito si llegó a aplicarse (`Suspension del PC:
+evitada / SIN evitar`). El plan de energía de Windows se configura además a
+mano, como refuerzo: ver `INSTRUCCIONES_IT.md`.

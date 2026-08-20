@@ -18,7 +18,8 @@ archivo local (`data\engastado.db`).
      offline (carpeta `paquete_offline\wheels`) no será compatible.
 2. Puerto **TCP 5001** abierto en el Firewall de Windows (regla de ENTRADA).
 3. **IP fija** para el PC (para que la URL no cambie).
-4. (Opcional) Arranque automático: tarea programada que ejecute `run.bat` al
+4. **Que el PC no se suspenda** (ver más abajo: *El servidor no puede dormirse*).
+5. (Opcional) Arranque automático: tarea programada que ejecute `run.bat` al
    iniciar sesión.
 
 ---
@@ -67,6 +68,58 @@ La carpeta **`paquete_offline`** ya incluye TODO lo necesario:
 ## Abrir el puerto en el Firewall (PowerShell como administrador)
 
     New-NetFirewallRule -DisplayName "App Engastado 5001" -Direction Inbound -Protocol TCP -LocalPort 5001 -Action Allow
+
+---
+
+## El servidor no puede dormirse
+
+Un PC de oficina viene configurado para **suspenderse solo** a los pocos
+minutos sin teclado ni ratón. El PC servidor es justo eso: nadie lo toca, solo
+sirve peticiones por red. Suspendido no va lento, **está parado**: la CPU no
+ejecuta y la tarjeta de red se apaga, así que el puerto 5001 deja de existir.
+
+Cómo se ve desde la planta (y por qué despista):
+- Los PCs de puesto: *«No se puede acceder a este sitio»*.
+- Las placas ESP32: sin respuesta → pitido de error técnico.
+- En cuanto alguien mueve el ratón del servidor, vuelve todo solo.
+- En los logs de la app **no hay ningún error**: hay un hueco.
+
+El tráfico de red **no** despierta al equipo (eso sería Wake-on-LAN, que
+además no reanudaría una petición HTTP a medias).
+
+**La app ya se defiende sola:** al arrancar le pide a Windows que no suspenda el
+equipo mientras el servidor esté en marcha (`mantener_despierto.py`). No
+necesita permisos de administrador y deja de aplicarse al parar el servidor.
+En el log de arranque (`logs\servidor_*.log`) aparece la línea:
+
+    Suspension del PC: evitada -> el equipo no se suspendera mientras el servidor este en marcha
+
+Si ahí pone `SIN evitar`, la protección **no** se aplicó y hay que configurar el
+plan de energía a mano.
+
+**Configurarlo también en Windows (recomendado, cinturón y tirantes).** En una
+consola normal del usuario que arranca la app, **sin permisos de
+administrador**:
+
+    powercfg /change standby-timeout-ac 0
+    powercfg /change hibernate-timeout-ac 0
+    powercfg /change disk-timeout-ac 0
+
+(`0` = nunca; `-ac` = enchufado a la corriente. Si el servidor fuese un
+portátil, repetir con `-dc` para batería.) La pantalla puede seguir
+apagándose: no afecta al servidor.
+
+Para comprobar cómo ha quedado:
+
+    powercfg /query SCHEME_CURRENT SUB_SLEEP
+
+Dos ajustes más que **sí** piden administrador y conviene revisar si aun así
+hay cortes de madrugada:
+- Administrador de dispositivos → adaptador de red → Propiedades →
+  *Administración de energía* → **desmarcar** «Permitir que el equipo apague
+  este dispositivo para ahorrar energía».
+- Si el PC está en dominio, comprobar que ninguna directiva de grupo repone el
+  plan de energía (la protección de la app sigue valiendo aunque eso pase).
 
 ---
 

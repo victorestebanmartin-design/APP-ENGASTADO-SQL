@@ -7,6 +7,10 @@ Versión 2.0 - SQLite (sin permisos admin)
 from consola_utf8 import forzar_utf8
 forzar_utf8()
 
+# Un PC de oficina se suspende solo a los pocos minutos sin teclado ni raton,
+# y suspendido no sirve nada: ni puestos ni placas. Ver mantener_despierto.py.
+from mantener_despierto import mantener_despierto
+
 import socket
 import sys
 import logging
@@ -112,7 +116,11 @@ if __name__ == '__main__':
     print(f"\nServidor iniciado en:")
     print(f"   Local:      http://localhost:{port}")
     print(f"   Red local:  http://{local_ip}:{port}")
+    # Antes de ponerse a servir, y desde el hilo principal (que es el que se
+    # queda dentro de serve()): que el PC no se duerma dejando la nave sin app.
+    despierto, detalle_reposo = mantener_despierto()
     print(f"\nEntorno: {'development' if app.debug else 'production'}")
+    print(f"Suspension del PC: {'evitada' if despierto else 'SIN evitar'} -> {detalle_reposo}")
     print(f"Base de datos: SQLite -> {Config.DB_PATH}")
     print("=" * 80)
     print("Para acceder desde otros dispositivos:")
