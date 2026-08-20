@@ -20,7 +20,7 @@ def sin_placa(monkeypatch):
     """La placa no contesta: es el caso de 'engastado sigue igual'."""
     enviados = []
 
-    def _falso(ip, payload):
+    def _falso(ip, payload, timeout=None):
         enviados.append((ip, payload))
         return False, 'La placa de las gavetas no responde'
 
@@ -33,7 +33,7 @@ def con_placa(monkeypatch):
     """La placa contesta que sí a todo."""
     enviados = []
 
-    def _falso(ip, payload):
+    def _falso(ip, payload, timeout=None):
         enviados.append((ip, payload))
         return True, ''
 
@@ -256,6 +256,22 @@ def test_probar_un_led_fuera_de_rango_no_llega_a_la_placa(app, admin_client, con
                               json={'terminal': '640204', 'led': valor})
         assert r.status_code == 400, (valor, r.get_json())
     assert con_placa == []
+
+
+def test_probar_espera_mas_que_encender(app, admin_client, monkeypatch):
+    """Encender es delante del operario; probar es de montaje y puede esperar.
+
+    Sondear los expansores por I2C a veces pasa del timeout corto, y ahi un
+    corte no ahorra nada: no hay nadie esperando la pantalla.
+    """
+    _registrar_lector(app)
+    vistos = []
+    monkeypatch.setattr(pick_to_light, '_enviar_a_placa',
+                        lambda ip, payload, timeout=None: (vistos.append(timeout), (True, ''))[1])
+
+    admin_client.post('/api/pick-to-light/probar', json={'terminal': '640204', 'led': 5})
+    assert vistos == [pick_to_light.TIMEOUT_PLACA_PROBAR]
+    assert pick_to_light.TIMEOUT_PLACA_PROBAR > pick_to_light.TIMEOUT_PLACA
 
 
 def test_probar_necesita_pin_de_admin(client, con_placa):
