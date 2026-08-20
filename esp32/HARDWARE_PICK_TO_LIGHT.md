@@ -44,10 +44,10 @@ cada canal a 3,3 V.
   │ +RC522    │  │ 3,3->5 V │  │ 10 LEDs │  │  entrada   │   │  del ESP32,  │
   │ +zumbador │  │ 8 canales│  │         │  │  de tira)  │   │  NO 5 V)     │
   └─────┬─────┘  └────┬─────┘  └────^────┘  └────────────┘   └──────┬───────┘
-        │ GPIO13      │ B1          │ DI+BI                         │ GPA/GPB
+        │ D13         │ B1          │ DI+BI                         │ GPA/GPB
         └───> A1 ─────┼──[330 Ω]────┘                               │
-        │ GPIO21 SDA                                                │
-        │ GPIO26 SCL ───────────────────────────────────────────────┘
+        │ D21 = SDA                                                 │
+        │ D26 = SCL ────────────────────────────────────────────────┘
                                                         10 micro-interruptores
                                                         (el otro extremo a GND)
 ```
@@ -84,8 +84,8 @@ El módulo tiene `VA A1 A2 … A8 OE` en un lado y `GND B8 B7 … B1 VB` en el o
 lado de 3,3 V y `B` el de 5 V. Se usa **un solo canal**, el 1:
 
 ```
-ESP32 3V3    ──────────> TXS0108E  VA
-ESP32 GPIO13 ──────────> TXS0108E  A1
+ESP32 3V3     ─────────> TXS0108E  VA
+ESP32 D13     ─────────> TXS0108E  A1     (D13 = GPIO13)
                          TXS0108E  B1 ──[330 Ω]──┬──> TIRA  DI
                                      (opcional)  └──> TIRA  BI
 +5 V         ──────────> TXS0108E  VB
@@ -139,8 +139,9 @@ juego en todo el bus**, no una por expansor.
 ## 4. Bus I2C y micro-interruptores
 
 ```
-ESP32 GPIO21 (SDA) ──────> MCP23017 pin 13 (SDA)
-ESP32 GPIO26 (SCL) ──────> MCP23017 pin 12 (SCL)
+ESP32 D21 ───────────────> MCP23017 pin 13 (SDA)   (D21 = GPIO21)
+ESP32 D26 ───────────────> MCP23017 pin 12 (SCL)   (D26 = GPIO26,
+                                                     NO el pin marcado SCL)
 
 MCP23017 pin 15 (A0) ──> GND ┐
 MCP23017 pin 16 (A1) ──> GND ├── dirección 0x20 = gavetas 1-16
@@ -183,29 +184,73 @@ del mismo bus (4 hilos: SDA, SCL, 3V3, GND). La dirección la fijan A0/A1/A2:
 El firmware escanea de 0x20 a 0x27, así que ampliar es soldar el expansor siguiente y
 reiniciar: no hay que configurar nada en el servidor.
 
-## 6. Pines del ESP32
+## 6. Pines del ESP32 — y cómo se llaman en la placa
 
-Ocupados hoy — no se toca ni un cable (`esp32/wifi_config.py`):
+**En la ESP32 DevKit V1, `D<n>` de la serigrafía ES el `GPIO<n>`.** `D13` es GPIO13,
+`D26` es GPIO26, `D21` es GPIO21. No hay tabla de conversión que aprenderse, a diferencia
+de las NodeMCU de ESP8266, donde `D1` es GPIO5 y todo va cambiado.
 
-| GPIO | Función actual |
-|---|---|
-| 5, 18, 23, 19, 22 | RC522: CS, SCK, MOSI, MISO, RST |
-| 4 | Zumbador |
-| 2 | LED de estado (el de la placa) |
+Para saber cuál tienes en la mano: si la placa lleva pines **`VP`, `VN`, `D34` y `D35`**,
+es ESP32 y vale la regla de arriba. Si solo llega hasta `D8`, es una ESP8266 y este
+esquema no le sirve.
 
-Nuevos:
+### Todo lo del montaje, con el nombre que está impreso
 
-| Señal | GPIO | Va a |
-|---|---|---|
-| Datos WS2813 | **13** | TXS0108E A1 (o 74AHCT125 pin 2) |
-| I2C SDA | **21** | MCP23017 pin 13 |
-| I2C SCL | **26** | MCP23017 pin 12 |
+| Señal | GPIO | En tu placa | Va a |
+|---|---|---|---|
+| RC522 SDA/CS | 5 | `D5` | ya soldado, no se toca |
+| RC522 SCK | 18 | `D18` | ya soldado |
+| RC522 MOSI | 23 | `D23` | ya soldado |
+| RC522 MISO | 19 | `D19` | ya soldado |
+| RC522 RST | 22 | `D22` | ya soldado — **ojo, ver el aviso de abajo** |
+| Zumbador | 4 | `D4` | ya soldado |
+| LED de estado | 2 | `D2` | el de la propia placa |
+| **Datos WS2813** | 13 | **`D13`** | TXS0108E `A1` (o 74AHCT125 pin 2) |
+| **I2C SDA** | 21 | **`D21`** | MCP23017 pin 13 |
+| **I2C SCL** | 26 | **`D26`** | MCP23017 pin 12 |
+| 5 V de la fuente | — | `VIN` | en algunas clónicas pone `5V` o `VV` |
+| 3,3 V | — | `3V3` | alimenta el MCP23017 y `VA`/`OE` del TXS0108E |
+| Masa | — | `GND` | hay tres, valen los tres |
 
-GPIO26 en vez del par canónico 21/22 porque el 22 lo tiene el RST del RC522. El I2C del
-ESP32 se remapea a cualquier pin, así que no cuesta nada y evita rehacer las placas ya
-montadas. Los tres valores se pueden cambiar en `wifi_config.py`
-(`GAVETAS_LED_PIN`, `GAVETAS_SDA_PIN`, `GAVETAS_SCL_PIN`); si no están, el firmware usa
-estos por defecto.
+### El aviso: no uses el pin que pone "SCL"
+
+El I2C de fábrica del ESP32 es SDA=GPIO21 y **SCL=GPIO22**, y bastantes placas lo llevan
+serigrafiado como `SDA` y `SCL` junto a `D21` y `D22`. Aquí **`D22` está ocupado por el
+RST del RC522**, así que el SCL de las gavetas va a **`D26`**, no al pin marcado `SCL`.
+Es lo único de este montaje que contradice a la serigrafía; si lo cableas "como pone en la
+placa", el bus no arranca y no se detecta ningún expansor.
+
+El I2C del ESP32 se remapea a cualquier pin, así que esto no tiene ningún coste: evita
+rehacer las placas ya montadas. Los tres pines nuevos se pueden cambiar en
+`wifi_config.py` (`GAVETAS_LED_PIN`, `GAVETAS_SDA_PIN`, `GAVETAS_SCL_PIN`); si no están,
+el firmware usa estos por defecto.
+
+### Mapa de la placa entera (30 pines, orden habitual)
+
+Con el USB abajo:
+
+```
+   IZQUIERDA                            DERECHA
+   EN                                   D23   (GPIO23)  <- RC522 MOSI
+   VP    (GPIO36, solo entrada)         D22   (GPIO22)  <- RC522 RST
+   VN    (GPIO39, solo entrada)         TX0   (GPIO1)   consola serie
+   D34   (GPIO34, solo entrada)         RX0   (GPIO3)   consola serie
+   D35   (GPIO35, solo entrada)         D21   (GPIO21)  <- I2C SDA
+   D32   (GPIO32)                       D19   (GPIO19)  <- RC522 MISO
+   D33   (GPIO33)                       D18   (GPIO18)  <- RC522 SCK
+   D25   (GPIO25)                       D5    (GPIO5)   <- RC522 CS
+   D26   (GPIO26)  <- I2C SCL           TX2   (GPIO17)
+   D27   (GPIO27)                       RX2   (GPIO16)
+   D14   (GPIO14)                       D4    (GPIO4)   <- zumbador
+   D12   (GPIO12)                       D2    (GPIO2)   <- LED de estado
+   D13   (GPIO13)  <- datos WS2813      D15   (GPIO15)
+   GND                                  GND
+   VIN             <- +5 V              3V3             <- 3,3 V
+```
+
+Las clónicas cambian a veces el orden de alguna fila, pero nunca la regla: fíate del
+nombre impreso, no de la posición. `VP`/`VN`, `D34` y `D35` son **solo entrada** y no
+sirven para atacar la tira.
 
 ## 7. Consumo
 
