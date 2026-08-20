@@ -4,7 +4,7 @@
 # Este fichero SI se actualiza por OTA (ver ota_update.py): sube la version
 # aqui, publicalo con el deploy habitual del repo y la placa se autoactualiza
 # sola en su siguiente comprobacion (arranque o periodica).
-FW_VERSION = "2026-08-19a"
+FW_VERSION = "2026-08-20a"
 
 import time
 from machine import Pin
@@ -14,6 +14,13 @@ import http_client
 import ota_update
 import wifi_config as cfg
 import backend_config as backend_cfg
+
+try:
+    import gavetas
+except ImportError:
+    # Placa con un firmware anterior al pick-to-light (o sin el fichero por lo
+    # que sea): el lector de tarjetas es lo importante y tiene que arrancar.
+    gavetas = None
 
 HOST = backend_cfg.BACKEND_HOST
 PORT = backend_cfg.BACKEND_PORT
@@ -27,6 +34,11 @@ rfid = MFRC522(cfg.SPI_CLK_PIN, cfg.SPI_MOSI_PIN, cfg.SPI_MISO_PIN,
                cfg.SPI_RST_PIN, cfg.SPI_CS_PIN)
 buzzer = Pin(cfg.BUZZER_PIN, Pin.OUT)
 led = Pin(cfg.LED_PIN, Pin.OUT)
+
+# Pick-to-light de gavetas: solo se activa si hay expansores MCP23017 en el bus
+# I2C (ver esp32/HARDWARE_PICK_TO_LIGHT.md). En un lector sin nada soldado,
+# crear() devuelve None y todo lo de abajo se salta solo.
+gav = gavetas.crear(cfg, buzzer, ota_update.DEVICE_ID) if gavetas else None
 
 
 def beep(times=1, duration_ms=100, pause_ms=50):
@@ -117,6 +129,9 @@ def bucle_principal():
     # que usa ota_update para decidir si hace rollback.
     ota_update.marcar_arranque_ok()
 
+    if gav:
+        print("Pick-to-light activo:", gav.n_gavetas, "gavetas")
+
     last_scan_ms = 0
     last_ota_check_ms = time.ticks_ms()
     debounce = cfg.DEBOUNCE_MS
@@ -136,6 +151,15 @@ def bucle_principal():
                     print("Resultado RFID:", resultado, "-", motivo)
                     last_scan_ms = now
                 rfid.select_tag(raw_uid)  # cierra el ciclo de seleccion del chip
+
+        # Gavetas: atiende la orden de encendido que empuja el servidor, los
+        # micro-interruptores y el zumbador de "gaveta equivocada". Ninguna de
+        # las tres cosas bloquea, asi que no frena la lectura de tarjetas.
+        if gav:
+            try:
+                gav.actualizar()
+            except Exception as e:
+                print("Gavetas: fallo en el bucle:", e)
 
         # Comprobacion periodica de OTA (ademas de la que ya hace boot.py al
         # arrancar). Si hay version nueva, check_and_apply() reinicia sola.

@@ -539,6 +539,11 @@ async function seleccionarTerminalTrabajo(terminal) {
         }
     } catch (e) { /* ignorar, no es crítico */ }
 
+    // Encender la luz de esa gaveta (pick-to-light). Si el puesto no tiene
+    // tira de LEDs, no tiene lector asignado o la placa esta caida, esto no
+    // hace nada y el flujo sigue igual: ver static/js/v3/v3-gavetas.js.
+    await encenderGavetaTerminal(terminal);
+
     // Marcar terminal como 'en_proceso' en el backend de inmediato
     try {
         await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {

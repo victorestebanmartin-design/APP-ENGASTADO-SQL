@@ -249,10 +249,19 @@ def _apply_migrations(db_path):
         CREATE TABLE IF NOT EXISTS terminales_gavetas (
             terminal_codigo TEXT PRIMARY KEY,
             gaveta          TEXT NOT NULL,
+            led             INTEGER,
             updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
     conn.commit()
+
+    # Migración: columna 'led' en terminales_gavetas (pick-to-light). Las
+    # instalaciones anteriores tienen la tabla sin ella; NULL = gaveta sin luz.
+    cur.execute("PRAGMA table_info(terminales_gavetas)")
+    gav_cols = {row[1] for row in cur.fetchall()}
+    if gav_cols and 'led' not in gav_cols:
+        cur.execute("ALTER TABLE terminales_gavetas ADD COLUMN led INTEGER")
+        conn.commit()
 
     # Migración: columnas tipo_operacion y pdf_instrucciones en maquinas
     cur.execute("PRAGMA table_info(maquinas)")

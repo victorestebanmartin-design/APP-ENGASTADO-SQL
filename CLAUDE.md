@@ -54,6 +54,28 @@ Las placas se actualizan por OTA, y el servidor anuncia la versión leyendo
    firmware viejo.
 3. Comprueba en Admin → Lectores RFID que las placas han cogido la versión.
 
+## El pick-to-light es opcional, y tiene que seguir siéndolo
+
+La placa del lector RFID puede llevar además una tira WS2813 y expansores
+MCP23017 que encienden la gaveta del terminal elegido (`esp32/lib/gavetas.py`,
+`app/routes/pick_to_light.py`, esquema en `esp32/HARDWARE_PICK_TO_LIGHT.md`).
+
+La mayoría de los puestos no lo tienen, y los que lo tienen se quedan sin él en
+cuanto se va la luz de la fuente de 5 V. Por eso:
+
+- `gavetas.crear()` devuelve `None` si no encuentra expansores en el bus I2C, y
+  `main.py` se salta todo lo demás. Un mismo firmware para todas las placas.
+- Los endpoints de `pick_to_light.py` responden **200 con `activo: False` y un
+  motivo legible**, nunca 500: sin gaveta configurada, sin lector asignado o con
+  la placa desenchufada, engastado tiene que llegar a los paquetes igual.
+- La puerta de confirmación (`esperarRecogidaGaveta`, `static/js/v3/v3-gavetas.js`)
+  siempre trae el botón «Continuar sin confirmar». Un microinterruptor roto no
+  puede dejar a un operario sin trabajar.
+
+Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en `esp32/main.py`:
+esa carpeta entra entera en el manifiesto OTA, pero la placa solo se actualiza
+si la versión cambia.
+
 ## Rechazos de tarjeta: el mensaje es parte del arreglo
 
 El operario que pasa la tarjeta no puede hacer nada con un "error interno". Cada

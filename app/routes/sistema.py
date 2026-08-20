@@ -2413,6 +2413,10 @@ def api_esp32_rfid_devices():
                 'online': online,
                 'fw': d.get('fw', ''),
                 'ota_pedido': bool(d.get('ota_pedido')),
+                # Gavetas del pick-to-light que la placa dice tener (0 = no
+                # lleva tira de LEDs). Lo manda ella en /api/esp32/rfid/gaveta,
+                # asi que verlo aqui evita ir al puesto a contar cajones.
+                'gavetas': int(d.get('gavetas') or 0),
             })
         try:
             puestos = [{'id': p['id'], 'nombre': f"🔧 Engastado — {p['nombre']}"}

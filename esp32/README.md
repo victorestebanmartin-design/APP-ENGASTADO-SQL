@@ -72,12 +72,41 @@ proposito.
 | `wifi_config.py` | **USB, una vez** | Credenciales WiFi, IP estatica de la placa y configuracion de hardware (pines). Contiene secretos: no se sube por OTA ni se commitea con valores reales. (Lleva tambien `WEBREPL_PASSWORD`, vacio = consola remota apagada.) |
 | `backend_config.py` | USB inicialmente, **actualizable por OTA** despues | Host/puerto del backend. Separado de `wifi_config.py` a proposito: no lleva secretos, asi que se puede migrar de servidor (p.ej. PythonAnywhere -> local) publicando el cambio, sin visitar cada placa. |
 | `lib/mfrc522.py` | USB inicialmente, **actualizable por OTA** despues | Driver del lector. Se incluye en el manifiesto OTA por si hiciera falta un fix sin pasar por USB. |
+| `lib/mcp23017.py`, `lib/gavetas.py` | USB inicialmente, **actualizable por OTA** despues | Pick-to-light de gavetas (opcional). Van en `lib/`, que entra entero en el manifiesto OTA, asi que se despliegan solos. |
 | `main.py` | USB inicialmente, **actualizable por OTA** despues | La logica de la placa (leer RFID, avisar con el zumbador, mandar la lectura). Esto es lo que cambiaras normalmente. |
 
 El patron (descargar y verificar TODO antes de tocar nada, con copia de
 seguridad y rollback automatico si el nuevo `main.py` no arranca) es el mismo
 que ya usa la pantalla del carro (`esp32/micropython/main_wifi.py`), asi que
 esta ya probado en produccion.
+
+## Pick-to-light de gavetas (opcional)
+
+Esta misma placa puede llevar ademas una tira de LEDs WS2813 y expansores
+MCP23017 con un micro-interruptor por gaveta: cuando el operario elige un
+terminal en engastado, se le enciende en verde el cajon donde esta el material,
+y al sacarlo la placa lo confirma y la app le muestra los paquetes. Si abre otro
+cajon, se pone en rojo y el zumbador pita continuo hasta que lo devuelve.
+
+Esa decision (correcta o equivocada) **la toma la placa**, no el servidor: el
+operario tiene la mano en el cajon y no puede esperar a un ida y vuelta por WiFi.
+Lo unico que viaja por la red es la orden de encender (el servidor hace un POST
+a `http://<ip-placa>/gaveta`) y el aviso de vuelta
+(`POST /api/esp32/rfid/gaveta`), que de paso deja escrito en Admin -> Lectores
+RFID cuantas gavetas tiene la placa.
+
+Es **opcional de verdad**: `gavetas.crear()` escanea el bus I2C de 0x20 a 0x27 y
+si no encuentra ningun expansor devuelve `None`, con lo que la placa se comporta
+exactamente como antes. La misma version de firmware vale para los lectores que
+llevan gavetas y para los que no, sin configurar nada por placa.
+
+El numero de gaveta de cada terminal se teclea en gestion de puestos, en el chip
+📦 de cada terminal, junto a la etiqueta de texto que ya se usaba. El boton 💡 de
+ese mismo editor enciende la gaveta, que es como se identifica que cajon fisico
+es cada numero sin ir contando por la estanteria.
+
+El esquema electrico completo (que componentes, que pin va donde, y por que) esta
+en `HARDWARE_PICK_TO_LIGHT.md`.
 
 ## Registro y asignacion a puesto (Admin -> Lectores RFID)
 
@@ -338,7 +367,10 @@ duplicar la misma pasada de tarjeta.
 - `wifi_config.py` -- credenciales WiFi, IP estatica de la placa y pines de hardware. **USB, no se toca por OTA, no se commitea con secretos reales.**
 - `backend_config.py` -- host/puerto del backend. **Se actualiza por OTA** (permite migrar de servidor sin USB).
 - `lib/mfrc522.py` -- driver del lector RC522 (vendorizado, MIT license). Actualizable por OTA.
+- `lib/mcp23017.py` -- driver del expansor I2C de 16 canales (micro-interruptores de las gavetas). Actualizable por OTA.
+- `lib/gavetas.py` -- pick-to-light: tira WS2813, micros, zumbador de gaveta equivocada y mini servidor HTTP. **Opcional**: sin expansores en el bus I2C no se activa. Actualizable por OTA.
 - `main.py` -- logica de la placa (RFID + zumbador + POST). **Esto es lo que se actualiza por OTA.**
+- `HARDWARE_PICK_TO_LIGHT.md` -- esquema electrico del pick-to-light (que se suelda y donde).
 
 ## Backend (referencia)
 

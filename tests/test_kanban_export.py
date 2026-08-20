@@ -33,8 +33,11 @@ def test_export_devuelve_gavetas_y_stock(admin_client):
     assert 'kanban_stock_' in r.headers['Content-Disposition']
 
     datos = json.loads(r.data.decode('utf-8'))
-    assert datos['version'] == 1
-    assert datos['gavetas'] == [{'terminal_codigo': '640204', 'gaveta': 'F1-G3'}]
+    # El numero de version sube cuando el formato gana campos (v2: el LED de
+    # cada gaveta), asi que se compara con la constante, no con un literal.
+    from app.routes.puestos import KANBAN_DATOS_VERSION
+    assert datos['version'] == KANBAN_DATOS_VERSION
+    assert datos['gavetas'] == [{'terminal_codigo': '640204', 'gaveta': 'F1-G3', 'led': None}]
 
     por_codigo = {s['terminal_codigo']: s for s in datos['stock']}
     assert por_codigo['640204']['stock_actual'] == 4000

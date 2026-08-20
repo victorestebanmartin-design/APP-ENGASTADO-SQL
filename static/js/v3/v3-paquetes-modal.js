@@ -58,6 +58,12 @@ async function cargarPaquetesDelCarro() {
         paquetesOrdenados = []; // forzar re-orden
         paquetesSaltados = []; // reset saltados
         
+        // Puerta del pick-to-light: los paquetes salen cuando el operario ha
+        // sacado la gaveta iluminada. Los datos ya estan cargados detras del
+        // panel, asi que confirmar es instantaneo; y si no hay luz encendida,
+        // esperarRecogidaGaveta() vuelve sin pintar nada.
+        await esperarRecogidaGaveta();
+
         // Mostrar modal de confirmación de paquetes
         await mostrarModalPaquetes(carro);
         

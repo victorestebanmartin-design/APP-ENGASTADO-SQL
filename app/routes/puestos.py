@@ -1034,11 +1034,12 @@ def api_terminales_disponibles():
         ).fetchall()
         imagenes_map = {r[0]: r[1] for r in rows}
 
-        # Cargar gavetas de terminales
+        # Cargar gavetas de terminales (y su numero de LED en el pick-to-light)
         rows_gav = db.session.execute(
-            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")
+            text("SELECT terminal_codigo, gaveta, led FROM terminales_gavetas")
         ).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
+        leds_map = {r[0]: r[2] for r in rows_gav}
 
         # Cargar terminales ignorados
         rows_ign = db.session.execute(
@@ -1055,6 +1056,7 @@ def api_terminales_disponibles():
                 'asignacion': terminales_asignados.get(terminal, None),
                 'imagen_data': imagenes_map.get(terminal),
                 'gaveta': gavetas_map.get(terminal),
+                'led': leds_map.get(terminal),
                 'ignorado': terminal in ignorados_set
             }
             terminales_con_estado.append(estado)
@@ -1291,15 +1293,40 @@ def api_eliminar_imagen_terminal(codigo):
 
 # ==================== GAVETAS DE TERMINALES ====================
 
+# El campo 'led' es el numero de gaveta en el pick-to-light del puesto (ver
+# esp32/HARDWARE_PICK_TO_LIGHT.md). Es OPCIONAL a proposito: una instalacion
+# sin tira de LEDs deja el campo vacio y todo sigue igual que antes.
+LED_GAVETA_MAX = 128   # 8 expansores MCP23017 de 16 canales
+
+
+def _led_gaveta_valido(bruto):
+    """Normaliza el numero de LED que llega por API.
+
+    Devuelve (led, error): led es un int 1..LED_GAVETA_MAX o None (sin luz), y
+    error es un mensaje para el operario cuando el valor no vale.
+    """
+    if bruto is None or str(bruto).strip() == '':
+        return None, None
+    try:
+        led = int(bruto)
+    except (TypeError, ValueError):
+        return None, 'El numero de LED tiene que ser un numero entero'
+    if not 1 <= led <= LED_GAVETA_MAX:
+        return None, 'El numero de LED tiene que estar entre 1 y %d' % LED_GAVETA_MAX
+    return led, None
+
+
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['GET'])
 def api_obtener_gaveta_terminal(codigo):
     """Obtener la gaveta (ubicación física) de un terminal."""
     try:
         row = db.session.execute(
-            text("SELECT gaveta FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
+            text("SELECT gaveta, led FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
             {'codigo': codigo}
         ).fetchone()
-        return jsonify({'success': True, 'gaveta': row[0] if row else None})
+        return jsonify({'success': True,
+                        'gaveta': row[0] if row else None,
+                        'led': row[1] if row else None})
     except Exception as e:
         return error_interno(e, 'Error al obtener gaveta de terminal')
 
@@ -1315,16 +1342,27 @@ def api_guardar_gaveta_terminal(codigo):
         if not gaveta:
             return jsonify({'success': False, 'message': 'La gaveta no puede estar vacía'}), 400
 
+        # 'led' ausente en el cuerpo = no se toca lo que ya hubiera guardado;
+        # 'led' presente y vacio = quitar la luz de esta gaveta.
+        if 'led' in data:
+            led, error_led = _led_gaveta_valido(data.get('led'))
+            if error_led:
+                return jsonify({'success': False, 'message': error_led}), 400
+            sql_led = 'led = excluded.led,'
+        else:
+            led, sql_led = None, ''
+
         db.session.execute(text("""
-            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, updated_at)
-            VALUES (:codigo, :gaveta, datetime('now'))
+            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, led, updated_at)
+            VALUES (:codigo, :gaveta, :led, datetime('now'))
             ON CONFLICT(terminal_codigo) DO UPDATE
                 SET gaveta     = excluded.gaveta,
+                    %s
                     updated_at = excluded.updated_at
-        """), {'codigo': codigo, 'gaveta': gaveta})
+        """ % sql_led), {'codigo': codigo, 'gaveta': gaveta, 'led': led})
         db.session.commit()
 
-        return jsonify({'success': True, 'gaveta': gaveta})
+        return jsonify({'success': True, 'gaveta': gaveta, 'led': led})
 
     except Exception as e:
         return error_interno(e, 'Error al guardar gaveta de terminal')
@@ -1432,9 +1470,10 @@ def api_kanban_terminales():
                 }
 
         rows_gav = db.session.execute(
-            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")
+            text("SELECT terminal_codigo, gaveta, led FROM terminales_gavetas")
         ).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
+        leds_map = {r[0]: r[2] for r in rows_gav}
 
         rows_stock = db.session.execute(
             text("SELECT terminal_codigo, stock_actual, stock_minimo, notas FROM terminales_stock")
@@ -1455,6 +1494,7 @@ def api_kanban_terminales():
                 'puesto_nombre':    asig['puesto_nombre']  if asig else None,
                 'tipo_operacion':   asig['tipo_operacion'] if asig else None,
                 'gaveta':           gavetas_map.get(terminal),
+                'led':              leds_map.get(terminal),
                 'stock_actual':     st['stock_actual'],
                 'stock_minimo':     st['stock_minimo'],
                 'notas':            st['notas'],
@@ -1740,7 +1780,11 @@ def api_exportar_pedido_excel():
 # exportarlo de uno e importarlo en el otro. Estas dos rutas son ese puente,
 # sin consolas y sin sacar datos de fábrica a un repositorio público.
 
-KANBAN_DATOS_VERSION = 1
+# v2 anadio el numero de LED de cada gaveta (pick-to-light). Un fichero v1 se
+# sigue importando aqui sin problema; al reves no, y por eso sube el numero: un
+# servidor viejo avisa de que se actualice en vez de tragarse el fichero y
+# perder por el camino el mapa de LEDs sin decir nada.
+KANBAN_DATOS_VERSION = 2
 
 
 @bp.route('/api/kanban-terminales/export-datos', methods=['GET'])
@@ -1749,7 +1793,7 @@ def api_exportar_datos_kanban():
     """Descarga gavetas y stock de terminales en un JSON para llevar a otro servidor."""
     try:
         rows_gav = db.session.execute(
-            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas ORDER BY terminal_codigo")
+            text("SELECT terminal_codigo, gaveta, led FROM terminales_gavetas ORDER BY terminal_codigo")
         ).fetchall()
         rows_stock = db.session.execute(text("""
             SELECT terminal_codigo, stock_actual, stock_minimo, notas
@@ -1759,7 +1803,8 @@ def api_exportar_datos_kanban():
         datos = {
             'version':   KANBAN_DATOS_VERSION,
             'exportado': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
-            'gavetas':   [{'terminal_codigo': r[0], 'gaveta': r[1]} for r in rows_gav],
+            'gavetas':   [{'terminal_codigo': r[0], 'gaveta': r[1], 'led': r[2]}
+                          for r in rows_gav],
             'stock':     [{'terminal_codigo': r[0], 'stock_actual': r[1],
                            'stock_minimo': r[2], 'notas': r[3]} for r in rows_stock],
         }
@@ -1836,13 +1881,21 @@ def api_importar_datos_kanban():
             gaveta = str(fila.get('gaveta') or '').strip()[:80]   # mismo límite que el PUT
             if not codigo or not gaveta:
                 continue
+            # 'led' no existe en los ficheros exportados antes del pick-to-light.
+            # Si no viene, NO se toca el que hubiera guardado: importar un
+            # fichero v1 no puede borrar el mapa de LEDs del servidor destino.
+            # Un valor que no valga se ignora en vez de tumbar la importacion
+            # entera, que es lo que le importa a quien esta migrando servidor.
+            led, _ = _led_gaveta_valido(fila.get('led'))
+            sql_led = 'led = excluded.led,' if 'led' in fila else ''
             db.session.execute(text("""
-                INSERT INTO terminales_gavetas (terminal_codigo, gaveta, updated_at)
-                VALUES (:codigo, :gaveta, datetime('now'))
+                INSERT INTO terminales_gavetas (terminal_codigo, gaveta, led, updated_at)
+                VALUES (:codigo, :gaveta, :led, datetime('now'))
                 ON CONFLICT(terminal_codigo) DO UPDATE
                     SET gaveta     = excluded.gaveta,
+                        %s
                         updated_at = excluded.updated_at
-            """), {'codigo': codigo, 'gaveta': gaveta})
+            """ % sql_led), {'codigo': codigo, 'gaveta': gaveta, 'led': led})
             n_gav += 1
 
         n_stock = 0

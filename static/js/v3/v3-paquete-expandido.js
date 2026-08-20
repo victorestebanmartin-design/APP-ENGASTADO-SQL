@@ -420,6 +420,9 @@ async function terminarTerminal() {
         } catch(e) { /* ignorar si la red falla */ }
         sesionActualId = null;
     }
+    // Apagar la gaveta: el trabajo de este terminal se ha acabado
+    await apagarGavetas();
+
     // El progreso ya se guardó en paqueteCompletado() para cada carro procesado
     console.log(`✅ Terminal ${terminalActual} completado en todos sus carros`);
     

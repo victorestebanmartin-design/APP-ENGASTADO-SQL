@@ -1547,7 +1547,7 @@ async function cargarLectoresRfid() {
             <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
                 <thead><tr style="text-align:left;color:#94a3b8;">
                     <th style="padding:8px 6px;">Estado</th><th>Nombre</th><th>ID</th><th>IP fija</th><th>IP</th>
-                    <th>Puesto asignado</th><th>Firmware</th><th>Última señal</th><th></th>
+                    <th>Puesto asignado</th><th>Gavetas</th><th>Firmware</th><th>Última señal</th><th></th>
                 </tr></thead>
                 <tbody>` + devs.map(dev => `
                 <tr style="border-top:1px solid #334155;">
@@ -1559,6 +1559,9 @@ async function cargarLectoresRfid() {
                     </td>
                     <td style="font-family:monospace;" title="Última IP con la que el lector habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
                     <td><select id="rfid-puesto-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.puesto_id)}</select></td>
+                    <td title="Gavetas del pick-to-light detectadas por la placa (16 por cada expansor MCP23017)">
+                        ${dev.gavetas ? `💡 ${dev.gavetas}` : '<span style="color:#64748b;">—</span>'}
+                    </td>
                     <td title="Versión del firmware del lector vs la del servidor (${_dispEsc(versionSrv) || '—'})">
                         ${!dev.fw ? '<span style="color:#64748b;">—</span>'
                             : dev.fw === versionSrv ? `<span style="color:#4ade80;">🟢 ${_dispEsc(dev.fw)}</span>`

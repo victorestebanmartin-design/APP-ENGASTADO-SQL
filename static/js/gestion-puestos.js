@@ -967,9 +967,14 @@ function imgThumb(t) {
 function gavetaChip(t) {
     const cod = t.terminal;
     if (t.gaveta) {
-        return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Gaveta: ${t.gaveta} — clic para editar">📦 ${t.gaveta}</span>`;
+        // El 💡 es el numero de gaveta en el pick-to-light (ver
+        // esp32/HARDWARE_PICK_TO_LIGHT.md); sin el, la gaveta no se ilumina.
+        const luz = t.led ? ` 💡${t.led}` : '';
+        const titulo = t.led ? `Gaveta: ${t.gaveta}, LED ${t.led} — clic para editar`
+                             : `Gaveta: ${t.gaveta}, sin LED — clic para editar`;
+        return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" data-led="${t.led || ''}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="${titulo}">📦 ${t.gaveta}${luz}</span>`;
     }
-    return `<span class="tr-gaveta empty" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta">📦 gaveta</span>`;
+    return `<span class="tr-gaveta empty" data-led="" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta">📦 gaveta</span>`;
 }
 
 let _imgTerminalActual = null;   // código del terminal en edición
@@ -1322,13 +1327,23 @@ async function pdfRegEliminarExistente() {
 // ================================
 
 /**
- * Activa el modo edición inline del chip de gaveta
+ * Activa el modo edición inline del chip de gaveta.
+ *
+ * Dos campos: la etiqueta que lee el operario ("A-12") y el numero de gaveta
+ * en el pick-to-light, que es lo que enciende la luz. El boton 💡 la enciende
+ * ahi mismo, que es como se identifica que cajon fisico es cada numero sin
+ * tener que ir contando por la estanteria.
  */
 function editarGaveta(codigo, chipEl) {
-    // Evitar doble apertura
-    if (chipEl.querySelector('input')) return;
+    if (chipEl.querySelector('input')) return;   // evitar doble apertura
 
     const valorActual = chipEl.dataset.gaveta || '';
+    const ledActual   = chipEl.dataset.led || '';
+
+    const caja = document.createElement('span');
+    caja.className = 'tr-gaveta-edit';
+    caja.style.cssText = 'display:inline-flex; gap:4px; align-items:center;';
+
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'tr-gaveta-input';
@@ -1336,33 +1351,66 @@ function editarGaveta(codigo, chipEl) {
     input.placeholder = 'Ej: A-12 ó Bandeja 3';
     input.maxLength = 80;
 
-    chipEl.replaceWith(input);
+    const inputLed = document.createElement('input');
+    inputLed.type = 'number';
+    inputLed.className = 'tr-gaveta-input';
+    inputLed.value = ledActual;
+    inputLed.placeholder = 'LED';
+    inputLed.min = 1;
+    inputLed.max = 128;
+    inputLed.title = 'Numero de gaveta en la tira de LEDs (vacio = sin luz)';
+    inputLed.style.width = '4.5em';
+
+    const btnProbar = document.createElement('button');
+    btnProbar.type = 'button';
+    btnProbar.textContent = '💡';
+    btnProbar.title = 'Encender esta gaveta para ver cual es';
+    btnProbar.style.cssText = 'cursor:pointer; border:1px solid #ced4da; border-radius:4px; background:#fff;';
+
+    caja.append(input, inputLed, btnProbar);
+    chipEl.replaceWith(caja);
     input.focus();
     input.select();
 
+    let cerrado = false;
     const confirmar = () => {
-        const nuevo = input.value.trim();
-        guardarGaveta(codigo, nuevo, input);
+        if (cerrado) return;
+        cerrado = true;
+        guardarGaveta(codigo, input.value.trim(), inputLed.value.trim(), caja);
+    };
+    const cancelar = () => {
+        if (cerrado) return;
+        cerrado = true;
+        caja.replaceWith(_crearChipGaveta(codigo, valorActual, ledActual));
     };
 
-    input.addEventListener('blur',    confirmar);
-    input.addEventListener('keydown', e => {
+    // focusout en vez de blur: pasar del texto al numero o al boton no puede
+    // guardar a medias.
+    caja.addEventListener('focusout', () => {
+        setTimeout(() => { if (!caja.contains(document.activeElement)) confirmar(); }, 0);
+    });
+    caja.addEventListener('keydown', e => {
         if (e.key === 'Enter')  { e.preventDefault(); confirmar(); }
-        if (e.key === 'Escape') {
-            // Restaurar chip sin guardar
-            input.replaceWith(_crearChipGaveta(codigo, valorActual));
-        }
+        if (e.key === 'Escape') { cancelar(); }
+    });
+
+    btnProbar.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        probarGaveta(codigo, inputLed.value.trim());
     });
 }
 
-/** Crea un chip de gaveta a partir de código y valor */
-function _crearChipGaveta(codigo, gaveta) {
+/** Crea un chip de gaveta a partir de código, etiqueta y número de LED */
+function _crearChipGaveta(codigo, gaveta, led) {
     const span = document.createElement('span');
+    span.dataset.led = led || '';
     if (gaveta) {
         span.className = 'tr-gaveta';
         span.dataset.gaveta = gaveta;
-        span.title = `Gaveta: ${gaveta} — clic para editar`;
-        span.textContent = `📦 ${gaveta}`;
+        span.title = led ? `Gaveta: ${gaveta}, LED ${led} — clic para editar`
+                         : `Gaveta: ${gaveta}, sin LED — clic para editar`;
+        span.textContent = led ? `📦 ${gaveta} 💡${led}` : `📦 ${gaveta}`;
     } else {
         span.className = 'tr-gaveta empty';
         span.title = 'Asignar gaveta';
@@ -1373,28 +1421,50 @@ function _crearChipGaveta(codigo, gaveta) {
 }
 
 /** Llama a la API y actualiza el chip en el DOM */
-async function guardarGaveta(codigo, gaveta, inputEl) {
+async function guardarGaveta(codigo, gaveta, led, cajaEl) {
     try {
-        let resp, data;
+        let resp;
         if (gaveta) {
             resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gaveta })
+                body: JSON.stringify({ gaveta, led })
             });
         } else {
             // Vacío = eliminar
             resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
                 method: 'DELETE'
             });
+            led = '';
         }
-        data = await resp.json();
-        if (!data.success) { alert('Error: ' + data.message); }
+        const data = await resp.json();
+        if (!data.success) {
+            alert('Error: ' + data.message);
+            // El servidor rechazo el LED (fuera de rango): no enseñar como
+            // guardado algo que no lo esta.
+            led = '';
+        }
     } catch (e) {
         console.error('Error al guardar gaveta', e);
     } finally {
         // Siempre restaurar el chip (con el valor nuevo o sin él)
-        inputEl.replaceWith(_crearChipGaveta(codigo, gaveta));
+        cajaEl.replaceWith(_crearChipGaveta(codigo, gaveta, led));
+    }
+}
+
+/** Enciende una gaveta desde admin, para saber qué cajón es cada número */
+async function probarGaveta(codigo, led) {
+    if (!led) { alert('Escribe primero el número de LED.'); return; }
+    try {
+        const resp = await fetch('/api/pick-to-light/probar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ terminal: codigo, led: parseInt(led, 10) })
+        });
+        const data = await resp.json();
+        if (!data.success) alert(data.message || 'No se pudo encender la gaveta');
+    } catch (e) {
+        alert('No se pudo hablar con la placa de las gavetas.');
     }
 }
 

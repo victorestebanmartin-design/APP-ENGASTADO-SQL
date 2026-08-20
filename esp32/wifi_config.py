@@ -69,3 +69,12 @@ DEBOUNCE_MS = 2000
 # conviene que no sea demasiado espaciada. Es un GET pequeno (unos cientos de
 # bytes): 60s no supone trafico apreciable.
 OTA_CHECK_INTERVAL_MS = 60 * 1000  # 1 minuto
+
+# --- Pick-to-light de gavetas (opcional) -----------------------------------
+# Solo hacen falta en las placas que llevan tira de LEDs y expansores MCP23017
+# soldados; el firmware usa estos mismos valores por defecto si no estan, asi
+# que una placa ya instalada coge el OTA sin visita con cable USB.
+# Esquema completo: esp32/HARDWARE_PICK_TO_LIGHT.md
+GAVETAS_LED_PIN = 13      # datos de la tira WS2813 (via elevador a 5 V)
+GAVETAS_SDA_PIN = 21      # I2C de los MCP23017
+GAVETAS_SCL_PIN = 26      # el 22 no vale: lo tiene el RST del RC522
