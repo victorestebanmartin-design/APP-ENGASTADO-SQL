@@ -251,20 +251,20 @@
 
         /* ── Gaveta (ubicación física) ── */
         .tr-gaveta {
-            display: inline-flex; align-items: center; gap: 4px;
-            font-size: 0.72rem; font-family: 'DM Mono', monospace;
-            padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 0.86rem; font-family: 'DM Mono', monospace; font-weight: 600;
+            padding: 5px 14px; border-radius: 20px; white-space: nowrap;
             flex-shrink: 0; cursor: pointer; transition: all .14s;
-            border: 1px solid rgba(139,92,246,.3); color: rgba(167,139,250,.85);
-            background: rgba(139,92,246,.08);
-            max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+            border: 1.5px solid rgba(139,92,246,.5); color: rgba(196,181,253,.95);
+            background: rgba(139,92,246,.14);
+            max-width: 180px; overflow: hidden; text-overflow: ellipsis;
         }
-        .tr-gaveta:hover { border-color: rgba(139,92,246,.7); background: rgba(139,92,246,.15); }
+        .tr-gaveta:hover { border-color: rgba(139,92,246,.9); background: rgba(139,92,246,.25); transform: scale(1.04); }
         .tr-gaveta.empty {
-            border: 1px dashed rgba(255,255,255,.12); color: rgba(255,255,255,.2);
-            background: transparent;
+            border: 1.5px dashed rgba(139,92,246,.4); color: rgba(196,181,253,.6);
+            background: rgba(139,92,246,.05); font-weight: 500;
         }
-        .tr-gaveta.empty:hover { border-color: rgba(139,92,246,.5); color: rgba(167,139,250,.7); }
+        .tr-gaveta.empty:hover { border-color: rgba(139,92,246,.8); color: rgba(196,181,253,.95); background: rgba(139,92,246,.12); }
         /* La fila es un flex donde solo .tr-assign cede espacio. Si la caja de
            edicion no se planta con flex-shrink:0, el navegador la encoge a ella
            pero no a sus hijos (que sí lo llevan): se desbordan y acaban pintados
@@ -272,13 +272,16 @@
         .tr-gaveta-edit {
             display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
         }
+        /* !important en el ancho: style-admin.css pone ".admin-app input[type]
+           { width: 100% }" con más especificidad y, sin esto, el campo se
+           estira al 100% de la fila y tapa el LED y el botón de probar. */
         .tr-gaveta-input {
             font-family: 'DM Mono', monospace; font-size: 0.72rem;
             background: #1e293b; border: 1px solid #7c3aed;
             border-radius: 20px; color: #f1f5f9; padding: 2px 8px;
-            outline: none; width: 92px; flex-shrink: 0; min-width: 0;
+            outline: none; width: 92px !important; flex-shrink: 0; min-width: 0;
         }
-        .tr-gaveta-led { width: 46px; text-align: center; }
+        .tr-gaveta-led { width: 46px !important; text-align: center; }
         /* Las flechitas del input number se comen el ancho que necesita el numero */
         .tr-gaveta-led::-webkit-outer-spin-button,
         .tr-gaveta-led::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

@@ -17,6 +17,18 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
 
+# La red corporativa inspecciona el tráfico HTTPS con un proxy MITM cuyo CA
+# Windows ya trae instalado como de confianza, pero OpenSSL (lo que usa
+# ssl.create_default_context) no lo conoce y da CERTIFICATE_VERIFY_FAILED.
+# truststore hace que ssl consulte el almacén nativo de Windows en vez del
+# suyo propio: sigue verificando de verdad (no es CERT_NONE), solo cambia
+# QUIÉN es la autoridad de confianza.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 # --- Cargar .env manualmente (sin dependencias extra) ---
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), ".env")
