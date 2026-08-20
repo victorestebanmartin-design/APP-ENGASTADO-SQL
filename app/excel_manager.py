@@ -83,8 +83,9 @@ def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.Dat
             return entrada[2]
 
     xl = pd.ExcelFile(ruta)
-    hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
-    df = pd.read_excel(xl, sheet_name=hoja)
+    with xl:   # cierra el handle en cuanto terminamos de leer
+        hoja = hoja_preferida if hoja_preferida in xl.sheet_names else xl.sheet_names[0]
+        df = pd.read_excel(xl, sheet_name=hoja)
     df = normalizar_nombres_columnas(df)
 
     with _EXCEL_CACHE_LOCK:
@@ -93,6 +94,13 @@ def leer_excel_cacheado(filepath: str, hoja_preferida: str = 'Format') -> pd.Dat
             _EXCEL_CACHE.pop(next(iter(_EXCEL_CACHE)))
         _EXCEL_CACHE[ruta] = (mtime, hoja, df)
     return df
+
+
+def invalidar_cache_excel(filepath: str) -> None:
+    """Elimina la entrada de caché del archivo para liberar el DataFrame y el path."""
+    ruta = os.path.abspath(filepath)
+    with _EXCEL_CACHE_LOCK:
+        _EXCEL_CACHE.pop(ruta, None)
 
 
 class ExcelManager:
@@ -735,10 +743,12 @@ def validar_excel_columnas(filepath):
     try:
         df = leer_excel_cacheado(filepath)
     except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"Error leyendo Excel para validación: {exc}")
         return {
             'columnas_faltantes': [], 'features_no_disponibles': [],
             'advertencias': [], 'advertencias_total': 0,
-            'error': str(exc),
+            'error': 'No se pudo leer el archivo Excel',
         }
 
     columnas_faltantes      = [c for c in COLUMNAS_MANGUERAS_ESPERADAS if c not in df.columns]
