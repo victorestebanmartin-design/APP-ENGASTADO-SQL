@@ -1660,3 +1660,34 @@ async function sugerirStockAuto() {
         btn.disabled = false; btn.textContent = orig;
     }
 }
+
+// Llevarse el kanban a otro servidor: el stock y las gavetas se teclean a mano
+// y solo viven en la BD, así que se exportan a un fichero y se importan allí.
+function exportarDatosKanban() {
+    window.location.href = '/api/kanban-terminales/export-datos';
+}
+
+async function importarDatosKanban(input) {
+    const fichero = input.files && input.files[0];
+    // Permite volver a elegir el mismo fichero si algo sale mal.
+    input.value = '';
+    if (!fichero) return;
+
+    if (!confirm(`Se va a importar "${fichero.name}".\n\nLos terminales que vengan en el fichero SOBRESCRIBIRÁN el stock y la gaveta que tengan aquí.\nLos demás se quedan como están; no se borra nada.\n\n¿Continuar?`)) return;
+
+    const cuerpo = new FormData();
+    cuerpo.append('fichero', fichero);
+    try {
+        const resp = await fetch('/api/kanban-terminales/import-datos', { method: 'POST', body: cuerpo });
+        const data = await resp.json();
+        if (data.success) {
+            const origen = data.exportado ? `\n\nExportado el ${data.exportado.replace('T', ' ')}.` : '';
+            alert(`✅ Importado: ${data.stock} terminales con stock y ${data.gavetas} con gaveta.${origen}\n\nRecargando la tabla...`);
+            await cargarKanban();
+        } else {
+            alert('No se ha podido importar:\n\n' + (data.message || 'error desconocido'));
+        }
+    } catch (e) {
+        alert('Error de conexión al importar el fichero.');
+    }
+}

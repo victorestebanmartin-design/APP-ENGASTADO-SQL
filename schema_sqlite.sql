@@ -291,6 +291,20 @@ CREATE TABLE IF NOT EXISTS terminales_gavetas (
 );
 
 -- =====================================================
+-- TABLA: terminales_stock (kanban de stock)
+-- =====================================================
+-- Stock actual y minimo de cada terminal, tecleados a mano desde el kanban.
+-- Tiene que estar aqui y no solo en las automigraciones: data/config_inicial.sql
+-- puede traer INSERTs de esta tabla, y se aplica justo despues de este schema.
+CREATE TABLE IF NOT EXISTS terminales_stock (
+    terminal_codigo TEXT PRIMARY KEY,
+    stock_actual    INTEGER NOT NULL DEFAULT 0,
+    stock_minimo    INTEGER NOT NULL DEFAULT 0,
+    notas           TEXT,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================
 -- TABLA: esp32_ips (IP fija de cada placa ESP32)
 -- =====================================================
 -- La red de planta (192.168.50.0/24) no tiene DHCP: cada placa lleva su IP

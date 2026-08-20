@@ -24,6 +24,11 @@ TABLAS_CONFIG = [
     'maquinas_terminales',
     'terminales_desactivados',
     'carros',         # los 6 carros siempre deben existir
+    # El kanban de stock tambien es configuracion: la gaveta y el stock de cada
+    # terminal se teclean a mano y no estaban aqui, asi que las instalaciones
+    # nuevas arrancaban con el kanban en blanco.
+    'terminales_gavetas',
+    'terminales_stock',
 ]
 
 

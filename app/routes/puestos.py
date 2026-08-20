@@ -1730,3 +1730,152 @@ def api_exportar_pedido_excel():
         )
     except Exception as e:
         return error_interno(e, 'Error al exportar pedido Excel')
+
+
+# ── Llevarse el kanban de un servidor a otro ───────────────────────────────
+#
+# El stock y las gavetas se meten a mano, terminal a terminal, y viven solo en
+# la BD (data/engastado.db no va al repo). Cuando la app corre en dos sitios
+# -- PythonAnywhere y el PC de planta -- ese trabajo no viaja solo: hay que
+# exportarlo de uno e importarlo en el otro. Estas dos rutas son ese puente,
+# sin consolas y sin sacar datos de fábrica a un repositorio público.
+
+KANBAN_DATOS_VERSION = 1
+
+
+@bp.route('/api/kanban-terminales/export-datos', methods=['GET'])
+@requiere_pin_admin
+def api_exportar_datos_kanban():
+    """Descarga gavetas y stock de terminales en un JSON para llevar a otro servidor."""
+    try:
+        rows_gav = db.session.execute(
+            text("SELECT terminal_codigo, gaveta FROM terminales_gavetas ORDER BY terminal_codigo")
+        ).fetchall()
+        rows_stock = db.session.execute(text("""
+            SELECT terminal_codigo, stock_actual, stock_minimo, notas
+            FROM terminales_stock ORDER BY terminal_codigo
+        """)).fetchall()
+
+        datos = {
+            'version':   KANBAN_DATOS_VERSION,
+            'exportado': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+            'gavetas':   [{'terminal_codigo': r[0], 'gaveta': r[1]} for r in rows_gav],
+            'stock':     [{'terminal_codigo': r[0], 'stock_actual': r[1],
+                           'stock_minimo': r[2], 'notas': r[3]} for r in rows_stock],
+        }
+
+        # ensure_ascii=False para que las notas con acentos se lean tal cual;
+        # se codifica a UTF-8 explícitamente, sin pasar por ningún fichero.
+        buf = io.BytesIO(json.dumps(datos, ensure_ascii=False, indent=2).encode('utf-8'))
+        buf.seek(0)
+
+        fecha = datetime.now().strftime('%Y%m%d')
+        return send_file(
+            buf,
+            mimetype='application/json',
+            as_attachment=True,
+            download_name=f'kanban_stock_{fecha}.json',
+        )
+    except Exception as e:
+        return error_interno(e, 'Error al exportar los datos del kanban')
+
+
+@bp.route('/api/kanban-terminales/import-datos', methods=['POST'])
+@requiere_pin_admin
+def api_importar_datos_kanban():
+    """Carga un JSON exportado en otro servidor: sobrescribe lo que trae, no borra nada."""
+    fichero = request.files.get('fichero')
+    if fichero is None or not fichero.filename:
+        return jsonify({
+            'success': False,
+            'message': 'No has elegido ningún fichero. Pulsa "Importar datos" y '
+                       'selecciona el .json descargado del otro servidor.',
+        }), 400
+
+    try:
+        contenido = fichero.read().decode('utf-8')
+    except UnicodeDecodeError:
+        return jsonify({
+            'success': False,
+            'message': 'El fichero no está en UTF-8, así que no es una exportación del kanban. '
+                       'Descárgalo otra vez con "Exportar datos" y no lo abras por el camino.',
+        }), 400
+
+    try:
+        datos = json.loads(contenido)
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'El fichero no es un JSON válido. Usa el .json que genera '
+                       '"Exportar datos" en el otro servidor.',
+        }), 400
+
+    if not isinstance(datos, dict) or 'version' not in datos \
+            or not isinstance(datos.get('gavetas'), list) \
+            or not isinstance(datos.get('stock'), list):
+        return jsonify({
+            'success': False,
+            'message': 'Este JSON no es una exportación del kanban (le faltan "version", '
+                       '"gavetas" o "stock"). Comprueba que no has cogido otro fichero.',
+        }), 400
+
+    if datos['version'] > KANBAN_DATOS_VERSION:
+        return jsonify({
+            'success': False,
+            'message': f'El fichero es de una versión más nueva (v{datos["version"]}) que este '
+                       f'servidor (v{KANBAN_DATOS_VERSION}). Actualiza este servidor '
+                       'con ACTUALIZAR.bat y vuelve a importarlo.',
+        }), 400
+
+    try:
+        n_gav = 0
+        for fila in datos['gavetas']:
+            if not isinstance(fila, dict):
+                continue
+            codigo = str(fila.get('terminal_codigo') or '').strip().upper()
+            gaveta = str(fila.get('gaveta') or '').strip()[:80]   # mismo límite que el PUT
+            if not codigo or not gaveta:
+                continue
+            db.session.execute(text("""
+                INSERT INTO terminales_gavetas (terminal_codigo, gaveta, updated_at)
+                VALUES (:codigo, :gaveta, datetime('now'))
+                ON CONFLICT(terminal_codigo) DO UPDATE
+                    SET gaveta     = excluded.gaveta,
+                        updated_at = excluded.updated_at
+            """), {'codigo': codigo, 'gaveta': gaveta})
+            n_gav += 1
+
+        n_stock = 0
+        for fila in datos['stock']:
+            if not isinstance(fila, dict):
+                continue
+            codigo = str(fila.get('terminal_codigo') or '').strip().upper()
+            if not codigo:
+                continue
+            try:
+                actual = max(0, int(fila.get('stock_actual') or 0))
+                minimo = max(0, int(fila.get('stock_minimo') or 0))
+            except (TypeError, ValueError):
+                continue
+            notas = (str(fila.get('notas') or '')).strip()[:200] or None
+            db.session.execute(text("""
+                INSERT INTO terminales_stock (terminal_codigo, stock_actual, stock_minimo, notas, updated_at)
+                VALUES (:codigo, :actual, :minimo, :notas, datetime('now'))
+                ON CONFLICT(terminal_codigo) DO UPDATE
+                    SET stock_actual = excluded.stock_actual,
+                        stock_minimo = excluded.stock_minimo,
+                        notas        = excluded.notas,
+                        updated_at   = excluded.updated_at
+            """), {'codigo': codigo, 'actual': actual, 'minimo': minimo, 'notas': notas})
+            n_stock += 1
+
+        db.session.commit()
+        return jsonify({
+            'success':   True,
+            'gavetas':   n_gav,
+            'stock':     n_stock,
+            'exportado': datos.get('exportado'),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return error_interno(e, 'Error al importar los datos del kanban')
