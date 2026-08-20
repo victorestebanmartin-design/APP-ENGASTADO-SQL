@@ -272,13 +272,16 @@
         .tr-gaveta-edit {
             display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
         }
+        /* !important en el ancho: style-admin.css pone ".admin-app input[type]
+           { width: 100% }" con más especificidad y, sin esto, el campo se
+           estira al 100% de la fila y tapa el LED y el botón de probar. */
         .tr-gaveta-input {
             font-family: 'DM Mono', monospace; font-size: 0.72rem;
             background: #1e293b; border: 1px solid #7c3aed;
             border-radius: 20px; color: #f1f5f9; padding: 2px 8px;
-            outline: none; width: 92px; flex-shrink: 0; min-width: 0;
+            outline: none; width: 92px !important; flex-shrink: 0; min-width: 0;
         }
-        .tr-gaveta-led { width: 46px; text-align: center; }
+        .tr-gaveta-led { width: 46px !important; text-align: center; }
         /* Las flechitas del input number se comen el ancho que necesita el numero */
         .tr-gaveta-led::-webkit-outer-spin-button,
         .tr-gaveta-led::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

@@ -1355,7 +1355,7 @@ function editarGaveta(codigo, chipEl) {
     inputLed.type = 'number';
     inputLed.className = 'tr-gaveta-input tr-gaveta-led';
     inputLed.value = ledActual;
-    inputLed.placeholder = 'nº';
+    inputLed.placeholder = 'LED';
     inputLed.min = 1;
     inputLed.max = 128;
     inputLed.title = 'Numero de gaveta en la tira de LEDs (vacio = sin luz)';
