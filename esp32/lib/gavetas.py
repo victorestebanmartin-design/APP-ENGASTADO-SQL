@@ -53,6 +53,8 @@ COLOR_ERROR    = (110, 0, 0)    # rojo: esta no era
 COLOR_APAGADO  = (0, 0, 0)
 
 PUERTO_HTTP = 80
+TIMEOUT_PETICION_S = 1      # leer la peticion ya recibida es cosa de ms
+MAX_CUERPO = 512            # el JSON que manda el PC son unos 30 bytes
 INTERVALO_MICROS_MS = 40    # cada cuanto se relee el bus I2C
 ANTIRREBOTE_MS = 80         # un micro rebota unos ms al abrir y al cerrar
 BEEP_OK_MS = 120            # confirmacion corta de recogida correcta
@@ -275,7 +277,7 @@ class Gavetas:
             s = socket.socket()
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("0.0.0.0", PUERTO_HTTP))
-            s.listen(1)
+            s.listen(2)   # dos peticiones pegadas no se pisan
             s.settimeout(0)     # accept() no bloquea: si no hay nadie, error
             return s
         except Exception as e:
@@ -290,9 +292,8 @@ class Gavetas:
         except Exception:
             return      # nadie llamando, que es el caso normal
         try:
-            cliente.settimeout(1)
-            peticion = cliente.read(1024) or b""
-            respuesta = self._responder(peticion)
+            cliente.settimeout(TIMEOUT_PETICION_S)
+            respuesta = self._responder(self._leer_cuerpo(cliente))
             cuerpo = _json_bytes(respuesta)
             cliente.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                           b"Connection: close\r\nContent-Length: %d\r\n\r\n" % len(cuerpo))
@@ -305,9 +306,35 @@ class Gavetas:
             except Exception:
                 pass
 
-    def _responder(self, peticion):
-        corte = peticion.find(b"\r\n\r\n")
-        cuerpo = peticion[corte + 4:] if corte >= 0 else b""
+    def _leer_cuerpo(self, cliente):
+        """Cuerpo del POST, leyendo la cabecera LINEA A LINEA.
+
+        Antes esto era un read(1024) de golpe, y ahi estaba el fallo que hacia
+        que la gaveta se encendiera y aun asi el PC dijera "la placa no
+        responde": la peticion son unos 120 bytes y el cliente no cierra su
+        lado (esta esperando la respuesta), asi que pedir 1024 se quedaba
+        esperando bytes que no iban a llegar nunca. Solo salia de ahi al
+        agotar el timeout, un segundo despues, cuando el PC ya habia desistido
+        -- pero para entonces el LED ya se habia encendido.
+
+        readline() vuelve en cuanto ve el fin de linea, y Content-Length dice
+        exactamente cuanto cuerpo queda: ni una espera de mas.
+        """
+        longitud = 0
+        while True:
+            linea = cliente.readline()
+            if not linea or linea == b"\r\n" or linea == b"\n":
+                break
+            if linea[:15].lower() == b"content-length:":
+                try:
+                    longitud = int(linea.split(b":", 1)[1].strip())
+                except Exception:
+                    longitud = 0
+        if longitud <= 0:
+            return b""      # un GET sin cuerpo: sirve para consultar el estado
+        return cliente.read(min(longitud, MAX_CUERPO)) or b""
+
+    def _responder(self, cuerpo):
         datos = _json_carga(cuerpo)
 
         if datos.get("apagar"):

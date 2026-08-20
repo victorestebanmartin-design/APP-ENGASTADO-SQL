@@ -4,7 +4,7 @@
 # Este fichero SI se actualiza por OTA (ver ota_update.py): sube la version
 # aqui, publicalo con el deploy habitual del repo y la placa se autoactualiza
 # sola en su siguiente comprobacion (arranque o periodica).
-FW_VERSION = "2026-08-20a"
+FW_VERSION = "2026-08-20b"
 
 import time
 from machine import Pin
