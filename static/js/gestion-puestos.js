@@ -974,7 +974,7 @@ function gavetaChip(t) {
                              : `Gaveta: ${t.gaveta}, sin LED — clic para editar`;
         return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" data-led="${t.led || ''}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="${titulo}">📦 ${t.gaveta}${luz}</span>`;
     }
-    return `<span class="tr-gaveta empty" data-led="" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta">📦 gaveta</span>`;
+    return `<span class="tr-gaveta empty" data-led="" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta y LED de pick-to-light">📦 Asignar gaveta</span>`;
 }
 
 let _imgTerminalActual = null;   // código del terminal en edición
@@ -1415,8 +1415,8 @@ function _crearChipGaveta(codigo, gaveta, led) {
         span.textContent = led ? `📦 ${gaveta} 💡${led}` : `📦 ${gaveta}`;
     } else {
         span.className = 'tr-gaveta empty';
-        span.title = 'Asignar gaveta';
-        span.textContent = '📦 gaveta';
+        span.title = 'Asignar gaveta y LED de pick-to-light';
+        span.textContent = '📦 Asignar gaveta';
     }
     span.addEventListener('click', e => { e.stopPropagation(); editarGaveta(codigo, span); });
     return span;
