@@ -2721,26 +2721,45 @@ def api_esp32_rfid_flash_usb():
                 if not os.path.exists(origen):
                     return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
 
-                r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino, puerto=puerto)
-
+            if perfil == 'gen4_pn532':
+                # La interfaz USB nativa del S3 de la gen4 puede devolver
+                # ClearCommError al cerrar y reabrir COM entre dos copias.
+                # Un unico mpremote "resume" conserva el raw REPL que se
+                # recupero arriba y copia todos los ficheros sin reabrir COM.
+                comando = [sys.executable, '-m', 'mpremote', 'connect', puerto, 'resume']
+                for _etiqueta, origen, destino in pasos:
+                    comando += ['cp', origen, ':' + destino, '+']
+                comando += ['exec', "open('boot_fails.txt','w').write('0')"]
+                r = subprocess.run(comando, capture_output=True, text=True, timeout=60)
                 if r.returncode != 0:
                     err = (r.stderr or r.stdout or '').strip()
                     if 'No module named' in err:
                         return jsonify({'success': False,
                                         'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
                     return jsonify({'success': False,
-                                    'message': _resumen_error(etiqueta, err) + _consejo_placa_ocupada(err)})
+                                    'message': _resumen_error('firmware gen4', err) + _consejo_placa_ocupada(err)})
+            else:
+                for etiqueta, origen, destino in pasos:
+                    r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino, puerto=puerto)
 
-                time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
+                    if r.returncode != 0:
+                        err = (r.stderr or r.stdout or '').strip()
+                        if 'No module named' in err:
+                            return jsonify({'success': False,
+                                            'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
+                        return jsonify({'success': False,
+                                        'message': _resumen_error(etiqueta, err) + _consejo_placa_ocupada(err)})
 
-            # Dejar el contador de arranques fallidos a cero: si la placa
-            # venia de un firmware que no arrancaba, ese contador puede estar
-            # a punto de disparar un rollback que desharia este flasheo en el
-            # primer arranque. La aplicacion tambien lo limpia al arrancar.
-            try:
-                mpremote('exec', "open('boot_fails.txt','w').write('0')", timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
+                    time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
+
+                # Dejar el contador de arranques fallidos a cero: si la placa
+                # venia de un firmware que no arrancaba, ese contador puede
+                # estar a punto de disparar un rollback que desharia este
+                # flasheo en el primer arranque.
+                try:
+                    mpremote('exec', "open('boot_fails.txt','w').write('0')", timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
 
             # Al reiniciar, la placa corta el USB antes de que mpremote pueda
             # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el
@@ -2748,7 +2767,7 @@ def api_esp32_rfid_flash_usb():
             # HTTP que deja el navegador esperando o muestra un falso fallo.
             try:
                 mpremote('reset', timeout=10)
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, Exception):
                 pass
         finally:
             for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
