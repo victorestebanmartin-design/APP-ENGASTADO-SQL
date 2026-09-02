@@ -133,6 +133,21 @@ def test_flash_usb_rfid_rechaza_orientacion_desconocida(admin_client):
     assert 'Orientación' in r.get_json()['message']
 
 
+def test_flash_usb_rfid_laboratorio_no_exige_ip_fija(admin_client):
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'perfil': 'gen4_pn532',
+                                'entorno': 'laboratorio', 'ssid': 'MOVISTAR_8A70'})
+    assert r.status_code == 200
+    assert 'IP estática es obligatoria' not in r.get_json()['message']
+
+
+def test_flash_usb_rfid_rechaza_entorno_desconocido(admin_client):
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'entorno': 'inventado', 'ssid': 'COJO'})
+    assert r.status_code == 400
+    assert 'Entorno' in r.get_json()['message']
+
+
 def test_flash_usb_rfid_tolera_timeout_del_reset(monkeypatch, admin_client):
     """El reset corta USB: no puede convertir una copia correcta en error HTTP."""
     from app.routes import sistema

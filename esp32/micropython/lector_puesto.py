@@ -21,6 +21,11 @@ try:
 except ImportError:
     socket = None
 
+try:
+    import ussl as ssl
+except ImportError:
+    import ssl
+
 from pn532_i2c import PN532
 
 FW_VERSION = "2026-09-02c"
@@ -38,6 +43,7 @@ GATEWAY = "192.168.50.5"
 DNS = "192.168.50.5"
 HOST_IP = "192.168.50.1"
 PORT = 5001
+USE_SSL = False
 
 ENTRADA_PATH = "/api/puestos/engastado_v3/entrada"
 
@@ -255,6 +261,8 @@ def enviar_entrada(tag_uid):
         connection = socket.socket()
         connection.settimeout(12)
         connection.connect(address)
+        if USE_SSL:
+            connection = ssl.wrap_socket(connection, server_hostname=HOST_IP)
         request = ("POST %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/json\r\n"
                    "Content-Length: %d\r\nConnection: close\r\n\r\n" %
                    (ENTRADA_PATH, HOST_IP, len(body))).encode("utf-8")
@@ -290,6 +298,8 @@ def registrar_dispositivo():
         connection = socket.socket()
         connection.settimeout(8)
         connection.connect(address)
+        if USE_SSL:
+            connection = ssl.wrap_socket(connection, server_hostname=HOST_IP)
         path = "/api/esp32/rfid/firmware/version?id=%s&ip=%s&fw=%s" % (
             DEVICE_ID, wifi_ip, FW_VERSION)
         connection.write(("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n" %

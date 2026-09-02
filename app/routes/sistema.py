@@ -2548,6 +2548,9 @@ def api_esp32_rfid_flash_usb():
         orientacion = str(data.get('orientacion', '180')).strip()
         if orientacion not in ('0', '180'):
             return jsonify({'success': False, 'message': 'Orientación de pantalla no válida'}), 400
+        entorno = str(data.get('entorno', 'produccion')).strip().lower()
+        if entorno not in ('laboratorio', 'produccion'):
+            return jsonify({'success': False, 'message': 'Entorno de instalación no válido'}), 400
 
         ssid = str(data.get('ssid', '')).strip()
         # La contraseña WiFi puede ir vacia (red abierta, sin cifrado):
@@ -2565,24 +2568,29 @@ def api_esp32_rfid_flash_usb():
                                        'si la red no tiene; se graba en la placa, no se guarda '
                                        'en el servidor).'}), 400
 
-        # IP fija: obligatoria porque la red de planta no reparte direcciones.
-        # Se valida antes de tocar la placa para no dejarla a medio flashear
-        # con una IP que luego se rechaza.
-        ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
-        if not ip_estatica:
-            return jsonify({'success': False,
-                            'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
-                                       'Mira las libres en Admin → IPs de placas.'}), 400
-        error_ip = _ip_estatica_error(ip_estatica)
-        if error_ip:
-            return jsonify({'success': False, 'message': error_ip}), 400
-
-        # A donde llama el lector (se inyecta en backend_config.py, igual que
-        # hace el OTA al servirlo).
-        host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
-        error_host = _servidor_host_error(host_srv)
-        if error_host:
-            return jsonify({'success': False, 'message': error_host}), 400
+        if entorno == 'laboratorio':
+            # Router Movistar: DHCP y salida a internet para llegar a PA. No
+            # guardar este host como ajuste global: pertenece a la nave.
+            ip_estatica = ''
+            host_srv = 'viktor85.pythonanywhere.com'
+            puerto_placa = 443
+            usar_ssl = True
+        else:
+            # Nave: red aislada sin DHCP y servidor local configurado a mano.
+            ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
+            if not ip_estatica:
+                return jsonify({'success': False,
+                                'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
+                                           'Mira las libres en Admin → IPs de placas.'}), 400
+            error_ip = _ip_estatica_error(ip_estatica)
+            if error_ip:
+                return jsonify({'success': False, 'message': error_ip}), 400
+            host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
+            error_host = _servidor_host_error(host_srv)
+            if error_host:
+                return jsonify({'success': False, 'message': error_host}), 400
+            puerto_placa = PUERTO_SERVIDOR_PLACAS
+            usar_ssl = False
 
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')
@@ -2616,6 +2624,10 @@ def api_esp32_rfid_flash_usb():
             gen4_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
                                     gen4_contenido, count=1, flags=re.M)
             gen4_contenido = _inyectar_host(gen4_contenido, 'HOST_IP', host_srv)
+            gen4_contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % puerto_placa,
+                                    gen4_contenido, count=1, flags=re.M)
+            gen4_contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % usar_ssl,
+                                    gen4_contenido, count=1, flags=re.M)
             gen4_contenido = re.sub(r'^DISPLAY_ROTATION\s*=.*$',
                                     'DISPLAY_ROTATION = %s' % orientacion,
                                     gen4_contenido, count=1, flags=re.M)
@@ -2635,7 +2647,8 @@ def api_esp32_rfid_flash_usb():
         with open(tmp_bc, 'w', encoding='utf-8') as f:
             f.write(bc_contenido)
         # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
-        _servidor_host_guardar(host_srv)
+        if entorno == 'produccion':
+            _servidor_host_guardar(host_srv)
 
         # Los .py del lector son pequenos: 20 s bastan para cada copia. Si el
         # firmware anterior no suelta el REPL, _mpremote_insistiendo reinicia
@@ -2660,7 +2673,7 @@ def api_esp32_rfid_flash_usb():
         # se comprueba ya que la IP no sea de otra placa. La anotacion se
         # guarda al final, cuando el flasheo ha ido bien.
         dev_id = _leer_device_id_usb(mpremote, puerto)
-        otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
+        otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id and ip_estatica else ''
         if otra:
             for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
                 try:
@@ -2776,14 +2789,16 @@ def api_esp32_rfid_flash_usb():
                 except OSError:
                     pass
 
-        red = (f'IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
-               f'apuntando al servidor {host_srv}:{PUERTO_SERVIDOR_PLACAS}. ')
+        red = ('Laboratorio: DHCP, apuntando a PythonAnywhere por HTTPS. '
+             if entorno == 'laboratorio' else
+             f'IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
+             f'apuntando al servidor {host_srv}:{PUERTO_SERVIDOR_PLACAS}. ')
         # Ya grabada en la placa: se anota para que no se le dé a otra.
-        if dev_id:
+        if dev_id and ip_estatica:
             ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='rfid')
             if not ok_ip:
                 red += f'AVISO: la IP no se pudo anotar en la app ({msg_ip}). '
-        else:
+        elif ip_estatica:
             _ip_estatica_reservar_sin_placa(ip_estatica, tipo='rfid')
             red += ('AVISO: no se pudo leer el identificador del lector. La IP queda reservada para '
                     'que no se le dé a otra placa, y se asignará sola en cuanto el lector aparezca '

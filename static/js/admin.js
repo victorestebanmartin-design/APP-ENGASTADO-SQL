@@ -1905,10 +1905,26 @@ function _usbProgresoRfid(porcentaje, texto) {
     etiqueta.textContent = texto;
 }
 
+function actualizarEntornoRfid() {
+    const laboratorio = document.getElementById('usb-entorno-rfid')?.value === 'laboratorio';
+    const ip = document.getElementById('usb-ip-rfid');
+    const host = document.getElementById('usb-host-rfid');
+    const pista = document.getElementById('usb-entorno-rfid-pista');
+    if (ip) ip.disabled = laboratorio;
+    if (host) host.disabled = laboratorio;
+    if (pista) {
+        pista.style.display = laboratorio ? 'block' : 'none';
+        pista.textContent = laboratorio
+            ? 'Laboratorio: DHCP y viktor85.pythonanywhere.com por HTTPS. La IP y el servidor de nave no se modifican.'
+            : '';
+    }
+}
+
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
     const perfil = document.getElementById('usb-perfil-rfid')?.value || 'devkit';
     const orientacion = document.getElementById('usb-orientacion-rfid')?.value || '180';
+    const entorno = document.getElementById('usb-entorno-rfid')?.value || 'produccion';
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
     const password = document.getElementById('usb-pass-rfid')?.value || '';
@@ -1919,11 +1935,11 @@ async function flashUSBRfid() {
         return;
     }
     // La IP fija no es opcional: la red de planta no reparte direcciones.
-    if (!ip_estatica) {
+    if (entorno === 'produccion' && !ip_estatica) {
         _usbMsgRfid('Rellena la IP estática de esta placa (la red de planta no tiene DHCP).', true);
         return;
     }
-    if (!document.getElementById('usb-host-rfid')?.value) {
+    if (entorno === 'produccion' && !document.getElementById('usb-host-rfid')?.value) {
         _usbMsgRfid('Rellena la IP del servidor: es a donde llamará el lector.', true);
         return;
     }
@@ -1949,7 +1965,7 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, perfil, orientacion, ssid, password, ip_estatica,
+            body: JSON.stringify({ puerto, perfil, orientacion, entorno, ssid, password, ip_estatica,
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();
@@ -1976,6 +1992,7 @@ async function flashUSBRfid() {
 
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('usb-puerto-rfid')) return;
+    actualizarEntornoRfid();
     cargarPuertosUSBRfid();
 });
 
