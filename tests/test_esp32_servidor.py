@@ -116,6 +116,14 @@ def test_flash_usb_rfid_rechaza_host_invalido(admin_client):
     assert r.status_code == 400
 
 
+def test_flash_usb_rfid_rechaza_perfil_desconocido(admin_client):
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'perfil': 'placa_inventada',
+                                'ssid': 'COJO', 'ip_estatica': '192.168.50.21'})
+    assert r.status_code == 400
+    assert 'Perfil' in r.get_json()['message']
+
+
 # ── El repo no puede volver a llevar la red vieja ─────────────────────────
 
 def test_el_repo_no_apunta_a_la_red_antigua():

@@ -1505,7 +1505,7 @@ async function eliminarDisplay(id) {
 
 
 // ============================================================================
-// LECTORES RFID — placas ESP32+RC522 asignadas a un puesto (entrada Engastado V3)
+// LECTORES RFID — perfiles DevKit+RC522 y gen4+PN532 asignados a un puesto.
 // Mismo patron que "Display Carro" de arriba, pero device_id -> puesto.
 // ============================================================================
 
@@ -1897,6 +1897,7 @@ function _usbMsgRfid(texto, esError) {
 
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
+    const perfil = document.getElementById('usb-perfil-rfid')?.value || 'devkit';
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
     const password = document.getElementById('usb-pass-rfid')?.value || '';
@@ -1919,12 +1920,12 @@ async function flashUSBRfid() {
     btn.disabled = true;
     const txtOriginal = btn.textContent;
     btn.textContent = '⏳ Subiendo... (no desconectes la placa)';
-    _usbMsgRfid('Subiendo por ' + puerto + '...');
+    _usbMsgRfid('Subiendo perfil ' + (perfil === 'gen4_pn532' ? 'gen4 + PN532' : 'DevKit + RC522') + ' por ' + puerto + '...');
     try {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, ssid, password, ip_estatica,
+            body: JSON.stringify({ puerto, perfil, ssid, password, ip_estatica,
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();

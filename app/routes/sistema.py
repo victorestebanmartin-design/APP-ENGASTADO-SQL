@@ -2525,6 +2525,9 @@ def api_esp32_rfid_flash_usb():
         puerto = str(data.get('puerto', '')).strip()
         if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
             return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
+        perfil = str(data.get('perfil', 'devkit')).strip().lower()
+        if perfil not in ('devkit', 'gen4_pn532'):
+            return jsonify({'success': False, 'message': 'Perfil de lector no válido'}), 400
 
         ssid = str(data.get('ssid', '')).strip()
         # La contraseña WiFi puede ir vacia (red abierta, sin cifrado):
@@ -2563,27 +2566,38 @@ def api_esp32_rfid_flash_usb():
 
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')
+        gen4_dir = os.path.join(base, 'micropython')
         cfg_path = os.path.join(base, 'wifi_config.py')
-        if not os.path.exists(cfg_path):
+        app_gen4_path = os.path.join(gen4_dir, 'lector_puesto.py')
+        if perfil == 'devkit' and not os.path.exists(cfg_path):
             return jsonify({'success': False, 'message': 'No se encuentra esp32/wifi_config.py'})
-
-        with open(cfg_path, encoding='utf-8') as f:
-            cfg_contenido = f.read()
-        cfg_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, cfg_contenido, count=1, flags=re.M)
-        cfg_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, cfg_contenido, count=1, flags=re.M)
-        cfg_contenido = re.sub(r'^WEBREPL_PASSWORD\s*=.*$', 'WEBREPL_PASSWORD = %r' % webrepl_password,
-                               cfg_contenido, count=1, flags=re.M)
-
-        # IP fija de ESTA placa (la red de planta no tiene DHCP). boot.py la
-        # aplica con wlan.ifconfig() antes del connect; mascara y puerta de
-        # enlace son fijas para toda la instalacion y ya vienen en el fichero.
-        cfg_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
-                               cfg_contenido, count=1, flags=re.M)
+        if perfil == 'gen4_pn532' and not os.path.exists(app_gen4_path):
+            return jsonify({'success': False, 'message': 'No se encuentra esp32/micropython/lector_puesto.py'})
 
         datadir = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
         tmp_cfg = os.path.join(datadir, '_rfid_wifi_config_tmp.py')
-        with open(tmp_cfg, 'w', encoding='utf-8') as f:
-            f.write(cfg_contenido)
+        tmp_gen4_app = os.path.join(datadir, '_rfid_gen4_app_tmp.py')
+        if perfil == 'devkit':
+            with open(cfg_path, encoding='utf-8') as f:
+                cfg_contenido = f.read()
+            cfg_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, cfg_contenido, count=1, flags=re.M)
+            cfg_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, cfg_contenido, count=1, flags=re.M)
+            cfg_contenido = re.sub(r'^WEBREPL_PASSWORD\s*=.*$', 'WEBREPL_PASSWORD = %r' % webrepl_password,
+                                   cfg_contenido, count=1, flags=re.M)
+            cfg_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
+                                   cfg_contenido, count=1, flags=re.M)
+            with open(tmp_cfg, 'w', encoding='utf-8') as f:
+                f.write(cfg_contenido)
+        else:
+            with open(app_gen4_path, encoding='utf-8') as f:
+                gen4_contenido = f.read()
+            gen4_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, gen4_contenido, count=1, flags=re.M)
+            gen4_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, gen4_contenido, count=1, flags=re.M)
+            gen4_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
+                                    gen4_contenido, count=1, flags=re.M)
+            gen4_contenido = _inyectar_host(gen4_contenido, 'HOST_IP', host_srv)
+            with open(tmp_gen4_app, 'w', encoding='utf-8') as f:
+                f.write(gen4_contenido)
 
         # backend_config.py con el host inyectado. Se sube este, no el del
         # repo: si no, la placa arrancaria llamando a la direccion de ejemplo.
@@ -2618,7 +2632,7 @@ def api_esp32_rfid_flash_usb():
         dev_id = _leer_device_id_usb(mpremote, puerto)
         otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id else ''
         if otra:
-            for tmp in (tmp_cfg, tmp_bc):
+            for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
                 try:
                     os.remove(tmp)
                 except OSError:
@@ -2638,30 +2652,40 @@ def api_esp32_rfid_flash_usb():
             return (f'Error al copiar {etiqueta}: {resumen}')[:400]
 
         try:
-            pasos = [
-                ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
-                ('ota_update.py', os.path.join(base, 'ota_update.py'), 'ota_update.py'),
-                ('wifi_config.py', tmp_cfg, 'wifi_config.py'),
-            ]
+            if perfil == 'gen4_pn532':
+                pasos = [
+                    ('pn532_i2c.py', os.path.join(gen4_dir, 'lib', 'pn532_i2c.py'), 'pn532_i2c.py'),
+                    ('boot.py', os.path.join(gen4_dir, 'boot.py'), 'boot.py'),
+                    ('launcher.py', os.path.join(gen4_dir, 'launcher.py'), 'main.py'),
+                    ('app.py', tmp_gen4_app, 'app.py'),
+                    ('app_prev.py (copia de seguridad)', tmp_gen4_app, 'app_prev.py'),
+                ]
+            else:
+                pasos = [
+                    ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
+                    ('ota_update.py', os.path.join(base, 'ota_update.py'), 'ota_update.py'),
+                    ('wifi_config.py', tmp_cfg, 'wifi_config.py'),
+                ]
             # Los ficheros de esp32/lib/ se suben SUELTOS a la raiz de la
             # placa (sin subcarpeta): main.py los importa de forma plana
             # (`from mfrc522 import MFRC522`) y asi coincide exactamente con
             # los nombres que ya usa el manifiesto OTA (_rfid_firmware_files).
             lib_dir = os.path.join(base, 'lib')
-            if os.path.isdir(lib_dir):
+            if perfil == 'devkit' and os.path.isdir(lib_dir):
                 for nombre in sorted(os.listdir(lib_dir)):
                     if nombre.endswith('.py'):
                         pasos.append((nombre, os.path.join(lib_dir, nombre), nombre))
-            pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
-            pasos.append(('backend_config.py', tmp_bc, 'backend_config.py'))
-            pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
+            if perfil == 'devkit':
+                pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
+                pasos.append(('backend_config.py', tmp_bc, 'backend_config.py'))
+                pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
             # La copia de seguridad del rollback se deja apuntando a ESTE
             # mismo main.py. Si no, main_prev.py conserva el firmware que
             # hubiera antes del flasheo (posiblemente incompatible con la
             # wifi_config.py/backend_config.py que se acaban de subir) y un
             # rollback restauraria algo que no arranca.
-            pasos.append(('main_prev.py (copia de seguridad)',
-                          os.path.join(base, 'main.py'), 'main_prev.py'))
+                pasos.append(('main_prev.py (copia de seguridad)',
+                              os.path.join(base, 'main.py'), 'main_prev.py'))
 
             for etiqueta, origen, destino in pasos:
                 if not os.path.exists(origen):
@@ -2687,7 +2711,7 @@ def api_esp32_rfid_flash_usb():
 
             mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
         finally:
-            for tmp in (tmp_cfg, tmp_bc):
+            for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
                 try:
                     os.remove(tmp)
                 except OSError:
@@ -2707,8 +2731,10 @@ def api_esp32_rfid_flash_usb():
                     'en Admin → IPs de placas. ')
         return jsonify({'success': True,
                         'message': f'Lector configurado y firmware subido por {puerto}. {red}'
-                                   f'A partir de ahora se actualiza solo por WiFi cuando publiques una '
-                                   f'nueva FW_VERSION en esp32/main.py.'})
+                                              + ('El perfil gen4+PN532 queda registrado al conectarse al WiFi.'
+                                                  if perfil == 'gen4_pn532' else
+                                                  'A partir de ahora se actualiza solo por WiFi cuando publiques una '
+                                                  'nueva FW_VERSION en esp32/main.py.')})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False,
                         'message': 'Timeout: comprueba que la placa está conectada a ese puerto y que '
