@@ -133,6 +133,35 @@ def test_flash_usb_rfid_rechaza_orientacion_desconocida(admin_client):
     assert 'Orientación' in r.get_json()['message']
 
 
+def test_flash_usb_rfid_tolera_timeout_del_reset(monkeypatch, admin_client):
+    """El reset corta USB: no puede convertir una copia correcta en error HTTP."""
+    from app.routes import sistema
+
+    class Resultado:
+        returncode = 0
+        stderr = ''
+        stdout = ''
+
+    monkeypatch.setattr(sistema, '_interrumpir_placa', lambda puerto: True)
+    monkeypatch.setattr(sistema, '_leer_device_id_usb', lambda *args: 'aabbccddeeff')
+    monkeypatch.setattr(sistema, '_mpremote_insistiendo', lambda *args, **kwargs: Resultado())
+
+    llamadas = []
+    def falso_run(*args, **kwargs):
+        llamadas.append(args[0][-1])
+        if args[0][-1] == 'reset':
+            raise sistema.subprocess.TimeoutExpired(args[0], 90)
+        return Resultado()
+    monkeypatch.setattr(sistema.subprocess, 'run', falso_run)
+
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'perfil': 'gen4_pn532', 'ssid': 'COJO',
+                          'ip_estatica': '192.168.50.199', 'host_servidor': '192.168.50.1'})
+    assert r.status_code == 200
+    assert r.get_json()['success'] is True, r.get_json()
+    assert 'reset' in llamadas
+
+
 # ── El repo no puede volver a llevar la red vieja ─────────────────────────
 
 def test_el_repo_no_apunta_a_la_red_antigua():

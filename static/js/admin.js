@@ -1895,6 +1895,16 @@ function _usbMsgRfid(texto, esError) {
     el.textContent = texto;
 }
 
+function _usbProgresoRfid(porcentaje, texto) {
+    const cont = document.getElementById('usb-progreso-rfid');
+    const barra = document.getElementById('usb-progreso-rfid-barra');
+    const etiqueta = document.getElementById('usb-progreso-rfid-texto');
+    if (!cont || !barra || !etiqueta) return;
+    cont.style.display = 'block';
+    barra.style.width = `${porcentaje}%`;
+    etiqueta.textContent = texto;
+}
+
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
     const perfil = document.getElementById('usb-perfil-rfid')?.value || 'devkit';
@@ -1921,7 +1931,20 @@ async function flashUSBRfid() {
     btn.disabled = true;
     const txtOriginal = btn.textContent;
     btn.textContent = '⏳ Subiendo... (no desconectes la placa)';
-    _usbMsgRfid('Subiendo perfil ' + (perfil === 'gen4_pn532' ? 'gen4 + PN532' : 'DevKit + RC522') + ' por ' + puerto + '...');
+    const nombrePerfil = perfil === 'gen4_pn532' ? 'Display gen4-ESP32-24 + PN532' : 'ESP32 DevKit + RC522';
+    _usbProgresoRfid(8, `Preparando ${nombrePerfil} en ${puerto}...`);
+    _usbMsgRfid('Subiendo perfil ' + nombrePerfil + ' por ' + puerto + '...');
+    const etapas = [
+        [28, 'Conectando con la placa y copiando ficheros base...'],
+        [58, 'Copiando firmware de aplicación...'],
+        [82, 'Guardando copia de seguridad y reiniciando la placa...']
+    ];
+    let indiceEtapa = 0;
+    const temporizador = setInterval(() => {
+        if (indiceEtapa >= etapas.length) return;
+        const [porcentaje, texto] = etapas[indiceEtapa++];
+        _usbProgresoRfid(porcentaje, texto);
+    }, 3500);
     try {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
@@ -1930,6 +1953,7 @@ async function flashUSBRfid() {
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();
+        _usbProgresoRfid(d.success ? 100 : 0, d.success ? 'Terminado: la placa se está reiniciando.' : 'La carga no se completó.');
         _usbMsgRfid((d.success ? '✅ ' : '❌ ') + (d.message || 'Sin respuesta'), !d.success);
         if (d.success) {
             cargarLectoresRfid();
@@ -1941,8 +1965,10 @@ async function flashUSBRfid() {
             _sugerirIpEnFormulariosUSB(ip_estatica);
         }
     } catch (e) {
+        _usbProgresoRfid(0, 'No se recibió respuesta del servidor.');
         _usbMsgRfid('❌ Error de conexión con el servidor', true);
     } finally {
+        clearInterval(temporizador);
         btn.disabled = false;
         btn.textContent = txtOriginal;
     }

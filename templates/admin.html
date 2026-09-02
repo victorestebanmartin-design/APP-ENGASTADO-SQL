@@ -417,6 +417,12 @@
                             Qué IP tiene cada placa se ve en
                             <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
                         </p>
+                        <div id="usb-progreso-rfid" style="display:none;margin:10px 0;max-width:560px;">
+                            <div style="height:7px;background:#334155;border-radius:4px;overflow:hidden;">
+                                <div id="usb-progreso-rfid-barra" style="height:100%;width:0;background:#4f8cff;transition:width .35s ease;"></div>
+                            </div>
+                            <div id="usb-progreso-rfid-texto" style="margin-top:5px;font-size:.85em;color:#94a3b8;"></div>
+                        </div>
                         <button class="btn-primary" id="usb-flash-rfid-btn" onclick="flashUSBRfid()">📲 Subir todo a la placa</button>
                         <div id="usb-msg-rfid" style="margin-top:10px;font-size:0.9em;display:none;"></div>
                     </div>

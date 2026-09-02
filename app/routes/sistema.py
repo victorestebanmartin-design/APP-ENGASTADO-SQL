@@ -1991,10 +1991,10 @@ def api_esp32_flash_usb():
         with open(tmp_fw, 'w', encoding='utf-8') as f:
             f.write(contenido)
 
-        def mpremote(*args):
+        def mpremote(*args, timeout=90):
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
-                capture_output=True, text=True, timeout=90)
+            capture_output=True, text=True, timeout=timeout)
 
         # Primer contacto: es el que falla. La placa viene ejecutando su
         # firmware y puede estar dentro de una llamada bloqueante, asi que se
@@ -2072,7 +2072,14 @@ def api_esp32_flash_usb():
             # rollback en el primer arranque tras el flasheo.
             mpremote('exec', "open('boot_fails.txt','w').write('0')")
 
-            mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
+            # Al reiniciar, la placa corta el USB antes de que mpremote pueda
+            # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el
+            # reset SI se envio; no convertir ese corte esperado en un error
+            # HTTP que deja el navegador esperando o muestra un falso fallo.
+            try:
+                mpremote('reset', timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
         finally:
             try:
                 os.remove(tmp_fw)
@@ -2620,10 +2627,10 @@ def api_esp32_rfid_flash_usb():
         # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
         _servidor_host_guardar(host_srv)
 
-        def mpremote(*args):
+        def mpremote(*args, timeout=90):
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
-                capture_output=True, text=True, timeout=90)
+                capture_output=True, text=True, timeout=timeout)
 
         # Primer contacto: es el que falla. El lector pasa ratos dentro de
         # lecturas de socket bloqueadas (comprobacion OTA cada minuto) donde
@@ -2715,7 +2722,14 @@ def api_esp32_rfid_flash_usb():
             # primer arranque.
             mpremote('exec', "open('boot_fails.txt','w').write('0')")
 
-            mpremote('reset')  # el reset puede "fallar" al reconectar aunque funcione: no comprobar
+            # Al reiniciar, la placa corta el USB antes de que mpremote pueda
+            # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el
+            # reset SI se envio; no convertir ese corte esperado en un error
+            # HTTP que deja el navegador esperando o muestra un falso fallo.
+            try:
+                mpremote('reset', timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
         finally:
             for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
                 try:
