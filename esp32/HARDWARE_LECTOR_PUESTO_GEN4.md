@@ -92,20 +92,19 @@ hasta pin 9 con pin 9. Etiquetar ambos extremos como `LECTOR PUESTO / MUX 1`.
 | DB9 | Cable a breakout | Funcion | Soldadura dentro de la caja |
 |---:|---|---|---|
 | 1 | Pad 25, GND | Retorno 5 V | Cable negro de fuente externa |
-| 2 | Pad 2, GPIO17 | MUX-1, 3.3 V | Serie 220 ohm antes del DB9 |
-| 3 | Pad 4, GPIO16 | MUX-2, 3.3 V | Serie 220 ohm antes del DB9 |
-| 4 | Pad 5, GPIO15 | MUX-3, 3.3 V | Serie 220 ohm antes del DB9 |
-| 5 | Pad 6, GPIO48 | MUX-4, 3.3 V | Serie 220 ohm antes del DB9 |
-| 6 | Pad 7, GPIO47 | MUX-5, 3.3 V | Serie 220 ohm antes del DB9 |
-| 7 | Pad 8, GPIO38 | MUX-6, 3.3 V | Serie 220 ohm antes del DB9 |
-| 8 | Pad 9, GPIO39 | MUX-7, 3.3 V | Serie 220 ohm antes del DB9 |
+| 2 | Pad 2, GPIO17 | Datos WS2813, 3.3 V | A entrada del conversor de nivel |
+| 3 | Pad 4, GPIO16 | I2C SDA, 3.3 V | Bus de MCP23017 |
+| 4 | Pad 5, GPIO15 | I2C SCL, 3.3 V | Bus de MCP23017 |
+| 5 | Pad 6, GPIO48 | Reserva MUX-4 | Sin conectar por ahora |
+| 6 | Pad 7, GPIO47 | Reserva MUX-5 | Sin conectar por ahora |
+| 7 | Pad 8, GPIO38 | Reserva MUX-6 | Sin conectar por ahora |
+| 8 | Pad 9, GPIO39 | Reserva MUX-7 | Sin conectar por ahora |
 | 9 | Pad 26, 5V IN | Entrada +5 V | Desde PTC + SS14, ver arriba |
 
 Los pines 2-8 son logica de **3.3 V**, no RS-232, no RS-485 y no toleran 5 V.
 No conectar cargas, bobinas, LEDs, finales de carrera ni salidas de otro
-microcontrolador directamente. Para el tramo de 1-5 m, las siete resistencias
-serie de 220 ohm son obligatorias; anadir TVS de 3.3 V a GND o un buffer de
-3.3 V en la placa de interfaz si el cable pasa junto a engastadoras.
+microcontrolador directamente. Los pines 3 y 4 son I2C: necesitan sus
+resistencias de pull-up de 4.7 k a 3.3 V en el modulo de MCP23017, no a 5 V.
 
 Las lineas quedan como entradas de alta impedancia en el firmware hasta que se
 defina el protocolo del multiplexor. Se pueden encadenar fisicamente varios
@@ -125,13 +124,13 @@ casarlo antes de energizar, no se debe inventar.
 | DB9 macho | Color recomendado | Destino en MUX 1 | Funcion |
 |---:|---|---|---|
 | 1 | Negro | `GND / 0V` | Retorno comun de fuente y referencia logica |
-| 2 | Blanco | `MUX-1` | Logica 3.3 V, protocolo pendiente |
-| 3 | Marron | `MUX-2` | Logica 3.3 V, protocolo pendiente |
-| 4 | Rojo fino | `MUX-3` | Logica 3.3 V, protocolo pendiente |
-| 5 | Naranja | `MUX-4` | Logica 3.3 V, protocolo pendiente |
-| 6 | Amarillo | `MUX-5` | Logica 3.3 V, protocolo pendiente |
-| 7 | Verde | `MUX-6` | Logica 3.3 V, protocolo pendiente |
-| 8 | Azul | `MUX-7` | Logica 3.3 V, protocolo pendiente |
+| 2 | Blanco | `DATA IN` conversor 3.3 -> 5 V | Datos hacia primer WS2813 |
+| 3 | Marron | `SDA` de MCP23017 | I2C a 3.3 V |
+| 4 | Rojo fino | `SCL` de MCP23017 | I2C a 3.3 V |
+| 5 | Naranja | Reserva 1 | Dejar aislado y etiquetado |
+| 6 | Amarillo | Reserva 2 | Dejar aislado y etiquetado |
+| 7 | Verde | Reserva 3 | Dejar aislado y etiquetado |
+| 8 | Azul | Reserva 4 | Dejar aislado y etiquetado |
 | 9 | Rojo grueso | `+5V IN` | Salida protegida de fuente pick-to-light |
 
 El rojo grueso y negro son el par de alimentacion. Salen de los bornes de la
@@ -153,23 +152,61 @@ Fuente GND -----+----> tira WS2813 / masas MUX
 solo la gen4, PN532 y zumbador. La tira, LEDs y cargas del pick-to-light llevan
 su ramal directo desde la fuente y su condensador de 1000 uF.
 
-## Encadenar varios multiplexores
+## Conversor 3.3 V a 5 V de la tira
 
-El arnes DB9 del lector llega solo a **MUX 1**. Para MUX 2 y posteriores:
+El conversor existente **se mantiene**. Con WS2813 a 5 V, 3.3 V de GPIO17 no
+alcanza de forma garantizada el nivel logico alto del primer LED. Puede parecer
+que funciona en banco y fallar con temperatura, fuente distinta o cable largo.
+
+Con el modulo TXS0108E anterior:
+
+```
+DB9-2 (GPIO17) -> TXS0108E A1
+3.3 V local     -> TXS0108E VA y OE
+5 V fuente      -> TXS0108E VB
+GND             -> TXS0108E GND
+TXS0108E B1     -> 330 ohm -> WS2813 DI y BI del primer pixel
+```
+
+Si la tira parpadea o muestra colores aleatorios, sustituir el TXS0108E por
+un **74AHCT125** o **74HCT245**. Es preferible porque es unidireccional y 3.3 V
+ya cuenta como nivel alto para su entrada TTL. No quitar el conversor salvo
+que se alimente el primer WS2813 a unos 4.3 V y se pruebe expresamente.
+
+## MCP23017 y encadenar varios modulos
+
+El arnes DB9 del lector llega solo a **MUX 1**. El MCP23017 no es un
+multiplexor de siete hilos: usa SDA/SCL, y cada chip añade 16 micros de gaveta.
+
+En MUX 1, alimentar cada MCP23017 asi:
+
+```
+5 V DB9-9 -> regulador 3.3 V local -> MCP23017 VDD (pin 9), RESET (pin 18)
+DB9-1 GND --------------------------> MCP23017 VSS (pin 10)
+DB9-3 SDA --------------------------> MCP23017 SDA (pin 13)
+DB9-4 SCL --------------------------> MCP23017 SCL (pin 12)
+3.3 V local -- 4.7 k --> SDA       3.3 V local -- 4.7 k --> SCL
+```
+
+**Nunca alimentar VDD del MCP23017 a 5 V.** Su I2C quedaria a 5 V y dañaria
+GPIO16/GPIO15 de la gen4. El regulador de 3.3 V local puede ser un modulo buck
+pequeno o LDO capaz de alimentar todos los MCP23017 del armario.
+
+Para MUX 2 y posteriores:
 
 1. Llevar 5 V y GND desde los bornes de la fuente a cada modulo en estrella.
-2. Encadenar MUX-1 a MUX-7 solo si el datasheet dice que son entradas de alta
-   impedancia o que el modulo dispone de salida `OUT`/`THRU`.
-3. Nunca unir dos salidas logicas entre si. Si el modulo ofrece una salida,
-   usar `THRU` o anadir buffer.
-4. Si son varios MCP23017, no usan estas siete lineas: comparten un bus I2C
-   con direccion distinta. Ese montaje necesita un diseño propio porque el I2C
-   de la gen4 ya lo usa el PN532.
+2. Encadenar solo SDA (DB9-3) y SCL (DB9-4), con GND comun; cada MCP23017
+   debe tener direccion distinta de 0x20 a 0x27 mediante A0/A1/A2.
+3. Encadenar la tira WS2813 por su salida de datos entre tiras, no uniendo
+   salidas de dos conversores de nivel.
+4. Usar **un solo juego** de pull-ups I2C de 4.7 k a 3.3 V en todo el bus. Con
+   mas de 1 m de bus o cable cercano a engastadoras, I2C directo no es fiable:
+   añadir extensor I2C diferencial o montar el primer MCP junto al lector.
 
-El firmware conserva MUX-1 a MUX-7 como entradas de alta impedancia: hoy se
-puede montar el arnes, pero no se conectan a bornes de un multiplexor hasta
-conocer su esquema electrico. Aun no se envian ordenes de pick-to-light por
-el DB9.
+El firmware actual del lector reserva estos pines, pero todavia no ha
+incorporado `gavetas.py` para gen4. El arnes queda compatible con el modelo
+anterior; antes de encender LEDs o micros hay que portar ese driver a la
+gen4 con `GPIO17/GPIO16/GPIO15`.
 
 No usar GPIO0, GPIO3, GPIO45 ni GPIO46: son pines de strapping. No usar
 GPIO43/GPIO44: son el UART de programacion. GPIO40 queda libre para futura
