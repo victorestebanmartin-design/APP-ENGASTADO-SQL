@@ -1991,7 +1991,10 @@ def api_esp32_flash_usb():
         with open(tmp_fw, 'w', encoding='utf-8') as f:
             f.write(contenido)
 
-        def mpremote(*args, timeout=90):
+        # Los .py del lector son pequenos: 20 s bastan para cada copia. Si el
+        # firmware anterior no suelta el REPL, _mpremote_insistiendo reinicia
+        # y reintenta en vez de dejar la pantalla web bloqueada 90 s por paso.
+        def mpremote(*args, timeout=20):
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
             capture_output=True, text=True, timeout=timeout)
@@ -2070,7 +2073,14 @@ def api_esp32_flash_usb():
             # Contador de arranques fallidos a cero: si la pantalla venia de un
             # app.py que no arrancaba, ese contador heredado dispararia un
             # rollback en el primer arranque tras el flasheo.
-            mpremote('exec', "open('boot_fails.txt','w').write('0')")
+            # Igual que el reset, esta escritura final puede perder el puerto
+            # cuando la placa anterior sigue ocupada. No debe retener la
+            # respuesta HTTP: el firmware nuevo deja el contador a cero al
+            # alcanzar su bucle principal.
+            try:
+                mpremote('exec', "open('boot_fails.txt','w').write('0')", timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
 
             # Al reiniciar, la placa corta el USB antes de que mpremote pueda
             # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el
@@ -2627,7 +2637,10 @@ def api_esp32_rfid_flash_usb():
         # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
         _servidor_host_guardar(host_srv)
 
-        def mpremote(*args, timeout=90):
+        # Los .py del lector son pequenos: 20 s bastan para cada copia. Si el
+        # firmware anterior no suelta el REPL, _mpremote_insistiendo reinicia
+        # y reintenta en vez de dejar la pantalla web bloqueada 90 s por paso.
+        def mpremote(*args, timeout=20):
             return subprocess.run(
                 [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
                 capture_output=True, text=True, timeout=timeout)
@@ -2719,8 +2732,11 @@ def api_esp32_rfid_flash_usb():
             # Dejar el contador de arranques fallidos a cero: si la placa
             # venia de un firmware que no arrancaba, ese contador puede estar
             # a punto de disparar un rollback que desharia este flasheo en el
-            # primer arranque.
-            mpremote('exec', "open('boot_fails.txt','w').write('0')")
+            # primer arranque. La aplicacion tambien lo limpia al arrancar.
+            try:
+                mpremote('exec', "open('boot_fails.txt','w').write('0')", timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
 
             # Al reiniciar, la placa corta el USB antes de que mpremote pueda
             # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el

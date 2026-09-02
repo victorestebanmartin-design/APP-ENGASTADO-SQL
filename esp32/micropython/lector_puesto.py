@@ -337,6 +337,15 @@ conectar_wifi()
 registrar_dispositivo()
 draw_idle()
 
+# El lanzador incrementa este contador antes de importar app.py. Llegar aqui
+# confirma que el firmware ha arrancado y evita un rollback tras reinicios
+# normales de alimentacion o WiFi.
+try:
+    with open("boot_fails.txt", "w") as failure_file:
+        failure_file.write("0")
+except OSError:
+    pass
+
 while True:
     try:
         now = time.ticks_ms()
