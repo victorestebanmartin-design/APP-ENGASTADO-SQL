@@ -2076,7 +2076,8 @@ async function cargarGrabadoMicroPython() {
                 // deducir del nombre del fichero, el servidor lo rechaza y pide
                 // elegirlo, en vez de grabar en un offset equivocado.
                 const et = f.chip ? `${f.chip} @ ${f.offset}` : 'chip no reconocido';
-                return `<option value="${_dispEsc(f.nombre)}" data-chip="${_dispEsc(f.chip || '')}">${_dispEsc(f.nombre)} (${f.tamano_mb} MB, ${et})</option>`;
+                                const modelo = f.modelo ? _dispEsc(f.modelo) + ' - ' : '';
+                                return `<option value="${_dispEsc(f.nombre)}" data-chip="${_dispEsc(f.chip || '')}">${modelo}${_dispEsc(f.nombre)} (${f.tamano_mb} MB, ${et})</option>`;
               }).join('')
             : `<option value="">— sin firmwares disponibles —</option>`;
 

@@ -196,6 +196,13 @@ def test_subir_firmware_valido(admin_client, app):
     assert fw['offset'] == '0x1000'
 
 
+def test_firmwares_versionados_explican_el_modelo(admin_client):
+    d = admin_client.get('/api/esp32/firmwares').get_json()
+    modelos = {firmware['nombre']: firmware['modelo'] for firmware in d['firmwares']}
+    assert modelos['ESP32_GENERIC-20260406-v1.28.0.bin'] == 'Lector RFID - ESP32 DevKit + RC522'
+    assert modelos['ESP32_GENERIC_S3-SPIRAM_OCT-20260406-v1.28.0.bin'] == 'Pantalla gen4-ESP32-24'
+
+
 def test_subir_firmware_traversal_en_nombre(admin_client, app, tmp_path):
     """secure_filename debe impedir que el .bin salga de data/firmware/."""
     centinela = os.path.join(os.path.dirname(app.config['DATA_DIR']), 'escapado.bin')

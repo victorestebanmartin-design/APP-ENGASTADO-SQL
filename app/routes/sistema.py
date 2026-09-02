@@ -2821,6 +2821,14 @@ _CHIP_ID_IMAGEN = {
     0x000D: 'esp32c6',
 }
 
+# Los dos binarios versionados corresponden a las dos placas que se usan hoy.
+# Los ficheros subidos por Admin siguen admitiendose sin etiqueta para no
+# bloquear una futura ampliacion de hardware.
+_MODELO_FIRMWARE = {
+    'ESP32_GENERIC-20260406-v1.28.0.bin': 'Lector RFID - ESP32 DevKit + RC522',
+    'ESP32_GENERIC_S3-SPIRAM_OCT-20260406-v1.28.0.bin': 'Pantalla gen4-ESP32-24',
+}
+
 
 def _chip_desde_binario(ruta):
     """Lee el chip real de la cabecera del .bin, o None si no se puede.
@@ -2862,6 +2870,7 @@ def _listar_firmwares():
             chip = _chip_desde_binario(ruta) or _chip_desde_nombre(nombre)
             vistos[nombre] = {
                 'nombre': nombre,
+                'modelo': _MODELO_FIRMWARE.get(nombre, ''),
                 'tamano_mb': round(os.path.getsize(ruta) / (1024 * 1024), 2),
                 'chip': chip,
                 'offset': _OFFSET_POR_CHIP.get(chip or '', ''),
