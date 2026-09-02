@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-02d"
+FW_VERSION = "2026-09-02e"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -374,9 +374,11 @@ while True:
         now = time.ticks_ms()
         if not wifi_ip and time.ticks_diff(now, ultimo_wifi) > 10_000:
             ultimo_wifi = now
+            tenia_wifi = bool(wifi_ip)
             conectar_wifi()
             registrar_dispositivo()
-            draw_idle()
+            if bool(wifi_ip) != tenia_wifi:
+                draw_idle()
 
         if wifi_ip and time.ticks_diff(now, ultimo_latido) > 60_000:
             ultimo_latido = now
@@ -384,8 +386,12 @@ while True:
 
         if nfc_estado == "ko" and time.ticks_diff(now, ultimo_nfc) >= NFC_REINTENTO_S * 1000:
             ultimo_nfc = now
-            nfc_estado = "ok" if nfc.reiniciar() else "ko"
-            draw_idle()
+            nuevo_estado_nfc = "ok" if nfc.reiniciar() else "ko"
+            if nuevo_estado_nfc != nfc_estado:
+                nfc_estado = nuevo_estado_nfc
+                draw_idle()
+            else:
+                nfc_estado = nuevo_estado_nfc
         elif nfc_estado == "ok" and time.ticks_diff(now, ultimo_nfc) >= NFC_POLL_MS:
             ultimo_nfc = now
             uid = nfc.leer_uid(timeout_ms=80)
