@@ -2642,7 +2642,11 @@ def api_esp32_rfid_flash_usb():
         # y reintenta en vez de dejar la pantalla web bloqueada 90 s por paso.
         def mpremote(*args, timeout=20):
             return subprocess.run(
-                [sys.executable, '-m', 'mpremote', 'connect', puerto] + list(args),
+                # _interrumpir_placa deja la placa en raw REPL. Sin "resume",
+                # mpremote hace un soft reset al abrir cada comando, relanza
+                # boot.py y la gen4 vuelve a bloquear en WiFi antes de copiar
+                # el primer fichero.
+                [sys.executable, '-m', 'mpremote', 'connect', puerto, 'resume'] + list(args),
                 capture_output=True, text=True, timeout=timeout)
 
         # Primer contacto: es el que falla. El lector pasa ratos dentro de

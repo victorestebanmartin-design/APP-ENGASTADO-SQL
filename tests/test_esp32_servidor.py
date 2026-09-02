@@ -162,6 +162,30 @@ def test_flash_usb_rfid_tolera_timeout_del_reset(monkeypatch, admin_client):
     assert 'reset' in llamadas
 
 
+def test_flash_usb_rfid_reanuda_el_repl_recuperado(monkeypatch, admin_client):
+    """No relanzar boot.py entre copias: una gen4 ocupada no deja entrar al REPL."""
+    from app.routes import sistema
+
+    class Resultado:
+        returncode = 0
+        stderr = ''
+        stdout = ''
+
+    monkeypatch.setattr(sistema, '_interrumpir_placa', lambda puerto: True)
+    monkeypatch.setattr(sistema, '_leer_device_id_usb', lambda *args: '112233445566')
+    monkeypatch.setattr(sistema, '_mpremote_insistiendo', lambda *args, **kwargs: Resultado())
+    comandos = []
+    monkeypatch.setattr(sistema.subprocess, 'run',
+                        lambda args, **kwargs: comandos.append(args) or Resultado())
+
+    r = admin_client.post('/api/esp32/rfid/flash_usb',
+                          json={'puerto': 'COM5', 'perfil': 'gen4_pn532', 'ssid': 'COJO',
+                                'ip_estatica': '192.168.50.199', 'host_servidor': '192.168.50.1'})
+    assert r.status_code == 200
+    assert r.get_json()['success'] is True
+    assert any('resume' in comando for comando in comandos)
+
+
 # ── El repo no puede volver a llevar la red vieja ─────────────────────────
 
 def test_el_repo_no_apunta_a_la_red_antigua():
