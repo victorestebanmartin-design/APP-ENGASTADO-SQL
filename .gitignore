@@ -52,3 +52,5 @@ passwords.txt
 data/wifi_hotspot.json
 # Host local de las placas (se detecta o configura desde Admin en cada instalación)
 data/servidor_backend.json
+# Temporales de provisión USB RFID; pueden contener WiFi y host locales.
+data/_rfid_*_tmp.py
