@@ -25,6 +25,10 @@ from pn532_i2c import PN532
 
 FW_VERSION = "2026-09-02c"
 
+# 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
+# inyectar este valor segun como se monte la caja.
+DISPLAY_ROTATION = 180
+
 # Estas lineas las inyecta el flasheo USB. No guardar credenciales reales aqui.
 SSID = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -74,9 +78,9 @@ def _cmd(command, data=None):
 
 
 _cmd(0x11); time.sleep_ms(120)
-# MX + MY + MV rota el panel a horizontal invertido; BGR conserva el orden
-# de color del IPS. La caja del lector se monta con esta orientacion.
-_cmd(0x36, b"\xE8")
+# MV rota el panel a horizontal. MX + MY lo gira 180 grados; BGR conserva el
+# orden de color del IPS.
+_cmd(0x36, b"\xE8" if DISPLAY_ROTATION == 180 else b"\x28")
 _cmd(0x3A, b"\x55")
 _cmd(0x29); time.sleep_ms(50)
 _cmd(0x21)

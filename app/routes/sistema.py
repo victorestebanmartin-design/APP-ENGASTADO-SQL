@@ -2528,6 +2528,9 @@ def api_esp32_rfid_flash_usb():
         perfil = str(data.get('perfil', 'devkit')).strip().lower()
         if perfil not in ('devkit', 'gen4_pn532'):
             return jsonify({'success': False, 'message': 'Perfil de lector no válido'}), 400
+        orientacion = str(data.get('orientacion', '180')).strip()
+        if orientacion not in ('0', '180'):
+            return jsonify({'success': False, 'message': 'Orientación de pantalla no válida'}), 400
 
         ssid = str(data.get('ssid', '')).strip()
         # La contraseña WiFi puede ir vacia (red abierta, sin cifrado):
@@ -2596,6 +2599,9 @@ def api_esp32_rfid_flash_usb():
             gen4_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
                                     gen4_contenido, count=1, flags=re.M)
             gen4_contenido = _inyectar_host(gen4_contenido, 'HOST_IP', host_srv)
+            gen4_contenido = re.sub(r'^DISPLAY_ROTATION\s*=.*$',
+                                    'DISPLAY_ROTATION = %s' % orientacion,
+                                    gen4_contenido, count=1, flags=re.M)
             with open(tmp_gen4_app, 'w', encoding='utf-8') as f:
                 f.write(gen4_contenido)
 
