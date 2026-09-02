@@ -47,12 +47,12 @@ USE_SSL = False
 
 ENTRADA_PATH = "/api/puestos/engastado_v3/entrada"
 
-# gen4-Breakout: PN532 en I2C, zumbador y ocho lineas DB9 de expansion.
+# gen4-Breakout: PN532 en I2C, zumbador y siete lineas DB9 de expansion.
 NFC_SDA_PIN = 6
 NFC_SCL_PIN = 5
 BUZZER_PIN = 18
 BUZZER_PASIVO = False
-DB9_PINS = (17, 16, 15, 48, 47, 38, 39, 40)
+DB9_PINS = (17, 16, 15, 48, 47, 38, 39)
 NFC_POLL_MS = 300
 NFC_REPETIR_MS = 3000
 NFC_REINTENTO_S = 10
