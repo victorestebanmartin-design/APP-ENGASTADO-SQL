@@ -23,7 +23,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-02b"
+FW_VERSION = "2026-09-02c"
 
 # Estas lineas las inyecta el flasheo USB. No guardar credenciales reales aqui.
 SSID = "YOUR_SSID"
@@ -74,8 +74,9 @@ def _cmd(command, data=None):
 
 
 _cmd(0x11); time.sleep_ms(120)
-# MV rota el panel a horizontal; BGR conserva el orden de color del IPS.
-_cmd(0x36, b"\x28")
+# MX + MY + MV rota el panel a horizontal invertido; BGR conserva el orden
+# de color del IPS. La caja del lector se monta con esta orientacion.
+_cmd(0x36, b"\xE8")
 _cmd(0x3A, b"\x55")
 _cmd(0x29); time.sleep_ms(50)
 _cmd(0x21)
