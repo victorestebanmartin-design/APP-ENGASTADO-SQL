@@ -5,6 +5,10 @@ y RC522. Usa la pantalla 4D Systems gen4-ESP32-24, un PN532, un zumbador y un
 DB9 reservado para el multiplexor. El firmware es
 `esp32/micropython/lector_puesto.py`.
 
+La pantalla se monta y funciona en **horizontal**: el firmware configura el
+ILI9341 a 320x240. Esta orientacion es exclusiva del lector de puesto; las
+pantallas de carro conservan su firmware y formato vertical de 240x320.
+
 No es una pantalla de carro: no lleva pulsadores ni ejecuta la seleccion,
 recogida o devolucion de paquetes. Lee la tarjeta del operario, manda su UID
 al servidor y muestra aceptacion, rechazo o error tecnico.

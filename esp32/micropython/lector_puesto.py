@@ -23,7 +23,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-02a"
+FW_VERSION = "2026-09-02b"
 
 # Estas lineas las inyecta el flasheo USB. No guardar credenciales reales aqui.
 SSID = "YOUR_SSID"
@@ -50,6 +50,8 @@ NFC_FALLOS_MAX = 5
 
 DEVICE_ID = binascii.hexlify(machine.unique_id()).decode()
 wifi_ip = ""
+DISPLAY_WIDTH = 320
+DISPLAY_HEIGHT = 240
 
 
 # --- Display ILI9341 ---------------------------------------------------------
@@ -72,7 +74,8 @@ def _cmd(command, data=None):
 
 
 _cmd(0x11); time.sleep_ms(120)
-_cmd(0x36, b"\x48")
+# MV rota el panel a horizontal; BGR conserva el orden de color del IPS.
+_cmd(0x36, b"\x28")
 _cmd(0x3A, b"\x55")
 _cmd(0x29); time.sleep_ms(50)
 _cmd(0x21)
@@ -126,7 +129,7 @@ def text(x, y, value, fg, bg, scale=1):
 
 def text_center(y, value, fg, bg, scale=1):
     width = len(value) * 9 * scale - scale
-    text(max(0, (240 - width) // 2), y, value, fg, bg, scale)
+    text(max(0, (DISPLAY_WIDTH - width) // 2), y, value, fg, bg, scale)
 
 
 BLACK = 0x0000
@@ -188,25 +191,25 @@ db9_lines = [Pin(pin, Pin.IN) for pin in DB9_PINS]
 
 
 def draw_idle():
-    rect(0, 0, 240, 320, BLACK)
-    text_center(35, "COJOsw", WHITE, BLACK, 4)
-    text_center(88, "LECTOR PUESTO", ORANGE, BLACK, 2)
-    text_center(138, "PASA TU TARJETA", WHITE, BLACK, 2)
-    text_center(196, "NFC " + ("OK" if nfc_estado == "ok" else "NO RESPONDE"),
+    rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
+    text_center(14, "COJOsw", WHITE, BLACK, 4)
+    text_center(57, "LECTOR PUESTO", ORANGE, BLACK, 2)
+    text_center(105, "PASA TU TARJETA", WHITE, BLACK, 2)
+    text_center(151, "NFC " + ("OK" if nfc_estado == "ok" else "NO RESPONDE"),
                 GREEN if nfc_estado == "ok" else RED, BLACK, 1)
-    text_center(218, "ID " + DEVICE_ID[-4:].upper(), GRAY, BLACK, 1)
-    text_center(272, "WiFi " + wifi_ip if wifi_ip else "SIN WIFI",
+    text_center(171, "ID " + DEVICE_ID[-4:].upper(), GRAY, BLACK, 1)
+    text_center(201, "WiFi " + wifi_ip if wifi_ip else "SIN WIFI",
                 GREEN if wifi_ip else RED, BLACK, 1)
-    text_center(294, "FW " + FW_VERSION, GRAY, BLACK, 1)
+    text_center(220, "FW " + FW_VERSION, GRAY, BLACK, 1)
 
 
 def draw_result(title, detail, color):
-    rect(0, 0, 240, 320, BLACK)
-    text_center(42, "LECTOR PUESTO", ORANGE, BLACK, 2)
-    text_center(115, title, color, BLACK, 2)
-    # Limitar longitud evita salirse de los 240 px con la fuente fija.
-    text_center(165, (detail or "")[:25].upper(), WHITE, BLACK, 1)
-    text_center(272, "PASA TU TARJETA", GRAY, BLACK, 1)
+    rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
+    text_center(25, "LECTOR PUESTO", ORANGE, BLACK, 2)
+    text_center(83, title, color, BLACK, 2)
+    # Limitar longitud evita salirse de los 320 px con la fuente fija.
+    text_center(128, (detail or "")[:35].upper(), WHITE, BLACK, 1)
+    text_center(204, "PASA TU TARJETA", GRAY, BLACK, 1)
 
 
 def conectar_wifi():
