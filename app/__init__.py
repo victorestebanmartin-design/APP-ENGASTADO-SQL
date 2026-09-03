@@ -316,6 +316,45 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: índice UNIQUE en proyectos.carro_asignado.
+    # Antes era un índice simple (solo para rendimiento); ahora es UNIQUE para
+    # que la BD garantice que ningún carro puede asignarse a dos proyectos a
+    # la vez. El partial index (WHERE IS NOT NULL) permite que múltiples
+    # proyectos queden sin carro asignado (NULL), que es el comportamiento
+    # correcto. Antes de recrearlo, comprueba que no haya datos duplicados:
+    # si los hay, deja el índice no-único y el administrador deberá resolverlos
+    # antes de reiniciar (el arranque no se interrumpe).
+    cur.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_proyectos_carro'"
+    )
+    row = cur.fetchone()
+    idx_carro_sql = (row[0] or '') if row else ''
+    if 'UNIQUE' not in idx_carro_sql.upper():
+        cur.execute("""
+            SELECT COUNT(*) FROM (
+                SELECT carro_asignado FROM proyectos
+                WHERE carro_asignado IS NOT NULL
+                GROUP BY carro_asignado
+                HAVING COUNT(*) > 1
+            )
+        """)
+        duplicados_carro = cur.fetchone()[0]
+        if duplicados_carro == 0:
+            cur.execute("DROP INDEX IF EXISTS idx_proyectos_carro")
+            cur.execute("""
+                CREATE UNIQUE INDEX idx_proyectos_carro
+                ON proyectos(carro_asignado)
+                WHERE carro_asignado IS NOT NULL
+            """)
+            conn.commit()
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                'MIGRACIÓN PENDIENTE: hay %d carros duplicados en proyectos.carro_asignado; '
+                'resuélvelos manualmente antes de reiniciar para aplicar la restricción UNIQUE.',
+                duplicados_carro,
+            )
+
     conn.close()
 
 

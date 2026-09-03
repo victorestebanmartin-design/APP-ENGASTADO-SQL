@@ -40,7 +40,7 @@ CREATE TABLE proyectos (
 );
 
 CREATE INDEX idx_proyectos_estado ON proyectos(estado);
-CREATE INDEX idx_proyectos_carro ON proyectos(carro_asignado) WHERE carro_asignado IS NOT NULL;
+CREATE UNIQUE INDEX idx_proyectos_carro ON proyectos(carro_asignado) WHERE carro_asignado IS NOT NULL;
 
 -- =====================================================
 -- TABLA: proyectos_terminales_completados

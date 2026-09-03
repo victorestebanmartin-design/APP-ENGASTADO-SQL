@@ -94,14 +94,14 @@ def api_asignar_carro(proyecto_id):
     try:
         data = request.get_json()
         carro_numero = data.get('carro_numero')
-        
+
         proyecto_repo = ProyectoRepository(db)
-        
+
         if carro_numero:
             success = proyecto_repo.asignar_carro(proyecto_id, carro_numero)
         else:
             success = proyecto_repo.liberar_carro(proyecto_id)
-        
+
         if success:
             proyecto = proyecto_repo.obtener_proyecto(proyecto_id)
             return jsonify({
@@ -113,7 +113,13 @@ def api_asignar_carro(proyecto_id):
                 'success': False,
                 'error': 'No se pudo asignar el carro'
             }), 400
-            
+
+    except IntegrityError:
+        return jsonify({
+            'success': False,
+            'error': f'El carro {carro_numero} ya está asignado a otro proyecto',
+            'code': 'CARRO_DUPLICADO',
+        }), 409
     except Exception as e:
         return error_interno(e)
 
