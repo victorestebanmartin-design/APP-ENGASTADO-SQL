@@ -2643,6 +2643,10 @@ def api_esp32_rfid_flash_usb():
             return jsonify({'success': False, 'message': 'No se encuentra esp32/backend_config.py'})
         with open(bc_path, encoding='utf-8') as f:
             bc_contenido = _inyectar_host(f.read(), 'BACKEND_HOST', host_srv)
+        bc_contenido = re.sub(r'^BACKEND_PORT\s*=.*$', 'BACKEND_PORT = %d' % puerto_placa,
+                              bc_contenido, count=1, flags=re.M)
+        bc_contenido = re.sub(r'^BACKEND_USE_SSL\s*=.*$', 'BACKEND_USE_SSL = %s' % usar_ssl,
+                              bc_contenido, count=1, flags=re.M)
         tmp_bc = os.path.join(datadir, '_rfid_backend_config_tmp.py')
         with open(tmp_bc, 'w', encoding='utf-8') as f:
             f.write(bc_contenido)
@@ -2698,6 +2702,10 @@ def api_esp32_rfid_flash_usb():
             if perfil == 'gen4_pn532':
                 pasos = [
                     ('pn532_i2c.py', os.path.join(gen4_dir, 'lib', 'pn532_i2c.py'), 'pn532_i2c.py'),
+                    ('gavetas.py', os.path.join(base, 'lib', 'gavetas.py'), 'gavetas.py'),
+                    ('mcp23017.py', os.path.join(base, 'lib', 'mcp23017.py'), 'mcp23017.py'),
+                    ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
+                    ('backend_config.py', tmp_bc, 'backend_config.py'),
                     ('boot.py', os.path.join(gen4_dir, 'boot.py'), 'boot.py'),
                     ('launcher.py', os.path.join(gen4_dir, 'launcher.py'), 'main.py'),
                     ('app.py', tmp_gen4_app, 'app.py'),

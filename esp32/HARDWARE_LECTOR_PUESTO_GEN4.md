@@ -203,10 +203,10 @@ Para MUX 2 y posteriores:
    mas de 1 m de bus o cable cercano a engastadoras, I2C directo no es fiable:
    añadir extensor I2C diferencial o montar el primer MCP junto al lector.
 
-El firmware actual del lector reserva estos pines, pero todavia no ha
-incorporado `gavetas.py` para gen4. El arnes queda compatible con el modelo
-anterior; antes de encender LEDs o micros hay que portar ese driver a la
-gen4 con `GPIO17/GPIO16/GPIO15`.
+El firmware del lector incorpora `gavetas.py` para gen4: al detectar uno o
+mas MCP23017 activa el pick-to-light con `GPIO17/GPIO16/GPIO15`. Sin
+expansores conectados, se desactiva solo y el lector RFID sigue funcionando
+con normalidad.
 
 No usar GPIO0, GPIO3, GPIO45 ni GPIO46: son pines de strapping. No usar
 GPIO43/GPIO44: son el UART de programacion. GPIO40 queda libre para futura

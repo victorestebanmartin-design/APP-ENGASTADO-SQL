@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-03c"
+FW_VERSION = "2026-09-03e"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -57,6 +57,16 @@ NFC_POLL_MS = 300
 NFC_REPETIR_MS = 3000
 NFC_REINTENTO_S = 10
 NFC_FALLOS_MAX = 5
+
+# Pick-to-light opcional por el DB9: tira WS2813 y bus I2C de MCP23017.
+GAVETAS_LED_PIN = 17
+GAVETAS_SDA_PIN = 16
+GAVETAS_SCL_PIN = 15
+
+try:
+    import gavetas
+except ImportError:
+    gavetas = None
 
 DEVICE_ID = binascii.hexlify(machine.unique_id()).decode()
 wifi_ip = ""
@@ -154,6 +164,7 @@ BLACK = 0x0000
 WHITE = 0xFFFF
 GREEN = 0x07E0
 RED = 0xF800
+BLUE = 0x001F
 ORANGE = 0xFD20
 YELLOW = 0xFFE0
 GRAY = 0x8410
@@ -202,10 +213,29 @@ def beep_error():
         time.sleep_ms(80)
 
 
-# El DB9 no se inicializa como salida todavia: un multiplexor no conectado no
-# debe dejar lineas en estados arbitrarios. La definicion fija el pinout para
-# cuando se implemente su protocolo.
+# El DB9 queda en reposo hasta que gavetas.py detecta MCP23017 en su bus I2C.
 db9_lines = [Pin(pin, Pin.IN) for pin in DB9_PINS]
+
+
+class _ConfiguracionGavetas:
+    GAVETAS_LED_PIN = GAVETAS_LED_PIN
+    GAVETAS_SDA_PIN = GAVETAS_SDA_PIN
+    GAVETAS_SCL_PIN = GAVETAS_SCL_PIN
+
+
+class _BuzzerGavetas:
+    def on(self):
+        if BUZZER_PASIVO:
+            buzzer.freq(2400)
+            buzzer.duty_u16(32768)
+        elif buzzer is not None:
+            buzzer(1)
+
+    def off(self):
+        if BUZZER_PASIVO:
+            buzzer.duty_u16(0)
+        elif buzzer is not None:
+            buzzer(0)
 
 
 def draw_idle():
@@ -228,6 +258,48 @@ def draw_result(title, detail, color):
     # Limitar longitud evita salirse de los 320 px con la fuente fija.
     text_center(128, (detail or "")[:35].upper(), WHITE, BLACK, 1)
     text_center(204, "PASA TU TARJETA", GRAY, BLACK, 1)
+
+
+_ultimo_estado_gavetas = None
+
+
+def actualizar_pantalla_gavetas(forzar=False):
+    """Pinta solo los cambios de estado del pick-to-light, sin barridos."""
+    global _ultimo_estado_gavetas
+    if not gav:
+        return
+
+    estado = (gav.objetivo, gav.recogida, tuple(sorted(gav.equivocadas)))
+    if not forzar and estado == _ultimo_estado_gavetas:
+        return
+    _ultimo_estado_gavetas = estado
+
+    objetivo, recogida, equivocadas = estado
+    if objetivo is None:
+        draw_idle()
+        return
+
+    if equivocadas:
+        titulo = "GAVETA INCORRECTA"
+        detalle = "DEVUELVE LA GAVETA"
+        color = RED
+    elif recogida:
+        titulo = "GAVETA %02d ABIERTA" % objetivo
+        detalle = "RETIRADA CONFIRMADA"
+        color = BLUE
+    else:
+        titulo = "GAVETA %02d" % objetivo
+        detalle = "RETIRA LA GAVETA"
+        color = GREEN
+
+    rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
+    text_center(16, "PICK TO LIGHT", ORANGE, BLACK, 2)
+    text_center(66, titulo, color, BLACK, 2)
+    text_center(112, detalle, WHITE, BLACK, 1)
+    text_center(153, "LED %02d  DB9-2" % objetivo, WHITE, BLACK, 2)
+    text_center(181, "GPIO17  WS2813", GRAY, BLACK, 1)
+    text_center(204, "MICROS I2C 16/15", GRAY, BLACK, 1)
+    text_center(221, "PASA TU TARJETA", GRAY, BLACK, 1)
 
 
 def conectar_wifi():
@@ -337,11 +409,12 @@ def procesar_tarjeta(uid):
         draw_result("ERROR TECNICO", "SIN CONEXION", YELLOW)
         beep_error()
     time.sleep_ms(1800)
-    draw_idle()
+    actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
 
 
 nfc = PN532(sda=NFC_SDA_PIN, scl=NFC_SCL_PIN)
 nfc_estado = "ok" if nfc.reiniciar() else "ko"
+gav = gavetas.crear(_ConfiguracionGavetas, _BuzzerGavetas(), DEVICE_ID) if gavetas else None
 nfc_fallos = 0
 ultimo_nfc = 0
 uid_anterior = ""
@@ -353,6 +426,9 @@ beep(80)
 conectar_wifi()
 registrar_dispositivo()
 draw_idle()
+if gav:
+    print("Pick-to-light activo:", gav.n_gavetas, "gavetas")
+    actualizar_pantalla_gavetas(forzar=True)
 
 # El lanzador incrementa este contador antes de importar app.py. Llegar aqui
 # confirma que el firmware ha arrancado y evita un rollback tras reinicios
@@ -377,6 +453,13 @@ while True:
         if wifi_ip and time.ticks_diff(now, ultimo_latido) > 60_000:
             ultimo_latido = now
             registrar_dispositivo()
+
+        if gav:
+            try:
+                gav.actualizar()
+                actualizar_pantalla_gavetas()
+            except Exception as error:
+                print("Gavetas: fallo en el bucle:", error)
 
         if nfc_estado == "ko" and time.ticks_diff(now, ultimo_nfc) >= NFC_REINTENTO_S * 1000:
             ultimo_nfc = now
