@@ -2806,6 +2806,7 @@ def api_esp32_rfid_flash_usb():
         return jsonify({'success': True,
                         'message': f'Lector configurado y firmware subido por {puerto}. {red}'
                                               + ('El perfil gen4+PN532 queda registrado al conectarse al WiFi.'
+                                                  ' Las actualizaciones de su firmware se cargan por USB.'
                                                   if perfil == 'gen4_pn532' else
                                                   'A partir de ahora se actualiza solo por WiFi cuando publiques una '
                                                   'nueva FW_VERSION en esp32/main.py.')})

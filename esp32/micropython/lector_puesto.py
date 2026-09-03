@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-03a"
+FW_VERSION = "2026-09-03b"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -65,7 +65,7 @@ DISPLAY_HEIGHT = 240
 
 
 # --- Display ILI9341 ---------------------------------------------------------
-USE_HW_SPI = True
+USE_HW_SPI = False
 SPI_BAUD = 20_000_000
 
 Pin(4, Pin.OUT, value=1)
