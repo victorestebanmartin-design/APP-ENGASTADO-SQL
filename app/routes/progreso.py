@@ -16,6 +16,8 @@ import time
 import hmac
 import hashlib
 import traceback
+import tempfile
+import threading
 from datetime import datetime
 import pandas as pd
 
@@ -39,6 +41,35 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
+
+# Un lock por bono: dos terminales del mismo bono no se pisan, pero bonos
+# distintos pueden escribir en paralelo sin bloquearse entre sí.
+_progreso_locks_meta = threading.Lock()
+_progreso_locks: dict = {}
+
+
+def _obtener_lock_progreso(nombre_bono: str) -> threading.Lock:
+    with _progreso_locks_meta:
+        if nombre_bono not in _progreso_locks:
+            _progreso_locks[nombre_bono] = threading.Lock()
+        return _progreso_locks[nombre_bono]
+
+
+def _escribir_progreso_atomico(path: str, progreso: dict) -> None:
+    """Escribe el JSON de progreso de forma atómica (tempfile + os.replace).
+    Evita dejar un archivo truncado si el proceso falla durante la escritura."""
+    dir_ = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=dir_, suffix='.tmp', prefix='progreso_')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(progreso, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # ==================== API DE PROGRESO ====================
@@ -203,56 +234,55 @@ def api_bonos_progreso_post(nombre_bono):
                 'message': 'Se requiere terminal y carro'
             })
         
-        # Cargar progreso existente
         progreso_path = _ruta_progreso_bono(nombre_bono)
-        
-        if os.path.exists(progreso_path):
-            with open(progreso_path, 'r', encoding='utf-8') as f:
-                progreso = json.load(f)
-        else:
-            progreso = {}
-        
-        # Inicializar estructura para este terminal si no existe
-        if terminal not in progreso:
-            progreso[terminal] = {
-                'estado': 'en_proceso',
-                'carros_completados': [],
-                'fecha_inicio': _ahora_iso(),
-                'fecha_ultima_actualizacion': _ahora_iso()
+
+        with _obtener_lock_progreso(nombre_bono):
+            # Cargar progreso existente
+            if os.path.exists(progreso_path):
+                with open(progreso_path, 'r', encoding='utf-8') as f:
+                    progreso = json.load(f)
+            else:
+                progreso = {}
+
+            # Inicializar estructura para este terminal si no existe
+            if terminal not in progreso:
+                progreso[terminal] = {
+                    'estado': 'en_proceso',
+                    'carros_completados': [],
+                    'fecha_inicio': _ahora_iso(),
+                    'fecha_ultima_actualizacion': _ahora_iso()
+                }
+
+            # Guardar operario si se envió
+            if operario:
+                progreso[terminal]['operario'] = operario
+
+            # Agregar carro a completados si no está ya
+            if carro not in progreso[terminal]['carros_completados']:
+                progreso[terminal]['carros_completados'].append(carro)
+
+            # Registrar fecha/operario exactos de finalización de ESTE carro
+            # (para el report de trazabilidad por carro). Idempotente por carro_key.
+            registro = progreso[terminal].get('carros_registro', {})
+            registro[str(carro)] = {
+                'operario': operario or progreso[terminal].get('operario', ''),
+                'fecha': _ahora_iso()
             }
+            progreso[terminal]['carros_registro'] = registro
 
-        # Guardar operario si se envió
-        if operario:
-            progreso[terminal]['operario'] = operario
+            # Limpiar de carros_con_pendientes si estaba anotado ahí
+            carros_pend = progreso[terminal].get('carros_con_pendientes', {})
+            carros_pend.pop(str(carro), None)
+            progreso[terminal]['carros_con_pendientes'] = carros_pend
 
-        # Agregar carro a completados si no está ya
-        if carro not in progreso[terminal]['carros_completados']:
-            progreso[terminal]['carros_completados'].append(carro)
+            # Actualizar fecha
+            progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
 
-        # Registrar fecha/operario exactos de finalización de ESTE carro
-        # (para el report de trazabilidad por carro). Idempotente por carro_key.
-        registro = progreso[terminal].get('carros_registro', {})
-        registro[str(carro)] = {
-            'operario': operario or progreso[terminal].get('operario', ''),
-            'fecha': _ahora_iso()
-        }
-        progreso[terminal]['carros_registro'] = registro
+            # Marcar como completado si ya no hay más carros pendientes
+            # Nota: necesitaríamos saber el total de carros del bono, por ahora solo marcamos como en_proceso
 
-        # Limpiar de carros_con_pendientes si estaba anotado ahí
-        carros_pend = progreso[terminal].get('carros_con_pendientes', {})
-        carros_pend.pop(str(carro), None)
-        progreso[terminal]['carros_con_pendientes'] = carros_pend
-        
-        # Actualizar fecha
-        progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
-        
-        # Marcar como completado si ya no hay más carros pendientes
-        # Nota: necesitaríamos saber el total de carros del bono, por ahora solo marcamos como en_proceso
-        
-        # Guardar progreso
-        with open(progreso_path, 'w', encoding='utf-8') as f:
-            json.dump(progreso, f, indent=2, ensure_ascii=False)
-        
+            _escribir_progreso_atomico(progreso_path, progreso)
+
         return jsonify({
             'success': True,
             'message': f'Progreso guardado para terminal {terminal}, carro {carro}',
@@ -278,64 +308,64 @@ def api_bonos_progreso_parcial(nombre_bono):
 
         progreso_path = _ruta_progreso_bono(nombre_bono)
 
-        if os.path.exists(progreso_path):
-            with open(progreso_path, 'r', encoding='utf-8') as f:
-                progreso = json.load(f)
-        else:
-            progreso = {}
+        with _obtener_lock_progreso(nombre_bono):
+            if os.path.exists(progreso_path):
+                with open(progreso_path, 'r', encoding='utf-8') as f:
+                    progreso = json.load(f)
+            else:
+                progreso = {}
 
-        if terminal not in progreso:
-            progreso[terminal] = {
-                'estado': 'en_proceso',
-                'carros_completados': [],
-                'fecha_inicio': _ahora_iso(),
-                'fecha_ultima_actualizacion': _ahora_iso()
-            }
+            if terminal not in progreso:
+                progreso[terminal] = {
+                    'estado': 'en_proceso',
+                    'carros_completados': [],
+                    'fecha_inicio': _ahora_iso(),
+                    'fecha_ultima_actualizacion': _ahora_iso()
+                }
 
-        # Guardar operario si se envió
-        if operario:
-            progreso[terminal]['operario'] = operario
+            # Guardar operario si se envió
+            if operario:
+                progreso[terminal]['operario'] = operario
 
-        # Guardar paquetes saltados por carro
-        if 'paquetes_saltados_por_carro' not in progreso[terminal]:
-            progreso[terminal]['paquetes_saltados_por_carro'] = {}
+            # Guardar paquetes saltados por carro
+            if 'paquetes_saltados_por_carro' not in progreso[terminal]:
+                progreso[terminal]['paquetes_saltados_por_carro'] = {}
 
-        carro_key = str(carro) if carro is not None else 'sin_carro'
+            carro_key = str(carro) if carro is not None else 'sin_carro'
 
-        paquetes_pendientes = data.get('paquetes_pendientes', paquetes_saltados)  # alias
+            paquetes_pendientes = data.get('paquetes_pendientes', paquetes_saltados)  # alias
 
-        if paquetes_pendientes:
-            # Hay paquetes pendientes: guardar en carros_con_pendientes (carro NO completado)
-            if 'carros_con_pendientes' not in progreso[terminal]:
-                progreso[terminal]['carros_con_pendientes'] = {}
-            progreso[terminal]['carros_con_pendientes'][carro_key] = {
-                'paquetes': paquetes_pendientes,
-                'fecha': _ahora_iso()
-            }
-        else:
-            # Sin pendientes: marcar como completado y limpiar cualquier entrada previa
-            if 'carros_con_pendientes' in progreso[terminal]:
-                progreso[terminal]['carros_con_pendientes'].pop(carro_key, None)
-            if carro is not None and carro not in progreso[terminal]['carros_completados']:
-                progreso[terminal]['carros_completados'].append(carro)
-            # Registrar fecha/operario exactos de finalización de este carro
-            if carro is not None:
-                registro = progreso[terminal].get('carros_registro', {})
-                registro[carro_key] = {
-                    'operario': operario or progreso[terminal].get('operario', ''),
+            if paquetes_pendientes:
+                # Hay paquetes pendientes: guardar en carros_con_pendientes (carro NO completado)
+                if 'carros_con_pendientes' not in progreso[terminal]:
+                    progreso[terminal]['carros_con_pendientes'] = {}
+                progreso[terminal]['carros_con_pendientes'][carro_key] = {
+                    'paquetes': paquetes_pendientes,
                     'fecha': _ahora_iso()
                 }
-                progreso[terminal]['carros_registro'] = registro
+            else:
+                # Sin pendientes: marcar como completado y limpiar cualquier entrada previa
+                if 'carros_con_pendientes' in progreso[terminal]:
+                    progreso[terminal]['carros_con_pendientes'].pop(carro_key, None)
+                if carro is not None and carro not in progreso[terminal]['carros_completados']:
+                    progreso[terminal]['carros_completados'].append(carro)
+                # Registrar fecha/operario exactos de finalización de este carro
+                if carro is not None:
+                    registro = progreso[terminal].get('carros_registro', {})
+                    registro[carro_key] = {
+                        'operario': operario or progreso[terminal].get('operario', ''),
+                        'fecha': _ahora_iso()
+                    }
+                    progreso[terminal]['carros_registro'] = registro
 
-        progreso[terminal]['paquetes_saltados_por_carro'][carro_key] = {
-            'paquetes_hechos': paquetes_hechos,
-            'saltados': paquetes_saltados,
-            'fecha': _ahora_iso()
-        }
-        progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
+            progreso[terminal]['paquetes_saltados_por_carro'][carro_key] = {
+                'paquetes_hechos': paquetes_hechos,
+                'saltados': paquetes_saltados,
+                'fecha': _ahora_iso()
+            }
+            progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
 
-        with open(progreso_path, 'w', encoding='utf-8') as f:
-            json.dump(progreso, f, indent=2, ensure_ascii=False)
+            _escribir_progreso_atomico(progreso_path, progreso)
 
         return jsonify({
             'success': True,
@@ -360,28 +390,28 @@ def api_bonos_progreso_estado(nombre_bono):
 
         progreso_path = _ruta_progreso_bono(nombre_bono)
 
-        if os.path.exists(progreso_path):
-            with open(progreso_path, 'r', encoding='utf-8') as f:
-                progreso = json.load(f)
-        else:
-            progreso = {}
+        with _obtener_lock_progreso(nombre_bono):
+            if os.path.exists(progreso_path):
+                with open(progreso_path, 'r', encoding='utf-8') as f:
+                    progreso = json.load(f)
+            else:
+                progreso = {}
 
-        if terminal not in progreso:
-            progreso[terminal] = {
-                'estado': estado,
-                'carros_completados': [],
-                'fecha_inicio': _ahora_iso(),
-                'fecha_ultima_actualizacion': _ahora_iso()
-            }
-        else:
-            progreso[terminal]['estado'] = estado
-            progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
+            if terminal not in progreso:
+                progreso[terminal] = {
+                    'estado': estado,
+                    'carros_completados': [],
+                    'fecha_inicio': _ahora_iso(),
+                    'fecha_ultima_actualizacion': _ahora_iso()
+                }
+            else:
+                progreso[terminal]['estado'] = estado
+                progreso[terminal]['fecha_ultima_actualizacion'] = _ahora_iso()
 
-        if operario:
-            progreso[terminal]['operario'] = operario
+            if operario:
+                progreso[terminal]['operario'] = operario
 
-        with open(progreso_path, 'w', encoding='utf-8') as f:
-            json.dump(progreso, f, indent=2, ensure_ascii=False)
+            _escribir_progreso_atomico(progreso_path, progreso)
 
         return jsonify({'success': True, 'terminal': terminal, 'estado': estado})
 
