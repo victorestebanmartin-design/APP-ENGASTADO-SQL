@@ -143,6 +143,12 @@ def _gaveta_del_terminal(terminal):
     return row[0], row[1]
 
 
+def _backend_pythonanywhere():
+    """True si el servidor no puede abrir conexiones a las IP privadas."""
+    host = (request.host or '').split(':', 1)[0].lower()
+    return host.endswith('.pythonanywhere.com')
+
+
 # ==================== API PARA LA APP ====================
 
 @bp.route('/api/pick-to-light/encender', methods=['POST'])
@@ -180,8 +186,9 @@ def api_pick_to_light_encender():
                              'recogida': False, 'error_led': None, 'eventos': []}
         _estado_guardar(estado)
 
-        return jsonify({'success': True, 'activo': ok, 'led': led, 'gaveta': gaveta,
-                        'motivo': motivo})
+        remoto = not ok and _backend_pythonanywhere()
+        return jsonify({'success': True, 'activo': ok or remoto, 'led': led, 'gaveta': gaveta,
+                'motivo': ('La placa recibirá la orden por sondeo.' if remoto else motivo)})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
 
