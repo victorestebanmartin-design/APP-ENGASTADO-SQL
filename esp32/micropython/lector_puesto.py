@@ -9,7 +9,7 @@ import json
 import time
 import machine
 import framebuf
-from machine import Pin, SoftSPI
+from machine import SPI, SoftSPI, Pin
 
 try:
     import network
@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-02e"
+FW_VERSION = "2026-09-03a"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -65,8 +65,18 @@ DISPLAY_HEIGHT = 240
 
 
 # --- Display ILI9341 ---------------------------------------------------------
+USE_HW_SPI = True
+SPI_BAUD = 20_000_000
+
 Pin(4, Pin.OUT, value=1)
-spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+if USE_HW_SPI:
+    try:
+        spi = SPI(1, baudrate=SPI_BAUD, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+    except Exception as error:
+        print("HW SPI fallo, uso SoftSPI:", error)
+        spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
+else:
+    spi = SoftSPI(baudrate=500_000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
 dc = Pin(21, Pin.OUT, value=0)
 rst = Pin(7, Pin.OUT, value=1)
 rst(0); time.sleep_ms(100); rst(1); time.sleep_ms(250)
