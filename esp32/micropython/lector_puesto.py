@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-03b"
+FW_VERSION = "2026-09-03c"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -65,7 +65,7 @@ DISPLAY_HEIGHT = 240
 
 
 # --- Display ILI9341 ---------------------------------------------------------
-USE_HW_SPI = False
+USE_HW_SPI = True
 SPI_BAUD = 20_000_000
 
 Pin(4, Pin.OUT, value=1)
@@ -91,26 +91,10 @@ def _cmd(command, data=None):
 
 
 _cmd(0x11); time.sleep_ms(120)
-# Controles de alimentacion y temporizacion de la secuencia oficial 4D.
-_cmd(0xCB, b"\x39\x2C\x00\x34\x02")
-_cmd(0xCF, b"\x00\xC1\x30")
-_cmd(0xE8, b"\x85\x00\x78")
-_cmd(0xEA, b"\x00\x00")
-_cmd(0xED, b"\x64\x03\x12\x81")
-_cmd(0xF7, b"\x20")
-_cmd(0xC0, b"\x1B")
-_cmd(0xC1, b"\x10")
-_cmd(0xC5, b"\x2D\x33")
-# MV rota el panel a horizontal. MX + MY lo gira 180 grados; BGR conserva el
-# orden de color del IPS.
+# La inicializacion minima es la que usa la pantalla de carro y arranca de
+# forma fiable en frio en la gen4-ESP32-24.
 _cmd(0x36, b"\xE8" if DISPLAY_ROTATION == 180 else b"\x28")
 _cmd(0x3A, b"\x55")
-_cmd(0xB1, b"\x00\x1D")
-_cmd(0xB6, b"\x0A\x82")
-_cmd(0xF2, b"\x00")
-_cmd(0x26, b"\x01")
-_cmd(0xE0, b"\x0F\x3A\x36\x0B\x0D\x06\x4C\x91\x31\x08\x10\x04\x11\x0C\x00")
-_cmd(0xE1, b"\x00\x06\x0A\x05\x12\x09\x2C\x92\x3F\x08\x0E\x0B\x2E\x33\x0F")
 _cmd(0x29); time.sleep_ms(50)
 _cmd(0x21)
 
