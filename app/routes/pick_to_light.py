@@ -285,9 +285,21 @@ def api_pick_to_light_probar():
 
         payload = {'apagar': True} if apagar else {'led': led}
         ok, motivo = _enviar_a_placa(ip, payload, timeout=TIMEOUT_PLACA_PROBAR)
-        if not ok:
+        remoto = not ok and _backend_pythonanywhere()
+        if not ok and not remoto:
             return jsonify({'success': False, 'message': motivo}), 502
-        return jsonify({'success': True})
+
+        if remoto:
+            estado = _estado_cargar()
+            if apagar:
+                estado.pop(puesto_id, None)
+            else:
+                estado[puesto_id] = {'led': led, 'terminal': '',
+                                     'gaveta': 'Prueba LED %d' % led,
+                                     'recogida': False, 'error_led': None, 'eventos': []}
+            _estado_guardar(estado)
+        return jsonify({'success': True,
+                        'message': 'La placa recibirá la orden por sondeo.' if remoto else ''})
     except Exception as e:
         return error_interno(e, 'Error al probar la gaveta')
 

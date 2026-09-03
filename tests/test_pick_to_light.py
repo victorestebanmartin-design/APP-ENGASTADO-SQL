@@ -163,6 +163,17 @@ def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, s
     assert datos['motivo'] == 'La placa recibirá la orden por sondeo.'
 
 
+def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client, sin_placa, monkeypatch):
+    device_id = _registrar_lector(app)
+    monkeypatch.setattr(pick_to_light, '_backend_pythonanywhere', lambda: True)
+
+    respuesta = admin_client.post('/api/pick-to-light/probar', json={'puesto_id': 'puesto_001', 'led': 5})
+    assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden == {'success': True, 'apagar': False, 'led': 5}
+
+
 def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_client, con_placa):
     """Sin esto, el segundo terminal saltaría la puerta con la confirmación del primero."""
     device_id = _registrar_lector(app)
