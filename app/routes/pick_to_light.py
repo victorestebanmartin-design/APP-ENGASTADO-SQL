@@ -228,6 +228,26 @@ def api_pick_to_light_estado():
         return error_interno(e, 'Error al consultar las gavetas')
 
 
+@bp.route('/api/esp32/rfid/gaveta/orden', methods=['GET'])
+def api_pick_to_light_orden():
+    """Orden pendiente para el sondeo de una placa que está tras NAT.
+
+    En planta el servidor puede abrir una conexión directa al lector. Desde
+    PythonAnywhere no puede llegar a su IP privada, así que la propia placa
+    consulta esta ruta y aplica la misma orden de forma local.
+    """
+    try:
+        device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        puesto_id = _puesto_de_la_placa(device_id)
+        estado = _estado_cargar().get(puesto_id) if puesto_id else None
+        led = (estado or {}).get('led')
+        return jsonify({'success': True,
+                        'apagar': not bool(led),
+                        'led': led})
+    except Exception as e:
+        return error_interno(e, 'Error al consultar la orden de gaveta')
+
+
 @bp.route('/api/pick-to-light/probar', methods=['POST'])
 @requiere_pin_admin
 def api_pick_to_light_probar():

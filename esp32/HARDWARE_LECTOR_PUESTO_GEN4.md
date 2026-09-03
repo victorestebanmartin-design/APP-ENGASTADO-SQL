@@ -208,6 +208,10 @@ mas MCP23017 activa el pick-to-light con `GPIO17/GPIO16/GPIO15`. Sin
 expansores conectados, se desactiva solo y el lector RFID sigue funcionando
 con normalidad.
 
+En la nave, el servidor local manda la orden directamente a la IP del lector.
+Con PythonAnywhere, que no puede entrar en la red privada, la placa consulta
+su orden cada 750 ms; el comportamiento de luces y micros es el mismo.
+
 No usar GPIO0, GPIO3, GPIO45 ni GPIO46: son pines de strapping. No usar
 GPIO43/GPIO44: son el UART de programacion. GPIO40 queda libre para futura
 ampliacion y no se cablea en este DB9.

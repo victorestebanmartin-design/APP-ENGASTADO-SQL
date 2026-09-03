@@ -68,6 +68,13 @@ try:
 except ImportError:
     gavetas = None
 
+try:
+    import http_client
+    import backend_config as backend_cfg
+except ImportError:
+    http_client = None
+    backend_cfg = None
+
 DEVICE_ID = binascii.hexlify(machine.unique_id()).decode()
 wifi_ip = ""
 DISPLAY_WIDTH = 320
@@ -421,6 +428,7 @@ uid_anterior = ""
 uid_anterior_ts = 0
 ultimo_wifi = 0
 ultimo_latido = 0
+ultima_orden_gavetas = 0
 
 beep(80)
 conectar_wifi()
@@ -460,6 +468,29 @@ while True:
                 actualizar_pantalla_gavetas()
             except Exception as error:
                 print("Gavetas: fallo en el bucle:", error)
+
+        # PythonAnywhere no puede abrir conexion hacia la IP privada de la
+        # placa. Este sondeo permite probar y usar la misma gaveta tras NAT.
+        if (gav and http_client is not None and backend_cfg is not None and
+                time.ticks_diff(now, ultima_orden_gavetas) > 750):
+            ultima_orden_gavetas = now
+            orden = http_client.get_json(
+                backend_cfg.BACKEND_HOST,
+                "/api/esp32/rfid/gaveta/orden?device_id=" + DEVICE_ID,
+                port=backend_cfg.BACKEND_PORT,
+                use_ssl=backend_cfg.BACKEND_USE_SSL,
+                timeout=2)
+            if orden and orden.get("success"):
+                if orden.get("apagar"):
+                    if gav.objetivo is not None:
+                        gav.apagar()
+                else:
+                    try:
+                        led = int(orden.get("led"))
+                        if gav.objetivo != led:
+                            gav.encender(led)
+                    except (TypeError, ValueError):
+                        pass
 
         if nfc_estado == "ko" and time.ticks_diff(now, ultimo_nfc) >= NFC_REINTENTO_S * 1000:
             ultimo_nfc = now

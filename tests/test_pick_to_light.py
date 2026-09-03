@@ -137,6 +137,20 @@ def test_encender_con_la_placa_caida_no_es_un_error(app, client, admin_client, s
     assert datos['activo'] is False and 'no responde' in datos['motivo']
 
 
+def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden == {'success': True, 'apagar': False, 'led': 7}
+
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden == {'success': True, 'apagar': True, 'led': None}
+
+
 def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_client, con_placa):
     """Sin esto, el segundo terminal saltaría la puerta con la confirmación del primero."""
     device_id = _registrar_lector(app)
