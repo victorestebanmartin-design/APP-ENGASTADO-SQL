@@ -42,6 +42,7 @@
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
+                <button class="admin-nav-item" data-section="ptl-prueba" onclick="adminNav('ptl-prueba')"><span class="ico">💡</span> Pick-to-light</button>
                 <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🔢</span> Red y placas</button>
                 <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
@@ -430,6 +431,91 @@
                         </div>
                         <button class="btn-primary" id="usb-flash-rfid-btn" onclick="flashUSBRfid()">📲 Subir todo a la placa</button>
                         <div id="usb-msg-rfid" style="margin-top:10px;font-size:0.9em;display:none;"></div>
+                    </div>
+                </section>
+
+
+                <!-- ============ PICK-TO-LIGHT — MODO PRUEBA ============ -->
+                <section id="sec-ptl-prueba" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Pick-to-light — Modo Prueba</h1>
+                        <p>Verifica el cableado de LEDs y micro-interruptores sin necesitar un trabajo real</p>
+                    </div>
+
+                    <!-- Selector de lector -->
+                    <div class="card">
+                        <h2>🔌 Seleccionar lector</h2>
+                        <p class="instruccion">
+                            Elige el lector que tiene la placa pick-to-light soldada. Solo aparecen los que
+                            tienen gavetas detectadas. Si no aparece ninguno, el lector no está encendido o
+                            no tiene expansores MCP23017 en el bus I2C.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <select id="ptl-select-lector" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:280px;">
+                                <option value="">— pulsa Cargar lectores —</option>
+                            </select>
+                            <button class="btn-secondary" onclick="ptlCargarLectores()">🔄 Cargar lectores</button>
+                        </div>
+                        <div id="ptl-lector-info" style="font-size:0.88em;color:#94a3b8;"></div>
+                    </div>
+
+                    <!-- Prueba de LEDs -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔆 Prueba de LEDs (tira WS2813)</h2>
+                        <p class="instruccion">
+                            Enciende LEDs individuales o toda la tira para comprobar que el cableado y el
+                            elevador de nivel (TXS0108E / 74AHCT125) funcionan. Si los LEDs salen en colores
+                            aleatorios o parpadean, es el elevador — ver el apartado §2 del esquema hardware.
+                        </p>
+
+                        <!-- Colores de prueba -->
+                        <div style="margin-bottom:12px;">
+                            <span style="font-size:0.88em;color:#94a3b8;margin-right:8px;">Color:</span>
+                            <button class="btn-secondary" style="background:rgba(0,180,0,.25);border-color:#16a34a;margin:2px;" onclick="ptlSetColor([0,120,0])" title="Verde — igual que el color de objetivo">🟢 Verde</button>
+                            <button class="btn-secondary" style="background:rgba(180,180,180,.2);border-color:#94a3b8;margin:2px;" onclick="ptlSetColor([180,180,180])" title="Blanco — máxima visibilidad para contar">⬜ Blanco</button>
+                            <button class="btn-secondary" style="background:rgba(180,0,0,.25);border-color:#dc2626;margin:2px;" onclick="ptlSetColor([180,0,0])" title="Rojo — color de error">🔴 Rojo</button>
+                            <button class="btn-secondary" style="background:rgba(0,0,180,.25);border-color:#2563eb;margin:2px;" onclick="ptlSetColor([0,0,150])" title="Azul — igual que el color de gaveta en uso">🔵 Azul</button>
+                            <button class="btn-secondary" style="background:rgba(180,100,0,.25);border-color:#d97706;margin:2px;" onclick="ptlSetColor([180,80,0])" title="Naranja — buena para verificar mezcla de color">🟠 Naranja</button>
+                            <span id="ptl-color-preview" style="display:inline-block;width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-left:8px;border:2px solid #334155;background:rgb(0,120,0);"></span>
+                        </div>
+
+                        <!-- LED individual -->
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <label style="font-size:0.9em;color:#94a3b8;">Nº LED:</label>
+                            <input type="number" id="ptl-led-num" min="1" max="128" value="1"
+                                style="width:70px;padding:7px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
+                            <button class="btn-primary" onclick="ptlTestLed()">Encender este LED</button>
+                            <button class="btn-secondary" onclick="ptlTestTodos()">Encender todos</button>
+                            <button class="btn-secondary" id="ptl-btn-desfile" onclick="ptlDesfile()">▶ Desfile automático</button>
+                            <button class="btn-secondary" onclick="ptlTestFin()" style="border-color:#475569;">Apagar todo</button>
+                        </div>
+
+                        <!-- Grid de LEDs -->
+                        <div id="ptl-led-grid" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:10px;"></div>
+                        <div id="ptl-led-msg" style="margin-top:8px;font-size:0.88em;"></div>
+                    </div>
+
+                    <!-- Prueba de micro-interruptores -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔘 Prueba de micro-interruptores (MCP23017)</h2>
+                        <p class="instruccion">
+                            Lee el estado de todos los canales I2C. Una gaveta puesta cierra el contacto
+                            (verde); una gaveta sacada lo abre (amarillo). Saca y pon cada gaveta y pulsa
+                            <strong>Releer</strong> para confirmar que ese canal y ese cable van bien.
+                            Si una gaveta siempre aparece como fuera aunque esté puesta, el micro o el cable
+                            de ese canal están cortados.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+                            <button class="btn-primary" onclick="ptlLeerMicros()">🔍 Leer estado de micros</button>
+                            <span id="ptl-micro-msg" style="font-size:0.88em;color:#94a3b8;"></span>
+                        </div>
+                        <div id="ptl-micro-grid" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+                    </div>
+
+                    <!-- Registro de acciones -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>📋 Registro de prueba</h2>
+                        <div id="ptl-log" style="font-family:monospace;font-size:0.82em;color:#94a3b8;max-height:220px;overflow-y:auto;background:#0f172a;border-radius:8px;padding:10px;"></div>
                     </div>
                 </section>
 
@@ -1560,5 +1646,268 @@
     </script>
 
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+
+    <!-- ── Pick-to-light: modo prueba de cableado ── -->
+    <script>
+    (function () {
+        var _ptlColor = [0, 120, 0];
+        var _ptlDesfileActivo = false;
+        var _ptlLectorId = '';        // device_id del lector seleccionado
+        var _ptlTotalGavetas = 0;     // gavetas del lector activo
+        var _ptlLedActual = null;     // LED encendido ahora (1-based), o null
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+
+        function _ptlLog(msg) {
+            var log = document.getElementById('ptl-log');
+            if (!log) return;
+            var ts = new Date().toLocaleTimeString();
+            log.innerHTML = '<div>[' + ts + '] ' + _dispEsc(msg) + '</div>' + log.innerHTML;
+        }
+
+        function _ptlMensaje(id, msg, ok) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.style.color = ok === false ? '#f87171' : ok === true ? '#4ade80' : '#94a3b8';
+            el.textContent = msg;
+        }
+
+        function _ptlPayload(extra) {
+            var base = {};
+            if (_ptlLectorId) base.device_id = _ptlLectorId;
+            return Object.assign(base, extra);
+        }
+
+        async function _ptlPost(ruta, payload) {
+            var resp = await fetch(ruta, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            return await resp.json();
+        }
+
+        // ── Rejilla de LEDs ──────────────────────────────────────────────────
+
+        function _ptlRenderLedGrid(n, litLed) {
+            var grid = document.getElementById('ptl-led-grid');
+            if (!grid) return;
+            if (!n) { grid.innerHTML = ''; return; }
+            var html = '';
+            for (var i = 1; i <= n; i++) {
+                var isLit = (i === litLed);
+                var bg = isLit
+                    ? 'rgb(' + _ptlColor[0] + ',' + _ptlColor[1] + ',' + _ptlColor[2] + ')'
+                    : '#1e293b';
+                var border = isLit ? '#60a5fa' : '#334155';
+                var label = String(i);
+                html += '<button onclick="ptlTestLedN(' + i + ')" ' +
+                    'title="Encender LED ' + i + '" ' +
+                    'style="width:44px;height:44px;border-radius:8px;border:2px solid ' + border + ';' +
+                    'background:' + bg + ';color:' + (isLit ? '#fff' : '#64748b') + ';' +
+                    'font-size:0.78em;font-weight:600;cursor:pointer;transition:all .15s;">' +
+                    label + '</button>';
+            }
+            grid.innerHTML = html;
+        }
+
+        function _ptlRenderMicroGrid(total, fuera) {
+            var grid = document.getElementById('ptl-micro-grid');
+            if (!grid || !total) { if (grid) grid.innerHTML = ''; return; }
+            var fueraSet = new Set(fuera || []);
+            var html = '';
+            for (var i = 1; i <= total; i++) {
+                var esFuera = fueraSet.has(i);
+                var bg = esFuera ? 'rgba(251,191,36,.18)' : 'rgba(74,222,128,.18)';
+                var border = esFuera ? '#fbbf24' : '#4ade80';
+                var label = esFuera ? '↑' + i : '●' + i;
+                var title = esFuera ? 'Gaveta ' + i + ' FUERA (contacto abierto)' : 'Gaveta ' + i + ' PUESTA (contacto cerrado)';
+                html += '<div title="' + title + '" ' +
+                    'style="width:54px;height:44px;border-radius:8px;border:2px solid ' + border + ';' +
+                    'background:' + bg + ';display:flex;flex-direction:column;align-items:center;' +
+                    'justify-content:center;font-size:0.72em;font-weight:700;color:' + (esFuera ? '#fbbf24' : '#4ade80') + ';">' +
+                    label + '</div>';
+            }
+            grid.innerHTML = html;
+        }
+
+        // ── Funciones públicas ────────────────────────────────────────────────
+
+        window.ptlSetColor = function (rgb) {
+            _ptlColor = rgb;
+            var preview = document.getElementById('ptl-color-preview');
+            if (preview) preview.style.background = 'rgb(' + rgb.join(',') + ')';
+        };
+
+        window.ptlCargarLectores = async function () {
+            var sel = document.getElementById('ptl-select-lector');
+            var info = document.getElementById('ptl-lector-info');
+            if (sel) sel.innerHTML = '<option value="">Cargando...</option>';
+            try {
+                var resp = await fetch('/api/esp32/rfid/devices');
+                var d = await resp.json();
+                var devs = (d.devices || []).filter(function (dev) { return dev.gavetas > 0; });
+                if (!devs.length) {
+                    sel.innerHTML = '<option value="">— ningún lector con gavetas detectado —</option>';
+                    if (info) info.textContent = 'Para que aparezca: el lector debe estar encendido, conectado y tener expansores MCP23017 en el bus I2C.';
+                    return;
+                }
+                var html = '<option value="">— elige un lector —</option>';
+                devs.forEach(function (dev) {
+                    var label = (dev.nombre || dev.id) + '  (IP: ' + (dev.ip || '?') + ', ' + dev.gavetas + ' gavetas)';
+                    html += '<option value="' + _dispEsc(dev.id) + '">' + _dispEsc(label) + '</option>';
+                });
+                sel.innerHTML = html;
+                _ptlLog('Lectores cargados: ' + devs.length + ' con gavetas');
+            } catch (e) {
+                if (sel) sel.innerHTML = '<option value="">— error al cargar —</option>';
+                _ptlLog('Error al cargar lectores: ' + e);
+            }
+        };
+
+        document.addEventListener('change', function (e) {
+            if (e.target && e.target.id === 'ptl-select-lector') {
+                _ptlLectorId = e.target.value;
+                _ptlLedActual = null;
+                _ptlTotalGavetas = 0;
+                _ptlRenderLedGrid(0, null);
+                _ptlRenderMicroGrid(0, []);
+                var info = document.getElementById('ptl-lector-info');
+                if (info) info.textContent = _ptlLectorId ? 'Lector seleccionado: ' + _ptlLectorId : '';
+            }
+        });
+
+        window.ptlTestLedN = async function (n) {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            document.getElementById('ptl-led-num').value = n;
+            await ptlTestLed();
+        };
+
+        window.ptlTestLed = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var n = parseInt(document.getElementById('ptl-led-num').value, 10);
+            if (!n || n < 1 || n > 128) { _ptlMensaje('ptl-led-msg', 'Número de LED no válido (1-128)', false); return; }
+            _ptlMensaje('ptl-led-msg', 'Encendiendo LED ' + n + '...', null);
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/led', _ptlPayload({ led: n, color: _ptlColor }));
+                if (d.success) {
+                    _ptlLedActual = n;
+                    var total = (d.estado && d.estado.gavetas) || _ptlTotalGavetas || 16;
+                    _ptlTotalGavetas = total;
+                    _ptlRenderLedGrid(total, n);
+                    _ptlMensaje('ptl-led-msg', 'LED ' + n + ' encendido', true);
+                    _ptlLog('LED ' + n + ' encendido (' + _ptlColor.join(',') + ')');
+                } else {
+                    _ptlMensaje('ptl-led-msg', d.message || 'Error', false);
+                    _ptlLog('Error LED ' + n + ': ' + (d.message || '?'));
+                }
+            } catch (e) { _ptlMensaje('ptl-led-msg', 'Error de red', false); }
+        };
+
+        window.ptlTestTodos = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            _ptlMensaje('ptl-led-msg', 'Encendiendo todos...', null);
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/todos', _ptlPayload({ color: _ptlColor }));
+                if (d.success) {
+                    var total = d.gavetas || (d.estado && d.estado.gavetas) || _ptlTotalGavetas || 16;
+                    _ptlTotalGavetas = total;
+                    _ptlLedActual = null;
+                    _ptlRenderLedGrid(0, null);   // todos encendidos, no marcar uno
+                    _ptlMensaje('ptl-led-msg', 'Todos los ' + total + ' LEDs encendidos', true);
+                    _ptlLog('Todos encendidos: ' + total + ' LEDs (' + _ptlColor.join(',') + ')');
+                } else {
+                    _ptlMensaje('ptl-led-msg', d.message || 'Error', false);
+                    _ptlLog('Error todos LEDs: ' + (d.message || '?'));
+                }
+            } catch (e) { _ptlMensaje('ptl-led-msg', 'Error de red', false); }
+        };
+
+        window.ptlDesfile = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlDesfileActivo) {
+                _ptlDesfileActivo = false;
+                document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+                return;
+            }
+            // Primero encendemos LED 1 para saber cuántas gavetas tiene la placa
+            var d = await _ptlPost('/api/pick-to-light/test/led', _ptlPayload({ led: 1, color: _ptlColor }));
+            if (!d.success) { _ptlMensaje('ptl-led-msg', d.message || 'Error al iniciar desfile', false); return; }
+            var total = (d.estado && d.estado.gavetas) || _ptlTotalGavetas || 16;
+            _ptlTotalGavetas = total;
+            _ptlDesfileActivo = true;
+            document.getElementById('ptl-btn-desfile').textContent = '⏹ Parar desfile';
+            _ptlLog('Desfile iniciado: ' + total + ' LEDs a 700 ms/LED');
+
+            var i = 2;
+            async function paso() {
+                if (!_ptlDesfileActivo || i > total) {
+                    _ptlDesfileActivo = false;
+                    document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+                    _ptlLog('Desfile terminado');
+                    return;
+                }
+                _ptlRenderLedGrid(total, i);
+                _ptlMensaje('ptl-led-msg', 'Desfile: LED ' + i + ' / ' + total, null);
+                var r = await _ptlPost('/api/pick-to-light/test/led', _ptlPayload({ led: i, color: _ptlColor }));
+                if (!r.success) {
+                    _ptlDesfileActivo = false;
+                    document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+                    _ptlMensaje('ptl-led-msg', 'Error en LED ' + i + ': ' + (r.message || '?'), false);
+                    return;
+                }
+                i++;
+                setTimeout(paso, 700);
+            }
+            _ptlRenderLedGrid(total, 1);
+            _ptlMensaje('ptl-led-msg', 'Desfile: LED 1 / ' + total, null);
+            setTimeout(paso, 700);
+        };
+
+        window.ptlLeerMicros = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            _ptlMensaje('ptl-micro-msg', 'Leyendo micros...', null);
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+                if (d.success) {
+                    var total = d.total || _ptlTotalGavetas;
+                    _ptlTotalGavetas = total;
+                    _ptlRenderMicroGrid(total, d.fuera || []);
+                    var fuera = (d.fuera || []).length;
+                    _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' + (total - fuera) + ' puestas', true);
+                    _ptlLog('Micros: total=' + total + ', fuera=[' + (d.fuera || []).join(',') + '], puestas=[' + (d.puestas || []).join(',') + ']');
+                } else {
+                    _ptlMensaje('ptl-micro-msg', d.message || 'Error', false);
+                    _ptlLog('Error micros: ' + (d.message || '?'));
+                }
+            } catch (e) { _ptlMensaje('ptl-micro-msg', 'Error de red', false); }
+        };
+
+        window.ptlTestFin = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            _ptlDesfileActivo = false;
+            document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+            try {
+                await _ptlPost('/api/pick-to-light/test/fin', _ptlPayload({}));
+                _ptlLedActual = null;
+                _ptlRenderLedGrid(_ptlTotalGavetas, null);
+                _ptlRenderMicroGrid(0, []);
+                _ptlMensaje('ptl-led-msg', 'Apagado', true);
+                _ptlMensaje('ptl-micro-msg', '', null);
+                _ptlLog('Modo prueba finalizado — LEDs apagados');
+            } catch (e) { _ptlMensaje('ptl-led-msg', 'Error de red', false); }
+        };
+
+        // Limpiar el desfile al salir de la sección
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.dataset && e.target.dataset.section &&
+                e.target.dataset.section !== 'ptl-prueba' && _ptlDesfileActivo) {
+                _ptlDesfileActivo = false;
+                document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+            }
+        });
+
+    })();
+    </script>
 </body>
 </html>
