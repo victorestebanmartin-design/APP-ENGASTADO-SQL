@@ -6,9 +6,8 @@ from consola_utf8 import forzar_utf8
 forzar_utf8()
 
 import os
-import sqlite3
-
 from config import Config
+from sqlite_setup import inicializar_sqlite
 
 
 def _init_sqlite_db():
@@ -19,10 +18,7 @@ def _init_sqlite_db():
     if not os.path.exists(db_path):
         schema_path = os.path.join(os.path.dirname(__file__), 'schema_sqlite.sql')
         if os.path.exists(schema_path):
-            conn = sqlite3.connect(db_path)
-            with open(schema_path, 'r', encoding='utf-8') as f:
-                conn.executescript(f.read())
-            conn.close()
+            inicializar_sqlite(db_path, schema_path)
 
 
 _init_sqlite_db()
