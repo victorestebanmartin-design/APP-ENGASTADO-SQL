@@ -17,6 +17,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sqlite3
+from sqlite_setup import inicializar_sqlite
 
 # Verificar dependencias
 try:
@@ -39,21 +40,13 @@ def init_sqlite_db_file():
     """Crear archivo de base de datos SQLite si no existe"""
     db_path = Config.DB_PATH
     
-    # Crear directorio data si no existe
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    
-    # Si la BD no existe, crearla desde schema_sqlite.sql
     if not os.path.exists(db_path):
         print(f"Base de datos no existe, creando: {db_path}")
-        schema_path = 'schema_sqlite.sql'
+        schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'schema_sqlite.sql')
         
         if os.path.exists(schema_path):
             try:
-                conn = sqlite3.connect(db_path)
-                with open(schema_path, 'r', encoding='utf-8') as f:
-                    schema_sql = f.read()
-                conn.executescript(schema_sql)
-                conn.close()
+                inicializar_sqlite(db_path, schema_path)
                 print(f"Base de datos creada: {db_path}")
             except Exception as e:
                 print(f"Error creando base de datos: {e}")
