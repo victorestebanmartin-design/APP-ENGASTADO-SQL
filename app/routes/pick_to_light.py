@@ -82,6 +82,57 @@ def _puesto_de_la_placa(device_id):
     return dev.get('puesto_id') or ''
 
 
+def _enviar_a_placa_con_datos(ip, payload, timeout=TIMEOUT_PLACA_PROBAR):
+    """Como _enviar_a_placa pero devuelve también el JSON de la respuesta.
+
+    Usado por los endpoints de prueba de cableado, donde la respuesta de la
+    placa contiene los datos de los micros o el estado del LED.
+    """
+    if not ip:
+        return False, 'El lector todavía no ha dicho su IP', {}
+    cuerpo = json.dumps(payload).encode('utf-8')
+    conexion = None
+    try:
+        conexion = http.client.HTTPConnection(ip, PUERTO_PLACA, timeout=timeout)
+        conexion.request('POST', RUTA_PLACA, body=cuerpo,
+                         headers={'Content-Type': 'application/json'})
+        respuesta = conexion.getresponse()
+        datos = respuesta.read(4096)
+        if respuesta.status != 200:
+            return False, 'La placa respondió %d' % respuesta.status, {}
+        try:
+            parsed = json.loads(datos.decode('utf-8'))
+        except Exception:
+            parsed = {}
+        if parsed.get('ok') is False:
+            return False, parsed.get('error') or 'La placa rechazó la orden', parsed
+        return True, '', parsed
+    except Exception as e:
+        current_app.logger.info('pick-to-light test: la placa %s no responde: %s', ip, e)
+        return False, 'La placa no responde (%s)' % type(e).__name__, {}
+    finally:
+        if conexion is not None:
+            try:
+                conexion.close()
+            except Exception:
+                pass
+
+
+def _resolver_placa_test(datos):
+    """Devuelve (device_id, ip) para un comando de prueba.
+
+    Acepta device_id o puesto_id: durante pruebas de cableado el lector puede
+    no estar asignado todavía a ningún puesto.
+    """
+    device_id = (datos.get('device_id') or '').strip().lower()[:64]
+    if device_id:
+        from app.routes.sistema import _rfid_load_devices
+        dev = (_rfid_load_devices() or {}).get(device_id) or {}
+        return device_id, dev.get('ip') or ''
+    puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+    return _placa_del_puesto(puesto_id)
+
+
 def _enviar_a_placa(ip, payload, timeout=TIMEOUT_PLACA):
     """POST corto al mini servidor de la placa. Devuelve (ok, motivo).
 
@@ -302,6 +353,107 @@ def api_pick_to_light_probar():
                         'message': 'La placa recibirá la orden por sondeo.' if remoto else ''})
     except Exception as e:
         return error_interno(e, 'Error al probar la gaveta')
+
+
+# ==================== MODO PRUEBA DE CABLEADO (admin) ====================
+
+@bp.route('/api/pick-to-light/test/led', methods=['POST'])
+@requiere_pin_admin
+def api_ptl_test_led():
+    """Prueba: enciende un LED concreto con color libre (sin activar flujo normal).
+
+    Acepta device_id o puesto_id; la placa entra en modo prueba y solo la
+    desactiva test_fin o un corte de corriente. Sirve para identificar qué
+    numero fisico corresponde a cada LED de la tira.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        try:
+            led = int(datos.get('led') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'LED no es un número'}), 400
+        if not 1 <= led <= 128:
+            return jsonify({'success': False, 'message': 'LED fuera de rango (1-128)'}), 400
+
+        color = datos.get('color') or [180, 180, 180]
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_led': led, 'color': color})
+        if not ok:
+            return jsonify({'success': False, 'message': motivo}), 502
+        return jsonify({'success': True, 'led': led, 'color': color,
+                        'estado': respuesta.get('estado')})
+    except Exception as e:
+        return error_interno(e, 'Error al probar LED')
+
+
+@bp.route('/api/pick-to-light/test/todos', methods=['POST'])
+@requiere_pin_admin
+def api_ptl_test_todos():
+    """Prueba: enciende todos los LEDs con el color indicado."""
+    try:
+        datos = request.get_json(silent=True) or {}
+        color = datos.get('color') or [60, 60, 60]
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_todos': True, 'color': color})
+        if not ok:
+            return jsonify({'success': False, 'message': motivo}), 502
+        return jsonify({'success': True, 'color': color,
+                        'gavetas': respuesta.get('gavetas'),
+                        'estado': respuesta.get('estado')})
+    except Exception as e:
+        return error_interno(e, 'Error al encender todos los LEDs')
+
+
+@bp.route('/api/pick-to-light/test/micros', methods=['POST'])
+@requiere_pin_admin
+def api_ptl_test_micros():
+    """Prueba: lee el estado de todos los micro-interruptores.
+
+    Devuelve qué gavetas están fuera (contacto abierto) y cuáles puestas
+    (contacto cerrado a masa). Con todas puestas: 'fuera' vacío, 'puestas'
+    = lista completa 1..N. Sacar y poner una gaveta y releer confirma que
+    ese micro y ese canal del MCP23017 están bien cableados.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_micros': True})
+        if not ok:
+            return jsonify({'success': False, 'message': motivo}), 502
+        return jsonify({'success': True,
+                        'fuera': respuesta.get('fuera', []),
+                        'puestas': respuesta.get('puestas', []),
+                        'total': respuesta.get('total', 0),
+                        'estado': respuesta.get('estado')})
+    except Exception as e:
+        return error_interno(e, 'Error al leer micro-interruptores')
+
+
+@bp.route('/api/pick-to-light/test/fin', methods=['POST'])
+@requiere_pin_admin
+def api_ptl_test_fin():
+    """Prueba: sale del modo prueba y apaga todos los LEDs."""
+    try:
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_fin': True})
+        if not ok:
+            return jsonify({'success': False, 'message': motivo}), 502
+        return jsonify({'success': True, 'estado': respuesta.get('estado')})
+    except Exception as e:
+        return error_interno(e, 'Error al salir del modo prueba')
 
 
 # ==================== LO QUE MANDA LA PLACA ====================

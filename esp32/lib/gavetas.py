@@ -83,6 +83,8 @@ class Gavetas:
         self._zumbido_encendido = False
         self._beep_hasta_ms = 0
 
+        self._en_prueba = False   # modo prueba de cableado
+
         self._servidor = self._abrir_servidor()
         self._apagar_tira()
         # Un aviso de arranque para que Admin -> Lectores RFID sepa cuantas
@@ -167,6 +169,17 @@ class Gavetas:
         except Exception:
             pass
 
+    def _iniciar_prueba(self):
+        """Entra en modo prueba: pausa la logica normal para verificar el cableado."""
+        self.objetivo = None
+        self.recogida = False
+        self.equivocadas.clear()
+        self._parar_zumbido()
+        self._en_prueba = True
+
+    def _finalizar_prueba(self):
+        self._en_prueba = False
+
     def _beep_ok(self):
         self._beep_hasta_ms = time.ticks_add(time.ticks_ms(), BEEP_OK_MS)
         self.buzzer.on()
@@ -223,6 +236,10 @@ class Gavetas:
             self.fuera.add(gaveta)
         else:
             self.fuera.discard(gaveta)
+
+        if self._en_prueba:
+            # En modo prueba solo se actualiza el estado; sin luces ni zumbido.
+            return
 
         # Sin objetivo no hay ni acierto ni error: alguien esta reponiendo o
         # dejo un cajon abierto. Se avisa al servidor y no suena nada.
@@ -338,6 +355,56 @@ class Gavetas:
         datos = _json_carga(cuerpo)
 
         if datos.get("apagar"):
+            self.apagar()
+            return {"ok": True, "estado": self.estado()}
+
+        # ── Comandos de prueba de cableado ──────────────────────────────────
+
+        test_led = datos.get("test_led")
+        if test_led is not None:
+            try:
+                test_led = int(test_led)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "test_led no es un numero"}
+            color_raw = datos.get("color") or [180, 180, 180]
+            try:
+                color = tuple(int(c) for c in color_raw[:3])
+            except Exception:
+                color = (180, 180, 180)
+            self._iniciar_prueba()
+            if self.tira is None:
+                return {"ok": False, "error": "Sin tira LED", "estado": self.estado()}
+            if not 1 <= test_led <= self.n_gavetas:
+                return {"ok": False,
+                        "error": "LED %d fuera de rango (1-%d)" % (test_led, self.n_gavetas),
+                        "estado": self.estado()}
+            for i in range(self.n_gavetas):
+                self.tira[i] = COLOR_APAGADO
+            self.tira[test_led - 1] = color
+            self.tira.write()
+            return {"ok": True, "test_led": test_led, "color": list(color), "estado": self.estado()}
+
+        if datos.get("test_todos"):
+            color_raw = datos.get("color") or [60, 60, 60]
+            try:
+                color = tuple(int(c) for c in color_raw[:3])
+            except Exception:
+                color = (60, 60, 60)
+            self._iniciar_prueba()
+            if self.tira:
+                for i in range(self.n_gavetas):
+                    self.tira[i] = color
+                self.tira.write()
+            return {"ok": True, "gavetas": self.n_gavetas, "color": list(color), "estado": self.estado()}
+
+        if datos.get("test_micros"):
+            leidas = self._leer_micros()
+            puestas = sorted(g for g in range(1, self.n_gavetas + 1) if g not in leidas)
+            return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
+                    "total": self.n_gavetas, "estado": self.estado()}
+
+        if datos.get("test_fin"):
+            self._finalizar_prueba()
             self.apagar()
             return {"ok": True, "estado": self.estado()}
 

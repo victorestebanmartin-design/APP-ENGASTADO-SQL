@@ -23,6 +23,7 @@ def gavetas():
     machine.Pin = type('Pin', (), {'OUT': 1, 'IN': 0, '__init__': lambda s, *a, **k: None})
     machine.SoftI2C = type('SoftI2C', (), {'__init__': lambda s, *a, **k: None})
     mcp = types.ModuleType('mcp23017')
+    mcp.CANALES = 16
     mcp.MCP23017 = type('MCP23017', (), {'__init__': lambda s, *a, **k: None})
 
     previos = {n: sys.modules.get(n) for n in ('machine', 'mcp23017', 'gavetas')}
@@ -147,3 +148,215 @@ def test_un_led_que_no_es_numero_se_rechaza_con_motivo(gavetas):
     assert respuesta['ok'] is False
     assert respuesta['error']
     assert placa.encendidos == []
+
+
+# ── Tests del modo prueba de cableado ────────────────────────────────────────
+
+class TiraFalsa:
+    """Simula un objeto NeoPixel: lista indexable + write()."""
+    def __init__(self, n):
+        self._pixeles = [(0, 0, 0)] * n
+        self.escrituras = 0
+
+    def __setitem__(self, i, color):
+        self._pixeles[i] = color
+
+    def __getitem__(self, i):
+        return self._pixeles[i]
+
+    def write(self):
+        self.escrituras += 1
+
+    def __len__(self):
+        return len(self._pixeles)
+
+
+class PlacaConTira:
+    """Placa con tira y expansores simulados para los tests de modo prueba."""
+
+    def __init__(self, n_gavetas=8):
+        import types
+
+        class ExpFalso:
+            def __init__(self, bits=0):
+                self._bits = bits
+                self.direccion = 0x20
+
+            def leer(self):
+                return self._bits
+
+        mcp_mod = types.ModuleType('mcp23017')
+        mcp_mod.CANALES = 16
+        mcp_mod.MCP23017 = ExpFalso
+
+        n_exp = (n_gavetas + 15) // 16
+        expansores = [ExpFalso(bits=0) for _ in range(n_exp)]
+        tira = TiraFalsa(n_gavetas)
+        buzzer = type('Buz', (), {'on': lambda s: None, 'off': lambda s: None})()
+
+        import sys
+        previo_mcp = sys.modules.get('mcp23017')
+        sys.modules['mcp23017'] = mcp_mod
+        try:
+            import gavetas as gmod
+        finally:
+            if previo_mcp is None:
+                sys.modules.pop('mcp23017', None)
+            else:
+                sys.modules['mcp23017'] = previo_mcp
+
+        # Construir la instancia a mano sin pasar por crear()
+        obj = object.__new__(gmod.Gavetas)
+        obj.expansores = expansores
+        obj.tira = tira
+        obj.buzzer = buzzer
+        obj.device_id = 'test'
+        obj.n_gavetas = n_gavetas
+        obj.objetivo = None
+        obj.recogida = False
+        obj.equivocadas = set()
+        obj.fuera = set()
+        obj._ultima_lectura_ms = 0
+        obj._cambio_pendiente = {}
+        obj._zumbido_hasta_ms = 0
+        obj._zumbido_encendido = False
+        obj._beep_hasta_ms = 0
+        obj._en_prueba = False
+        obj._servidor = None
+        self.obj = obj
+        self.tira = tira
+        self.expansores = expansores
+
+    def responder(self, cuerpo):
+        import gavetas as gmod
+        return gmod.Gavetas._responder(self.obj, cuerpo)
+
+    def aplicar_cambio(self, gaveta, ahora_fuera):
+        import gavetas as gmod
+        return gmod.Gavetas._aplicar_cambio(self.obj, gaveta, ahora_fuera)
+
+
+@pytest.fixture
+def placa_con_tira(gavetas):
+    """Placa con 8 gavetas y tira simulada, importando el modulo ya cargado."""
+    import types
+
+    mcp_mod = types.ModuleType('mcp23017')
+    mcp_mod.CANALES = 16
+
+    class ExpFalso:
+        def __init__(self):
+            self._bits = 0
+            self.direccion = 0x20
+
+        def leer(self):
+            return self._bits
+
+    n = 8
+    expansores = [ExpFalso()]
+    tira = TiraFalsa(n)
+    buzzer = type('Buz', (), {'on': lambda s: None, 'off': lambda s: None})()
+
+    obj = object.__new__(gavetas.Gavetas)
+    obj.expansores = expansores
+    obj.tira = tira
+    obj.buzzer = buzzer
+    obj.device_id = 'test'
+    obj.n_gavetas = n
+    obj.objetivo = None
+    obj.recogida = False
+    obj.equivocadas = set()
+    obj.fuera = set()
+    obj._ultima_lectura_ms = 0
+    obj._cambio_pendiente = {}
+    obj._zumbido_hasta_ms = 0
+    obj._zumbido_encendido = False
+    obj._beep_hasta_ms = 0
+    obj._en_prueba = False
+    obj._servidor = None
+
+    return obj, tira, expansores
+
+
+def test_test_led_enciende_solo_ese_pixel(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    resp = gavetas.Gavetas._responder(obj, b'{"test_led": 3, "color": [100, 0, 0]}')
+    assert resp['ok'] is True
+    assert resp['test_led'] == 3
+    assert tira[2] == (100, 0, 0)       # pixel 3 encendido (0-based)
+    assert tira[0] == (0, 0, 0)         # resto apagados
+    assert tira[7] == (0, 0, 0)
+    assert tira.escrituras >= 1
+
+
+def test_test_led_apaga_el_resto(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    # Encendemos el 5 primero
+    gavetas.Gavetas._responder(obj, b'{"test_led": 5, "color": [0, 100, 0]}')
+    # Luego el 2: el 5 debe apagarse
+    gavetas.Gavetas._responder(obj, b'{"test_led": 2, "color": [0, 100, 0]}')
+    assert tira[1] == (0, 100, 0)
+    assert tira[4] == (0, 0, 0)
+
+
+def test_test_led_fuera_de_rango_devuelve_error(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    resp = gavetas.Gavetas._responder(obj, b'{"test_led": 99}')
+    assert resp['ok'] is False
+    assert 'rango' in resp['error']
+
+
+def test_test_led_activa_modo_prueba(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    obj.objetivo = 3   # habia un objetivo activo
+    gavetas.Gavetas._responder(obj, b'{"test_led": 1}')
+    assert obj._en_prueba is True
+    assert obj.objetivo is None   # lo limpia al entrar en prueba
+
+
+def test_test_todos_enciende_n_gavetas(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    resp = gavetas.Gavetas._responder(obj, b'{"test_todos": true, "color": [60, 60, 60]}')
+    assert resp['ok'] is True
+    assert resp['gavetas'] == 8
+    for i in range(8):
+        assert tira[i] == (60, 60, 60)
+
+
+def test_test_micros_devuelve_fuera_y_puestas(gavetas, placa_con_tira):
+    obj, _, expansores = placa_con_tira
+    # Simulamos gaveta 1 y 3 fuera (bits 0 y 2 a 1)
+    expansores[0]._bits = 0b00000101
+    obj.fuera = set()
+    resp = gavetas.Gavetas._responder(obj, b'{"test_micros": true}')
+    assert resp['ok'] is True
+    assert 1 in resp['fuera']
+    assert 3 in resp['fuera']
+    assert 2 not in resp['fuera']
+    assert resp['total'] == 8
+
+
+def test_test_fin_sale_del_modo_prueba_y_apaga(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    # Entrar en prueba
+    gavetas.Gavetas._responder(obj, b'{"test_led": 4, "color": [0, 0, 100]}')
+    assert obj._en_prueba is True
+    # Salir
+    resp = gavetas.Gavetas._responder(obj, b'{"test_fin": true}')
+    assert resp['ok'] is True
+    assert obj._en_prueba is False
+    assert all(tira[i] == (0, 0, 0) for i in range(8))
+
+
+def test_en_modo_prueba_cambio_micro_no_toca_los_leds(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    # Encender LED 5 en modo prueba
+    gavetas.Gavetas._responder(obj, b'{"test_led": 5, "color": [0, 0, 100]}')
+    color_antes = tira[4]
+    assert color_antes == (0, 0, 100)
+    # Simular que se abre el micro de la gaveta 2
+    gavetas.Gavetas._aplicar_cambio(obj, 2, True)
+    # El LED 5 no debe haberse tocado
+    assert tira[4] == (0, 0, 100)
+    # Y el buzzer tampoco debe haber sonado (obj.equivocadas vacio porque _iniciar_prueba lo limpia)
+    assert not obj.equivocadas
