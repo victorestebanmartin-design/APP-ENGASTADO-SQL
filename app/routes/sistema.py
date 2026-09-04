@@ -13,6 +13,8 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import hmac
 import hashlib
@@ -459,6 +461,17 @@ ESP32_KEEPALIVE_S = 60       # cada cuánto re-envía el navegador (informativo)
 ESP32_MAX_OPS = 8            # puestos simultáneos máximos por canal
 
 
+_esp32_canal_locks_meta = threading.Lock()
+_esp32_canal_locks: dict = {}
+
+
+def _obtener_lock_canal(path: str) -> threading.Lock:
+    with _esp32_canal_locks_meta:
+        if path not in _esp32_canal_locks:
+            _esp32_canal_locks[path] = threading.Lock()
+        return _esp32_canal_locks[path]
+
+
 def _esp32_op_key(data):
     """Clave de la entrada dentro del canal de un carro.
 
@@ -504,17 +517,28 @@ def _esp32_load_ops(path):
 
 def _esp32_write_channel(path, data, ts):
     """Aplica un push (o clear) de UN operario sobre el canal, sin pisar al resto."""
-    ops = _esp32_load_ops(path)
-    op = _esp32_op_key(data)
-    if data.get('clear'):
-        ops.pop(op, None)
-    else:
-        ops[op] = {'data': data, 'ts': ts}
-        # Limite de seguridad: si hay demasiados, caen los mas antiguos
-        while len(ops) > ESP32_MAX_OPS:
-            ops.pop(min(ops, key=lambda k: ops[k].get('ts', '')))
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'ops': ops}, f)
+    with _obtener_lock_canal(path):
+        ops = _esp32_load_ops(path)
+        op = _esp32_op_key(data)
+        if data.get('clear'):
+            ops.pop(op, None)
+        else:
+            ops[op] = {'data': data, 'ts': ts}
+            # Limite de seguridad: si hay demasiados, caen los mas antiguos
+            while len(ops) > ESP32_MAX_OPS:
+                ops.pop(min(ops, key=lambda k: ops[k].get('ts', '')))
+        dir_ = os.path.dirname(path) or '.'
+        fd, tmp = tempfile.mkstemp(dir=dir_, suffix='.tmp', prefix='esp32_canal_')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump({'ops': ops}, f)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
 
 @bp.route('/api/esp32/push', methods=['POST', 'OPTIONS'])
