@@ -777,18 +777,28 @@ def api_engastado_v3_entrada():
             # Check if operario already has active session
             _expirar_logins_fantasma(conn)
             existente = conn.execute(text(
-                "SELECT id FROM operario_logins WHERE activo=1 AND operario_nombre=:n"
+                "SELECT ol.id, ol.puesto_id, ol.modulo, p.nombre "
+                "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
+                "WHERE ol.activo=1 AND ol.operario_nombre=:n"
             ), {'n': nombre}).fetchone()
 
             if existente:
-                # Reuse existing session. Refresca el puesto por si el
-                # operario ha vuelto a pasar la tarjeta en un lector distinto.
-                login_id = existente[0]
-                if puesto_id or modulo_lector:
-                    conn.execute(text(
-                        "UPDATE operario_logins SET puesto_id=:p, modulo=:m WHERE id=:id"
-                    ), {'p': puesto_id, 'm': modulo_lector, 'id': login_id})
-                    conn.commit()
+                login_id, existente_puesto_id, existente_modulo, existente_puesto_nombre = existente
+                mismo_lector = (existente_puesto_id == puesto_id and existente_modulo == modulo_lector)
+                if not mismo_lector:
+                    # Tarjeta ya activa en OTRO puesto/módulo: no se mueve
+                    # sola (un login "viajando" solo con pasar la tarjeta en
+                    # cualquier lector -incluido el del carro- dejaría dos
+                    # puestos creyendo tener al mismo operario a la vez).
+                    donde = existente_puesto_nombre or 'otro puesto'
+                    motivo = f'{nombre} ya está activo en {donde}'
+                    _rechazo(motivo, 'ALREADY_ACTIVE', operario=nombre,
+                             consejo='Cierra la sesión en ese puesto antes de entrar aquí, '
+                                     'o pide a un administrador que la libere (Admin → Operarios).')
+                    return jsonify({'success': False, 'error': motivo}), 409
+
+                # Mismo lector/puesto que ya tenía: re-lectura idempotente
+                # (confirma presencia, no crea ni mueve nada).
                 _log('Sesión existente reutilizada', nombre)
                 _rfid_estado_registrar('ok', 'Sesión existente reutilizada', 'OK_REUSED',
                                        device_id=device_id, tag_uid=tag_uid,
