@@ -19,6 +19,7 @@ logs/
 
 # Datos de runtime generados por la app (prevalece la versión del servidor)
 data/progreso_bono_*.json
+data/esp32_current*.json
 data/engastado.db
 data/*.db
 data/engastado.db.backup_*
