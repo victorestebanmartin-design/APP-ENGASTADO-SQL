@@ -489,7 +489,8 @@ def _esp32_ts_viva(ts_str):
     except Exception:
         return False
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        # Los canales anteriores guardaban hora local del servidor.
+        ts = ts.astimezone()
     return (_dt.now(timezone.utc) - ts).total_seconds() <= ESP32_TTL_S
 
 
@@ -562,8 +563,8 @@ def api_esp32_push():
         # Quien manda trabajo es el navegador de un PC de puesto: se aprovecha
         # para anotar su IP en la tabla de red (ver _pc_registrar).
         _pc_registrar(request.remote_addr)
-        from datetime import datetime
-        ts = datetime.now().isoformat()
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
         _esp32_write_channel(_esp32_file(), data, ts)
         if data.get('carro'):
             _esp32_write_channel(_esp32_file(data['carro']), data, ts)
@@ -3467,7 +3468,7 @@ def deploy_pull():
 
 def _config_manager():
     """Crea una instancia de ConfigManager con las rutas del proyecto."""
-    base_dir = os.path.dirname(current_app.root_path)
+    base_dir = os.path.dirname(current_app.config["DATA_DIR"])
     return ConfigManager(db, base_dir)
 
 

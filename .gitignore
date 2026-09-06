@@ -54,3 +54,6 @@ data/wifi_hotspot.json
 data/servidor_backend.json
 # Temporales de provisión USB RFID; pueden contener WiFi y host locales.
 data/_rfid_*_tmp.py
+
+# Coordinación local de copias e importaciones
+data/.maintenance.sqlite*

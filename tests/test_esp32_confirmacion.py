@@ -210,3 +210,21 @@ def test_pantalla_sin_lector_no_reporta_nfc(client, admin_client):
     dev = next(d for d in admin_client.get('/api/esp32/devices').get_json()['devices']
                if d['id'] == 'ddeeff')
     assert dev['nfc'] == ''
+
+
+def test_caducidad_acepta_utc_y_zonas_explicitas():
+    from datetime import datetime, timedelta, timezone
+    from app.routes.sistema import _esp32_ts_viva, ESP32_TTL_S
+    for zone in (timezone.utc, timezone(timedelta(hours=2)), timezone(timedelta(hours=-5))):
+        ahora = datetime.now(zone)
+        assert _esp32_ts_viva(ahora.isoformat())
+        assert not _esp32_ts_viva((ahora - timedelta(seconds=ESP32_TTL_S + 60)).isoformat())
+
+
+def test_push_guarda_fecha_con_zona(client, app):
+    import json
+    from pathlib import Path
+    from datetime import datetime
+    _push(client)
+    payload = json.loads(Path(app.config['DATA_DIR'], 'esp32_current_3.json').read_text())
+    assert all(datetime.fromisoformat(op['ts']).tzinfo is not None for op in payload['ops'].values())

@@ -879,7 +879,7 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
     const container = document.getElementById('listaOrdenesPendientes');
     
     if (ordenesPendientes.length === 0 && ordenesEnProceso.length === 0) {
-        container.innerHTML = '<p class="proy-empty">No hay órdenes pendientes con archivo Excel asociado</p>';
+        container.innerHTML = '<p class="proy-empty">No hay órdenes pendientes con archivo Excel asociado</p><p class="proy-empty"><a href="/registro-ordenes">Registrar una orden o asociar un corte</a></p>';
         return;
     }
     

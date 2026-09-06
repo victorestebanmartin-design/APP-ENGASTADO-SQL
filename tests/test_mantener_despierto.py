@@ -45,7 +45,8 @@ def _simular_windows(monkeypatch, kernel32):
                         raising=False)
 
 
-def test_en_linux_no_hace_nada_y_lo_dice():
+def test_en_linux_no_hace_nada_y_lo_dice(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
     """PythonAnywhere y los tests corren en Linux: ahi no hay que tocar nada."""
     aplicado, detalle = pedir_no_dormir()
     assert aplicado is False

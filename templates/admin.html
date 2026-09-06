@@ -892,18 +892,18 @@
                         <p class="instruccion">Descarga una copia exacta de toda la BD en un ZIP. Úsala para hacer backup o llevarla a otro equipo.</p>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
                             <button onclick="exportarDB(false)" class="btn-secondary">⬇️ Solo BD</button>
-                            <button onclick="exportarDB(true)" class="btn-primary">⬇️ BD + Excel (completo)</button>
+                            <button onclick="exportarDB(true)" class="btn-primary">⬇️ Copia completa</button>
                         </div>
                         <p class="instruccion" style="margin-top:10px;font-size:0.85em;">
                             <strong>Solo BD</strong>: incluye toda la configuración, bonos, órdenes, etc. — los Excel hay que resubirlos manualmente.<br>
-                            <strong>BD + Excel</strong>: todo lo anterior más los archivos Excel de <code>data/cortes/</code> — import 100% portátil.
+                            <strong>Copia completa</strong>: incluye Excel, avance de bonos, datos de manguitos y documentos de máquinas.
                         </p>
                         <div id="export-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
                     </div>
 
                     <div class="card">
                         <h2>📥 Importar base de datos</h2>
-                        <p class="instruccion">Sube el ZIP exportado anteriormente. <strong style="color:#f87171;">⚠ REEMPLAZA todo lo actual</strong> por el contenido del ZIP.</p>
+                        <p class="instruccion">Sube el ZIP exportado anteriormente. Se valida antes de aplicar y se guarda una copia recuperable. Hazlo cuando los puestos no estén trabajando. <strong style="color:#f87171;">⚠ REEMPLAZA todo lo actual</strong> por el contenido del ZIP.</p>
                         <form id="import-db-form" enctype="multipart/form-data" style="margin-top:14px;">
                             <div class="input-group">
                                 <label for="import-db-file">Archivo ZIP:</label>
@@ -912,7 +912,7 @@
                             <div class="input-group" style="margin-top:10px;">
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                                     <input type="checkbox" id="import-incluir-excels" checked>
-                                    <span>Restaurar también los Excel del ZIP (si los contiene)</span>
+                                    <span>Restaurar también los Excel del ZIP (el avance y documentos se restauran siempre si están incluidos)</span>
                                 </label>
                             </div>
                             <button type="submit" class="btn-primary" style="margin-top:12px;background:#dc2626;">📥 Importar y reemplazar BD</button>
