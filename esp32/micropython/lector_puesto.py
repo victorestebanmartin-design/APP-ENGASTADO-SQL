@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07d"
+FW_VERSION = "2026-09-07e"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -505,12 +505,24 @@ while True:
 
         # PythonAnywhere no puede abrir conexion hacia la IP privada de la
         # placa. Este sondeo permite probar y usar la misma gaveta tras NAT.
+        #
+        # De paso reconfirma "gaveta sacada" (led/recogida) en cada vuelta.
+        # El aviso normal es un POST suelto en el momento de sacarla (ver
+        # gavetas.py:_avisar); si ese POST se pierde por un handshake TLS
+        # lento o un corte breve de wifi, nadie lo reintenta y el operario se
+        # queda con el cajon abierto y la app sin enterarse. Este GET si se
+        # repite solo cada 750 ms, asi que mandar el estado tambien aqui lo
+        # autocorrige sin depender de que un unico intento llegue.
         if (gav and http_client is not None and backend_cfg is not None and
                 time.ticks_diff(now, ultima_orden_gavetas) > 750):
             ultima_orden_gavetas = now
+            parametros = "device_id=" + DEVICE_ID
+            if gav.objetivo:
+                parametros += "&led=%d&recogida=%d" % (
+                    gav.objetivo, 1 if gav.recogida else 0)
             orden = http_client.get_json(
                 backend_cfg.BACKEND_HOST,
-                "/api/esp32/rfid/gaveta/orden?device_id=" + DEVICE_ID,
+                "/api/esp32/rfid/gaveta/orden?" + parametros,
                 port=backend_cfg.BACKEND_PORT,
                 use_ssl=backend_cfg.BACKEND_USE_SSL,
                 timeout=2)

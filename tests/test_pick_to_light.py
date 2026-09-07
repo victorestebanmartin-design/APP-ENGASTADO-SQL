@@ -174,6 +174,42 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert orden == {'success': True, 'apagar': False, 'led': 5}
 
 
+def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
+    """El GET periodico tiene que poder confirmar solo, sin depender del POST.
+
+    El aviso normal (api_esp32_rfid_gaveta) es un POST suelto en el momento de
+    sacar la gaveta: si se pierde por un handshake TLS lento o un corte breve
+    de wifi, nadie lo reintenta. El sondeo de /orden si se repite cada 750 ms
+    (ver lector_puesto.py), asi que reportar led/recogida tambien ahi tiene
+    que bastar para que el operario no se quede esperando delante del cajon.
+    """
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['recogida'] is False
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7&recogida=1' % device_id)
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['recogida'] is True
+
+
+def test_sondeo_no_confirma_recogida_de_otro_led(app, client, admin_client, con_placa):
+    """Un led distinto al objetivo actual no puede confirmar por error de sondeo."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=3&recogida=1' % device_id)
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['recogida'] is False
+
+
 def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_client, con_placa):
     """Sin esto, el segundo terminal saltaría la puerta con la confirmación del primero."""
     device_id = _registrar_lector(app)

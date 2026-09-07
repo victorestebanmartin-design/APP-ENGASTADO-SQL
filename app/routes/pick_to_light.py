@@ -342,6 +342,16 @@ def api_pick_to_light_orden():
     En planta el servidor puede abrir una conexión directa al lector. Desde
     PythonAnywhere no puede llegar a su IP privada, así que la propia placa
     consulta esta ruta y aplica la misma orden de forma local.
+
+    De paso, la placa aprovecha este mismo sondeo (cada 750 ms, ver
+    lector_puesto.py) para RECONFIRMAR que ya ha sacado la gaveta correcta
+    ('led'/'recogida' como query params). El aviso inmediato de
+    /api/esp32/rfid/gaveta sigue existiendo por la latencia, pero es un POST
+    suelto: si se pierde (un handshake TLS lento hacia PythonAnywhere, un
+    corte de wifi de medio segundo), nadie lo repite y el operario se queda
+    delante del cajon abierto sin que la app se entere. El GET de aqui SÍ se
+    repite solo cada 750 ms, así que confirmar también por este lado lo
+    autocorrige sin depender de que un único intento llegue.
     """
     try:
         device_id = (request.args.get('device_id') or '').strip().lower()[:64]
@@ -355,7 +365,22 @@ def api_pick_to_light_orden():
                             'test_seq': pendiente.get('seq')})
 
         puesto_id = _puesto_de_la_placa(device_id)
-        estado = _estado_cargar().get(puesto_id) if puesto_id else None
+
+        estado_todo = _estado_cargar()
+        if puesto_id:
+            try:
+                led_reportado = int(request.args.get('led') or 0)
+            except (TypeError, ValueError):
+                led_reportado = 0
+            if led_reportado and request.args.get('recogida') == '1':
+                actual = estado_todo.get(puesto_id) or {}
+                if led_reportado == actual.get('led') and not actual.get('recogida'):
+                    actual['recogida'] = True
+                    actual['error_led'] = None
+                    estado_todo[puesto_id] = actual
+                    _estado_guardar(estado_todo)
+
+        estado = estado_todo.get(puesto_id) if puesto_id else None
         led = (estado or {}).get('led')
         return jsonify({'success': True,
                         'apagar': not bool(led),
