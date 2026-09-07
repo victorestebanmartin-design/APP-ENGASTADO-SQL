@@ -876,3 +876,159 @@ def test_un_segundo_informe_sustituye_al_anterior(app, admin_client):
     informe = admin_client.get(
         '/api/pick-to-light/correspondencia/informe?device_id=' + dev).get_json()['informe']
     assert informe['resumen']['comprobados'] == 2
+
+
+# ── Alta de RFID por canal ────────────────────────────────────────────────────
+#
+# El RC522 es el MISMO que el login de operarios: aquí solo se prueba la
+# parte servidor (armar/sondear/confirmar/desvincular + unicidad). El "modo"
+# del firmware que evita mezclar una lectura de gaveta con un login normal
+# se prueba en tests/test_gavetas_firmware.py-style, en el propio fichero de
+# firmware si aplica, o queda para verificación manual (no hay runner JS/RC522
+# en CI para el bucle principal completo de lector_puesto.py).
+
+def test_normalizar_uid(app):
+    from app.routes.pick_to_light import _normalizar_uid
+    with app.app_context():
+        assert _normalizar_uid(' a1:b2-c3 d4 ') == 'A1B2C3D4'
+        assert _normalizar_uid('') == ''
+        assert _normalizar_uid(None) == ''
+
+
+def test_rfid_armar_requiere_pin_admin(client):
+    r = client.post('/api/pick-to-light/canal/rfid/armar',
+                    json={'puesto_id': 'puesto_001', 'canal': 7})
+    assert r.status_code in (401, 403)
+
+
+def test_rfid_armar_sin_lector_asignado_da_404(admin_client):
+    r = admin_client.post('/api/pick-to-light/canal/rfid/armar',
+                          json={'puesto_id': 'puesto_sin_lector', 'canal': 7})
+    assert r.status_code == 404
+
+
+def test_rfid_armar_encola_el_comando_para_la_placa(app, admin_client):
+    device_id = _registrar_lector(app)
+    r = admin_client.post('/api/pick-to-light/canal/rfid/armar',
+                          json={'puesto_id': 'puesto_001', 'canal': 7})
+    datos = r.get_json()
+    assert r.status_code == 200 and datos['device_id'] == device_id and datos['seq'] >= 1
+
+    orden = admin_client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['test'] == {'ptl_rfid_modo': 'alta', 'canal': 7,
+                             'duracion_ms': pick_to_light.RFID_ARMADO_DURACION_MS}
+
+
+def test_rfid_sondeo_antes_de_leer_nada_no_esta_listo(app, admin_client):
+    device_id = _registrar_lector(app)
+    seq = admin_client.post('/api/pick-to-light/canal/rfid/armar',
+                            json={'puesto_id': 'puesto_001', 'canal': 7}).get_json()['seq']
+    r = admin_client.get('/api/pick-to-light/canal/rfid/armar?device_id=%s&seq=%d'
+                         % (device_id, seq))
+    assert r.status_code == 200 and r.get_json()['listo'] is False
+
+
+def test_rfid_lectura_de_alta_marca_listo_con_el_uid_normalizado(app, admin_client, client):
+    device_id = _registrar_lector(app)
+    seq = admin_client.post('/api/pick-to-light/canal/rfid/armar',
+                            json={'puesto_id': 'puesto_001', 'canal': 7}).get_json()['seq']
+
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'a1:b2:c3:d4', 'tipo': 'alta'})
+    assert r.status_code == 200 and r.get_json()['ok'] is True
+
+    sondeo = admin_client.get('/api/pick-to-light/canal/rfid/armar?device_id=%s&seq=%d'
+                              % (device_id, seq)).get_json()
+    assert sondeo['listo'] is True and sondeo['uid'] == 'A1B2C3D4'
+
+
+def test_rfid_lectura_sin_armado_previo_no_revienta(app, client):
+    """Una lectura tardía (armado caducado o ya consumido) no puede tumbar nada."""
+    device_id = _registrar_lector(app)
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'AABBCC', 'tipo': 'alta'})
+    assert r.status_code == 200
+    assert r.get_json()['ok'] is False
+
+
+def test_rfid_lectura_sin_device_id_se_rechaza(client):
+    r = client.post('/api/esp32/rfid/gaveta/lectura', json={'uid': 'AABBCC', 'tipo': 'alta'})
+    assert r.status_code == 400
+
+
+def test_rfid_confirmar_requiere_terminal_ya_asignado(admin_client):
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+    assert r.status_code == 400
+    assert 'Asigna primero un terminal' in r.get_json()['message']
+
+
+def test_rfid_confirmar_guarda_uid_y_se_ve_desde_terminal_gaveta(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'aa bb cc'})
+    assert r.status_code == 200 and r.get_json()['uid'] == 'AABBCC'
+
+    datos = admin_client.get('/api/terminal-gaveta/640204').get_json()
+    assert datos['rfid'] is True
+
+
+def test_rfid_confirmar_rechaza_uid_duplicado_activo(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'aabbcc'})
+    assert r.status_code == 409
+    assert 'canal 7' in r.get_json()['message']
+
+
+def test_rfid_confirmar_rechaza_uid_duplicado_de_otro_puesto(app, admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+
+    _asignar_terminal_a_maquina(app, 'ZZOTRO', puesto_id='puesto_002', maquina_id='maquina_otra')
+    _asignar_canal(admin_client, 'puesto_002', 1, 'ZZOTRO', 'B-1')
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_002', 'canal': 1, 'uid': 'AABBCC'})
+    assert r.status_code == 409
+
+
+def test_rfid_reasignar_el_mismo_canal_no_choca_consigo_mismo(admin_client):
+    """Guardar de nuevo el mismo UID en la misma gaveta no es un duplicado."""
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+    assert r.status_code == 200
+
+
+def test_rfid_desvincular_libera_el_uid(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+
+    r = admin_client.delete('/api/pick-to-light/canal/rfid?puesto_id=puesto_001&canal=7')
+    assert r.status_code == 200
+    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['rfid'] is False
+
+    # El UID queda libre para otra gaveta.
+    r2 = admin_client.put('/api/pick-to-light/canal/rfid',
+                          json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'AABBCC'})
+    assert r2.status_code == 200
+
+
+def test_mapa_marca_rfid_true_cuando_esta_configurado(app, admin_client):
+    dev = _registrar_lector(app, gavetas=5)
+    _asignar_canal(admin_client, 'puesto_001', 3, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 3, 'uid': 'AABBCC'})
+
+    datos = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev).get_json()
+    por_canal = {c['canal']: c for c in datos['canales']}
+    assert por_canal[3]['rfid'] is True

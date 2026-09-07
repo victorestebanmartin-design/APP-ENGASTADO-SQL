@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07i"
+FW_VERSION = "2026-09-08a"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -450,7 +450,54 @@ def ejecutar_test_gavetas(test, seq):
         print("Gavetas: no se pudo devolver el resultado:", error)
 
 
+def _ptl_rfid_iniciar(test, seq):
+    """Arma el modo RFID de gaveta: llega por el mismo sondeo que test_led/
+    test_micros, asi que se reporta el resultado igual (confirma el 'seq')."""
+    global _ptl_rfid_modo
+    duracion_ms = int(test.get("duracion_ms") or 30000)
+    _ptl_rfid_modo = {
+        "tipo": test.get("ptl_rfid_modo"), "canal": test.get("canal"),
+        "orden_id": test.get("orden_id"),
+        "hasta_ms": time.ticks_add(time.ticks_ms(), duracion_ms),
+    }
+    print("PTL RFID: modo armado ->", _ptl_rfid_modo["tipo"])
+    if http_client is None or backend_cfg is None or not seq:
+        return
+    try:
+        http_client.post_json(
+            backend_cfg.BACKEND_HOST, "/api/esp32/rfid/gaveta/test-resultado",
+            {"device_id": DEVICE_ID, "seq": seq, "resultado": {"ok": True}},
+            port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=3)
+    except Exception as error:
+        print("PTL RFID: no se pudo confirmar el armado:", error)
+
+
 def procesar_tarjeta(uid):
+    global _ptl_rfid_modo
+    if _ptl_rfid_modo is not None:
+        modo = _ptl_rfid_modo
+        _ptl_rfid_modo = None   # un solo tiro: se desarma al leer, la pida el servidor o no
+        print("PTL RFID (%s):" % modo.get("tipo"), uid)
+        status, response = None, None
+        if http_client is not None and backend_cfg is not None:
+            status, response = http_client.post_json(
+                backend_cfg.BACKEND_HOST, "/api/esp32/rfid/gaveta/lectura",
+                {"device_id": DEVICE_ID, "uid": uid, "tipo": modo.get("tipo"),
+                 "canal": modo.get("canal"), "orden_id": modo.get("orden_id")},
+                port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=3)
+        if status == 200 and response and response.get("ok"):
+            draw_result("GAVETA RFID", response.get("mensaje") or "LEIDO", GREEN)
+            beep_ok()
+        elif status and 400 <= status < 500:
+            draw_result("GAVETA RFID", (response or {}).get("mensaje") or "NO VALIDO", RED)
+            beep_rechazo()
+        else:
+            draw_result("GAVETA RFID", "SIN CONEXION", YELLOW)
+            beep_error()
+        time.sleep_ms(1500)
+        actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+        return
+
     print("Tarjeta:", uid)
     status, response = enviar_entrada(uid)
     if status == 200 and response and response.get("success"):
@@ -473,6 +520,13 @@ nfc_fallos = 0
 ultimo_nfc = 0
 uid_anterior = ""
 uid_anterior_ts = 0
+# Modo RFID de gaveta: None = login normal (de toda la vida). Cuando el
+# servidor lo arma (ver pick_to_light.py: /canal/rfid/armar), la SIGUIENTE
+# tarjeta leida se manda a /api/esp32/rfid/gaveta/lectura en vez de al login,
+# y se desarma sola -- un solo tiro, para no confundir nunca mas de una
+# lectura con lo mismo. "hasta_ms" es la red de seguridad si nadie acerca
+# nada: sin ella un armado olvidado interceptaria el primer login de verdad.
+_ptl_rfid_modo = None
 ultimo_wifi = 0
 ultimo_latido = 0
 ultima_orden_gavetas = 0
@@ -548,7 +602,11 @@ while True:
                 timeout=2)
             if orden and orden.get("success"):
                 test = orden.get("test")
-                if test:
+                if test and test.get("ptl_rfid_modo"):
+                    # Alta/verificacion RFID de gaveta armada desde Admin: no
+                    # es una prueba de cableado, no toca gavetas.py para nada.
+                    _ptl_rfid_iniciar(test, orden.get("test_seq"))
+                elif test:
                     # Prueba de cableado pedida desde Admin. El servidor no ha
                     # podido empujarla al puerto 80, asi que se ejecuta aqui y
                     # se le devuelve el resultado: 'test_micros' no vale de
@@ -565,6 +623,13 @@ while True:
                                         orden.get("validas"))
                     except (TypeError, ValueError):
                         pass
+
+        # Red de seguridad del modo RFID de gaveta: si nadie acerca ninguna
+        # etiqueta, no puede quedarse armado para siempre interceptando el
+        # primer login de verdad que llegue despues.
+        if _ptl_rfid_modo is not None and time.ticks_diff(now, _ptl_rfid_modo["hasta_ms"]) >= 0:
+            print("PTL RFID: modo caducado sin lectura")
+            _ptl_rfid_modo = None
 
         if nfc_estado == "ko" and time.ticks_diff(now, ultimo_nfc) >= NFC_REINTENTO_S * 1000:
             ultimo_nfc = now

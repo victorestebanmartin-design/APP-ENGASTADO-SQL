@@ -417,6 +417,221 @@ def api_pick_to_light_desasignar_canal():
         return error_interno(e, 'Error al desasignar el canal')
 
 
+# ==================== ALTA DE RFID POR CANAL (admin) ====================
+#
+# Las etiquetas RFID de gaveta se leen con el MISMO RC522 que ya usa el
+# lector para el login de operarios: no hay hardware nuevo, hay que saber
+# distinguir una lectura de la otra. La placa arma un "modo" (armado aqui, en
+# el servidor) para la SIGUIENTE tarjeta que pase; mientras no este armado,
+# el lector se comporta exactamente igual que siempre (login normal).
+#
+# El armado viaja por el mismo canal de comandos de prueba por sondeo
+# (_test_encolar/_test_cargar) que ya usan test_led/test_micros: la placa lo
+# recoge en su sondeo de /api/esp32/rfid/gaveta/orden (cada 750 ms) y activa
+# el modo durante RFID_ARMADO_DURACION_MS. Un solo tiro: la propia placa lo
+# desarma en cuanto lee una tarjeta, o solo si pasa el tiempo sin que nadie
+# acerque nada.
+
+RFID_ARMADO_DURACION_MS = 30_000   # "20-30 segundos" pedido
+
+
+def _rfid_armado_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(
+        os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'pick_to_light_rfid_armado.json')
+
+
+def _rfid_armado_cargar():
+    try:
+        with open(_rfid_armado_file(), encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _rfid_armado_guardar(datos):
+    with open(_rfid_armado_file(), 'w', encoding='utf-8') as f:
+        json.dump(datos, f)
+
+
+def _rfid_ocupante(uid, excluir_puesto=None, excluir_canal=None):
+    """(puesto_id, canal, terminal) donde ya esta activo este UID, o None.
+
+    'excluir_*' deja pasar la fila que se esta editando (cambiar la etiqueta
+    de la MISMA gaveta no puede chocar consigo misma).
+    """
+    fila = db.session.execute(text("""
+        SELECT puesto_id, canal, terminal_codigo FROM pick_to_light_canales
+        WHERE uid_rfid = :uid AND activo = 1
+    """), {'uid': uid}).fetchone()
+    if not fila:
+        return None
+    if fila[0] == excluir_puesto and fila[1] == excluir_canal:
+        return None
+    return fila
+
+
+@bp.route('/api/pick-to-light/canal/rfid/armar', methods=['POST'])
+@requiere_pin_admin
+def api_pick_to_light_rfid_armar():
+    """Deja el lector del puesto a la espera de la PRÓXIMA tarjeta leída.
+
+    No hace falta que el canal tenga ya un terminal asignado: se puede armar
+    para identificar una etiqueta antes de decidir a qué gaveta va, aunque el
+    flujo normal (Admin) primero asigna terminal y luego arma el RFID.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        try:
+            canal = int(datos.get('canal'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+
+        device_id, _ = _placa_del_puesto(puesto_id)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Este puesto no tiene lector asignado'}), 404
+
+        seq = _test_encolar(device_id, {
+            'ptl_rfid_modo': 'alta', 'canal': canal,
+            'duracion_ms': RFID_ARMADO_DURACION_MS,
+        })
+        armado = _rfid_armado_cargar()
+        armado[device_id] = {'puesto_id': puesto_id, 'canal': canal, 'seq': seq,
+                             'uid': None, 'listo': False}
+        _rfid_armado_guardar(armado)
+
+        return jsonify({'success': True, 'device_id': device_id, 'seq': seq,
+                        'segundos': RFID_ARMADO_DURACION_MS // 1000})
+    except Exception as e:
+        return error_interno(e, 'Error al armar la lectura RFID')
+
+
+@bp.route('/api/pick-to-light/canal/rfid/armar', methods=['GET'])
+@requiere_pin_admin
+def api_pick_to_light_rfid_sondear():
+    """Lo que sondea el panel de admin mientras espera a que se acerque la gaveta."""
+    try:
+        device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        try:
+            seq = int(request.args.get('seq') or 0)
+        except (TypeError, ValueError):
+            seq = 0
+        entrada = (_rfid_armado_cargar().get(device_id) or {})
+        listo = bool(seq and int(entrada.get('seq') or 0) == seq and entrada.get('listo'))
+        return jsonify({'success': True, 'listo': listo,
+                        'uid': entrada.get('uid') if listo else None})
+    except Exception as e:
+        return error_interno(e, 'Error al consultar la lectura RFID')
+
+
+@bp.route('/api/pick-to-light/canal/rfid', methods=['PUT'])
+@requiere_pin_admin
+def api_pick_to_light_rfid_confirmar():
+    """Confirma y guarda el UID leído para un canal que YA tiene terminal."""
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        try:
+            canal = int(datos.get('canal'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+        uid = _normalizar_uid(datos.get('uid'))
+        if not uid:
+            return jsonify({'success': False, 'message': 'Falta el UID leído'}), 400
+
+        fila = db.session.execute(text("""
+            SELECT terminal_codigo FROM pick_to_light_canales
+            WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
+        """), {'puesto_id': puesto_id, 'canal': canal}).fetchone()
+        if not fila:
+            return jsonify({'success': False,
+                            'message': 'Asigna primero un terminal a este canal'}), 400
+
+        choque = _rfid_ocupante(uid, excluir_puesto=puesto_id, excluir_canal=canal)
+        if choque:
+            return jsonify({'success': False,
+                            'message': ('Este UID ya está asignado al canal %d (terminal %s) '
+                                       'de otro puesto' % (choque[1], choque[2]))
+                                       if choque[0] != puesto_id else
+                                       ('Este UID ya está asignado al canal %d (terminal %s) '
+                                       'de este mismo puesto' % (choque[1], choque[2]))}), 409
+
+        db.session.execute(text("""
+            UPDATE pick_to_light_canales SET uid_rfid = :uid, updated_at = datetime('now')
+            WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
+        """), {'uid': uid, 'puesto_id': puesto_id, 'canal': canal})
+        db.session.commit()
+        return jsonify({'success': True, 'uid': uid})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar el RFID del canal')
+
+
+@bp.route('/api/pick-to-light/canal/rfid', methods=['DELETE'])
+@requiere_pin_admin
+def api_pick_to_light_rfid_desvincular():
+    try:
+        puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        try:
+            canal = int(request.args.get('canal'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+
+        db.session.execute(text("""
+            UPDATE pick_to_light_canales SET uid_rfid = NULL, updated_at = datetime('now')
+            WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
+        """), {'puesto_id': puesto_id, 'canal': canal})
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al desvincular el RFID')
+
+
+@bp.route('/api/esp32/rfid/gaveta/lectura', methods=['POST'])
+def api_esp32_rfid_gaveta_lectura():
+    """La placa manda una lectura RFID de GAVETA (alta o verificación).
+
+    Nunca se confunde con el login de operarios: solo llega aquí cuando el
+    servidor había armado el modo (ver /canal/rfid/armar) y la placa lo
+    desarma sola tras una lectura, así que esto nunca compite con
+    /api/esp32/rfid/entrada.
+    """
+    try:
+        from app.routes.sistema import _esp32_device_id
+        datos = request.get_json(silent=True) or {}
+        device_id = _esp32_device_id(datos.get('device_id'))
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Falta device_id'}), 400
+
+        uid = _normalizar_uid(datos.get('uid'))
+        tipo = (datos.get('tipo') or '').strip()[:20]
+        if not uid:
+            return jsonify({'success': False, 'ok': False, 'mensaje': 'Lectura vacía'}), 400
+
+        if tipo == 'alta':
+            armado = _rfid_armado_cargar()
+            entrada = armado.get(device_id)
+            if not entrada:
+                # Se desarmo (caducidad/otra prueba) antes de que llegara la lectura.
+                return jsonify({'success': True, 'ok': False,
+                                'mensaje': 'La lectura llegó tarde, vuelve a pulsar "Asignar RFID"'})
+            choque = _rfid_ocupante(uid, excluir_puesto=entrada.get('puesto_id'),
+                                    excluir_canal=entrada.get('canal'))
+            entrada['uid'] = uid
+            entrada['listo'] = True
+            armado[device_id] = entrada
+            _rfid_armado_guardar(armado)
+            if choque:
+                return jsonify({'success': True, 'ok': False,
+                                'mensaje': 'Esa etiqueta ya está en uso en otra gaveta'})
+            return jsonify({'success': True, 'ok': True, 'mensaje': 'Leído: %s' % uid})
+
+        # 'verificar' (orden productiva en curso): ver Fase 3.
+        return jsonify({'success': True, 'ok': False, 'mensaje': 'Modo no soportado'}), 400
+    except Exception as e:
+        return error_interno(e, 'Error al procesar la lectura RFID')
+
+
 def _backend_pythonanywhere():
     """True si el servidor no puede abrir conexiones a las IP privadas."""
     host = (request.host or '').split(':', 1)[0].lower()
