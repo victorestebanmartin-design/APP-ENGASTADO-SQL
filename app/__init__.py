@@ -336,6 +336,27 @@ def _apply_migrations(db_path):
             'asignada, no se pudieron migrar a pick_to_light_canales: %s',
             len(huerfanos), ', '.join(huerfanos))
 
+    # Migración: pick_to_light_incidencias (historial de incidencias del
+    # Pick-to-Light: UID incorrecto, bypass/timeout de RFID, canal cruzado en
+    # la prueba guiada, micro sin respuesta). Trazabilidad simple, no crítica
+    # para la operativa: por eso no se para el arranque si algo aquí falla.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pick_to_light_incidencias (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            puesto_id       TEXT,
+            canal           INTEGER,
+            terminal_codigo TEXT,
+            tipo            TEXT NOT NULL,
+            detalle         TEXT,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ptl_incidencias_puesto
+        ON pick_to_light_incidencias(puesto_id, created_at)
+    """)
+    conn.commit()
+
     # Migración: columnas tipo_operacion y pdf_instrucciones en maquinas
     cur.execute("PRAGMA table_info(maquinas)")
     maq_cols = {row[1] for row in cur.fetchall()}

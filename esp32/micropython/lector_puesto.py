@@ -59,6 +59,10 @@ DB9_PINS = (17, 15, 48, 47, 38, 39)
 NFC_POLL_MS = 300
 NFC_REPETIR_MS = 3000
 NFC_REINTENTO_S = 10
+# El modo de verificacion RFID de una orden productiva se refresca en cada
+# sondeo (cada 750 ms); este margen solo cubre saltarse uno o dos sin
+# desarmarse de golpe (un handshake lento, un paquete perdido).
+RFID_VERIFICAR_MARGEN_MS = 5000
 NFC_FALLOS_MAX = 5
 
 # Pick-to-light opcional por el DB9: tira WS2813 y bus I2C de MCP23017.
@@ -451,16 +455,24 @@ def ejecutar_test_gavetas(test, seq):
 
 
 def _ptl_rfid_iniciar(test, seq):
-    """Arma el modo RFID de gaveta: llega por el mismo sondeo que test_led/
-    test_micros, asi que se reporta el resultado igual (confirma el 'seq')."""
+    """Arma (o desarma, si 'ptl_rfid_modo' es None) el modo RFID de gaveta.
+
+    Llega por el mismo sondeo que test_led/test_micros, asi que se reporta
+    el resultado igual (confirma el 'seq'), aunque aqui no haya nada que
+    ejecutar sobre gavetas.py: esto es del NFC, no del I2C de las gavetas.
+    """
     global _ptl_rfid_modo
-    duracion_ms = int(test.get("duracion_ms") or 30000)
-    _ptl_rfid_modo = {
-        "tipo": test.get("ptl_rfid_modo"), "canal": test.get("canal"),
-        "orden_id": test.get("orden_id"),
-        "hasta_ms": time.ticks_add(time.ticks_ms(), duracion_ms),
-    }
-    print("PTL RFID: modo armado ->", _ptl_rfid_modo["tipo"])
+    tipo = test.get("ptl_rfid_modo")
+    if not tipo:
+        _ptl_rfid_modo = None
+        print("PTL RFID: modo desarmado")
+    else:
+        duracion_ms = int(test.get("duracion_ms") or 30000)
+        _ptl_rfid_modo = {
+            "tipo": tipo, "canal": test.get("canal"), "orden_id": test.get("orden_id"),
+            "hasta_ms": time.ticks_add(time.ticks_ms(), duracion_ms),
+        }
+        print("PTL RFID: modo armado ->", tipo)
     if http_client is None or backend_cfg is None or not seq:
         return
     try:
@@ -602,8 +614,9 @@ while True:
                 timeout=2)
             if orden and orden.get("success"):
                 test = orden.get("test")
-                if test and test.get("ptl_rfid_modo"):
-                    # Alta/verificacion RFID de gaveta armada desde Admin: no
+                if test and "ptl_rfid_modo" in test:
+                    # Arma o desarma la lectura RFID de gaveta (la clave
+                    # SIEMPRE va, aunque su valor sea None para desarmar): no
                     # es una prueba de cableado, no toca gavetas.py para nada.
                     _ptl_rfid_iniciar(test, orden.get("test_seq"))
                 elif test:
@@ -623,6 +636,22 @@ while True:
                                         orden.get("validas"))
                     except (TypeError, ValueError):
                         pass
+
+                # La verificacion RFID de la orden productiva NO es un
+                # comando de un solo tiro como 'alta': el servidor la manda en
+                # CADA sondeo mientras siga pendiente (ver _rfid_modo_de en
+                # pick_to_light.py), y aqui se sincroniza sola, sin pisar un
+                # 'alta' que pudiera estar en marcha desde Admin.
+                rfid_modo_srv = orden.get("rfid_modo")
+                si_verificando = _ptl_rfid_modo is not None and _ptl_rfid_modo.get("tipo") == "verificar"
+                if rfid_modo_srv and (_ptl_rfid_modo is None or si_verificando):
+                    _ptl_rfid_modo = {
+                        "tipo": "verificar", "canal": rfid_modo_srv.get("canal"),
+                        "orden_id": rfid_modo_srv.get("orden_id"),
+                        "hasta_ms": time.ticks_add(now, RFID_VERIFICAR_MARGEN_MS),
+                    }
+                elif not rfid_modo_srv and si_verificando:
+                    _ptl_rfid_modo = None
 
         # Red de seguridad del modo RFID de gaveta: si nadie acerca ninguna
         # etiqueta, no puede quedarse armado para siempre interceptando el

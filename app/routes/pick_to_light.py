@@ -22,6 +22,7 @@ Dos decisiones que explican la forma de este fichero:
 import http.client
 import json
 import os
+import uuid
 from datetime import datetime
 
 from flask import request, jsonify, current_app
@@ -432,7 +433,42 @@ def api_pick_to_light_desasignar_canal():
 # desarma en cuanto lee una tarjeta, o solo si pasa el tiempo sin que nadie
 # acerque nada.
 
-RFID_ARMADO_DURACION_MS = 30_000   # "20-30 segundos" pedido
+RFID_ARMADO_DURACION_MS = 30_000   # "20-30 segundos" pedido: admin de pie delante del lector
+# El modo de VERIFICACION (orden productiva) dura lo que un operario tarda en
+# elegir el terminal, ir a por la gaveta y acercarla al lector: no puede ir
+# por el canal de comandos de un solo tiro (_test_encolar), porque ESE mismo
+# canal es el que usa /api/esp32/rfid/gaveta/orden para la orden de LED de
+# cada puesto, y un comando ahi pendiente le roba el turno al 'led' normal en
+# cuanto el sondeo lo ve (ver api_pick_to_light_orden). En vez de eso,
+# 'rfid_modo' se calcula solo de lo que ya hay en el estado (uid_esperado +
+# rfid_confirmado) y se manda en CADA sondeo junto al 'led': el propio
+# lector_puesto.py lo va sincronizando solo, poll a poll, sin comandos sueltos
+# que haya que acordarse de desarmar.
+
+
+def _rfid_modo_de(actual):
+    """rfid_modo que le toca mandar a la placa en el sondeo, o None."""
+    if actual.get('uid_esperado') and not actual.get('rfid_confirmado'):
+        return {'canal': actual.get('led'), 'orden_id': actual.get('orden_id')}
+    return None
+
+
+def _registrar_incidencia(puesto_id, canal, terminal, tipo, detalle=None):
+    """Historial de incidencias de Pick-to-Light (RFID incorrecto/bypass/
+    timeout, canal cruzado en la prueba guiada, micro sin respuesta...).
+
+    Trazabilidad, no control de flujo: un fallo aqui nunca debe tumbar la
+    peticion que lo origino.
+    """
+    try:
+        db.session.execute(text("""
+            INSERT INTO pick_to_light_incidencias (puesto_id, canal, terminal_codigo, tipo, detalle)
+            VALUES (:puesto_id, :canal, :terminal, :tipo, :detalle)
+        """), {'puesto_id': puesto_id, 'canal': canal, 'terminal': terminal,
+              'tipo': tipo, 'detalle': detalle})
+        db.session.commit()
+    except Exception as e:
+        current_app.logger.warning('No se pudo registrar incidencia PTL (%s): %s', tipo, e)
 
 
 def _rfid_armado_file():
@@ -626,7 +662,44 @@ def api_esp32_rfid_gaveta_lectura():
                                 'mensaje': 'Esa etiqueta ya está en uso en otra gaveta'})
             return jsonify({'success': True, 'ok': True, 'mensaje': 'Leído: %s' % uid})
 
-        # 'verificar' (orden productiva en curso): ver Fase 3.
+        if tipo == 'verificar':
+            orden_id = (datos.get('orden_id') or '').strip()
+            puesto_id = _puesto_de_la_placa(device_id)
+            if not puesto_id:
+                return jsonify({'success': True, 'ok': False, 'mensaje': 'Lector sin puesto'})
+
+            estado = _estado_cargar()
+            actual = estado.get(puesto_id) or {}
+            # Del lector de OTRO puesto no puede llegar (device_id ya resuelve
+            # el puesto), y una orden vieja (id distinto, o ya sin objetivo)
+            # no puede confirmar la de ahora: por eso manda el orden_id, no
+            # basta con que el puesto coincida.
+            if not actual.get('led') or not orden_id or actual.get('orden_id') != orden_id:
+                return jsonify({'success': True, 'ok': False,
+                                'mensaje': 'Esta lectura ya no corresponde a ningún trabajo activo'})
+
+            uid_esperado = actual.get('uid_esperado')
+            if not uid_esperado:
+                return jsonify({'success': True, 'ok': False, 'mensaje': 'Esta gaveta no lleva RFID'})
+
+            if uid != uid_esperado:
+                actual['uid_incorrecto'] = uid
+                estado[puesto_id] = actual
+                _estado_guardar(estado)
+                _registrar_incidencia(puesto_id, actual.get('led'), actual.get('terminal'),
+                                      'rfid_incorrecto', 'esperado=%s leido=%s' % (uid_esperado, uid))
+                return jsonify({'success': True, 'ok': False,
+                                'mensaje': 'La etiqueta leída no corresponde a la gaveta esperada'})
+
+            # UID correcto: se guarda como validado aunque el micro correcto
+            # aun no se haya abierto (puede llegar antes); la confirmacion
+            # final la decide _calcular_estado_orden con las dos cosas.
+            actual['rfid_confirmado'] = True
+            actual['uid_incorrecto'] = None
+            estado[puesto_id] = actual
+            _estado_guardar(estado)
+            return jsonify({'success': True, 'ok': True, 'mensaje': 'Gaveta verificada'})
+
         return jsonify({'success': True, 'ok': False, 'mensaje': 'Modo no soportado'}), 400
     except Exception as e:
         return error_interno(e, 'Error al procesar la lectura RFID')
@@ -683,16 +756,27 @@ def api_pick_to_light_encender():
         validas = _gavetas_validas_del_puesto(puesto_id)
         ok, motivo = _enviar_a_placa(ip, {'led': led, 'terminal': terminal, 'validas': validas})
 
+        # Cada encendido es una orden nueva: el orden_id es lo que evita que
+        # una lectura RFID tardia de la orden ANTERIOR (p.ej. el operario tapa
+        # la etiqueta ya con el terminal siguiente elegido) confirme algo que
+        # no toca. Si esta gaveta lleva RFID, /orden ira mandando el modo de
+        # verificacion en cada sondeo mientras 'rfid_confirmado' siga a False
+        # (ver _rfid_modo_de); si no lleva, no se manda nada.
+        orden_id = uuid.uuid4().hex[:12]
+
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
         estado = _estado_cargar()
         estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
                              'recogida': False, 'devuelta': False, 'validas': validas,
-                             'error_led': None, 'intrusas': [], 'eventos': []}
+                             'error_led': None, 'intrusas': [], 'eventos': [],
+                             'orden_id': orden_id, 'uid_esperado': uid_rfid,
+                             'rfid_confirmado': False, 'uid_incorrecto': None}
         _estado_guardar(estado)
 
         remoto = not ok and _backend_pythonanywhere()
         return jsonify({'success': True, 'activo': ok or remoto, 'led': led, 'gaveta': gaveta,
+                'rfid': bool(uid_rfid),
                 'motivo': ('La placa recibirá la orden por sondeo.' if remoto else motivo)})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
@@ -722,6 +806,23 @@ def api_pick_to_light_apagar():
         return error_interno(e, 'Error al apagar las gavetas')
 
 
+def _calcular_estado_orden(actual):
+    """Estado de la orden en curso, calculado a partir de lo ya guardado
+    (no se persiste aparte, para no tener dos fuentes de verdad).
+
+    pendiente | esperando_micro | esperando_rfid | confirmada | rfid_incorrecto
+    """
+    if not actual.get('led'):
+        return 'pendiente'
+    if actual.get('uid_incorrecto'):
+        return 'rfid_incorrecto'
+    if not actual.get('recogida'):
+        return 'esperando_micro'
+    if actual.get('uid_esperado') and not actual.get('rfid_confirmado'):
+        return 'esperando_rfid'
+    return 'confirmada'
+
+
 @bp.route('/api/pick-to-light/estado', methods=['GET'])
 def api_pick_to_light_estado():
     """Lo que sondea el navegador mientras espera a que saquen la gaveta."""
@@ -737,6 +838,11 @@ def api_pick_to_light_estado():
             'devuelta': bool(actual.get('devuelta')),
             'error_led': actual.get('error_led'),
             'intrusas': list(actual.get('intrusas') or []),
+            'orden_id': actual.get('orden_id'),
+            'uid_esperado': bool(actual.get('uid_esperado')),
+            'rfid_confirmado': bool(actual.get('rfid_confirmado')),
+            'uid_incorrecto': bool(actual.get('uid_incorrecto')),
+            'estado': _calcular_estado_orden(actual),
         })
     except Exception as e:
         return error_interno(e, 'Error al consultar las gavetas')
@@ -810,7 +916,8 @@ def api_pick_to_light_orden():
                         'apagar': not bool(led),
                         'led': led,
                         'terminal': (estado or {}).get('terminal') or '',
-                        'validas': (estado or {}).get('validas') or []})
+                        'validas': (estado or {}).get('validas') or [],
+                        'rfid_modo': _rfid_modo_de(estado or {})})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
 
@@ -1144,6 +1251,24 @@ def api_ptl_guardar_informe():
         todo = _correspondencia_cargar()
         todo[device_id] = informe
         _correspondencia_guardar(todo)
+
+        # Los cruces y las gavetas sin respuesta detectados en la prueba
+        # guiada tambien cuentan como incidencia de trazabilidad, no solo
+        # como fila del informe (que solo guarda el ultimo, este historial no).
+        puesto_id = informe['puesto_id']
+        for fila in informe['detalle']:
+            if not isinstance(fila, dict):
+                continue
+            resultado = fila.get('resultado')
+            if resultado == 'cruzado':
+                _registrar_incidencia(puesto_id, fila.get('canal'), fila.get('terminal'),
+                                      'canal_cruzado', 'abrio_canal=%s' % fila.get('abrio_canal'))
+            elif resultado == 'sin_respuesta':
+                _registrar_incidencia(puesto_id, fila.get('canal'), fila.get('terminal'),
+                                      'micro_sin_respuesta')
+        if informe['cancelado']:
+            _registrar_incidencia(puesto_id, None, None, 'cancelacion', 'prueba de correspondencia')
+
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e, 'Error al guardar el informe')
@@ -1159,6 +1284,64 @@ def api_ptl_obtener_informe():
         return jsonify({'success': True, 'informe': informe})
     except Exception as e:
         return error_interno(e, 'Error al obtener el informe')
+
+
+# ==================== INCIDENCIAS (trazabilidad) ====================
+
+INCIDENCIA_TIPOS = {'rfid_incorrecto', 'rfid_bypass', 'rfid_timeout',
+                    'canal_cruzado', 'micro_sin_respuesta', 'cancelacion'}
+
+
+@bp.route('/api/pick-to-light/incidencia', methods=['POST'])
+def api_pick_to_light_incidencia():
+    """El operario reporta un bypass o un timeout de RFID durante el trabajo.
+
+    Sin pin de admin a propósito: la manda la pantalla de engastado, no
+    Admin. El tipo va restringido a los conocidos para no llenar la tabla de
+    basura si algo en el JS manda cualquier cosa.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        tipo = (datos.get('tipo') or '').strip()[:30]
+        if tipo not in INCIDENCIA_TIPOS:
+            return jsonify({'success': False, 'message': 'Tipo de incidencia no reconocido'}), 400
+
+        actual = _estado_cargar().get(puesto_id) or {}
+        _registrar_incidencia(puesto_id, actual.get('led'), actual.get('terminal'), tipo,
+                              (datos.get('detalle') or '')[:200] or None)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al registrar la incidencia')
+
+
+@bp.route('/api/pick-to-light/incidencias', methods=['GET'])
+@requiere_pin_admin
+def api_pick_to_light_incidencias():
+    """Historial de incidencias, lo más reciente primero."""
+    try:
+        puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        try:
+            limite = min(200, max(1, int(request.args.get('limit') or 50)))
+        except (TypeError, ValueError):
+            limite = 50
+
+        sql = """
+            SELECT id, puesto_id, canal, terminal_codigo, tipo, detalle, created_at
+            FROM pick_to_light_incidencias
+        """
+        parametros = {'limite': limite}
+        if puesto_id:
+            sql += " WHERE puesto_id = :puesto_id"
+            parametros['puesto_id'] = puesto_id
+        sql += " ORDER BY id DESC LIMIT :limite"
+
+        filas = db.session.execute(text(sql), parametros).fetchall()
+        incidencias = [{'id': f[0], 'puesto_id': f[1], 'canal': f[2], 'terminal': f[3],
+                        'tipo': f[4], 'detalle': f[5], 'fecha': f[6]} for f in filas]
+        return jsonify({'success': True, 'incidencias': incidencias})
+    except Exception as e:
+        return error_interno(e, 'Error al consultar las incidencias')
 
 
 # ==================== LO QUE MANDA LA PLACA ====================

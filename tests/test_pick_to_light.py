@@ -286,11 +286,11 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204', 'validas': [7]}
+    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204', 'validas': [7], 'rfid_modo': None}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': []}
+    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': [], 'rfid_modo': None}
 
 
 def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
@@ -313,7 +313,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '', 'validas': []}
+    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '', 'validas': [], 'rfid_modo': None}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
@@ -1032,3 +1032,188 @@ def test_mapa_marca_rfid_true_cuando_esta_configurado(app, admin_client):
     datos = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev).get_json()
     por_canal = {c['canal']: c for c in datos['canales']}
     assert por_canal[3]['rfid'] is True
+
+
+# ── Verificación RFID de la orden productiva ─────────────────────────────────
+#
+# El micro confirma que se ha sacado la posición correcta; el RFID confirma
+# que la gaveta física es la esperada. Doble check de integridad operativa,
+# no antifraude: por eso una gaveta sin RFID configurado sigue funcionando
+# exactamente igual que siempre (implantación gradual).
+
+def _encender_con_rfid(app, client, admin_client, con_placa, puesto_id='puesto_001',
+                       device_id=None, terminal='640204', canal=7, uid='AABBCC'):
+    """Deja una orden en curso con RFID esperado. Devuelve el device_id."""
+    if device_id is None:
+        device_id = _registrar_lector(app, puesto_id=puesto_id)
+    _asignar_canal(admin_client, puesto_id, canal, terminal, 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': puesto_id, 'canal': canal, 'uid': uid})
+    client.post('/api/pick-to-light/encender', json={'puesto_id': puesto_id, 'terminal': terminal})
+    return device_id
+
+
+def test_orden_con_rfid_manda_el_modo_de_verificacion_en_el_sondeo(app, client, admin_client, con_placa):
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa)
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['rfid_modo']['canal'] == 7
+    assert orden['rfid_modo']['orden_id']
+
+
+def test_rfid_correcto_con_micro_correcto_confirma(app, client, admin_client, con_placa):
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa)
+    orden_id = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id
+                          ).get_json()['rfid_modo']['orden_id']
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'aa:bb:cc', 'tipo': 'verificar',
+                          'orden_id': orden_id})
+    assert r.status_code == 200 and r.get_json()['ok'] is True
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'confirmada'
+    assert estado['rfid_confirmado'] is True
+
+    # Ya no hace falta seguir verificando: el sondeo deja de pedirlo.
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['rfid_modo'] is None
+
+
+def test_rfid_correcto_antes_de_abrir_el_micro_no_confirma_todavia(app, client, admin_client, con_placa):
+    """Se guarda como validado, pero la orden no está 'confirmada' hasta el micro."""
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa)
+    orden_id = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id
+                          ).get_json()['rfid_modo']['orden_id']
+
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'AABBCC', 'tipo': 'verificar',
+                          'orden_id': orden_id})
+    assert r.get_json()['ok'] is True
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['rfid_confirmado'] is True
+    assert estado['estado'] == 'esperando_micro'   # el RFID ya vale, falta abrir el cajon
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'confirmada'
+
+
+def test_rfid_incorrecto_no_confirma_y_registra_incidencia(app, client, admin_client, con_placa):
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa)
+    orden_id = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id
+                          ).get_json()['rfid_modo']['orden_id']
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'FFFFFF', 'tipo': 'verificar',
+                          'orden_id': orden_id})
+    datos = r.get_json()
+    assert datos['ok'] is False
+    assert 'no corresponde' in datos['mensaje']
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'rfid_incorrecto'
+    assert estado['uid_incorrecto'] is True
+
+    incidencias = admin_client.get('/api/pick-to-light/incidencias?puesto_id=puesto_001').get_json()
+    tipos = [i['tipo'] for i in incidencias['incidencias']]
+    assert 'rfid_incorrecto' in tipos
+
+
+def test_rfid_de_otro_puesto_no_afecta_a_esta_orden(app, client, admin_client, con_placa):
+    """Un lector de OTRO puesto no puede tocar el estado de este."""
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa, puesto_id='puesto_001')
+    _asignar_terminal_a_maquina(app, 'ZZOTRO', puesto_id='puesto_002', maquina_id='maquina_otra')
+    otro_device = _encender_con_rfid(app, client, admin_client, con_placa, puesto_id='puesto_002',
+                                     terminal='ZZOTRO', canal=1, uid='112233')
+
+    # Una lectura que llega por el lector del OTRO puesto, aunque adivinara el
+    # orden_id de este, no puede tocar el estado de puesto_001: el servidor
+    # resuelve el puesto por el device_id, no por lo que diga el cuerpo.
+    orden_id_001 = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id
+                              ).get_json()['rfid_modo']['orden_id']
+    client.post('/api/esp32/rfid/gaveta/lectura',
+                json={'device_id': otro_device, 'uid': 'AABBCC', 'tipo': 'verificar',
+                      'orden_id': orden_id_001})
+
+    estado_001 = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado_001['rfid_confirmado'] is False
+
+
+def test_lectura_tardia_de_una_orden_anterior_no_confirma_la_nueva(app, client, admin_client, con_placa):
+    device_id = _encender_con_rfid(app, client, admin_client, con_placa)
+    orden_vieja = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id
+                             ).get_json()['rfid_modo']['orden_id']
+
+    # El operario cambia de terminal: nueva orden, nuevo orden_id.
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'DDEEFF'})
+    client.post('/api/pick-to-light/encender', json={'puesto_id': 'puesto_001', 'terminal': '640205'})
+
+    # Llega, tarde, la lectura de la orden VIEJA (terminal 640204, canal 7).
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'uid': 'AABBCC', 'tipo': 'verificar',
+                          'orden_id': orden_vieja})
+    assert r.get_json()['ok'] is False
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['led'] == 8 and estado['rfid_confirmado'] is False
+
+
+def test_gaveta_sin_rfid_configurado_mantiene_el_flujo_de_solo_micro(app, client, admin_client, con_placa):
+    """Implantación gradual: sin UID en el canal, todo sigue como siempre."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender', json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['rfid_modo'] is None
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'confirmada'
+    assert estado['uid_esperado'] is False
+
+
+def test_rfid_timeout_o_bypass_se_registra_como_incidencia(app, client, admin_client, con_placa):
+    _encender_con_rfid(app, client, admin_client, con_placa)
+    r = client.post('/api/pick-to-light/incidencia',
+                    json={'puesto_id': 'puesto_001', 'tipo': 'rfid_bypass',
+                          'detalle': 'operario siguió sin confirmar'})
+    assert r.status_code == 200
+
+    incidencias = admin_client.get('/api/pick-to-light/incidencias?puesto_id=puesto_001').get_json()
+    assert incidencias['incidencias'][0]['tipo'] == 'rfid_bypass'
+
+
+def test_incidencia_de_tipo_no_reconocido_se_rechaza(client):
+    r = client.post('/api/pick-to-light/incidencia',
+                    json={'puesto_id': 'puesto_001', 'tipo': 'lo-que-sea'})
+    assert r.status_code == 400
+
+
+def test_incidencias_requiere_pin_admin(client):
+    r = client.get('/api/pick-to-light/incidencias?puesto_id=puesto_001')
+    assert r.status_code in (401, 403)
+
+
+def test_prueba_guiada_registra_cruces_y_sin_respuesta_como_incidencias(app, admin_client):
+    dev = _registrar_lector(app)
+    detalle = [
+        {'canal': 1, 'terminal': '640204', 'gaveta': 'A-12', 'resultado': 'correcto'},
+        {'canal': 2, 'terminal': '640205', 'gaveta': 'A-13', 'resultado': 'cruzado', 'abrio_canal': 9},
+        {'canal': 3, 'terminal': '640206', 'gaveta': 'A-14', 'resultado': 'sin_respuesta'},
+    ]
+    admin_client.post('/api/pick-to-light/correspondencia/informe',
+                      json={'device_id': dev, 'resumen': {'comprobados': 3}, 'detalle': detalle})
+
+    incidencias = admin_client.get('/api/pick-to-light/incidencias?puesto_id=puesto_001').get_json()
+    tipos = sorted(i['tipo'] for i in incidencias['incidencias'])
+    assert tipos == ['canal_cruzado', 'micro_sin_respuesta']
