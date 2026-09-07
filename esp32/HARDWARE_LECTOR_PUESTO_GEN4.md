@@ -51,14 +51,27 @@ nunca polaridad invertida. Para el par de alimentacion usar cable de al menos
 
 ## Cableado en la gen4-Breakout
 
-| Componente | Senal | Pad | GPIO |
-|---|---|---:|---:|
-| PN532 en modo I2C | SDA | 11 | GPIO6 |
-| PN532 en modo I2C | SCL | 12 | GPIO5 |
-| PN532 | VCC | 20 | 3.3 V |
-| PN532 | GND | 21, 25 o 30 | GND |
-| Zumbador activo 3.3 V | positivo | 3 | GPIO18 |
-| Zumbador | negativo | 1, 21, 25 o 30 | GND |
+Colores **tal y como esta cableado** el PN532:
+
+| Componente | Senal | Color | Pad | GPIO |
+|---|---|---|---:|---:|
+| PN532 en modo I2C | SDA | Naranja | 11 | GPIO6 |
+| PN532 en modo I2C | SCL | Amarillo | 12 | GPIO5 |
+| PN532 | VCC | Rojo | 20 | 3.3 V |
+| PN532 | GND | Marron | 21 | GND |
+| Zumbador activo 3.3 V | positivo | — | 3 | GPIO18 |
+| Zumbador | negativo | — | 1, 21, 25 o 30 | GND |
+
+> **Ojo con los colores repetidos.** El arnes del PN532 y el del DB9 no
+> comparten codigo: aqui el amarillo es SCL y el naranja SDA, mientras que en el
+> DB9 el amarillo son los +3.3 V, el naranja son los datos de la tira, el azul
+> es SCL y el violeta SDA. Guiarse por el pad, no por el color, al saltar de un
+> arnes al otro.
+>
+> **El pad 20 alimenta a los dos.** De el salen el rojo del PN532 y el amarillo
+> del DB9-3 que alimenta los MCP23017. Son ~150 mA en total para todo: si se
+> añaden muchos expansores, montar un LDO externo en lugar de seguir colgando
+> del pad 20 (ver la seccion del MCP23017).
 
 El PN532 debe estar configurado en modo I2C. Colocar un condensador de 100 uF
 en paralelo con uno ceramico de 100 nF entre VCC y GND, pegados al modulo. Si
