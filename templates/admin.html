@@ -499,10 +499,14 @@
                             (verde); una gaveta sacada lo abre (amarillo). Saca y pon cada gaveta y pulsa
                             <strong>Releer</strong> para confirmar que ese canal y ese cable van bien.
                             Si una gaveta siempre aparece como fuera aunque esté puesta, el micro o el cable
-                            de ese canal están cortados.
+                            de ese canal están cortados.<br>
+                            Con <strong>Live</strong> no hace falta ir uno a uno: se queda leyendo sola y,
+                            en cuanto tocas un microinterruptor, resalta en azul el canal que ha cambiado —
+                            así sabes al momento a qué número corresponde cada cajón sin tener que contar.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
                             <button class="btn-primary" onclick="ptlLeerMicros()">🔍 Leer estado de micros</button>
+                            <button class="btn-secondary" id="ptl-btn-micro-live" onclick="ptlLiveMicros()">🔴 Live (pulsa un micro)</button>
                             <span id="ptl-micro-msg" style="font-size:0.88em;color:#94a3b8;"></span>
                         </div>
                         <div id="ptl-micro-grid" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
@@ -1647,6 +1651,8 @@
     (function () {
         var _ptlColor = [0, 120, 0];
         var _ptlDesfileActivo = false;
+        var _ptlMicroLiveActivo = false;
+        var _ptlMicroLiveFueraPrevio = null;   // null = aun sin la primera lectura
         var _ptlLectorId = '';        // device_id del lector seleccionado
         var _ptlTotalGavetas = 0;     // gavetas del lector activo
         var _ptlLedActual = null;     // LED encendido ahora (1-based), o null
@@ -1735,21 +1741,24 @@
             grid.innerHTML = html;
         }
 
-        function _ptlRenderMicroGrid(total, fuera) {
+        function _ptlRenderMicroGrid(total, fuera, resaltados) {
             var grid = document.getElementById('ptl-micro-grid');
             if (!grid || !total) { if (grid) grid.innerHTML = ''; return; }
             var fueraSet = new Set(fuera || []);
+            var resaltadoSet = resaltados instanceof Set ? resaltados : new Set(resaltados || []);
             var html = '';
             for (var i = 1; i <= total; i++) {
                 var esFuera = fueraSet.has(i);
+                var esNuevo = resaltadoSet.has(i);
                 var bg = esFuera ? 'rgba(251,191,36,.18)' : 'rgba(74,222,128,.18)';
-                var border = esFuera ? '#fbbf24' : '#4ade80';
+                var border = esNuevo ? '#60a5fa' : (esFuera ? '#fbbf24' : '#4ade80');
                 var label = esFuera ? '↑' + i : '●' + i;
                 var title = esFuera ? 'Gaveta ' + i + ' FUERA (contacto abierto)' : 'Gaveta ' + i + ' PUESTA (contacto cerrado)';
                 html += '<div title="' + title + '" ' +
-                    'style="width:54px;height:44px;border-radius:8px;border:2px solid ' + border + ';' +
+                    'style="width:54px;height:44px;border-radius:8px;border:' + (esNuevo ? '3px' : '2px') + ' solid ' + border + ';' +
+                    (esNuevo ? 'box-shadow:0 0 10px ' + border + ';transform:scale(1.1);' : '') +
                     'background:' + bg + ';display:flex;flex-direction:column;align-items:center;' +
-                    'justify-content:center;font-size:0.72em;font-weight:700;color:' + (esFuera ? '#fbbf24' : '#4ade80') + ';">' +
+                    'justify-content:center;font-size:0.72em;font-weight:700;color:' + (esFuera ? '#fbbf24' : '#4ade80') + ';transition:all .15s;">' +
                     label + '</div>';
             }
             grid.innerHTML = html;
@@ -1907,10 +1916,68 @@
             } catch (e) { _ptlMensaje('ptl-micro-msg', 'Error de red', false); }
         };
 
+        /**
+         * Vigilancia en vivo de los micro-interruptores.
+         *
+         * Sondea test/micros en bucle y resalta en el grid el canal que cambió
+         * entre una lectura y la siguiente. Así, al montar la placa, se pulsa
+         * cada micro uno a uno con la mano y se ve al instante qué numero de
+         * canal (y por tanto qué gaveta) le corresponde, sin ir contando ni
+         * pulsando "Releer" cada vez.
+         */
+        window.ptlLiveMicros = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlMicroLiveActivo) {
+                _ptlMicroLiveActivo = false;
+                document.getElementById('ptl-btn-micro-live').textContent = '🔴 Live (pulsa un micro)';
+                return;
+            }
+            _ptlMicroLiveActivo = true;
+            _ptlMicroLiveFueraPrevio = null;
+            document.getElementById('ptl-btn-micro-live').textContent = '⏹ Detener live';
+            _ptlLog('Live de micros iniciado: pulsa un microinterruptor y mira qué canal se resalta');
+
+            while (_ptlMicroLiveActivo) {
+                try {
+                    var d = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+                    if (!_ptlMicroLiveActivo) break;   // se paró mientras se esperaba a la placa
+                    if (d.success) {
+                        var total = d.total || _ptlTotalGavetas;
+                        _ptlTotalGavetas = total;
+                        var fueraSet = new Set(d.fuera || []);
+                        var cambiados = new Set();
+                        if (_ptlMicroLiveFueraPrevio) {
+                            fueraSet.forEach(function (g) {
+                                if (!_ptlMicroLiveFueraPrevio.has(g)) cambiados.add(g);
+                            });
+                            _ptlMicroLiveFueraPrevio.forEach(function (g) {
+                                if (!fueraSet.has(g)) cambiados.add(g);
+                            });
+                            cambiados.forEach(function (g) {
+                                _ptlLog('Canal ' + g + ' -> ' + (fueraSet.has(g) ? 'FUERA' : 'PUESTA'));
+                            });
+                        }
+                        _ptlMicroLiveFueraPrevio = fueraSet;
+                        _ptlRenderMicroGrid(total, d.fuera || [], cambiados);
+                        _ptlMensaje('ptl-micro-msg', cambiados.size
+                            ? '👉 Canal ' + Array.from(cambiados).join(', ') + ' acaba de cambiar'
+                            : 'En vivo: ' + total + ' total, ' + fueraSet.size + ' fuera', true);
+                    } else {
+                        _ptlMensaje('ptl-micro-msg', d.message || 'Error', false);
+                    }
+                } catch (e) {
+                    _ptlMensaje('ptl-micro-msg', 'Error de red', false);
+                }
+                await new Promise(function (r) { setTimeout(r, 400); });
+            }
+        };
+
         window.ptlTestFin = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
             _ptlDesfileActivo = false;
             document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+            _ptlMicroLiveActivo = false;
+            document.getElementById('ptl-btn-micro-live').textContent = '🔴 Live (pulsa un micro)';
             try {
                 await _ptlPost('/api/pick-to-light/test/fin', _ptlPayload({}));
                 _ptlLedActual = null;
@@ -1922,12 +1989,18 @@
             } catch (e) { _ptlMensaje('ptl-led-msg', 'Error de red', false); }
         };
 
-        // Limpiar el desfile al salir de la sección
+        // Limpiar el desfile y el live de micros al salir de la sección
         document.addEventListener('click', function (e) {
             if (e.target && e.target.dataset && e.target.dataset.section &&
-                e.target.dataset.section !== 'ptl-prueba' && _ptlDesfileActivo) {
-                _ptlDesfileActivo = false;
-                document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+                e.target.dataset.section !== 'ptl-prueba') {
+                if (_ptlDesfileActivo) {
+                    _ptlDesfileActivo = false;
+                    document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
+                }
+                if (_ptlMicroLiveActivo) {
+                    _ptlMicroLiveActivo = false;
+                    document.getElementById('ptl-btn-micro-live').textContent = '🔴 Live (pulsa un micro)';
+                }
             }
         });
 
