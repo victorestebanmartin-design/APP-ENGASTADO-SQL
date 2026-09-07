@@ -1679,7 +1679,36 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            return await resp.json();
+            var d = await resp.json();
+            // 'pendiente' = el servidor no ha podido empujar la orden al puerto
+            // 80 de la placa (típico desde PythonAnywhere: la placa está en una
+            // IP privada). La recogerá en su sondeo, así que hay que esperar su
+            // respuesta en vez de darla por perdida.
+            if (!d || !d.pendiente) return d;
+            return await _ptlEsperarPlaca(d);
+        }
+
+        async function _ptlEsperarPlaca(d) {
+            // La placa sondea cada 750 ms: normalmente contesta en 1-2 s.
+            var device = d.device_id || _ptlLectorId;
+            var limite = Date.now() + 12000;
+            while (Date.now() < limite) {
+                await new Promise(function (r) { setTimeout(r, 400); });
+                try {
+                    var resp = await fetch('/api/pick-to-light/test/resultado?device_id=' +
+                        encodeURIComponent(device) + '&seq=' + encodeURIComponent(d.seq));
+                    var res = await resp.json();
+                    if (res && res.listo) {
+                        // Se aplana el resultado de la placa para que quien
+                        // llamó vea la misma forma que por el camino directo.
+                        var out = Object.assign({}, res.resultado || {});
+                        out.success = out.ok !== false;
+                        if (!out.success && out.error) out.message = out.error;
+                        return out;
+                    }
+                } catch (e) { /* un sondeo perdido no aborta la espera */ }
+            }
+            return { success: false, message: 'La placa no ha contestado. ¿Está encendida y con WiFi?' };
         }
 
         // ── Rejilla de LEDs ──────────────────────────────────────────────────

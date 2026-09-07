@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07c"
+FW_VERSION = "2026-09-07d"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -407,6 +407,32 @@ def registrar_dispositivo():
             pass
 
 
+def ejecutar_test_gavetas(test, seq):
+    """Ejecuta una prueba de cableado recogida por sondeo y devuelve el resultado.
+
+    El resultado va con el mismo 'seq' que trajo la orden: asi el panel sabe
+    que lo que esta leyendo es de SU prueba y no de la anterior.
+    """
+    if not gav:
+        return
+    try:
+        resultado = gav.ejecutar_test(test) or {}
+    except Exception as error:
+        print("Gavetas: prueba fallida:", error)
+        resultado = {"ok": False, "error": str(error)}
+    if http_client is None or backend_cfg is None:
+        return
+    try:
+        http_client.post_json(
+            backend_cfg.BACKEND_HOST, "/api/esp32/rfid/gaveta/test-resultado",
+            {"device_id": DEVICE_ID, "seq": seq, "resultado": resultado},
+            port=backend_cfg.BACKEND_PORT,
+            use_ssl=backend_cfg.BACKEND_USE_SSL,
+            timeout=3)
+    except Exception as error:
+        print("Gavetas: no se pudo devolver el resultado:", error)
+
+
 def procesar_tarjeta(uid):
     print("Tarjeta:", uid)
     status, response = enviar_entrada(uid)
@@ -489,7 +515,14 @@ while True:
                 use_ssl=backend_cfg.BACKEND_USE_SSL,
                 timeout=2)
             if orden and orden.get("success"):
-                if orden.get("apagar"):
+                test = orden.get("test")
+                if test:
+                    # Prueba de cableado pedida desde Admin. El servidor no ha
+                    # podido empujarla al puerto 80, asi que se ejecuta aqui y
+                    # se le devuelve el resultado: 'test_micros' no vale de
+                    # nada si no vuelve la lista de gavetas.
+                    ejecutar_test_gavetas(test, orden.get("test_seq"))
+                elif orden.get("apagar"):
                     if gav.objetivo is not None:
                         gav.apagar()
                 else:

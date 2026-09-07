@@ -59,6 +59,55 @@ def _estado_guardar(estado):
         json.dump(estado, f)
 
 
+# ==================== PRUEBAS POR SONDEO ====================
+#
+# Los comandos de prueba se empujan a la placa por su puerto 80, que es
+# instantaneo pero solo funciona si el servidor puede abrir una conexion hacia
+# su IP. Desde PythonAnywhere no puede: la placa vive en una IP privada y el
+# intento muere con ConnectionRefusedError.
+#
+# Para ese caso el comando se deja aqui aparcado, la placa lo recoge en su
+# sondeo (cada 750 ms) y devuelve el resultado por otra peticion. Es el mismo
+# camino que ya usan encender/probar, pero de ida y vuelta: 'test_micros' no
+# sirve de nada si no vuelve la lista de gavetas.
+#
+# Se guarda por device_id, no por puesto: mientras se prueba el cableado el
+# lector puede no estar asignado a ningun puesto todavia.
+
+def _test_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(
+        os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'pick_to_light_test.json')
+
+
+def _test_cargar():
+    try:
+        with open(_test_file(), encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _test_guardar(datos):
+    with open(_test_file(), 'w', encoding='utf-8') as f:
+        json.dump(datos, f)
+
+
+def _test_encolar(device_id, comando):
+    """Aparca un comando para que la placa lo recoja en su sondeo.
+
+    Devuelve el numero de secuencia con el que preguntar por el resultado. El
+    resultado anterior se borra: si no, el panel leeria el de la prueba de
+    antes y diria que ya esta hecha.
+    """
+    todo = _test_cargar()
+    entrada = todo.get(device_id) or {}
+    seq = int(entrada.get('seq') or 0) + 1
+    todo[device_id] = {'cmd': comando, 'seq': seq}
+    _test_guardar(todo)
+    return seq
+
+
 # ==================== LA PLACA DEL PUESTO ====================
 
 def _placa_del_puesto(puesto_id):
@@ -296,6 +345,15 @@ def api_pick_to_light_orden():
     """
     try:
         device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+
+        # Un comando de prueba manda sobre la gaveta de trabajo: quien lo ha
+        # pedido esta delante del armario mirando que LED se enciende.
+        pendiente = (_test_cargar().get(device_id) or {})
+        if pendiente.get('cmd'):
+            return jsonify({'success': True,
+                            'test': pendiente['cmd'],
+                            'test_seq': pendiente.get('seq')})
+
         puesto_id = _puesto_de_la_placa(device_id)
         estado = _estado_cargar().get(puesto_id) if puesto_id else None
         led = (estado or {}).get('led')
@@ -304,6 +362,57 @@ def api_pick_to_light_orden():
                         'led': led})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
+
+
+@bp.route('/api/esp32/rfid/gaveta/test-resultado', methods=['POST'])
+def api_pick_to_light_test_resultado():
+    """La placa devuelve lo que dio el comando de prueba que recogio sondeando.
+
+    Sin esto el panel se quedaria esperando para siempre, y 'test_micros' no
+    tendria por donde devolver que gavetas estan fuera.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        device_id = (datos.get('device_id') or '').strip().lower()[:64]
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Falta device_id'}), 400
+
+        todo = _test_cargar()
+        entrada = todo.get(device_id) or {}
+        try:
+            seq = int(datos.get('seq') or 0)
+        except (TypeError, ValueError):
+            seq = 0
+
+        # Un resultado de un comando anterior (la placa reintentando tarde) no
+        # puede pisar al que el panel esta esperando ahora.
+        if seq and seq == int(entrada.get('seq') or 0):
+            entrada['resultado'] = datos.get('resultado') or {}
+            entrada['resultado_seq'] = seq
+            entrada['cmd'] = None      # ya ejecutado: no repetirlo en el sondeo
+            todo[device_id] = entrada
+            _test_guardar(todo)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al recoger el resultado de la prueba')
+
+
+@bp.route('/api/pick-to-light/test/resultado', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_test_resultado():
+    """Lo que sondea el panel de admin mientras espera a la placa."""
+    try:
+        device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        try:
+            seq = int(request.args.get('seq') or 0)
+        except (TypeError, ValueError):
+            seq = 0
+        entrada = (_test_cargar().get(device_id) or {})
+        listo = seq and int(entrada.get('resultado_seq') or 0) == seq
+        return jsonify({'success': True, 'listo': bool(listo),
+                        'resultado': entrada.get('resultado') if listo else None})
+    except Exception as e:
+        return error_interno(e, 'Error al consultar el resultado de la prueba')
 
 
 @bp.route('/api/pick-to-light/probar', methods=['POST'])
@@ -357,6 +466,31 @@ def api_pick_to_light_probar():
 
 # ==================== MODO PRUEBA DE CABLEADO (admin) ====================
 
+def _test_enviar(device_id, ip, comando, extra=None):
+    """Manda un comando de prueba a la placa y arma la respuesta del panel.
+
+    Primero se intenta el empuje directo, que es instantaneo. Si no se puede
+    llegar a la placa (tipico desde PythonAnywhere: su IP es privada), el
+    comando se aparca para el sondeo y el panel espera el resultado con
+    /test/resultado en vez de dar un 502 que no se puede arreglar tocando
+    la placa.
+    """
+    ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, comando)
+    if ok:
+        salida = {'success': True, 'pendiente': False,
+                  'estado': respuesta.get('estado')}
+        for clave in (extra or ()):
+            if clave in respuesta:
+                salida[clave] = respuesta[clave]
+        return jsonify(salida)
+
+    seq = _test_encolar(device_id, comando)
+    return jsonify({'success': True, 'pendiente': True, 'seq': seq,
+                    'device_id': device_id,
+                    'message': 'La placa recogerá la orden en su próximo sondeo.',
+                    'motivo_directo': motivo})
+
+
 @bp.route('/api/pick-to-light/test/led', methods=['POST'])
 @requiere_pin_admin
 def api_ptl_test_led():
@@ -380,11 +514,7 @@ def api_ptl_test_led():
         if not device_id:
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
-        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_led': led, 'color': color})
-        if not ok:
-            return jsonify({'success': False, 'message': motivo}), 502
-        return jsonify({'success': True, 'led': led, 'color': color,
-                        'estado': respuesta.get('estado')})
+        return _test_enviar(device_id, ip, {'test_led': led, 'color': color})
     except Exception as e:
         return error_interno(e, 'Error al probar LED')
 
@@ -400,12 +530,8 @@ def api_ptl_test_todos():
         if not device_id:
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
-        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_todos': True, 'color': color})
-        if not ok:
-            return jsonify({'success': False, 'message': motivo}), 502
-        return jsonify({'success': True, 'color': color,
-                        'gavetas': respuesta.get('gavetas'),
-                        'estado': respuesta.get('estado')})
+        return _test_enviar(device_id, ip, {'test_todos': True, 'color': color},
+                            extra=('gavetas',))
     except Exception as e:
         return error_interno(e, 'Error al encender todos los LEDs')
 
@@ -426,14 +552,8 @@ def api_ptl_test_micros():
         if not device_id:
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
-        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_micros': True})
-        if not ok:
-            return jsonify({'success': False, 'message': motivo}), 502
-        return jsonify({'success': True,
-                        'fuera': respuesta.get('fuera', []),
-                        'puestas': respuesta.get('puestas', []),
-                        'total': respuesta.get('total', 0),
-                        'estado': respuesta.get('estado')})
+        return _test_enviar(device_id, ip, {'test_micros': True},
+                            extra=('fuera', 'puestas', 'total'))
     except Exception as e:
         return error_interno(e, 'Error al leer micro-interruptores')
 
@@ -448,10 +568,7 @@ def api_ptl_test_fin():
         if not device_id:
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
-        ok, motivo, respuesta = _enviar_a_placa_con_datos(ip, {'test_fin': True})
-        if not ok:
-            return jsonify({'success': False, 'message': motivo}), 502
-        return jsonify({'success': True, 'estado': respuesta.get('estado')})
+        return _test_enviar(device_id, ip, {'test_fin': True})
     except Exception as e:
         return error_interno(e, 'Error al salir del modo prueba')
 

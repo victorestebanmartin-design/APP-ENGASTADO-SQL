@@ -183,6 +183,58 @@ class Gavetas:
     def _finalizar_prueba(self):
         self._en_prueba = False
 
+    def ejecutar_test(self, datos):
+        """Ejecuta un comando de prueba de cableado. None si no lo era.
+
+        Publico a proposito: los mismos comandos llegan por dos caminos. En la
+        red de planta el servidor los empuja al puerto 80; desde
+        PythonAnywhere no puede (la placa esta en una IP privada) y los recoge
+        el sondeo de main. La logica tiene que ser la misma por los dos lados.
+        """
+        test_led = datos.get("test_led")
+        if test_led is not None:
+            try:
+                test_led = int(test_led)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "test_led no es un numero"}
+            color = _color(datos.get("color"), (180, 180, 180))
+            self._iniciar_prueba()
+            if self.tira is None:
+                return {"ok": False, "error": "Sin tira LED", "estado": self.estado()}
+            if not 1 <= test_led <= self.n_gavetas:
+                return {"ok": False,
+                        "error": "LED %d fuera de rango (1-%d)" % (test_led, self.n_gavetas),
+                        "estado": self.estado()}
+            for i in range(self.n_gavetas):
+                self.tira[i] = COLOR_APAGADO
+            self.tira[test_led - 1] = color
+            self.tira.write()
+            return {"ok": True, "test_led": test_led, "color": list(color),
+                    "estado": self.estado()}
+
+        if datos.get("test_todos"):
+            color = _color(datos.get("color"), (60, 60, 60))
+            self._iniciar_prueba()
+            if self.tira:
+                for i in range(self.n_gavetas):
+                    self.tira[i] = color
+                self.tira.write()
+            return {"ok": True, "gavetas": self.n_gavetas, "color": list(color),
+                    "estado": self.estado()}
+
+        if datos.get("test_micros"):
+            leidas = self._leer_micros()
+            puestas = sorted(g for g in range(1, self.n_gavetas + 1) if g not in leidas)
+            return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
+                    "total": self.n_gavetas, "estado": self.estado()}
+
+        if datos.get("test_fin"):
+            self._finalizar_prueba()
+            self.apagar()
+            return {"ok": True, "estado": self.estado()}
+
+        return None
+
     def _beep_ok(self):
         self._beep_hasta_ms = time.ticks_add(time.ticks_ms(), BEEP_OK_MS)
         self.buzzer.on()
@@ -396,55 +448,9 @@ class Gavetas:
             self.apagar()
             return {"ok": True, "estado": self.estado()}
 
-        # ── Comandos de prueba de cableado ──────────────────────────────────
-
-        test_led = datos.get("test_led")
-        if test_led is not None:
-            try:
-                test_led = int(test_led)
-            except (TypeError, ValueError):
-                return {"ok": False, "error": "test_led no es un numero"}
-            color_raw = datos.get("color") or [180, 180, 180]
-            try:
-                color = tuple(int(c) for c in color_raw[:3])
-            except Exception:
-                color = (180, 180, 180)
-            self._iniciar_prueba()
-            if self.tira is None:
-                return {"ok": False, "error": "Sin tira LED", "estado": self.estado()}
-            if not 1 <= test_led <= self.n_gavetas:
-                return {"ok": False,
-                        "error": "LED %d fuera de rango (1-%d)" % (test_led, self.n_gavetas),
-                        "estado": self.estado()}
-            for i in range(self.n_gavetas):
-                self.tira[i] = COLOR_APAGADO
-            self.tira[test_led - 1] = color
-            self.tira.write()
-            return {"ok": True, "test_led": test_led, "color": list(color), "estado": self.estado()}
-
-        if datos.get("test_todos"):
-            color_raw = datos.get("color") or [60, 60, 60]
-            try:
-                color = tuple(int(c) for c in color_raw[:3])
-            except Exception:
-                color = (60, 60, 60)
-            self._iniciar_prueba()
-            if self.tira:
-                for i in range(self.n_gavetas):
-                    self.tira[i] = color
-                self.tira.write()
-            return {"ok": True, "gavetas": self.n_gavetas, "color": list(color), "estado": self.estado()}
-
-        if datos.get("test_micros"):
-            leidas = self._leer_micros()
-            puestas = sorted(g for g in range(1, self.n_gavetas + 1) if g not in leidas)
-            return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
-                    "total": self.n_gavetas, "estado": self.estado()}
-
-        if datos.get("test_fin"):
-            self._finalizar_prueba()
-            self.apagar()
-            return {"ok": True, "estado": self.estado()}
+        respuesta = self.ejecutar_test(datos)
+        if respuesta is not None:
+            return respuesta
 
         led = datos.get("led")
         if led is None:
@@ -465,6 +471,14 @@ class Gavetas:
         self._atender_http(ahora)
         self._atender_micros(ahora)
         self._atender_zumbador(ahora)
+
+
+def _color(crudo, por_defecto):
+    """Terna RGB de lo que venga en el JSON, o el color por defecto."""
+    try:
+        return tuple(int(c) for c in (crudo or por_defecto)[:3])
+    except Exception:
+        return por_defecto
 
 
 def _json_bytes(obj):
