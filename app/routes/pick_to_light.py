@@ -1186,6 +1186,16 @@ def api_pick_to_light_mapa():
             terminales_disponibles = [{'terminal': fila[0], 'maquina': fila[1]}
                                       for fila in filas if fila[0] not in asignados_ya]
 
+        online = False
+        try:
+            # Mismo margen (90s) que Admin -> Lectores RFID: el latido se
+            # manda cada 60s, asi que un par de vueltas de margen evita
+            # parpadeos de "sin contacto" por una peticion tardia suelta.
+            online = (datetime.now() - datetime.fromisoformat(dev.get('last_seen', ''))
+                     ).total_seconds() < 90
+        except Exception:
+            pass
+
         return jsonify({
             'success': True, 'device_id': device_id,
             'puesto_id': puesto_id, 'puesto_nombre': dev.get('puesto_nombre') or '',
@@ -1193,7 +1203,7 @@ def api_pick_to_light_mapa():
                 'nombre': dev.get('nombre') or '', 'ip': dev.get('ip') or '',
                 'last_seen': dev.get('last_seen') or '', 'expansores': int(dev.get('expansores') or 0),
                 'ptl_http': dev.get('ptl_http'), 'en_prueba': bool(dev.get('en_prueba')),
-                'fw': dev.get('fw') or '',
+                'fw': dev.get('fw') or '', 'online': online,
             },
             'total_gavetas': total, 'canales': canales,
             'terminales_disponibles': terminales_disponibles,

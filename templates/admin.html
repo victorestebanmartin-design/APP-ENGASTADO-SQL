@@ -438,21 +438,23 @@
                         <p>Verifica el cableado de LEDs y micro-interruptores sin necesitar un trabajo real</p>
                     </div>
 
-                    <!-- Selector de lector -->
+                    <!-- Elegir puesto -->
                     <div class="card">
-                        <h2>🔌 Seleccionar lector</h2>
+                        <h2>🔧 Elegir puesto</h2>
                         <p class="instruccion">
-                            Elige el lector que tiene la placa pick-to-light soldada. Solo aparecen los que
-                            tienen gavetas detectadas. Si no aparece ninguno, el lector no está encendido o
-                            no tiene expansores MCP23017 en el bus I2C.
+                            El lector RFID/ESP32 del puesto se carga solo en cuanto lo eliges. Solo aparecen
+                            los puestos cuya placa ya ha detectado expansores MCP23017 (gavetas). Si no
+                            aparece el que buscas, el lector no está encendido o no tiene expansores en el
+                            bus I2C.
                         </p>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="ptl-select-lector" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:280px;">
-                                <option value="">— pulsa Cargar lectores —</option>
+                            <select id="ptl-select-lector" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:320px;">
+                                <option value="">— pulsa Cargar puestos —</option>
                             </select>
-                            <button class="btn-secondary" onclick="ptlCargarLectores()">🔄 Cargar lectores</button>
+                            <button class="btn-secondary" onclick="ptlCargarLectores()">🔄 Cargar puestos</button>
                         </div>
-                        <div id="ptl-lector-info" style="font-size:0.88em;color:#94a3b8;"></div>
+                        <div id="ptl-lector-info" style="font-size:0.88em;color:#94a3b8;margin-bottom:10px;"></div>
+                        <div id="ptl-dispositivo-card"></div>
                     </div>
 
                     <!-- Mapa de cobertura del puesto -->
@@ -470,6 +472,7 @@
                         </div>
                         <div id="ptl-mapa-resumen" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:0.88em;color:#94a3b8;"></div>
                         <div id="ptl-mapa-grid" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                        <div id="ptl-canal-panel" style="margin-top:14px;"></div>
                     </div>
 
                     <!-- Comprobación guiada LED-micro -->
@@ -1688,9 +1691,12 @@
         var _ptlDesfileActivo = false;
         var _ptlMicroLiveActivo = false;
         var _ptlMicroLiveFueraPrevio = null;   // null = aun sin la primera lectura
-        var _ptlMapaCanales = [];   // [{canal, terminal, gaveta}] del ultimo /mapa cargado
+        var _ptlMapaCanales = [];   // [{canal, terminal, gaveta, rfid}] del ultimo /mapa cargado
         var _ptlMapaTotal = 0;
+        var _ptlMapaTerminalesDisponibles = [];   // [{terminal, maquina}] sin canal aun en este puesto
+        var _ptlPuestoId = '';      // puesto del lector elegido, para PUT/DELETE /canal (que van por puesto)
         var _ptlCorr = null;        // estado de la comprobacion guiada LED-micro, o null si no hay ninguna
+        var _ptlCanalPanel = null;  // canal abierto en el panel de accion, o null
         var _ptlLectorId = '';        // device_id del lector seleccionado
         var _ptlTotalGavetas = 0;     // gavetas del lector activo
         var _ptlLedActual = null;     // LED encendido ahora (1-based), o null
@@ -1823,9 +1829,12 @@
                     if (info) info.textContent = 'Para que aparezca: el lector debe estar encendido, conectado y tener expansores MCP23017 en el bus I2C.';
                     return;
                 }
-                var html = '<option value="">— elige un lector —</option>';
+                var html = '<option value="">— elige un puesto —</option>';
                 devs.forEach(function (dev) {
-                    var label = (dev.nombre || dev.id) + '  (IP: ' + (dev.ip || '?') + ', ' + dev.gavetas + ' gavetas)';
+                    // El puesto primero: es lo que se elige, no el device_id de la placa.
+                    var label = (dev.puesto_nombre || dev.nombre || dev.id) +
+                               '  (' + (dev.nombre || dev.id) + ' · IP ' + (dev.ip || '?') +
+                               ' · ' + dev.gavetas + ' gavetas)';
                     html += '<option value="' + _dispEsc(dev.id) + '">' + _dispEsc(label) + '</option>';
                 });
                 sel.innerHTML = html;
@@ -1845,7 +1854,11 @@
                 _ptlRenderMicroGrid(0, []);
                 _ptlMapaCanales = [];
                 _ptlMapaTotal = 0;
+                _ptlMapaTerminalesDisponibles = [];
+                _ptlPuestoId = '';
+                if (_ptlCanalPanel) ptlCanalCerrar();
                 _ptlRenderMapa([], []);
+                _ptlRenderDispositivo(null);
                 var mapaMsg = document.getElementById('ptl-mapa-msg');
                 if (mapaMsg) mapaMsg.textContent = '';
                 var info = document.getElementById('ptl-lector-info');
@@ -2030,13 +2043,17 @@
                 var resp = await fetch('/api/pick-to-light/mapa?device_id=' + encodeURIComponent(_ptlLectorId));
                 var mapa = await resp.json();
                 if (!mapa.success) {
-                    _ptlMapaCanales = []; _ptlMapaTotal = 0;
+                    _ptlMapaCanales = []; _ptlMapaTotal = 0; _ptlMapaTerminalesDisponibles = [];
                     _ptlRenderMapa([], []);
+                    _ptlRenderDispositivo(null);
                     _ptlMensaje('ptl-mapa-msg', mapa.message || 'Error al cargar el mapa', false);
                     return;
                 }
                 _ptlMapaCanales = mapa.canales || [];
                 _ptlMapaTotal = mapa.total_gavetas || 0;
+                _ptlMapaTerminalesDisponibles = mapa.terminales_disponibles || [];
+                _ptlPuestoId = mapa.puesto_id || '';
+                _ptlRenderDispositivo(mapa.dispositivo || null);
                 if (!_ptlMapaTotal) {
                     _ptlRenderMapa([], []);
                     _ptlMensaje('ptl-mapa-msg',
@@ -2053,7 +2070,36 @@
             }
         };
 
+        function _ptlRenderDispositivo(disp) {
+            var caja = document.getElementById('ptl-dispositivo-card');
+            if (!caja) return;
+            if (!disp) { caja.innerHTML = ''; return; }
+            var comunicacion = disp.online
+                ? '<span style="color:#4ade80;">🟢 En línea</span>'
+                : '<span style="color:#f87171;">🔴 Sin contacto reciente</span>';
+            var http = disp.ptl_http === false
+                ? ' · <span style="color:#fbbf24;">⚠️ puerto 80 cerrado (no recibe órdenes directas)</span>' : '';
+            var prueba = disp.en_prueba
+                ? ' · <span style="color:#fbbf24;">🧪 en modo prueba ahora mismo</span>' : '';
+            caja.innerHTML =
+                '<div style="background:#1e293b;border-radius:10px;padding:10px 14px;font-size:0.85em;' +
+                'display:flex;gap:16px;flex-wrap:wrap;color:#cbd5e1;">' +
+                '<span><strong>' + _dispEsc(disp.nombre || _ptlLectorId) + '</strong></span>' +
+                '<span>IP: ' + _dispEsc(disp.ip || '?') + '</span>' +
+                '<span>Expansores: ' + disp.expansores + '</span>' +
+                '<span>Último contacto: ' + (disp.last_seen ? _dispEsc(disp.last_seen.replace('T', ' ').slice(0, 19)) : '—') + '</span>' +
+                '<span>' + comunicacion + '</span>' +
+                (disp.fw ? '<span>FW: ' + _dispEsc(disp.fw) + '</span>' : '') +
+                http + prueba +
+                '</div>';
+        }
+
+        var _ptlMapaFueraActual = [];
+        var _ptlMapaErrorActual = [];
+
         function _ptlRenderMapa(fuera, canalesError) {
+            _ptlMapaFueraActual = fuera || [];
+            _ptlMapaErrorActual = canalesError || [];
             var grid = document.getElementById('ptl-mapa-grid');
             var resumen = document.getElementById('ptl-mapa-resumen');
             if (!grid || !resumen) return;
@@ -2064,15 +2110,16 @@
             var porCanal = {};
             _ptlMapaCanales.forEach(function (c) { porCanal[c.canal] = c; });
 
-            var asignados = 0, abiertos = 0;
+            var asignados = 0, abiertos = 0, conRfid = 0;
             var html = '';
             for (var i = 1; i <= _ptlMapaTotal; i++) {
-                var info = porCanal[i] || { terminal: null, gaveta: null };
+                var info = porCanal[i] || { terminal: null, gaveta: null, rfid: false };
                 var esError = errorSet.has(i);
                 var esAsignado = !!info.terminal;
                 var esAbierto = fueraSet.has(i);
                 if (esAsignado) asignados++;
                 if (esAbierto) abiertos++;
+                if (info.rfid) conRfid++;
 
                 var bg, borde, texto;
                 if (esError)          { bg = 'rgba(239,68,68,.18)';   borde = '#ef4444'; texto = '#f87171'; }
@@ -2080,16 +2127,20 @@
                 else if (esAbierto)   { bg = 'rgba(37,99,235,.18)';   borde = '#3b82f6'; texto = '#93c5fd'; }
                 else                  { bg = 'rgba(74,222,128,.18)'; borde = '#4ade80'; texto = '#4ade80'; }
 
+                var rfidBadge = esAsignado ? (info.rfid ? ' 🏷️' : ' ⭘') : '';
                 var linea2 = esError ? 'ERROR LECTURA'
                            : esAsignado ? (_dispEsc(info.terminal) + (info.gaveta ? ' · ' + _dispEsc(info.gaveta) : ''))
                            : 'Canal libre';
                 var titulo = 'Canal ' + i + (esAsignado ? ': ' + info.terminal : ': sin asignar') +
-                             (esError ? ' — error de lectura del expansor' : esAbierto ? ' — ABIERTA' : ' — cerrada');
+                             (esError ? ' — error de lectura del expansor' : esAbierto ? ' — ABIERTA' : ' — cerrada') +
+                             (esAsignado ? (info.rfid ? ' — con RFID' : ' — sin RFID') : '') +
+                             ' — clic para gestionar';
 
-                html += '<div title="' + titulo + '" style="width:118px;min-height:56px;border-radius:8px;' +
+                html += '<div title="' + titulo + '" onclick="ptlAbrirCanal(' + i + ')" ' +
+                        'style="width:118px;min-height:56px;border-radius:8px;cursor:pointer;' +
                         'border:2px solid ' + borde + ';background:' + bg + ';padding:6px 8px;' +
                         'display:flex;flex-direction:column;justify-content:center;">' +
-                        '<div style="font-weight:700;font-size:0.8em;color:' + texto + ';">Canal ' + i + '</div>' +
+                        '<div style="font-weight:700;font-size:0.8em;color:' + texto + ';">Canal ' + i + rfidBadge + '</div>' +
                         '<div style="font-size:0.66em;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
                         linea2 + '</div></div>';
             }
@@ -2101,9 +2152,305 @@
                 '<span>📦 Asignados: <strong>' + asignados + '</strong></span>' +
                 '<span>⬜ Libres: <strong>' + libres + '</strong></span>' +
                 '<span>🔵 Abiertos ahora: <strong>' + abiertos + '</strong></span>' +
+                '<span>🏷️ Con RFID: <strong>' + conRfid + '</strong></span>' +
                 '<span style="color:' + (errorSet.size ? '#f87171' : '#94a3b8') + ';">⚠️ Incidencias: <strong>' +
                 errorSet.size + '</strong></span>';
+
+            // Si el panel de un canal está abierto, que refleje el estado en vivo.
+            if (_ptlCanalPanel) _ptlRenderCanalPanel();
         }
+
+        // ── Panel de acciones por canal ───────────────────────────────────────
+        //
+        // Asignar/cambiar/etiquetar/desasignar terminal, encender el LED para
+        // identificarlo, y asignar/sustituir/desvincular su etiqueta RFID. Todo
+        // en un panel bajo la rejilla que se abre al pulsar un canal.
+
+        function _ptlCanalDetener() {
+            if (!_ptlCanalPanel) return;
+            if (_ptlCanalPanel.rfidTimer) clearInterval(_ptlCanalPanel.rfidTimer);
+            if (_ptlCanalPanel.rfidPoll) clearTimeout(_ptlCanalPanel.rfidPoll);
+            _ptlCanalPanel.rfidTimer = null;
+            _ptlCanalPanel.rfidPoll = null;
+        }
+
+        window.ptlAbrirCanal = function (canal) {
+            if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
+            if (_ptlCanalPanel) _ptlCanalDetener();
+            _ptlCanalPanel = { canal: canal, fase: 'ver', busqueda: '' };
+            _ptlRenderCanalPanel();
+        };
+
+        window.ptlCanalCerrar = function () {
+            _ptlCanalDetener();
+            _ptlCanalPanel = null;
+            var caja = document.getElementById('ptl-canal-panel');
+            if (caja) caja.innerHTML = '';
+        };
+
+        window.ptlCanalVolver = function () {
+            _ptlCanalDetener();
+            if (_ptlCanalPanel) _ptlCanalPanel.fase = 'ver';
+            _ptlRenderCanalPanel();
+        };
+
+        function _ptlCanalInfo(canal) {
+            var info = _ptlMapaCanales.filter(function (c) { return c.canal === canal; })[0];
+            return info || { canal: canal, terminal: null, gaveta: null, rfid: false };
+        }
+
+        window.ptlCanalIrAsignar = function () {
+            _ptlCanalPanel.fase = 'asignar';
+            _ptlCanalPanel.busqueda = '';
+            _ptlRenderCanalPanel();
+        };
+
+        window.ptlCanalIrEtiqueta = function () {
+            _ptlCanalPanel.fase = 'etiqueta';
+            _ptlRenderCanalPanel();
+        };
+
+        window.ptlCanalBuscar = function (valor) {
+            _ptlCanalPanel.busqueda = valor;
+            _ptlRenderCanalPanel();
+            var input = document.getElementById('ptl-canal-busqueda');
+            if (input) { input.focus(); input.setSelectionRange(valor.length, valor.length); }
+        };
+
+        function _ptlRenderCanalPanel() {
+            var caja = document.getElementById('ptl-canal-panel');
+            if (!caja || !_ptlCanalPanel) { if (caja) caja.innerHTML = ''; return; }
+            var info = _ptlCanalInfo(_ptlCanalPanel.canal);
+            var abierto = _ptlMapaFueraActual.indexOf(_ptlCanalPanel.canal) !== -1;
+            var conError = _ptlMapaErrorActual.indexOf(_ptlCanalPanel.canal) !== -1;
+            var cabecera = 'Canal ' + _ptlCanalPanel.canal + (info.terminal
+                ? ' — ' + _dispEsc(info.terminal) + (info.gaveta ? ' (' + _dispEsc(info.gaveta) + ')' : '')
+                : ' — libre');
+
+            var html = '<div style="background:#1e293b;border-radius:10px;padding:14px;">' +
+                       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+                       '<strong>' + cabecera + '</strong>' +
+                       '<button class="btn-secondary" onclick="ptlCanalCerrar()">✕ Cerrar</button></div>';
+
+            if (_ptlCanalPanel.fase === 'ver') {
+                html += '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:10px;">Micro: ' +
+                        (conError ? '⚠️ error de lectura' : abierto ? '🔵 abierta' : '🟢 cerrada') +
+                        (info.terminal ? ' · RFID: ' + (info.rfid ? '🏷️ configurado' : '⭘ sin configurar') : '') +
+                        '</div><div style="display:flex;gap:8px;flex-wrap:wrap;">';
+                if (!info.terminal) {
+                    html += '<button class="btn-primary" onclick="ptlCanalIrAsignar()">➕ Asignar terminal</button>';
+                } else {
+                    html += '<button class="btn-secondary" onclick="ptlCanalIrAsignar()">🔁 Cambiar terminal</button>' +
+                            '<button class="btn-secondary" onclick="ptlCanalIrEtiqueta()">✏️ Editar etiqueta</button>' +
+                            '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                            'onclick="ptlCanalDesasignar()">🗑️ Desasignar</button>' +
+                            '<button class="btn-secondary" onclick="ptlCanalEncenderLed()">💡 Encender LED</button>' +
+                            (info.rfid
+                                ? '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🔁 Sustituir RFID</button>' +
+                                  '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                                  'onclick="ptlCanalRfidDesvincular()">🔓 Desvincular RFID</button>'
+                                : '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🏷️ Asignar RFID</button>');
+                }
+                html += '</div>';
+            } else if (_ptlCanalPanel.fase === 'asignar') {
+                var q = (_ptlCanalPanel.busqueda || '').toLowerCase();
+                var candidatos = _ptlMapaTerminalesDisponibles.filter(function (t) {
+                    if (!q) return true;
+                    return t.terminal.toLowerCase().indexOf(q) !== -1 ||
+                           (t.maquina || '').toLowerCase().indexOf(q) !== -1;
+                });
+                var opciones = candidatos.map(function (t) {
+                    return '<option value="' + _dispEsc(t.terminal) + '">' + _dispEsc(t.terminal) +
+                           (t.maquina ? ' — ' + _dispEsc(t.maquina) : '') + '</option>';
+                }).join('') || '<option disabled>— sin terminales libres en este puesto —</option>';
+                html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Terminales de las máquinas ' +
+                        'de este puesto, sin canal todavía. Busca por código o máquina.</p>' +
+                        '<input type="text" id="ptl-canal-busqueda" placeholder="Buscar..." ' +
+                        'value="' + _dispEsc(_ptlCanalPanel.busqueda || '') + '" oninput="ptlCanalBuscar(this.value)" ' +
+                        'style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                        'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                        '<select id="ptl-canal-terminal" size="6" style="width:100%;background:#0f172a;' +
+                        'border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                        opciones + '</select>' +
+                        '<input type="text" id="ptl-canal-etiqueta" placeholder="Etiqueta de la gaveta (ej: A-12)" ' +
+                        'value="' + _dispEsc(info.gaveta || '') + '" style="width:100%;padding:7px 10px;' +
+                        'background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:10px;">' +
+                        '<button class="btn-primary" onclick="ptlCanalGuardarAsignacion()">Guardar</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
+            } else if (_ptlCanalPanel.fase === 'etiqueta') {
+                html += '<input type="text" id="ptl-canal-etiqueta" value="' + _dispEsc(info.gaveta || '') + '" ' +
+                        'style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                        'color:#f1f5f9;border-radius:8px;margin-bottom:10px;">' +
+                        '<button class="btn-primary" onclick="ptlCanalGuardarEtiqueta()">Guardar</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
+            } else if (_ptlCanalPanel.fase === 'rfid_armando') {
+                html += '<p style="margin:0 0 10px;">📡 Acerca la etiqueta RFID de la gaveta al lector de este ' +
+                        'puesto (quedan <span id="ptl-canal-rfid-cuenta">' + _ptlCanalPanel.segundos + '</span> s)...</p>' +
+                        '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
+            } else if (_ptlCanalPanel.fase === 'rfid_confirmar') {
+                html += '<p style="margin:0 0 10px;">Etiqueta leída: <strong>' + _dispEsc(_ptlCanalPanel.uid) +
+                        '</strong></p>' +
+                        '<button class="btn-primary" onclick="ptlCanalRfidConfirmar()">Confirmar</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">↻ Volver a leer</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
+            }
+            html += '<div id="ptl-canal-msg" style="margin-top:10px;font-size:0.85em;"></div></div>';
+            caja.innerHTML = html;
+        }
+
+        window.ptlCanalGuardarAsignacion = async function () {
+            var sel = document.getElementById('ptl-canal-terminal');
+            var terminal = sel && sel.value;
+            var etiqueta = ((document.getElementById('ptl-canal-etiqueta') || {}).value || '').trim();
+            if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Elige un terminal de la lista.', false); return; }
+            if (!etiqueta) { _ptlMensaje('ptl-canal-msg', 'Escribe una etiqueta para la gaveta.', false); return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/canal', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
+                                          terminal: terminal, etiqueta_gaveta: etiqueta })
+                });
+                var data = await resp.json();
+                if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                _ptlLog('Canal ' + _ptlCanalPanel.canal + ' asignado a ' + terminal);
+                await ptlCargarMapa();
+                _ptlCanalPanel.fase = 'ver';
+                _ptlRenderCanalPanel();
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
+
+        window.ptlCanalGuardarEtiqueta = async function () {
+            var info = _ptlCanalInfo(_ptlCanalPanel.canal);
+            var etiqueta = ((document.getElementById('ptl-canal-etiqueta') || {}).value || '').trim();
+            if (!etiqueta) { _ptlMensaje('ptl-canal-msg', 'Escribe una etiqueta.', false); return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/canal', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
+                                          terminal: info.terminal, etiqueta_gaveta: etiqueta })
+                });
+                var data = await resp.json();
+                if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                await ptlCargarMapa();
+                _ptlCanalPanel.fase = 'ver';
+                _ptlRenderCanalPanel();
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
+
+        window.ptlCanalDesasignar = async function () {
+            if (!confirm('¿Desasignar el canal ' + _ptlCanalPanel.canal + '? El terminal se quedará sin ' +
+                        'gaveta con luz en este puesto.')) return;
+            try {
+                var resp = await fetch('/api/pick-to-light/canal?puesto_id=' + encodeURIComponent(_ptlPuestoId) +
+                                       '&canal=' + _ptlCanalPanel.canal, { method: 'DELETE' });
+                var data = await resp.json();
+                if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                _ptlLog('Canal ' + _ptlCanalPanel.canal + ' desasignado');
+                await ptlCargarMapa();
+                ptlCanalCerrar();
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
+
+        window.ptlCanalEncenderLed = async function () {
+            if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/led',
+                                       _ptlPayload({ led: _ptlCanalPanel.canal, color: [0, 150, 0] }));
+                if (!d || !d.success) { _ptlMensaje('ptl-canal-msg', (d && d.message) || 'Error', false); return; }
+                _ptlMensaje('ptl-canal-msg', '💡 LED encendido — así se identifica el cajón. (Esto pone la ' +
+                           'placa en modo prueba: pulsa "Apagar todo" más abajo al terminar.)', true);
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
+
+        window.ptlCanalRfidArmar = async function () {
+            _ptlCanalDetener();
+            _ptlCanalPanel.fase = 'rfid_armando';
+            _ptlCanalPanel.segundos = 30;
+            _ptlRenderCanalPanel();
+            try {
+                var resp = await fetch('/api/pick-to-light/canal/rfid/armar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal })
+                });
+                var data = await resp.json();
+                if (!_ptlCanalPanel) return;   // se cerró el panel mientras se esperaba
+                if (!data.success) {
+                    _ptlMensaje('ptl-canal-msg', data.message || 'Error al armar la lectura', false);
+                    _ptlCanalPanel.fase = 'ver';
+                    _ptlRenderCanalPanel();
+                    return;
+                }
+                _ptlCanalPanel.segundos = data.segundos || 30;
+                _ptlCanalPanel.deviceId = data.device_id;
+                _ptlCanalPanel.seq = data.seq;
+                _ptlCanalPanel.rfidTimer = setInterval(function () {
+                    if (!_ptlCanalPanel || _ptlCanalPanel.fase !== 'rfid_armando') return;
+                    _ptlCanalPanel.segundos--;
+                    var span = document.getElementById('ptl-canal-rfid-cuenta');
+                    if (span) span.textContent = Math.max(0, _ptlCanalPanel.segundos);
+                    if (_ptlCanalPanel.segundos <= 0) {
+                        _ptlCanalDetener();
+                        _ptlMensaje('ptl-canal-msg', 'Tiempo agotado sin lectura. Puedes intentarlo de nuevo.', false);
+                        _ptlCanalPanel.fase = 'ver';
+                        _ptlRenderCanalPanel();
+                    }
+                }, 1000);
+                _ptlCanalRfidSondear();
+            } catch (e) {
+                if (!_ptlCanalPanel) return;
+                _ptlMensaje('ptl-canal-msg', 'Error de red', false);
+                _ptlCanalPanel.fase = 'ver';
+                _ptlRenderCanalPanel();
+            }
+        };
+
+        async function _ptlCanalRfidSondear() {
+            if (!_ptlCanalPanel || _ptlCanalPanel.fase !== 'rfid_armando') return;
+            try {
+                var resp = await fetch('/api/pick-to-light/canal/rfid/armar?device_id=' +
+                                       encodeURIComponent(_ptlCanalPanel.deviceId) + '&seq=' + _ptlCanalPanel.seq);
+                var data = await resp.json();
+                if (!_ptlCanalPanel || _ptlCanalPanel.fase !== 'rfid_armando') return;
+                if (data.success && data.listo) {
+                    _ptlCanalDetener();
+                    _ptlCanalPanel.uid = data.uid;
+                    _ptlCanalPanel.fase = 'rfid_confirmar';
+                    _ptlRenderCanalPanel();
+                    return;
+                }
+            } catch (e) { /* un sondeo perdido no rompe nada */ }
+            if (_ptlCanalPanel && _ptlCanalPanel.fase === 'rfid_armando') {
+                _ptlCanalPanel.rfidPoll = setTimeout(_ptlCanalRfidSondear, 700);
+            }
+        }
+
+        window.ptlCanalRfidConfirmar = async function () {
+            try {
+                var resp = await fetch('/api/pick-to-light/canal/rfid', {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
+                                          uid: _ptlCanalPanel.uid })
+                });
+                var data = await resp.json();
+                if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                _ptlLog('RFID asignado al canal ' + _ptlCanalPanel.canal + ': ' + data.uid);
+                await ptlCargarMapa();
+                _ptlCanalPanel.fase = 'ver';
+                _ptlRenderCanalPanel();
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
+
+        window.ptlCanalRfidDesvincular = async function () {
+            if (!confirm('¿Quitar el RFID de este canal?')) return;
+            try {
+                var resp = await fetch('/api/pick-to-light/canal/rfid?puesto_id=' + encodeURIComponent(_ptlPuestoId) +
+                                       '&canal=' + _ptlCanalPanel.canal, { method: 'DELETE' });
+                var data = await resp.json();
+                if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                await ptlCargarMapa();
+                _ptlRenderCanalPanel();
+            } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
+        };
 
         // ── Comprobación guiada LED–micro ────────────────────────────────────
         //
@@ -2535,6 +2882,11 @@
                         }).catch(function () {});
                     }
                 }
+                if (_ptlCanalPanel) {
+                    // Si se habia armado una lectura RFID de alta, no dejarla
+                    // colgada sondeando en segundo plano al salir de la seccion.
+                    ptlCanalCerrar();
+                }
             }
         });
 
@@ -2548,6 +2900,40 @@
                                         { type: 'application/json' });
                     navigator.sendBeacon('/api/pick-to-light/test/fin', blob);
                 } catch (e) { /* nada mas que hacer aqui */ }
+            }
+        });
+
+        // "Abrir Pick-to-Light" desde la ficha de un terminal (Gestión de
+        // puestos): ?ptl_terminal=<codigo> en la URL lleva directo al puesto
+        // y abre el panel de su canal, sin que el admin tenga que buscarlo.
+        document.addEventListener('DOMContentLoaded', async function () {
+            var terminal = new URLSearchParams(location.search).get('ptl_terminal');
+            if (!terminal) return;
+            if (typeof adminNav === 'function') adminNav('ptl-prueba');
+            try {
+                var gav = await (await fetch('/api/terminal-gaveta/' + encodeURIComponent(terminal))).json();
+                if (!gav.success || !gav.puesto_id) {
+                    _ptlLog('El terminal ' + terminal + ' todavía no tiene canal Pick-to-Light asignado.');
+                    return;
+                }
+                await ptlCargarLectores();
+                var devsResp = await (await fetch('/api/esp32/rfid/devices')).json();
+                var dev = (devsResp.devices || []).filter(function (d) {
+                    return d.puesto_id === gav.puesto_id;
+                })[0];
+                if (!dev) {
+                    _ptlLog('El puesto de ' + terminal + ' no tiene lector Pick-to-Light asignado.');
+                    return;
+                }
+                var sel = document.getElementById('ptl-select-lector');
+                if (sel) sel.value = dev.id;
+                _ptlLectorId = dev.id;
+                var info = document.getElementById('ptl-lector-info');
+                if (info) info.textContent = 'Lector seleccionado: ' + dev.id;
+                await ptlCargarMapa();
+                if (gav.led) ptlAbrirCanal(gav.led);
+            } catch (e) {
+                _ptlLog('No se pudo abrir Pick-to-Light para ' + terminal + ': ' + e);
             }
         });
 

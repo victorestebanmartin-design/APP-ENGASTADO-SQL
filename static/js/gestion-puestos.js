@@ -963,18 +963,30 @@ function imgThumb(t) {
     return `<span class="tr-img-placeholder" onclick="event.stopPropagation();abrirModalImagen('${cod}')" title="Añadir imagen">📷</span>`;
 }
 
-/** Genera el chip de gaveta para una fila */
+/** Genera el chip de gaveta para una fila.
+ *
+ * Solo lectura a propósito: la configuración (terminal -> gaveta -> LED ->
+ * RFID) vive únicamente en Admin -> Pick-to-Light, para que nunca haya dos
+ * sitios distintos tocando la misma asignación. El clic lleva directo al
+ * puesto y canal de este terminal en esa pantalla.
+ */
 function gavetaChip(t) {
     const cod = t.terminal;
     if (t.gaveta) {
-        // El 💡 es el numero de gaveta en el pick-to-light (ver
-        // esp32/HARDWARE_PICK_TO_LIGHT.md); sin el, la gaveta no se ilumina.
         const luz = t.led ? ` 💡${t.led}` : '';
-        const titulo = t.led ? `Gaveta: ${t.gaveta}, LED ${t.led} — clic para editar`
-                             : `Gaveta: ${t.gaveta}, sin LED — clic para editar`;
-        return `<span class="tr-gaveta" data-gaveta="${t.gaveta}" data-led="${t.led || ''}" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="${titulo}">📦 ${t.gaveta}${luz}</span>`;
+        const rfid = t.ptl_rfid ? ' 🏷️' : '';
+        const titulo = `Pick-to-Light: Gaveta ${t.gaveta}` +
+                      (t.led ? ` · Canal ${t.led}` : ' · sin canal') +
+                      (t.led ? (t.ptl_rfid ? ' · RFID configurado' : ' · sin RFID') : '') +
+                      ' — clic para abrir Pick-to-Light';
+        return `<span class="tr-gaveta" onclick="event.stopPropagation();abrirPickToLight('${cod}')" title="${titulo}">📦 ${t.gaveta}${luz}${rfid}</span>`;
     }
-    return `<span class="tr-gaveta empty" data-led="" onclick="event.stopPropagation();editarGaveta('${cod}',this)" title="Asignar gaveta y LED de pick-to-light">📦 Asignar gaveta</span>`;
+    return `<span class="tr-gaveta empty" onclick="event.stopPropagation();abrirPickToLight('${cod}')" title="Sin gaveta — clic para asignarla en Pick-to-Light">📦 Asignar en Pick-to-Light</span>`;
+}
+
+/** Abre Admin -> Pick-to-Light directamente en el puesto y canal de este terminal. */
+function abrirPickToLight(codigo) {
+    window.open(`/admin?ptl_terminal=${encodeURIComponent(codigo)}`, '_blank');
 }
 
 let _imgTerminalActual = null;   // código del terminal en edición
@@ -1325,159 +1337,6 @@ async function pdfRegEliminarExistente() {
 // ================================
 // GAVETAS DE TERMINALES
 // ================================
-
-/**
- * Activa el modo edición inline del chip de gaveta.
- *
- * Dos campos: la etiqueta que lee el operario ("A-12") y el numero de gaveta
- * en el pick-to-light, que es lo que enciende la luz. El boton 💡 la enciende
- * ahi mismo, que es como se identifica que cajon fisico es cada numero sin
- * tener que ir contando por la estanteria.
- */
-function editarGaveta(codigo, chipEl) {
-    if (chipEl.querySelector('input')) return;   // evitar doble apertura
-
-    const valorActual = chipEl.dataset.gaveta || '';
-    const ledActual   = chipEl.dataset.led || '';
-
-    const caja = document.createElement('span');
-    caja.className = 'tr-gaveta-edit';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'tr-gaveta-input';
-    input.value = valorActual;
-    input.placeholder = 'Ej: A-12';
-    input.title = 'Etiqueta que ve el operario (ej: A-12, Bandeja 3)';
-    input.maxLength = 80;
-
-    const inputLed = document.createElement('input');
-    inputLed.type = 'number';
-    inputLed.className = 'tr-gaveta-input tr-gaveta-led';
-    inputLed.value = ledActual;
-    inputLed.placeholder = 'LED';
-    inputLed.min = 1;
-    inputLed.max = 128;
-    inputLed.title = 'Numero de gaveta en la tira de LEDs (vacio = sin luz)';
-
-    const btnProbar = document.createElement('button');
-    btnProbar.type = 'button';
-    btnProbar.className = 'tr-gaveta-probar';
-    btnProbar.textContent = '💡';
-    btnProbar.title = 'Encender esta gaveta para ver cual es';
-
-    caja.append(input, inputLed, btnProbar);
-    chipEl.replaceWith(caja);
-    input.focus();
-    input.select();
-
-    let cerrado = false;
-    const confirmar = () => {
-        if (cerrado) return;
-        cerrado = true;
-        guardarGaveta(codigo, input.value.trim(), inputLed.value.trim(), caja,
-                      valorActual, ledActual);
-    };
-    const cancelar = () => {
-        if (cerrado) return;
-        cerrado = true;
-        caja.replaceWith(_crearChipGaveta(codigo, valorActual, ledActual));
-    };
-
-    // focusout en vez de blur: pasar del texto al numero o al boton no puede
-    // guardar a medias.
-    caja.addEventListener('focusout', () => {
-        setTimeout(() => { if (!caja.contains(document.activeElement)) confirmar(); }, 0);
-    });
-    caja.addEventListener('keydown', e => {
-        if (e.key === 'Enter')  { e.preventDefault(); confirmar(); }
-        if (e.key === 'Escape') { cancelar(); }
-    });
-
-    btnProbar.addEventListener('mousedown', e => e.preventDefault());
-    btnProbar.addEventListener('click', e => {
-        e.preventDefault();
-        e.stopPropagation();
-        input.focus();   // el foco se queda dentro: probar no es guardar
-        probarGaveta(codigo, inputLed.value.trim(), btnProbar);
-    });
-}
-
-/** Crea un chip de gaveta a partir de código, etiqueta y número de LED */
-function _crearChipGaveta(codigo, gaveta, led) {
-    const span = document.createElement('span');
-    span.dataset.led = led || '';
-    if (gaveta) {
-        span.className = 'tr-gaveta';
-        span.dataset.gaveta = gaveta;
-        span.title = led ? `Gaveta: ${gaveta}, LED ${led} — clic para editar`
-                         : `Gaveta: ${gaveta}, sin LED — clic para editar`;
-        span.textContent = led ? `📦 ${gaveta} 💡${led}` : `📦 ${gaveta}`;
-    } else {
-        span.className = 'tr-gaveta empty';
-        span.title = 'Asignar gaveta y LED de pick-to-light';
-        span.textContent = '📦 Asignar gaveta';
-    }
-    span.addEventListener('click', e => { e.stopPropagation(); editarGaveta(codigo, span); });
-    return span;
-}
-
-/** Llama a la API y actualiza el chip en el DOM.
- *
- * Si el guardado falla, el chip vuelve a lo que HABIA, no a lo tecleado: un
- * chip que enseña una gaveta que el servidor no acepto es peor que no verla,
- * porque nadie vuelve a intentarlo.
- */
-async function guardarGaveta(codigo, gaveta, led, cajaEl, gavetaPrevia, ledPrevio) {
-    let okGaveta = gaveta, okLed = led;
-    try {
-        let resp;
-        if (gaveta) {
-            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gaveta, led })
-            });
-        } else {
-            // Vacío = eliminar
-            resp = await fetch(`/api/terminal-gaveta/${encodeURIComponent(codigo)}`, {
-                method: 'DELETE'
-            });
-            okLed = '';
-        }
-        const data = await resp.json();
-        if (!data.success) {
-            alert('Error: ' + (data.message || 'no se pudo guardar la gaveta'));
-            okGaveta = gavetaPrevia || '';
-            okLed = ledPrevio || '';
-        }
-    } catch (e) {
-        console.error('Error al guardar gaveta', e);
-        okGaveta = gavetaPrevia || '';
-        okLed = ledPrevio || '';
-    } finally {
-        cajaEl.replaceWith(_crearChipGaveta(codigo, okGaveta, okLed));
-    }
-}
-
-/** Enciende una gaveta desde admin, para saber qué cajón es cada número */
-async function probarGaveta(codigo, led, btn) {
-    if (!led) { alert('Escribe primero el número de gaveta en la tira de LEDs.'); return; }
-    if (btn) btn.disabled = true;
-    try {
-        const resp = await fetch('/api/pick-to-light/probar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminal: codigo, led: parseInt(led, 10) })
-        });
-        const data = await resp.json();
-        if (!data.success) alert(data.message || 'No se pudo encender la gaveta');
-    } catch (e) {
-        alert('No se pudo hablar con la placa de las gavetas.');
-    } finally {
-        if (btn) btn.disabled = false;
-    }
-}
 
 // ================================
 // FUNCIONES AUXILIARES

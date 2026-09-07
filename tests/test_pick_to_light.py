@@ -814,6 +814,21 @@ def test_mapa_incluye_el_estado_del_dispositivo(app, admin_client):
     assert datos['dispositivo']['expansores'] == 1
     assert datos['dispositivo']['en_prueba'] is True
     assert datos['dispositivo']['nombre'] == 'Lector puesto 1'
+    assert datos['dispositivo']['online'] is False   # sin last_seen todavía
+
+
+def test_mapa_dispositivo_online_con_latido_reciente(app, admin_client):
+    from datetime import datetime
+    device_id = _registrar_lector(app, gavetas=5)
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    with open(ruta, encoding='utf-8') as f:
+        devs = json.load(f)
+    devs[device_id]['last_seen'] = datetime.now().isoformat()
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump(devs, f)
+
+    datos = admin_client.get('/api/pick-to-light/mapa?device_id=' + device_id).get_json()
+    assert datos['dispositivo']['online'] is True
 
 
 # ── Informe de correspondencia LED-micro ─────────────────────────────────────
