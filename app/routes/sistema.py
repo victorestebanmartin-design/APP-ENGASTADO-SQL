@@ -2459,6 +2459,9 @@ def api_esp32_rfid_devices():
                 # lleva tira de LEDs). Lo manda ella en /api/esp32/rfid/gaveta,
                 # asi que verlo aqui evita ir al puesto a contar cajones.
                 'gavetas': int(d.get('gavetas') or 0),
+                # Si la placa consiguio abrir su puerto 80 (por donde recibe
+                # las ordenes). None = firmware viejo que aun no lo cuenta.
+                'ptl_http': d.get('ptl_http'),
             })
         try:
             puestos = [{'id': p['id'], 'nombre': f"🔧 Engastado — {p['nombre']}"}

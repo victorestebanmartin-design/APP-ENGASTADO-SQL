@@ -1559,8 +1559,13 @@ async function cargarLectoresRfid() {
                     </td>
                     <td style="font-family:monospace;" title="Última IP con la que el lector habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
                     <td><select id="rfid-puesto-${dev.id}" style="${_dispInputStyle}">${filaOpts(dev.puesto_id)}</select></td>
-                    <td title="Gavetas del pick-to-light detectadas por la placa (16 por cada expansor MCP23017)">
+                    <td title="Gavetas del pick-to-light detectadas por la placa (16 por cada expansor MCP23017). El puerto 80 es por donde el servidor le empuja las órdenes: cerrado = la placa ve las gavetas pero no puede recibir nada.">
                         ${dev.gavetas ? `💡 ${dev.gavetas}` : '<span style="color:#64748b;">—</span>'}
+                        ${dev.ptl_http === false
+                            ? '<br><span style="color:#f87171;font-size:0.85em;">⚠ puerto 80 cerrado</span>'
+                            : dev.ptl_http === true
+                                ? '<br><span style="color:#4ade80;font-size:0.85em;">puerto 80 ok</span>'
+                                : ''}
                     </td>
                     <td title="Versión del firmware del lector vs la del servidor (${_dispEsc(versionSrv) || '—'})">
                         ${!dev.fw ? '<span style="color:#64748b;">—</span>'

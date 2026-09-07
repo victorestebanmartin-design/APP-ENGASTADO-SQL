@@ -51,14 +51,27 @@ nunca polaridad invertida. Para el par de alimentacion usar cable de al menos
 
 ## Cableado en la gen4-Breakout
 
-| Componente | Senal | Pad | GPIO |
-|---|---|---:|---:|
-| PN532 en modo I2C | SDA | 11 | GPIO6 |
-| PN532 en modo I2C | SCL | 12 | GPIO5 |
-| PN532 | VCC | 20 | 3.3 V |
-| PN532 | GND | 21, 25 o 30 | GND |
-| Zumbador activo 3.3 V | positivo | 3 | GPIO18 |
-| Zumbador | negativo | 1, 21, 25 o 30 | GND |
+Colores **tal y como esta cableado** el PN532:
+
+| Componente | Senal | Color | Pad | GPIO |
+|---|---|---|---:|---:|
+| PN532 en modo I2C | SDA | Naranja | 11 | GPIO6 |
+| PN532 en modo I2C | SCL | Amarillo | 12 | GPIO5 |
+| PN532 | VCC | Rojo | 20 | 3.3 V |
+| PN532 | GND | Marron | 21 | GND |
+| Zumbador activo 3.3 V | positivo | — | 3 | GPIO18 |
+| Zumbador | negativo | — | 1, 21, 25 o 30 | GND |
+
+> **Ojo con los colores repetidos.** El arnes del PN532 y el del DB9 no
+> comparten codigo: aqui el amarillo es SCL y el naranja SDA, mientras que en el
+> DB9 el amarillo son los +3.3 V, el naranja son los datos de la tira, el azul
+> es SCL y el violeta SDA. Guiarse por el pad, no por el color, al saltar de un
+> arnes al otro.
+>
+> **El pad 20 alimenta a los dos.** De el salen el rojo del PN532 y el amarillo
+> del DB9-3 que alimenta los MCP23017. Son ~150 mA en total para todo: si se
+> añaden muchos expansores, montar un LDO externo en lugar de seguir colgando
+> del pad 20 (ver la seccion del MCP23017).
 
 El PN532 debe estar configurado en modo I2C. Colocar un condensador de 100 uF
 en paralelo con uno ceramico de 100 nF entre VCC y GND, pegados al modulo. Si
@@ -89,23 +102,39 @@ mismos; por su cara de soldadura vuelve a quedar en espejo. Soldar cada hilo
 con el mismo numero en ambos conectores: pin 1 con pin 1, pin 2 con pin 2,
 hasta pin 9 con pin 9. Etiquetar ambos extremos como `LECTOR PUESTO / MUX 1`.
 
-| DB9 | Cable a breakout | Funcion | Soldadura dentro de la caja |
-|---:|---|---|---|
-| 1 | Pad 25, GND | Retorno 5 V | Cable negro de fuente externa |
-| 2 | Pad 2, GPIO17 | Datos WS2813, 3.3 V | 330 Ω en serie, luego DIN+BI del primer pixel |
-| 3 | Pad 4, GPIO16 | **Libre** (reservar, no conectar) | Sin conectar — ver nota abajo |
-| 4 | Pad 5, GPIO15 | **Libre** (reservar, no conectar) | Sin conectar — ver nota abajo |
-| 5 | Pad 6, GPIO48 | **I2C SCL, 3.3 V** | Bus de MCP23017 |
-| 6 | Pad 7, GPIO47 | **I2C SDA, 3.3 V** | Bus de MCP23017 |
-| 7 | Pad 8, GPIO38 | Reserva | Sin conectar |
-| 8 | Pad 9, GPIO39 | Reserva | Sin conectar |
-| 9 | Pad 26, 5V IN | Entrada +5 V | Desde PTC + SS14, ver arriba |
+Cableado **tal y como esta montado**. El arnes entre el breakout y el DB9 es
+una manguera de **8 hilos numerados del 1 al 8**. El DB9 tiene nueve pines, asi
+que uno se queda fuera: los hilos 1 a 7 van a los pines 1 a 7, **DB9-8 no se
+cablea** y el hilo 8 salta al pin 9 para los +5 V.
 
-> **Por que DB9-3/4 quedan libres:** GPIO16 y GPIO15 solo toleran 3.3 V. Si el
-> MCP23017 se alimenta accidentalmente a 5 V, su I2C sube a 5 V y dana esos GPIO
-> de forma permanente. Usando GPIO47/GPIO48 (DB9-5/6) el riesgo queda aislado a
-> esos pines de reserva. En la placa que sufriera ese fallo, soldar un cable de
-> DB9-3 a DB9-6 y otro de DB9-4 a DB9-5 en el arnes basta para recuperarla.
+| DB9 | Hilo | Color | Pad breakout | Funcion | Soldadura dentro de la caja |
+|---:|---:|---|---|---|---|
+| 1 | 1 | Blanco | Pad 25, GND | Masa comun | Retorno de la fuente de 5 V |
+| 2 | 2 | Naranja | Pad 2, GPIO17 | Datos WS2813, 3.3 V | 330 Ω en serie, luego DIN+BI del primer pixel |
+| 3 | 3 | Amarillo | **Pad 20, +3.3 V** | **Alimentacion 3.3 V** | Sale del regulador de la gen4 — ver aviso |
+| 4 | 4 | Verde | Pad 5, GPIO15 | Libre (GPIO danado) | Cableado pero sin uso, aislar en el otro extremo |
+| 5 | 5 | Azul | Pad 6, GPIO48 | **I2C SCL, 3.3 V** | Bus de MCP23017 |
+| 6 | 6 | Violeta | Pad 7, GPIO47 | **I2C SDA, 3.3 V** | Bus de MCP23017 |
+| 7 | 7 | Gris | Pad 8, GPIO38 | Libre | Reserva, aislar |
+| 8 | — | (Blanco) | Pad 9, GPIO39 | **Sin cable** | Previsto pero no montado |
+| 9 | 8 | Blanco 0,5 mm² | Pad 26, 5V IN | Entrada +5 V | Desde PTC + SS14, ver arriba |
+
+> **DB9-3 es una LINEA DE ALIMENTACION, no un GPIO.** En el montaje original ese
+> pin salia del pad 4 (GPIO16). Ahora lleva los 3.3 V del pad 20 para alimentar
+> el MCP23017 por el propio arnes, en lugar de tirar un cable aparte. Antes de
+> energizar hay que asegurarse de que **el pad 4 ya NO esta soldado a DB9-3**: si
+> quedan los dos, se estan metiendo 3.3 V dentro de un GPIO que ademas esta
+> danado, y un pin danado puede tirar del rail de 3.3 V lo bastante como para que
+> la gen4 se vuelva inestable (la radio WiFi es lo primero que lo nota).
+>
+> Por el mismo motivo el firmware ya no declara GPIO16 entre las lineas del DB9:
+> ver `DB9_PINS` en `esp32/micropython/lector_puesto.py`.
+
+> **Por que el I2C va por DB9-5/6 y no por DB9-3/4:** GPIO16 y GPIO15 solo
+> toleran 3.3 V. Si el MCP23017 se alimenta accidentalmente a 5 V, su I2C sube a
+> 5 V y los dana de forma permanente — que es exactamente lo que paso en la
+> primera placa. Con GPIO47/GPIO48 (DB9-5/6) esos dos pines quedan fuera de
+> juego sin perder el bus.
 
 Los pines 2-8 son logica de **3.3 V**, no RS-232, no RS-485 y no toleran 5 V.
 No conectar cargas, bobinas, LEDs, finales de carrera ni salidas de otro
@@ -127,17 +156,25 @@ los hilos a los bornes del **primer multiplexor** que correspondan a la tabla.
 El numero de borne concreto depende del modelo del multiplexor: anotarlo y
 casarlo antes de energizar, no se debe inventar.
 
-| DB9 macho | Color recomendado | Destino en MUX 1 | Funcion |
-|---:|---|---|---|
-| 1 | Negro | `GND / 0V` | Retorno comun de fuente y referencia logica |
-| 2 | Blanco | `330 Ω` -> DIN+BI del primer WS2813 | Datos hacia primer WS2813 |
-| 3 | Marron | Dejar aislado | Libre — reserva (no conectar) |
-| 4 | Rojo fino | Dejar aislado | Libre — reserva (no conectar) |
-| 5 | Naranja | `SCL` de MCP23017 | I2C a 3.3 V |
-| 6 | Amarillo | `SDA` de MCP23017 | I2C a 3.3 V |
-| 7 | Verde | Reserva | Dejar aislado y etiquetado |
-| 8 | Azul | Reserva | Dejar aislado y etiquetado |
-| 9 | Rojo grueso | `+5V IN` | Salida protegida de fuente pick-to-light |
+Mismos colores e hilos que la tabla anterior, pin a pin. Los dos extremos van
+numerados igual (1 con 1, 2 con 2, ... 9 con 9), asi que el color identifica la
+funcion de punta a punta.
+
+| DB9 macho | Hilo | Color | Destino en MUX 1 | Funcion |
+|---:|---:|---|---|---|
+| 1 | 1 | Blanco | `GND / 0V` | Retorno comun de fuente y referencia logica |
+| 2 | 2 | Naranja | `330 Ω` -> DIN+BI del primer WS2813 | Datos hacia primer WS2813 |
+| 3 | 3 | Amarillo | `VDD` + `RESET` del MCP23017 | **+3.3 V de la gen4 (pad 20)** |
+| 4 | 4 | Verde | Dejar aislado | Libre — GPIO danado, no usar |
+| 5 | 5 | Azul | `SCL` de MCP23017 | I2C a 3.3 V |
+| 6 | 6 | Violeta | `SDA` de MCP23017 | I2C a 3.3 V |
+| 7 | 7 | Gris | Dejar aislado | Reserva, etiquetar |
+| 8 | — | — | — | Sin cable |
+| 9 | 8 | Blanco 0,5 mm² | `+5V IN` | Salida protegida de fuente pick-to-light |
+
+> Los dos hilos blancos (1 y 8) son masa y +5 V. Son los dos que mas duele
+> confundir: el de +5 V se distingue por la seccion, 0,5 mm² frente a los
+> 0,25 mm² del resto. Etiquetarlos en ambos extremos antes de cerrar la caja.
 
 El rojo grueso y negro son el par de alimentacion. Salen de los bornes de la
 **fuente de 5 V del pick-to-light** hacia el DB9 macho; el PTC y SS14 quedan
@@ -209,24 +246,28 @@ multiplexor de siete hilos: usa SDA/SCL, y cada chip añade 16 micros de gaveta.
 En MUX 1, alimentar cada MCP23017 asi:
 
 ```
-Pad 20 gen4 (3.3 V) ──────────────> MCP23017 VDD (pin 9), RESET (pin 18)
-DB9-1 GND --------------------------> MCP23017 VSS (pin 10)
-DB9-6 (GPIO47, SDA) ----------------> MCP23017 SDA (pin 13)
-DB9-5 (GPIO48, SCL) ----------------> MCP23017 SCL (pin 12)
-3.3 V (pad 20) -- 4.7 k --> SDA    3.3 V (pad 20) -- 4.7 k --> SCL
+DB9-3 amarillo (+3.3 V, pad 20) ---> MCP23017 VDD (pin 9), RESET (pin 18)
+DB9-1 blanco  (GND) ---------------> MCP23017 VSS (pin 10)
+DB9-6 violeta (GPIO47, SDA) -------> MCP23017 SDA (pin 13)
+DB9-5 azul    (GPIO48, SCL) -------> MCP23017 SCL (pin 12)
+DB9-3 (+3.3 V) -- 4.7 k --> SDA    DB9-3 (+3.3 V) -- 4.7 k --> SCL
 ```
 
-**El MCP23017 se alimenta SIEMPRE desde el pad 20 (3.3 V) de la gen4, nunca
-desde el 5 V.** Si se alimenta a 5 V, su I2C sube a 5 V y dana los GPIO del
-ESP32-S3 de forma permanente. El pad 20 entrega hasta ~150 mA, suficiente para
-varios MCP23017. Para armarios grandes con muchos expansores, usar un LDO o buck
-externo de 3.3 V alimentado desde DB9-9 (5 V).
+Los 3.3 V viajan por el propio arnes (DB9-3), asi que al multiplexor solo llega
+el DB9: no hace falta tirar un cable de alimentacion aparte desde la caja.
+
+**El MCP23017 se alimenta SIEMPRE a 3.3 V, nunca desde el 5 V.** Si se alimenta
+a 5 V, su I2C sube a 5 V y dana los GPIO del ESP32-S3 de forma permanente — es
+lo que se cargo GPIO15 y GPIO16 de la primera placa. El pad 20 entrega hasta
+~150 mA, suficiente para varios MCP23017. Para armarios grandes con muchos
+expansores, usar un LDO o buck externo de 3.3 V alimentado desde DB9-9 (5 V), y
+en ese caso **no** llevar tambien los 3.3 V por DB9-3: una sola fuente por rail.
 
 Para MUX 2 y posteriores:
 
 1. Llevar 5 V y GND desde los bornes de la fuente a cada modulo en estrella.
-2. Encadenar solo SDA (DB9-3) y SCL (DB9-4), con GND comun; cada MCP23017
-   debe tener direccion distinta de 0x20 a 0x27 mediante A0/A1/A2.
+2. Encadenar solo SDA (DB9-6, violeta) y SCL (DB9-5, azul), con GND comun; cada
+   MCP23017 debe tener direccion distinta de 0x20 a 0x27 mediante A0/A1/A2.
 3. Encadenar la tira WS2813 por su salida de datos entre tiras, no uniendo
    salidas de dos conversores de nivel.
 4. Usar **un solo juego** de pull-ups I2C de 4.7 k a 3.3 V en todo el bus. Con

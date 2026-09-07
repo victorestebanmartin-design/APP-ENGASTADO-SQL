@@ -360,3 +360,99 @@ def test_en_modo_prueba_cambio_micro_no_toca_los_leds(gavetas, placa_con_tira):
     assert tira[4] == (0, 0, 100)
     # Y el buzzer tampoco debe haber sonado (obj.equivocadas vacio porque _iniciar_prueba lo limpia)
     assert not obj.equivocadas
+
+
+# ── Apertura del puerto 80 ────────────────────────────────────────────────
+#
+# Una placa puede detectar sus expansores, encender gavetas y mandar latidos
+# con el puerto 80 cerrado: desde Admin se ve sana y el unico sintoma es un
+# ConnectionRefusedError al empujarle una orden. Estos dos tests fijan lo que
+# costo encontrar ese fallo.
+
+class _SocketEspia:
+    """Socket de mentira que apunta como lo han llamado."""
+
+    def __init__(self, registro, fallar_en=None):
+        self._registro = registro
+        self._fallar_en = fallar_en
+        self.cerrado = False
+
+    def _paso(self, nombre, *args):
+        self._registro.append((nombre, args))
+        if self._fallar_en == nombre:
+            raise OSError(112, 'EADDRINUSE')
+
+    def setsockopt(self, *a):
+        self._paso('setsockopt')
+
+    def bind(self, direccion):
+        self._paso('bind', direccion)
+
+    def listen(self, n):
+        self._paso('listen')
+
+    def settimeout(self, t):
+        self._paso('settimeout')
+
+    def close(self):
+        self.cerrado = True
+
+
+def _con_socket_falso(gavetas, monkeypatch, fallar_en=None):
+    """Sustituye el modulo socket de gavetas.py y devuelve (registro, sockets)."""
+    registro = []
+    creados = []
+
+    def socket_falso():
+        s = _SocketEspia(registro, fallar_en)
+        creados.append(s)
+        return s
+
+    def getaddrinfo(host, port, *a):
+        registro.append(('getaddrinfo', (host, port)))
+        # Se devuelve un valor DISTINTO de la tupla cruda a proposito: asi el
+        # test puede distinguir un bind(getaddrinfo(...)) de un bind(("0.0.0.0",
+        # 80)), que es justo el fallo que se esta fijando.
+        return [(2, 1, 0, '', RESUELTA)]
+
+    falso = types.SimpleNamespace(
+        socket=socket_falso,
+        SOCK_STREAM=1,
+        SOL_SOCKET=1,
+        SO_REUSEADDR=2,
+        getaddrinfo=getaddrinfo,
+    )
+    monkeypatch.setattr(gavetas, 'socket', falso)
+    return registro, creados
+
+
+# Lo que "resuelve" el getaddrinfo de mentira: no se parece a la tupla cruda.
+RESUELTA = ('0.0.0.0-resuelta', 80)
+
+
+def test_el_puerto_80_se_abre_con_la_direccion_de_getaddrinfo(gavetas, monkeypatch):
+    """bind() tiene que recibir lo que devuelve getaddrinfo, no una tupla cruda.
+
+    En MicroPython no son equivalentes: con la tupla cruda el bind puede
+    fallar en silencio y dejar la placa sin escuchar a nadie.
+    """
+    registro, _ = _con_socket_falso(gavetas, monkeypatch)
+    placa = types.SimpleNamespace()
+
+    servidor = gavetas.Gavetas._abrir_servidor(placa)
+
+    assert servidor is not None
+    pasos = dict(registro)
+    assert pasos.get('getaddrinfo') == ('0.0.0.0', gavetas.PUERTO_HTTP)
+    assert pasos.get('bind') == (RESUELTA,), 'bind no uso la direccion resuelta'
+    nombres = [n for n, _ in registro]
+    assert nombres.index('listen') < nombres.index('settimeout')
+
+
+def test_si_el_bind_falla_el_socket_se_cierra(gavetas, monkeypatch):
+    """Sin cerrarlo, cada reintento dejaria un descriptor colgado."""
+    _, creados = _con_socket_falso(gavetas, monkeypatch, fallar_en='bind')
+    placa = types.SimpleNamespace()
+
+    assert gavetas.Gavetas._abrir_servidor(placa) is None
+    assert creados and creados[0].cerrado, 'el socket fallido quedo sin cerrar'

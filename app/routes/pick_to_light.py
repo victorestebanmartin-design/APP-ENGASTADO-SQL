@@ -488,10 +488,18 @@ def api_esp32_rfid_gaveta():
             n_gavetas = int(datos.get('gavetas') or 0)
         except (TypeError, ValueError):
             n_gavetas = 0
-        if n_gavetas:
+        # 'http' dice si la placa consiguio abrir su puerto 80. Una placa que
+        # detecta los expansores pero no puede escuchar se ve igual de sana
+        # desde Admin, y el unico sintoma es un ConnectionRefusedError al
+        # empujarle una orden: guardarlo evita diagnosticar a ciegas.
+        puerto_abierto = datos.get('http')
+        if n_gavetas or puerto_abierto is not None:
             devs = _rfid_load_devices()
             dev = devs.setdefault(device_id, {})
-            dev['gavetas'] = n_gavetas
+            if n_gavetas:
+                dev['gavetas'] = n_gavetas
+            if puerto_abierto is not None:
+                dev['ptl_http'] = bool(puerto_abierto)
             _rfid_save_devices(devs)
 
         puesto_id = _puesto_de_la_placa(device_id)

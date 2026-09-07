@@ -57,15 +57,15 @@ def test_las_placas_desactivan_el_ahorro_de_energia_wifi():
     """Con el ahorro por defecto (WIFI_PS_MIN_MODEM) el punto de acceso
     retiene los paquetes hasta que la placa despierta, y eso mete cientos de
     ms en cada respuesta. Es la causa principal de la lentitud percibida."""
-    for rel in ('esp32/boot.py', 'esp32/micropython/main_wifi.py'):
+    for rel in ('esp32/micropython/lector_puesto.py', 'esp32/micropython/main_wifi.py'):
         assert 'PM_NONE' in _leer(rel), rel
 
 
 def test_el_ahorro_se_desactiva_antes_de_conectar():
     """pm se fija sobre la interfaz ya activa y antes del connect, para que
     la primera peticion tras arrancar tampoco pague la espera."""
-    boot = _leer('esp32/boot.py')
-    assert boot.index('PM_NONE') < boot.index('wlan.connect(')
+    lector = _leer('esp32/micropython/lector_puesto.py')
+    assert lector.index('PM_NONE') < lector.index('wlan.connect(')
 
 
 # ── Reintento rapido, sin duplicar fichajes ───────────────────────────────
