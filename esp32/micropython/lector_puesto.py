@@ -52,7 +52,10 @@ NFC_SDA_PIN = 6
 NFC_SCL_PIN = 5
 BUZZER_PIN = 18
 BUZZER_PASIVO = False
-DB9_PINS = (17, 16, 15, 48, 47, 38, 39)
+# Lineas del DB9 que el firmware deja como entradas en reposo. GPIO16 NO esta:
+# su pin del conector (DB9-3) lleva ahora los 3.3 V que alimentan el MCP23017,
+# asi que el firmware no puede tocarlo. Ver la tabla de HARDWARE_LECTOR_PUESTO_GEN4.md.
+DB9_PINS = (17, 15, 48, 47, 38, 39)
 NFC_POLL_MS = 300
 NFC_REPETIR_MS = 3000
 NFC_REINTENTO_S = 10
@@ -307,7 +310,7 @@ def actualizar_pantalla_gavetas(forzar=False):
     text_center(112, detalle, WHITE, BLACK, 1)
     text_center(153, "LED %02d  DB9-2" % objetivo, WHITE, BLACK, 2)
     text_center(181, "GPIO17  WS2813", GRAY, BLACK, 1)
-    text_center(204, "MICROS I2C 16/15", GRAY, BLACK, 1)
+    text_center(204, "MICROS I2C 47/48", GRAY, BLACK, 1)
     text_center(221, "PASA TU TARJETA", GRAY, BLACK, 1)
 
 
