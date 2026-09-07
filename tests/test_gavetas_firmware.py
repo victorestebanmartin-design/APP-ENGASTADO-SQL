@@ -125,6 +125,12 @@ class PlacaFalsa:
         self.encendidos.append(led)
         return True, ''
 
+    def ejecutar_test(self, datos):
+        """Delega en el real: estas pruebas mandan ordenes normales, asi que
+        tiene que devolver None y dejar pasar al manejo de 'led'."""
+        import gavetas as modulo
+        return modulo.Gavetas.ejecutar_test(self, datos)
+
 
 def test_el_cuerpo_leido_acaba_encendiendo_la_gaveta(gavetas):
     """De los bytes del socket a la orden, que es el camino que se rompio."""

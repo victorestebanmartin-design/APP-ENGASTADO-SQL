@@ -350,3 +350,119 @@ def test_importar_un_fichero_viejo_no_borra_los_leds(admin_client):
                           content_type='multipart/form-data')
     assert r.status_code == 200, r.get_json()
     assert admin_client.get('/api/terminal-gaveta/640204').get_json()['led'] == 7
+
+
+# ── Pruebas de cableado con la placa fuera de alcance ────────────────────────
+#
+# Desde PythonAnywhere el servidor NO puede abrir una conexion hacia la placa:
+# vive en una IP privada y el intento muere con ConnectionRefusedError. Los
+# endpoints de prueba daban 502 y el panel quedaba inservible justo en el
+# entorno donde se estaba montando el hardware. Ahora el comando se aparca y lo
+# recoge el sondeo de la placa, que devuelve el resultado por otra peticion.
+
+@pytest.fixture
+def placa_inalcanzable(monkeypatch):
+    """El empuje directo al puerto 80 falla, como desde PythonAnywhere."""
+    intentos = []
+
+    def _falso(ip, payload, timeout=None):
+        intentos.append((ip, payload))
+        return False, 'La placa no responde (ConnectionRefusedError)', {}
+
+    monkeypatch.setattr(pick_to_light, '_enviar_a_placa_con_datos', _falso)
+    return intentos
+
+
+def test_prueba_de_led_con_la_placa_fuera_de_alcance_no_da_502(
+        app, admin_client, placa_inalcanzable):
+    """El 502 no se podia arreglar tocando la placa: no era cosa suya."""
+    dev = _registrar_lector(app)
+    r = admin_client.post('/api/pick-to-light/test/led',
+                          json={'device_id': dev, 'led': 5, 'color': [0, 0, 100]})
+    assert r.status_code == 200
+    datos = r.get_json()
+    assert datos['success'] is True
+    assert datos['pendiente'] is True
+    assert datos['seq'] >= 1
+
+
+def test_la_placa_recoge_la_prueba_en_su_sondeo(app, client, admin_client,
+                                                placa_inalcanzable):
+    """El comando aparcado tiene que salir por la ruta que sondea la placa."""
+    dev = _registrar_lector(app)
+    admin_client.post('/api/pick-to-light/test/led',
+                      json={'device_id': dev, 'led': 5, 'color': [0, 0, 100]})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + dev).get_json()
+    assert orden['test'] == {'test_led': 5, 'color': [0, 0, 100]}
+    assert orden['test_seq'] >= 1
+
+
+def test_el_resultado_de_la_placa_llega_al_panel(app, client, admin_client,
+                                                 placa_inalcanzable):
+    """Ida y vuelta completa: sin esto 'test_micros' no serviria de nada."""
+    dev = _registrar_lector(app)
+    pedido = admin_client.post('/api/pick-to-light/test/micros',
+                               json={'device_id': dev}).get_json()
+    seq = pedido['seq']
+
+    # Antes de que conteste la placa, el panel sigue esperando.
+    espera = admin_client.get(
+        '/api/pick-to-light/test/resultado?device_id=%s&seq=%d' % (dev, seq)).get_json()
+    assert espera['listo'] is False
+
+    client.post('/api/esp32/rfid/gaveta/test-resultado',
+                json={'device_id': dev, 'seq': seq,
+                      'resultado': {'ok': True, 'fuera': [3], 'puestas': [1, 2],
+                                    'total': 16}})
+
+    listo = admin_client.get(
+        '/api/pick-to-light/test/resultado?device_id=%s&seq=%d' % (dev, seq)).get_json()
+    assert listo['listo'] is True
+    assert listo['resultado']['fuera'] == [3]
+    assert listo['resultado']['total'] == 16
+
+
+def test_la_orden_no_se_repite_una_vez_ejecutada(app, client, admin_client,
+                                                 placa_inalcanzable):
+    """Sin esto la placa repetiria la prueba en cada sondeo, cada 750 ms."""
+    dev = _registrar_lector(app)
+    seq = admin_client.post('/api/pick-to-light/test/led',
+                            json={'device_id': dev, 'led': 5}).get_json()['seq']
+    client.post('/api/esp32/rfid/gaveta/test-resultado',
+                json={'device_id': dev, 'seq': seq, 'resultado': {'ok': True}})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + dev).get_json()
+    assert not orden.get('test')
+
+
+def test_un_resultado_atrasado_no_pisa_a_la_prueba_en_curso(
+        app, client, admin_client, placa_inalcanzable):
+    """Una respuesta tardia de la prueba anterior no puede darse por buena."""
+    dev = _registrar_lector(app)
+    primera = admin_client.post('/api/pick-to-light/test/led',
+                                json={'device_id': dev, 'led': 1}).get_json()['seq']
+    segunda = admin_client.post('/api/pick-to-light/test/led',
+                                json={'device_id': dev, 'led': 2}).get_json()['seq']
+    assert segunda != primera
+
+    # Llega, tarde, el resultado de la PRIMERA.
+    client.post('/api/esp32/rfid/gaveta/test-resultado',
+                json={'device_id': dev, 'seq': primera,
+                      'resultado': {'ok': True, 'test_led': 1}})
+
+    r = admin_client.get('/api/pick-to-light/test/resultado?device_id=%s&seq=%d'
+                         % (dev, segunda)).get_json()
+    assert r['listo'] is False, 'el panel se ha creido el resultado del anterior'
+
+
+def test_con_la_placa_a_mano_no_se_usa_el_sondeo(app, admin_client, monkeypatch):
+    """En la red de planta el empuje directo sigue siendo el camino: instantaneo."""
+    monkeypatch.setattr(pick_to_light, '_enviar_a_placa_con_datos',
+                        lambda ip, payload, timeout=None:
+                        (True, '', {'ok': True, 'estado': {'gavetas': 16}}))
+    dev = _registrar_lector(app)
+    datos = admin_client.post('/api/pick-to-light/test/led',
+                              json={'device_id': dev, 'led': 5}).get_json()
+    assert datos['pendiente'] is False
+    assert datos['estado']['gavetas'] == 16
