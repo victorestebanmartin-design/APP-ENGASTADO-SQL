@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07g"
+FW_VERSION = "2026-09-07h"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -561,7 +561,8 @@ while True:
                     try:
                         led = int(orden.get("led"))
                         if gav.objetivo != led:
-                            gav.encender(led, orden.get("terminal") or "")
+                            gav.encender(led, orden.get("terminal") or "",
+                                        orden.get("validas"))
                     except (TypeError, ValueError):
                         pass
 

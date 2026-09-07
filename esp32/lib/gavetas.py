@@ -79,6 +79,10 @@ class Gavetas:
         self.terminal = ""          # terminal en curso, solo para el display
         self.recogida = False       # ya se abrio la correcta
         self.equivocadas = set()    # gavetas mal abiertas y aun sin devolver
+        # Numeros de LED con un terminal de verdad detras, segun el servidor.
+        # None = sin lista todavia (firmware recien arrancado o servidor
+        # viejo): no se restringe nada, que es como se comportaba siempre.
+        self.validas = None
 
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
@@ -133,28 +137,48 @@ class Gavetas:
 
     # ── Ordenes que llegan del servidor ─────────────────────────────────────
 
-    def encender(self, gaveta, terminal=""):
-        """Marca una gaveta como objetivo y la pone en verde."""
+    def encender(self, gaveta, terminal="", validas=None):
+        """Marca una gaveta como objetivo y la pone en verde.
+
+        'validas' es la lista de LEDs con un terminal de verdad detras en
+        este puesto, segun el servidor; None deja la lista que ya hubiera
+        (no todos los caminos que llaman a encender la conocen). El objetivo
+        siempre cuenta como valida, aunque el servidor no la incluyera.
+        """
         if not 1 <= gaveta <= self.n_gavetas:
             return False, "La gaveta %d no existe (esta placa tiene %d)" % (
                 gaveta, self.n_gavetas)
         self.apagar()
         self.objetivo = gaveta
         self.terminal = terminal or ""
+        if validas is not None:
+            self.validas = set(validas)
+            self.validas.add(gaveta)
         self.recogida = False
         self.fuera = self._leer_micros()
         # Al empezar un terminal, TODAS las demas gavetas del puesto tienen
         # que estar en su sitio. Una que ya estaba fuera es tan intrusa como
         # una que se saque despues: alguien se la ha llevado y el operario de
-        # este puesto se quedaria sin ella a mitad del engaste.
+        # este puesto se quedaria sin ella a mitad del engaste. Un canal sin
+        # gaveta configurada (sin microinterruptor cableado, o un hueco
+        # vacio del armario) no cuenta: es ruido del expansor, no un robo.
         for otra in self.fuera:
-            if otra != gaveta:
+            if otra != gaveta and self._es_gaveta_real(otra):
                 self.equivocadas.add(otra)
                 self._avisar(otra, True, "equivocada")
         self._pintar(gaveta, COLOR_EN_USO if gaveta in self.fuera else COLOR_OBJETIVO)
         if gaveta in self.fuera:
             self.recogida = True
         return True, ""
+
+    def _es_gaveta_real(self, gaveta):
+        """True si este canal tiene una gaveta configurada en este puesto.
+
+        Sin lista (self.validas is None) no se restringe nada: es como se
+        comportaba siempre, para una placa recien arrancada o un servidor
+        viejo que aun no manda la lista.
+        """
+        return self.validas is None or gaveta in self.validas
 
     def apagar(self):
         """Todo apagado y sin objetivo: la placa vuelve a estar en reposo."""
@@ -174,6 +198,7 @@ class Gavetas:
             "recogida": self.recogida,
             "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
+            "validas": sorted(self.validas) if self.validas is not None else None,
             "http": self._servidor is not None,
         }
 
@@ -328,12 +353,6 @@ class Gavetas:
             # En modo prueba solo se actualiza el estado; sin luces ni zumbido.
             return
 
-        # Sin objetivo no hay ni acierto ni error: alguien esta reponiendo o
-        # dejo un cajon abierto. Se avisa al servidor y no suena nada.
-        if self.objetivo is None:
-            self._avisar(gaveta, ahora_fuera, "sin_objetivo")
-            return
-
         if gaveta == self.objetivo:
             if ahora_fuera:
                 self.recogida = True
@@ -344,6 +363,18 @@ class Gavetas:
                 # Devolver la gaveta buena no apaga la luz: sigue siendo la del
                 # trabajo en curso hasta que el servidor diga que se acabo.
                 self._avisar(gaveta, False, "devuelta")
+            return
+
+        if not self._es_gaveta_real(gaveta):
+            # Canal sin gaveta configurada en este puesto: sin microinterruptor
+            # cableado o un hueco vacio del armario. Es ruido del expansor, no
+            # una gaveta robada, y no debe avisar ni sonar por ella.
+            return
+
+        # Sin objetivo no hay ni acierto ni error: alguien esta reponiendo o
+        # dejo un cajon abierto. Se avisa al servidor y no suena nada.
+        if self.objetivo is None:
+            self._avisar(gaveta, ahora_fuera, "sin_objetivo")
             return
 
         if ahora_fuera:
@@ -492,7 +523,7 @@ class Gavetas:
         except (TypeError, ValueError):
             return {"ok": False, "error": "led no es un numero"}
 
-        ok, motivo = self.encender(led, datos.get("terminal") or "")
+        ok, motivo = self.encender(led, datos.get("terminal") or "", datos.get("validas"))
         return {"ok": ok, "error": motivo, "estado": self.estado()}
 
     # ── Bucle ───────────────────────────────────────────────────────────────

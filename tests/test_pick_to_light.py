@@ -50,6 +50,26 @@ def _registrar_lector(app, device_id='aabbccddeeff', puesto_id='puesto_001', ip=
     return device_id
 
 
+def _asignar_terminal_a_maquina(app, terminal, puesto_id='puesto_001', maquina_id='maquina_001'):
+    """Deja un terminal colgado de una máquina de un puesto, como en producción.
+
+    Hace falta para que _gavetas_validas_del_puesto lo encuentre: sin esta
+    asignación, terminales_gavetas por sí sola no dice a qué puesto pertenece
+    el terminal.
+    """
+    from repositories.puesto_repository import PuestoRepository
+    from repositories.maquina_repository import MaquinaRepository
+    from app.routes.base import db
+    with app.app_context():
+        pr = PuestoRepository(db)
+        if not pr.obtener_puesto(puesto_id):
+            pr.crear_puesto(puesto_id, puesto_id)
+        mr = MaquinaRepository(db)
+        if not mr.obtener_maquina(maquina_id):
+            mr.crear_maquina(maquina_id, puesto_id, maquina_id)
+        mr.asignar_terminal(maquina_id, terminal)
+
+
 # ── La columna 'led' ─────────────────────────────────────────────────────────
 
 def test_gaveta_guarda_y_devuelve_el_numero_de_led(admin_client):
@@ -100,7 +120,37 @@ def test_encender_manda_el_led_a_la_placa(app, client, admin_client, con_placa):
     datos = r.get_json()
     assert r.status_code == 200
     assert datos['activo'] is True and datos['led'] == 7 and datos['gaveta'] == 'A-12'
-    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204'})]
+    # 640204 ya viene de fábrica asignado a una máquina de puesto_001 (semilla
+    # de schema_sqlite.sql), así que 'validas' ya trae su propio led: ver
+    # test_encender_manda_las_gavetas_validas_del_puesto para un puesto limpio.
+    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204', 'validas': [7]})]
+
+
+def test_encender_manda_las_gavetas_validas_del_puesto(app, client, admin_client, con_placa):
+    """La placa necesita saber qué canales tienen gaveta de verdad detrás.
+
+    Un expansor MCP23017 trae 16 canales aunque solo se haya cableado un
+    microinterruptor: sin esta lista, los canales sin cablear se leen como
+    'fuera' permanentemente y se confunden con gavetas robadas. Usa un puesto
+    y terminales propios (no los de la semilla de schema_sqlite.sql) para no
+    depender de esos datos.
+    """
+    _registrar_lector(app, puesto_id='puesto_ptl_test')
+    admin_client.put('/api/terminal-gaveta/ZZTEST1', json={'gaveta': 'A-1', 'led': 7})
+    admin_client.put('/api/terminal-gaveta/ZZTEST2', json={'gaveta': 'A-2', 'led': 3})
+    _asignar_terminal_a_maquina(app, 'ZZTEST1', puesto_id='puesto_ptl_test',
+                                maquina_id='maquina_ptl_test')
+    _asignar_terminal_a_maquina(app, 'ZZTEST2', puesto_id='puesto_ptl_test',
+                                maquina_id='maquina_ptl_test')
+    # Un terminal con gaveta pero de OTRO puesto no puede colarse en la lista.
+    admin_client.put('/api/terminal-gaveta/ZZTEST3', json={'gaveta': 'B-1', 'led': 12})
+    _asignar_terminal_a_maquina(app, 'ZZTEST3', puesto_id='puesto_ptl_otro',
+                                maquina_id='maquina_ptl_otro')
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_ptl_test', 'terminal': 'ZZTEST1'})
+    assert con_placa == [('192.168.50.151',
+                          {'led': 7, 'terminal': 'ZZTEST1', 'validas': [3, 7]})]
 
 
 def test_encender_un_terminal_sin_led_no_es_un_error(app, client, admin_client, con_placa):
@@ -144,11 +194,11 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204'}
+    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204', 'validas': [7]}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': ''}
+    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': []}
 
 
 def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
@@ -171,7 +221,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': ''}
+    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '', 'validas': []}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
@@ -334,7 +384,7 @@ def test_encender_manda_el_terminal_a_la_placa_para_el_display(app, client, admi
 
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
-    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204'})]
+    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204', 'validas': [7]})]
 
 
 def test_el_sondeo_devuelve_el_terminal_en_curso(app, client, admin_client, con_placa):

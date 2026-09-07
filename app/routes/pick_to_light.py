@@ -243,6 +243,27 @@ def _gaveta_del_terminal(terminal):
     return row[0], row[1]
 
 
+def _gavetas_validas_del_puesto(puesto_id):
+    """LEDs con un terminal de verdad detras, entre los de las maquinas de este puesto.
+
+    Un expansor MCP23017 trae 16 canales aunque solo se haya cableado un
+    microinterruptor: los que faltan quedan flotando con el pull-up interno y
+    leen "abierto" todo el rato. Sin esta lista la placa los confundiria con
+    gavetas robadas. Con ella, cualquier canal que no sea el numero de LED de
+    algun terminal de este puesto es ruido del expansor y se ignora.
+    """
+    if not puesto_id:
+        return []
+    filas = db.session.execute(text("""
+        SELECT DISTINCT tg.led
+        FROM terminales_gavetas tg
+        JOIN maquinas_terminales mt ON mt.terminal_codigo = tg.terminal_codigo AND mt.activo = 1
+        JOIN maquinas m ON m.id = mt.maquina_id
+        WHERE m.puesto_id = :puesto_id AND tg.led IS NOT NULL
+    """), {'puesto_id': puesto_id}).fetchall()
+    return sorted({fila[0] for fila in filas})
+
+
 def _backend_pythonanywhere():
     """True si el servidor no puede abrir conexiones a las IP privadas."""
     host = (request.host or '').split(':', 1)[0].lower()
@@ -291,13 +312,14 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta, 'led': led,
                             'motivo': 'Este puesto no tiene lector asignado en Admin'})
 
-        ok, motivo = _enviar_a_placa(ip, {'led': led, 'terminal': terminal})
+        validas = _gavetas_validas_del_puesto(puesto_id)
+        ok, motivo = _enviar_a_placa(ip, {'led': led, 'terminal': terminal, 'validas': validas})
 
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
         estado = _estado_cargar()
         estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
-                             'recogida': False, 'devuelta': False,
+                             'recogida': False, 'devuelta': False, 'validas': validas,
                              'error_led': None, 'intrusas': [], 'eventos': []}
         _estado_guardar(estado)
 
@@ -419,7 +441,8 @@ def api_pick_to_light_orden():
         return jsonify({'success': True,
                         'apagar': not bool(led),
                         'led': led,
-                        'terminal': (estado or {}).get('terminal') or ''})
+                        'terminal': (estado or {}).get('terminal') or '',
+                        'validas': (estado or {}).get('validas') or []})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
 

@@ -121,8 +121,8 @@ class PlacaFalsa:
     def apagar(self):
         self.apagados += 1
 
-    def encender(self, led, terminal=''):
-        self.encendidos.append((led, terminal))
+    def encender(self, led, terminal='', validas=None):
+        self.encendidos.append((led, terminal, validas))
         return True, ''
 
     def ejecutar_test(self, datos):
@@ -137,7 +137,7 @@ def test_el_cuerpo_leido_acaba_encendiendo_la_gaveta(gavetas):
     placa = PlacaFalsa()
     cuerpo = gavetas.Gavetas._leer_cuerpo(placa, SocketFalso(_peticion(b'{"led": 7}')))
     respuesta = gavetas.Gavetas._responder(placa, cuerpo)
-    assert placa.encendidos == [(7, '')]
+    assert placa.encendidos == [(7, '', None)]
     assert respuesta['ok'] is True
 
 
@@ -145,7 +145,16 @@ def test_el_terminal_llega_a_la_placa_para_el_display(gavetas):
     """Sin el, la pantalla solo puede decir un numero de cajon sin contexto."""
     placa = PlacaFalsa()
     respuesta = gavetas.Gavetas._responder(placa, b'{"led": 7, "terminal": "640204"}')
-    assert placa.encendidos == [(7, '640204')]
+    assert placa.encendidos == [(7, '640204', None)]
+    assert respuesta['ok'] is True
+
+
+def test_la_lista_de_validas_llega_a_la_placa(gavetas):
+    """Sin ella, un canal sin microinterruptor cableado se confunde con un robo."""
+    placa = PlacaFalsa()
+    respuesta = gavetas.Gavetas._responder(
+        placa, b'{"led": 7, "terminal": "640204", "validas": [1, 7, 8]}')
+    assert placa.encendidos == [(7, '640204', [1, 7, 8])]
     assert respuesta['ok'] is True
 
 
@@ -230,6 +239,7 @@ class PlacaConTira:
         obj.terminal = ''
         obj.recogida = False
         obj.equivocadas = set()
+        obj.validas = None
         obj.fuera = set()
         obj._ultima_lectura_ms = 0
         obj._cambio_pendiente = {}
@@ -284,6 +294,7 @@ def placa_con_tira(gavetas):
     obj.terminal = ''
     obj.recogida = False
     obj.equivocadas = set()
+    obj.validas = None
     obj.fuera = set()
     obj._ultima_lectura_ms = 0
     obj._cambio_pendiente = {}
@@ -385,6 +396,55 @@ def test_una_gaveta_ya_fuera_al_empezar_cuenta_como_robada(gavetas, placa_con_ti
     assert obj.equivocadas == {3}
     assert obj.terminal == '640204'
     assert tira[4] == gavetas.COLOR_OBJETIVO   # la 5 sigue pidiendose en verde
+
+
+def test_un_canal_sin_gaveta_configurada_no_cuenta_como_robada(gavetas, placa_con_tira):
+    """Un expansor de 16 canales con un solo microinterruptor cableado deja
+    el resto flotando con el pull-up interno: siempre leen 'fuera'. Sin la
+    lista de validas eso se confundiria con una gaveta robada para siempre.
+    """
+    obj, tira, expansores = placa_con_tira
+    obj._avisar = lambda *a: None
+    expansores[0]._bits = 0b00000100      # gaveta 3 "fuera" (sin cablear)
+
+    ok, _ = gavetas.Gavetas.encender(obj, 5, '640204', validas=[5])
+
+    assert ok is True
+    assert obj.equivocadas == set()
+    assert tira[2] == gavetas.COLOR_APAGADO    # la 3 no se pinta de rojo
+
+
+def test_un_cambio_en_canal_no_configurado_no_avisa_ni_alarma(gavetas, placa_con_tira):
+    """Igual que arriba pero durante el trabajo, no solo al empezar."""
+    obj, _, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    obj.objetivo = 5
+    obj.validas = {5}
+
+    gavetas.Gavetas._aplicar_cambio(obj, 9, True)
+
+    assert obj.equivocadas == set()
+    assert avisos == []
+    assert 9 in obj.fuera   # se sigue registrando en crudo, para diagnostico
+
+
+def test_la_gaveta_objetivo_manda_aunque_no_este_en_validas(gavetas, placa_con_tira, monkeypatch):
+    """Un desajuste entre lo que manda el servidor y su propia lista de
+    validas no puede romper el camino principal: el objetivo siempre cuenta."""
+    obj, _, _ = placa_con_tira
+    reloj = types.ModuleType('time')
+    reloj.ticks_diff = lambda a, b: a - b
+    reloj.ticks_add = lambda a, b: a + b
+    reloj.ticks_ms = lambda: 0
+    monkeypatch.setattr(gavetas, 'time', reloj)
+    obj._avisar = lambda *a: None
+    obj.objetivo = 5
+    obj.validas = {1, 2}   # el propio 5 no esta, por lo que sea
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+
+    assert obj.recogida is True
 
 
 def test_el_rojo_de_la_gaveta_robada_parpadea(gavetas, placa_con_tira, monkeypatch):
