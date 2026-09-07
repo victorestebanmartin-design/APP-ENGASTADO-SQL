@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07a"
+FW_VERSION = "2026-09-07b"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -423,7 +423,6 @@ def procesar_tarjeta(uid):
 
 nfc = PN532(sda=NFC_SDA_PIN, scl=NFC_SCL_PIN)
 nfc_estado = "ok" if nfc.reiniciar() else "ko"
-gav = gavetas.crear(_ConfiguracionGavetas, _BuzzerGavetas(), DEVICE_ID) if gavetas else None
 nfc_fallos = 0
 ultimo_nfc = 0
 uid_anterior = ""
@@ -434,6 +433,10 @@ ultima_orden_gavetas = 0
 
 beep(80)
 conectar_wifi()
+# gavetas.crear() va aqui, despues de conectar_wifi(), para que _abrir_servidor()
+# pueda hacer el bind en el socket cuando la red ya esta activa.  Si se mueve
+# antes del WiFi el bind puede fallar en silencio y el puerto 80 queda cerrado.
+gav = gavetas.crear(_ConfiguracionGavetas, _BuzzerGavetas(), DEVICE_ID) if gavetas else None
 registrar_dispositivo()
 draw_idle()
 if gav:
