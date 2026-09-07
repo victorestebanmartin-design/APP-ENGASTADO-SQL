@@ -59,8 +59,11 @@ MAX_CUERPO = 512            # el JSON que manda el PC son unos 30 bytes
 INTERVALO_MICROS_MS = 40    # cada cuanto se relee el bus I2C
 ANTIRREBOTE_MS = 80         # un micro rebota unos ms al abrir y al cerrar
 BEEP_OK_MS = 120            # confirmacion corta de recogida correcta
-ZUMBIDO_ON_MS = 400         # el zumbido de error late para que no se ignore
-ZUMBIDO_OFF_MS = 120
+# Alarma de gaveta robada: corta y rapida molesta mucho mas que un pitido
+# largo, y es la unica forma de que alguien suelte el cajon y lo devuelva.
+ZUMBIDO_ON_MS = 120
+ZUMBIDO_OFF_MS = 90
+PARPADEO_MS = 250           # el rojo de la gaveta robada parpadea, no fijo
 TIMEOUT_AVISO_S = 2         # avisar al servidor no puede frenar el bucle
 
 
@@ -73,6 +76,7 @@ class Gavetas:
         self.n_gavetas = mcp23017.CANALES * len(expansores)
 
         self.objetivo = None        # numero de gaveta que hay que abrir
+        self.terminal = ""          # terminal en curso, solo para el display
         self.recogida = False       # ya se abrio la correcta
         self.equivocadas = set()    # gavetas mal abiertas y aun sin devolver
 
@@ -83,6 +87,8 @@ class Gavetas:
         self._zumbido_hasta_ms = 0
         self._zumbido_encendido = False
         self._beep_hasta_ms = 0
+        self._parpadeo_hasta_ms = 0
+        self._parpadeo_encendido = True
 
         self._en_prueba = False   # modo prueba de cableado
         self._reintento_servidor_ms = 0
@@ -127,17 +133,24 @@ class Gavetas:
 
     # ── Ordenes que llegan del servidor ─────────────────────────────────────
 
-    def encender(self, gaveta):
+    def encender(self, gaveta, terminal=""):
         """Marca una gaveta como objetivo y la pone en verde."""
         if not 1 <= gaveta <= self.n_gavetas:
             return False, "La gaveta %d no existe (esta placa tiene %d)" % (
                 gaveta, self.n_gavetas)
         self.apagar()
         self.objetivo = gaveta
+        self.terminal = terminal or ""
         self.recogida = False
-        # Foto nueva: una gaveta que YA estaba fuera antes de esta orden no es
-        # un error del operario, asi que no debe hacer sonar nada.
         self.fuera = self._leer_micros()
+        # Al empezar un terminal, TODAS las demas gavetas del puesto tienen
+        # que estar en su sitio. Una que ya estaba fuera es tan intrusa como
+        # una que se saque despues: alguien se la ha llevado y el operario de
+        # este puesto se quedaria sin ella a mitad del engaste.
+        for otra in self.fuera:
+            if otra != gaveta:
+                self.equivocadas.add(otra)
+                self._avisar(otra, True, "equivocada")
         self._pintar(gaveta, COLOR_EN_USO if gaveta in self.fuera else COLOR_OBJETIVO)
         if gaveta in self.fuera:
             self.recogida = True
@@ -146,6 +159,7 @@ class Gavetas:
     def apagar(self):
         """Todo apagado y sin objetivo: la placa vuelve a estar en reposo."""
         self.objetivo = None
+        self.terminal = ""
         self.recogida = False
         self.equivocadas.clear()
         self._parar_zumbido()
@@ -156,7 +170,9 @@ class Gavetas:
             "expansores": len(self.expansores),
             "gavetas": self.n_gavetas,
             "objetivo": self.objetivo,
+            "terminal": self.terminal,
             "recogida": self.recogida,
+            "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
             "http": self._servidor is not None,
         }
@@ -167,6 +183,8 @@ class Gavetas:
         self._zumbido_hasta_ms = 0
         self._zumbido_encendido = False
         self._beep_hasta_ms = 0
+        self._parpadeo_hasta_ms = 0
+        self._parpadeo_encendido = True
         try:
             self.buzzer.off()
         except Exception:
@@ -265,6 +283,20 @@ class Gavetas:
             self._zumbido_hasta_ms = time.ticks_add(ahora, ZUMBIDO_OFF_MS)
 
     # ── Micro-interruptores ─────────────────────────────────────────────────
+
+    def _atender_parpadeo(self, ahora):
+        """El rojo de una gaveta robada parpadea: un fijo se deja de mirar."""
+        if not self.equivocadas or self.tira is None:
+            return
+        if time.ticks_diff(ahora, self._parpadeo_hasta_ms) < 0:
+            return
+        self._parpadeo_hasta_ms = time.ticks_add(ahora, PARPADEO_MS)
+        self._parpadeo_encendido = not self._parpadeo_encendido
+        color = COLOR_ERROR if self._parpadeo_encendido else COLOR_APAGADO
+        for gaveta in self.equivocadas:
+            if 1 <= gaveta <= self.n_gavetas:
+                self.tira[gaveta - 1] = color
+        self.tira.write()
 
     def _atender_micros(self, ahora):
         if time.ticks_diff(ahora, self._ultima_lectura_ms) < INTERVALO_MICROS_MS:
@@ -460,7 +492,7 @@ class Gavetas:
         except (TypeError, ValueError):
             return {"ok": False, "error": "led no es un numero"}
 
-        ok, motivo = self.encender(led)
+        ok, motivo = self.encender(led, datos.get("terminal") or "")
         return {"ok": ok, "error": motivo, "estado": self.estado()}
 
     # ── Bucle ───────────────────────────────────────────────────────────────
@@ -471,6 +503,7 @@ class Gavetas:
         self._atender_http(ahora)
         self._atender_micros(ahora)
         self._atender_zumbador(ahora)
+        self._atender_parpadeo(ahora)
 
 
 def _color(crudo, por_defecto):

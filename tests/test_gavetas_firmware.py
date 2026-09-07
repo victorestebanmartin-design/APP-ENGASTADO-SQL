@@ -121,8 +121,8 @@ class PlacaFalsa:
     def apagar(self):
         self.apagados += 1
 
-    def encender(self, led):
-        self.encendidos.append(led)
+    def encender(self, led, terminal=''):
+        self.encendidos.append((led, terminal))
         return True, ''
 
     def ejecutar_test(self, datos):
@@ -137,7 +137,15 @@ def test_el_cuerpo_leido_acaba_encendiendo_la_gaveta(gavetas):
     placa = PlacaFalsa()
     cuerpo = gavetas.Gavetas._leer_cuerpo(placa, SocketFalso(_peticion(b'{"led": 7}')))
     respuesta = gavetas.Gavetas._responder(placa, cuerpo)
-    assert placa.encendidos == [7]
+    assert placa.encendidos == [(7, '')]
+    assert respuesta['ok'] is True
+
+
+def test_el_terminal_llega_a_la_placa_para_el_display(gavetas):
+    """Sin el, la pantalla solo puede decir un numero de cajon sin contexto."""
+    placa = PlacaFalsa()
+    respuesta = gavetas.Gavetas._responder(placa, b'{"led": 7, "terminal": "640204"}')
+    assert placa.encendidos == [(7, '640204')]
     assert respuesta['ok'] is True
 
 
@@ -219,6 +227,7 @@ class PlacaConTira:
         obj.device_id = 'test'
         obj.n_gavetas = n_gavetas
         obj.objetivo = None
+        obj.terminal = ''
         obj.recogida = False
         obj.equivocadas = set()
         obj.fuera = set()
@@ -227,6 +236,8 @@ class PlacaConTira:
         obj._zumbido_hasta_ms = 0
         obj._zumbido_encendido = False
         obj._beep_hasta_ms = 0
+        obj._parpadeo_hasta_ms = 0
+        obj._parpadeo_encendido = True
         obj._en_prueba = False
         obj._servidor = None
         self.obj = obj
@@ -270,6 +281,7 @@ def placa_con_tira(gavetas):
     obj.device_id = 'test'
     obj.n_gavetas = n
     obj.objetivo = None
+    obj.terminal = ''
     obj.recogida = False
     obj.equivocadas = set()
     obj.fuera = set()
@@ -278,6 +290,8 @@ def placa_con_tira(gavetas):
     obj._zumbido_hasta_ms = 0
     obj._zumbido_encendido = False
     obj._beep_hasta_ms = 0
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
     obj._en_prueba = False
     obj._servidor = None
 
@@ -352,6 +366,47 @@ def test_test_fin_sale_del_modo_prueba_y_apaga(gavetas, placa_con_tira):
     assert resp['ok'] is True
     assert obj._en_prueba is False
     assert all(tira[i] == (0, 0, 0) for i in range(8))
+
+
+def test_una_gaveta_ya_fuera_al_empezar_cuenta_como_robada(gavetas, placa_con_tira):
+    """Al empezar un terminal, TODAS las demas tienen que estar en su sitio.
+
+    Antes se tomaba una foto y lo que ya estaba fuera se daba por bueno: si
+    alguien se habia llevado un cajon a otro puesto, nadie se enteraba hasta
+    que el operario iba a por el a mitad del engaste.
+    """
+    obj, tira, expansores = placa_con_tira
+    obj._avisar = lambda *a: None
+    expansores[0]._bits = 0b00000100      # gaveta 3 fuera antes de empezar
+
+    ok, _ = gavetas.Gavetas.encender(obj, 5, '640204')
+
+    assert ok is True
+    assert obj.equivocadas == {3}
+    assert obj.terminal == '640204'
+    assert tira[4] == gavetas.COLOR_OBJETIVO   # la 5 sigue pidiendose en verde
+
+
+def test_el_rojo_de_la_gaveta_robada_parpadea(gavetas, placa_con_tira, monkeypatch):
+    """Un rojo fijo se deja de mirar; el que parpadea, no."""
+    obj, tira, _ = placa_con_tira
+    # CPython no trae los ticks_* de MicroPython; en un contador que no
+    # desborda son una resta y una suma normales.
+    reloj = types.ModuleType('time')
+    reloj.ticks_diff = lambda a, b: a - b
+    reloj.ticks_add = lambda a, b: a + b
+    monkeypatch.setattr(gavetas, 'time', reloj)
+
+    obj.equivocadas = {3}
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+    assert tira[2] == gavetas.COLOR_APAGADO
+
+    obj._parpadeo_hasta_ms = 0
+    gavetas.Gavetas._atender_parpadeo(obj, 20_000)
+    assert tira[2] == gavetas.COLOR_ERROR
 
 
 def test_en_modo_prueba_cambio_micro_no_toca_los_leds(gavetas, placa_con_tira):

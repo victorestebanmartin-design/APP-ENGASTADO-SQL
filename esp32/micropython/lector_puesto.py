@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-07f"
+FW_VERSION = "2026-09-07g"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -281,22 +281,36 @@ def actualizar_pantalla_gavetas(forzar=False):
     if not gav:
         return
 
-    estado = (gav.objetivo, gav.recogida, tuple(sorted(gav.equivocadas)))
+    estado = (gav.objetivo, gav.recogida, tuple(sorted(gav.equivocadas)),
+              gav.terminal)
     if not forzar and estado == _ultimo_estado_gavetas:
         return
     _ultimo_estado_gavetas = estado
 
-    objetivo, recogida, equivocadas = estado
+    objetivo, recogida, equivocadas, terminal = estado
     if objetivo is None:
         draw_idle()
         return
 
+    # La gaveta robada manda sobre todo lo demas: es lo unico que hay que
+    # arreglar ahora mismo, y decir CUAL es evita ir cajon por cajon.
     if equivocadas:
-        titulo = "GAVETA INCORRECTA"
-        detalle = "DEVUELVE LA GAVETA"
-        color = RED
-    elif recogida:
-        titulo = "GAVETA %02d ABIERTA" % objetivo
+        rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
+        text_center(14, "!! GAVETA !!", RED, BLACK, 3)
+        if len(equivocadas) == 1:
+            text_center(62, "DEVUELVE LA %02d" % equivocadas[0], RED, BLACK, 2)
+        else:
+            text_center(62, "DEVUELVE " + ",".join(
+                "%02d" % g for g in equivocadas)[:18], RED, BLACK, 2)
+        text_center(104, "ESA NO ES TU GAVETA", WHITE, BLACK, 1)
+        text_center(140, "EN USO AQUI: %02d" % objetivo, GREEN, BLACK, 2)
+        if terminal:
+            text_center(172, ("TERMINAL " + terminal)[:35].upper(), WHITE, BLACK, 1)
+        text_center(210, "CIERRALA PARA SEGUIR", GRAY, BLACK, 1)
+        return
+
+    if recogida:
+        titulo = "GAVETA %02d EN USO" % objetivo
         detalle = "RETIRADA CONFIRMADA"
         color = BLUE
     else:
@@ -308,9 +322,12 @@ def actualizar_pantalla_gavetas(forzar=False):
     text_center(16, "PICK TO LIGHT", ORANGE, BLACK, 2)
     text_center(66, titulo, color, BLACK, 2)
     text_center(112, detalle, WHITE, BLACK, 1)
-    text_center(153, "LED %02d  DB9-2" % objetivo, WHITE, BLACK, 2)
-    text_center(181, "GPIO17  WS2813", GRAY, BLACK, 1)
-    text_center(204, "MICROS I2C 47/48", GRAY, BLACK, 1)
+    if terminal:
+        text_center(145, "TERMINAL", GRAY, BLACK, 1)
+        text_center(165, terminal[:18].upper(), WHITE, BLACK, 2)
+    else:
+        text_center(153, "LED %02d  DB9-2" % objetivo, WHITE, BLACK, 2)
+    text_center(200, "RESTO DE GAVETAS: CERRADAS", GRAY, BLACK, 1)
     text_center(221, "PASA TU TARJETA", GRAY, BLACK, 1)
 
 
@@ -521,6 +538,8 @@ while True:
                 puesta = gav.recogida and gav.objetivo not in gav.fuera
                 parametros += "&led=%d&recogida=%d&puesta=%d" % (
                     gav.objetivo, 1 if gav.recogida else 0, 1 if puesta else 0)
+                parametros += "&intrusas=" + ",".join(
+                    str(g) for g in sorted(gav.equivocadas))
             orden = http_client.get_json(
                 backend_cfg.BACKEND_HOST,
                 "/api/esp32/rfid/gaveta/orden?" + parametros,
@@ -542,7 +561,7 @@ while True:
                     try:
                         led = int(orden.get("led"))
                         if gav.objetivo != led:
-                            gav.encender(led)
+                            gav.encender(led, orden.get("terminal") or "")
                     except (TypeError, ValueError):
                         pass
 

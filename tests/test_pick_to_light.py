@@ -100,7 +100,7 @@ def test_encender_manda_el_led_a_la_placa(app, client, admin_client, con_placa):
     datos = r.get_json()
     assert r.status_code == 200
     assert datos['activo'] is True and datos['led'] == 7 and datos['gaveta'] == 'A-12'
-    assert con_placa == [('192.168.50.151', {'led': 7})]
+    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204'})]
 
 
 def test_encender_un_terminal_sin_led_no_es_un_error(app, client, admin_client, con_placa):
@@ -144,11 +144,11 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 7}
+    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204'}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': True, 'led': None}
+    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': ''}
 
 
 def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
@@ -171,7 +171,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 5}
+    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': ''}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
@@ -289,6 +289,63 @@ def test_sondeo_reconfirma_devolucion_si_se_pierde_el_aviso_post(app, client, ad
     client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7&recogida=1&puesta=1' % device_id)
     estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
     assert estado['devuelta'] is True
+
+
+def test_varias_gavetas_robadas_se_listan_todas(app, client, admin_client, con_placa):
+    """Con dos cajones abiertos que no tocan hay que nombrar los dos."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    for robada in (3, 5):
+        client.post('/api/esp32/rfid/gaveta',
+                    json={'device_id': device_id, 'led': robada, 'fuera': True,
+                          'resultado': 'equivocada'})
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['intrusas'] == [3, 5]
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 3, 'fuera': False, 'resultado': 'corregida'})
+    datos = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert datos['intrusas'] == [5] and datos['error_led'] == 5
+
+
+def test_el_sondeo_manda_la_lista_entera_de_intrusas(app, client, admin_client, con_placa):
+    """La placa es la que sabe la verdad: su lista sustituye a la guardada.
+
+    Si solo se aplicaran los cambios sueltos, un aviso de 'corregida' perdido
+    dejaria una gaveta intrusa fantasma avisando para siempre.
+    """
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 3, 'fuera': True, 'resultado': 'equivocada'})
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7&recogida=1&intrusas=' % device_id)
+    datos = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert datos['intrusas'] == [] and datos['error_led'] is None
+
+
+def test_encender_manda_el_terminal_a_la_placa_para_el_display(app, client, admin_client, con_placa):
+    _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204'})]
+
+
+def test_el_sondeo_devuelve_el_terminal_en_curso(app, client, admin_client, con_placa):
+    """La placa tras NAT tambien tiene que poder escribirlo en su pantalla."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['led'] == 7 and orden['terminal'] == '640204'
 
 
 def test_el_aviso_deja_escrito_cuantas_gavetas_tiene_la_placa(app, client):

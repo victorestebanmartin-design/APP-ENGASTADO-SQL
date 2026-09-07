@@ -249,6 +249,20 @@ def _backend_pythonanywhere():
     return host.endswith('.pythonanywhere.com')
 
 
+def _parsear_intrusas(crudo):
+    """'3,5' -> [3, 5]. Lista de gavetas abiertas que no tocaban."""
+    numeros = []
+    for trozo in (crudo or '').split(',')[:64]:
+        trozo = trozo.strip()
+        if not trozo:
+            continue
+        try:
+            numeros.append(int(trozo))
+        except ValueError:
+            continue
+    return sorted(set(numeros))
+
+
 # ==================== API PARA LA APP ====================
 
 @bp.route('/api/pick-to-light/encender', methods=['POST'])
@@ -277,14 +291,14 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta, 'led': led,
                             'motivo': 'Este puesto no tiene lector asignado en Admin'})
 
-        ok, motivo = _enviar_a_placa(ip, {'led': led})
+        ok, motivo = _enviar_a_placa(ip, {'led': led, 'terminal': terminal})
 
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
         estado = _estado_cargar()
         estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
                              'recogida': False, 'devuelta': False,
-                             'error_led': None, 'eventos': []}
+                             'error_led': None, 'intrusas': [], 'eventos': []}
         _estado_guardar(estado)
 
         remoto = not ok and _backend_pythonanywhere()
@@ -332,6 +346,7 @@ def api_pick_to_light_estado():
             'recogida': bool(actual.get('recogida')),
             'devuelta': bool(actual.get('devuelta')),
             'error_led': actual.get('error_led'),
+            'intrusas': list(actual.get('intrusas') or []),
         })
     except Exception as e:
         return error_interno(e, 'Error al consultar las gavetas')
@@ -386,6 +401,15 @@ def api_pick_to_light_orden():
                     if bool(actual.get('devuelta')) != puesta:
                         actual['devuelta'] = puesta
                         cambiado = True
+                    # La placa manda la lista ENTERA de gavetas abiertas que no
+                    # tocan, no un cambio suelto: asi el estado no se queda con
+                    # una intrusa fantasma si se perdio el aviso de que la
+                    # devolvieron.
+                    intrusas = _parsear_intrusas(request.args.get('intrusas'))
+                    if list(actual.get('intrusas') or []) != intrusas:
+                        actual['intrusas'] = intrusas
+                        actual['error_led'] = intrusas[0] if intrusas else None
+                        cambiado = True
                     if cambiado:
                         estado_todo[puesto_id] = actual
                         _estado_guardar(estado_todo)
@@ -394,7 +418,8 @@ def api_pick_to_light_orden():
         led = (estado or {}).get('led')
         return jsonify({'success': True,
                         'apagar': not bool(led),
-                        'led': led})
+                        'led': led,
+                        'terminal': (estado or {}).get('terminal') or ''})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
 
@@ -662,6 +687,7 @@ def api_esp32_rfid_gaveta():
 
         estado = _estado_cargar()
         actual = estado.get(puesto_id) or {}
+        intrusas = set(actual.get('intrusas') or [])
         if resultado == 'ok' and led and led == actual.get('led'):
             actual['recogida'] = True
             actual['devuelta'] = False
@@ -669,9 +695,11 @@ def api_esp32_rfid_gaveta():
         elif resultado == 'devuelta' and led and led == actual.get('led'):
             actual['devuelta'] = True
         elif resultado == 'equivocada':
-            actual['error_led'] = led
-        elif resultado == 'corregida' and actual.get('error_led') == led:
-            actual['error_led'] = None
+            intrusas.add(led)
+        elif resultado == 'corregida':
+            intrusas.discard(led)
+        actual['intrusas'] = sorted(intrusas)
+        actual['error_led'] = actual['intrusas'][0] if actual['intrusas'] else None
 
         eventos = (actual.get('eventos') or [])
         eventos.append({'led': led, 'fuera': fuera, 'resultado': resultado})

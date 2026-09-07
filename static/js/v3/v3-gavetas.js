@@ -192,11 +192,14 @@ function iniciarVigilanciaGaveta() {
                                   + encodeURIComponent(puestoSeleccionado.id));
             const d = await r.json();
             if (!d || !d.success) return;
-            if (d.error_led) {
-                if (d.error_led !== _gavetaUltimoErrorAvisado) {
-                    _gavetaUltimoErrorAvisado = d.error_led;
-                    mostrarMensaje('⚠️ Gaveta ' + d.error_led + ' abierta y no toca: ciérrala.',
-                                  'error');
+            const intrusas = (d.intrusas && d.intrusas.length) ? d.intrusas
+                           : (d.error_led ? [d.error_led] : []);
+            const clave = intrusas.join(',');
+            if (clave) {
+                if (clave !== _gavetaUltimoErrorAvisado) {
+                    _gavetaUltimoErrorAvisado = clave;
+                    mostrarMensaje('🚨 Gaveta ' + clave + ' abierta y no toca: ciérrala. '
+                                 + 'La tuya es la ' + gavetaLuzActual.led + '.', 'error');
                 }
             } else {
                 _gavetaUltimoErrorAvisado = null;
