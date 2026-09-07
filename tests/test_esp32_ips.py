@@ -157,12 +157,12 @@ def test_flash_usb_valida_la_ip_antes_de_tocar_la_placa(admin_client):
 # ── Firmware: el bloque que se graba en la placa ──────────────────────────
 
 def test_el_firmware_aplica_la_ip_antes_de_conectar():
-    """boot.py (RFID) y main_wifi.py (pantalla) deben llamar a ifconfig()
-    ANTES de connect(): al reves, la placa ya habria intentado conectar por
-    DHCP en una red que no lo tiene."""
+    """lector_puesto.py (RFID gen4) y main_wifi.py (pantalla) deben llamar a
+    ifconfig() ANTES de connect(): al reves, la placa ya habria intentado
+    conectar por DHCP en una red que no lo tiene."""
     import os
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for ruta in (os.path.join(base, 'esp32', 'boot.py'),
+    for ruta in (os.path.join(base, 'esp32', 'micropython', 'lector_puesto.py'),
                  os.path.join(base, 'esp32', 'micropython', 'main_wifi.py')):
         with open(ruta, encoding='utf-8') as f:
             texto = f.read()
@@ -174,12 +174,11 @@ def test_el_firmware_aplica_la_ip_antes_de_conectar():
 def test_la_config_del_firmware_lleva_mascara_y_gateway_fijos():
     import os
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for ruta in (os.path.join(base, 'esp32', 'wifi_config.py'),
-                 os.path.join(base, 'esp32', 'micropython', 'main_wifi.py')):
-        with open(ruta, encoding='utf-8') as f:
-            texto = f.read()
-        assert '"255.255.255.0"' in texto, ruta
-        assert '"192.168.50.5"' in texto, ruta
+    ruta = os.path.join(base, 'esp32', 'micropython', 'main_wifi.py')
+    with open(ruta, encoding='utf-8') as f:
+        texto = f.read()
+    assert '"255.255.255.0"' in texto, ruta
+    assert '"192.168.50.5"' in texto, ruta
 
 
 # ── Migración sobre una BD ya existente ───────────────────────────────────

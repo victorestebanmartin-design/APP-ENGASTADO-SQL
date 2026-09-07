@@ -1922,7 +1922,7 @@ function actualizarEntornoRfid() {
 
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
-    const perfil = document.getElementById('usb-perfil-rfid')?.value || 'devkit';
+    const perfil = 'gen4_pn532';
     const orientacion = document.getElementById('usb-orientacion-rfid')?.value || '180';
     const entorno = document.getElementById('usb-entorno-rfid')?.value || 'produccion';
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
