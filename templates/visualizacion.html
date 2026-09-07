@@ -878,6 +878,7 @@
     <script>
         const BONO_INICIAL = '{{ bono_inicial|default("") }}';
         let todosLosBonos = [];
+        let seleccionInicializada = false;
         let bono1Seleccionado = null;
         let bono2Seleccionado = null;
         let detallesCarro = {};
@@ -1067,8 +1068,9 @@
                     
                     actualizarSelectores(bonosActivos);
                     
-                    if (!bono1Seleccionado && !bono2Seleccionado && bonosActivos.length > 0) {
-                        if (BONO_INICIAL) {
+                    if (!seleccionInicializada && bonosActivos.length > 0) {
+                        seleccionInicializada = true;
+                        if (BONO_INICIAL && bonosActivos.some(b => b.nombre === BONO_INICIAL)) {
                             // Pre-seleccionar el bono que vino de la URL
                             bono1Seleccionado = BONO_INICIAL;
                             document.getElementById('bono1-select').value = BONO_INICIAL;
@@ -1113,9 +1115,15 @@
                 option2.textContent = bono.nombre;
                 select2.appendChild(option2);
             });
+            bono1Seleccionado = bonos.some(b => b.nombre === bono1Seleccionado) ? bono1Seleccionado : null;
+            bono2Seleccionado = bonos.some(b => b.nombre === bono2Seleccionado) ? bono2Seleccionado : null;
+            select1.value = bono1Seleccionado || '';
+            select2.value = bono2Seleccionado || '';
         }
         
+        let versionVisualizacion = 0;
         async function mostrarBonosSeleccionados() {
+            const version = ++versionVisualizacion;
             const container = document.getElementById('bonos-container');
             
             const bonosAMostrar = [];
@@ -1228,6 +1236,8 @@
                     }
                 })
             );
+            // Una respuesta anterior no puede pintar una selección ya descartada.
+            if (version !== versionVisualizacion) return;
             
             container.innerHTML = `
                 <div class="bonos-grid">

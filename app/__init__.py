@@ -382,6 +382,9 @@ def create_app(config_class=Config):
     if hasattr(config_class, 'init_app'):
         config_class.init_app(app)
 
+    from app.maintenance import instalar_guardia
+    instalar_guardia(app)
+
     # Configurar logging hacia fichero con rotación
     _configurar_logging(app)
 
