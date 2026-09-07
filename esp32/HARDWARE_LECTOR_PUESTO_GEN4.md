@@ -360,3 +360,27 @@ funciona la redundancia del WS2813: si un pixel muere, la cadena no se rompe.
 No es un fallo del firmware ni de la placa. Un soldador de 220 V mete un pico
 de ruido en la red y en el campo EM del entorno. La tira lo capta por el cable
 de datos. En produccion (sin soldadores cerca) el problema desaparece.
+
+## Etiquetas RFID en las gavetas
+
+Identidad de la gaveta como segundo check junto al microinterruptor (ver
+`app/routes/pick_to_light.py`): el micro dice que se ha abierto la posicion
+correcta, la etiqueta RFID dice que la gaveta fisica retirada es la que
+tocaba. No es una medida antifraude, es para detectar gavetas cambiadas de
+sitio o retiradas por error.
+
+**Si la gaveta es metalica, una etiqueta RFID normal pegada directamente al
+metal apenas tiene alcance** (el metal detune la antena de la etiqueta y
+apantalla el campo del lector). Dos opciones:
+
+- Usar etiquetas **"on-metal"** (llevan una capa de ferrita/espuma que las
+  aisla del metal), pensadas justo para esto.
+- O, con una etiqueta normal, dejar una **separacion aislante** de varios
+  milimetros respecto al metal (un taco de espuma, cinta de doble cara
+  gruesa, un soporte de plastico) en vez de pegarla al ras.
+
+Sin uno de los dos, la lectura puede fallar justo delante del lector, y el
+sintoma en planta seria indistinguible de "el RC522 no llega": conviene
+probar el alcance real de la etiqueta ya montada en la gaveta (con el asistente
+"Asignar RFID" de Admin -> Pick-to-Light) antes de darla por buena, no solo en
+la mesa de pruebas.
