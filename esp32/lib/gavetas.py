@@ -303,6 +303,8 @@ class Gavetas:
 
     def _atender_http(self):
         if self._servidor is None:
+            self._servidor = self._abrir_servidor()
+        if self._servidor is None:
             return
         try:
             cliente, _ = self._servidor.accept()

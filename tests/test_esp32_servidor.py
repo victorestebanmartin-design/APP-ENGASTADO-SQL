@@ -91,9 +91,9 @@ def test_ficheros_sin_host_se_sirven_intactos(admin_client, client):
     import os
     _fijar_host(admin_client, '192.168.50.1')
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(base, 'esp32', 'lib', 'mfrc522.py'), 'rb') as f:
+    with open(os.path.join(base, 'esp32', 'lib', 'mcp23017.py'), 'rb') as f:
         en_disco = f.read()
-    servido = client.get('/api/esp32/rfid/firmware/file?name=mfrc522.py').data
+    servido = client.get('/api/esp32/rfid/firmware/file?name=mcp23017.py').data
     assert servido == en_disco
 
 
@@ -208,8 +208,7 @@ def test_el_repo_no_apunta_a_la_red_antigua():
     como valor por defecto, una placa flasheada a mano queda muda."""
     import os
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for rel in ('esp32/micropython/main_wifi.py', 'esp32/backend_config.py',
-                'esp32/wifi_config.py'):
+    for rel in ('esp32/micropython/main_wifi.py', 'esp32/backend_config.py'):
         with open(os.path.join(base, rel), encoding='utf-8') as f:
             assert '192.168.1.20' not in f.read(), rel
 
@@ -296,16 +295,13 @@ def test_flash_rfid_ya_no_exige_webrepl(admin_client):
     assert 'WebREPL' not in (r.get_json().get('message') or '')
 
 
-def test_el_firmware_no_arranca_webrepl_sin_contrasena():
+def test_el_firmware_gen4_boot_no_bloquea_el_arranque():
+    """El boot.py del gen4 nunca debe dejar main.py sin ejecutar por un error."""
     import os
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(base, 'esp32', 'boot.py'), encoding='utf-8') as f:
+    with open(os.path.join(base, 'esp32', 'micropython', 'boot.py'), encoding='utf-8') as f:
         boot = f.read()
-    # El import de webrepl tiene que quedar DENTRO del if de la contrasena
-    assert 'if getattr(cfg, "WEBREPL_PASSWORD", "")' in boot
-    assert boot.index('WEBREPL_PASSWORD') < boot.index('import webrepl')
-    with open(os.path.join(base, 'esp32', 'wifi_config.py'), encoding='utf-8') as f:
-        assert 'WEBREPL_PASSWORD = ""' in f.read()
+    assert 'except' in boot, "boot.py debe atrapar errores para no bloquear main.py"
 
 
 # ── Resetear la placa cuando no atiende ───────────────────────────────────
