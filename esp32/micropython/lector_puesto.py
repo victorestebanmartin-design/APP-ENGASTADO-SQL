@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-03e"
+FW_VERSION = "2026-09-07a"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -59,9 +59,11 @@ NFC_REINTENTO_S = 10
 NFC_FALLOS_MAX = 5
 
 # Pick-to-light opcional por el DB9: tira WS2813 y bus I2C de MCP23017.
+# GPIO16/GPIO15 (DB9-3/4) quedan libres: si se alimenta el MCP23017 a 5V
+# accidentalmente, esos GPIO se dañan. El I2C va por GPIO47/GPIO48 (DB9-6/5).
 GAVETAS_LED_PIN = 17
-GAVETAS_SDA_PIN = 16
-GAVETAS_SCL_PIN = 15
+GAVETAS_SDA_PIN = 47
+GAVETAS_SCL_PIN = 48
 
 try:
     import gavetas
