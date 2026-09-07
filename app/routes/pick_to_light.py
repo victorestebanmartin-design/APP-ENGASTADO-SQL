@@ -22,6 +22,7 @@ Dos decisiones que explican la forma de este fichero:
 import http.client
 import json
 import os
+from datetime import datetime
 
 from flask import request, jsonify, current_app
 from sqlalchemy import text
@@ -243,6 +244,25 @@ def _gaveta_del_terminal(terminal):
     return row[0], row[1]
 
 
+def _gavetas_asignadas_del_puesto(puesto_id):
+    """{led: {'terminal':..., 'gaveta':...}} de las maquinas de este puesto.
+
+    Un mismo numero de LED en dos puestos distintos son dos cajones fisicos
+    distintos (cada placa tiene su propia numeracion 1..N), asi que esto
+    nunca mezcla terminales de otros puestos.
+    """
+    if not puesto_id:
+        return {}
+    filas = db.session.execute(text("""
+        SELECT tg.led, tg.terminal_codigo, tg.gaveta
+        FROM terminales_gavetas tg
+        JOIN maquinas_terminales mt ON mt.terminal_codigo = tg.terminal_codigo AND mt.activo = 1
+        JOIN maquinas m ON m.id = mt.maquina_id
+        WHERE m.puesto_id = :puesto_id AND tg.led IS NOT NULL
+    """), {'puesto_id': puesto_id}).fetchall()
+    return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2]} for fila in filas}
+
+
 def _gavetas_validas_del_puesto(puesto_id):
     """LEDs con un terminal de verdad detras, entre los de las maquinas de este puesto.
 
@@ -252,16 +272,7 @@ def _gavetas_validas_del_puesto(puesto_id):
     gavetas robadas. Con ella, cualquier canal que no sea el numero de LED de
     algun terminal de este puesto es ruido del expansor y se ignora.
     """
-    if not puesto_id:
-        return []
-    filas = db.session.execute(text("""
-        SELECT DISTINCT tg.led
-        FROM terminales_gavetas tg
-        JOIN maquinas_terminales mt ON mt.terminal_codigo = tg.terminal_codigo AND mt.activo = 1
-        JOIN maquinas m ON m.id = mt.maquina_id
-        WHERE m.puesto_id = :puesto_id AND tg.led IS NOT NULL
-    """), {'puesto_id': puesto_id}).fetchall()
-    return sorted({fila[0] for fila in filas})
+    return sorted(_gavetas_asignadas_del_puesto(puesto_id).keys())
 
 
 def _backend_pythonanywhere():
@@ -636,7 +647,7 @@ def api_ptl_test_micros():
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
         return _test_enviar(device_id, ip, {'test_micros': True},
-                            extra=('fuera', 'puestas', 'total'))
+                            extra=('fuera', 'puestas', 'total', 'canales_error'))
     except Exception as e:
         return error_interno(e, 'Error al leer micro-interruptores')
 
@@ -654,6 +665,106 @@ def api_ptl_test_fin():
         return _test_enviar(device_id, ip, {'test_fin': True})
     except Exception as e:
         return error_interno(e, 'Error al salir del modo prueba')
+
+
+# ==================== MAPA DE COBERTURA (admin) ====================
+
+@bp.route('/api/pick-to-light/mapa', methods=['GET'])
+@requiere_pin_admin
+def api_pick_to_light_mapa():
+    """Mapa de cobertura del puesto de un lector: que canal tiene gaveta detras.
+
+    Solo la parte ESTATICA (que terminal/etiqueta corresponde a cada canal):
+    el estado en vivo (abierta/cerrada, error de expansor) lo trae ya el
+    sondeo de /test/micros existente, que el panel cruza con esto en el
+    navegador para no duplicar trafico hacia la placa.
+    """
+    try:
+        from app.routes.sistema import _rfid_load_devices
+        device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        dev = (_rfid_load_devices() or {}).get(device_id) if device_id else None
+        if not dev:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        puesto_id = dev.get('puesto_id') or ''
+        total = int(dev.get('gavetas') or 0)
+        asignados = _gavetas_asignadas_del_puesto(puesto_id) if puesto_id else {}
+        canales = [{'canal': canal,
+                    'terminal': (asignados.get(canal) or {}).get('terminal'),
+                    'gaveta': (asignados.get(canal) or {}).get('gaveta')}
+                  for canal in range(1, total + 1)]
+
+        return jsonify({'success': True, 'device_id': device_id,
+                        'puesto_id': puesto_id, 'puesto_nombre': dev.get('puesto_nombre') or '',
+                        'total_gavetas': total, 'canales': canales})
+    except Exception as e:
+        return error_interno(e, 'Error al construir el mapa de cobertura')
+
+
+# ============ INFORME DE CORRESPONDENCIA LED-MICRO (admin) ============
+#
+# Solo diagnostico: la prueba guiada nunca toca terminales_gavetas sola. Se
+# guarda unicamente el ULTIMO informe por placa, "de forma sencilla" como se
+# pidio; si mas adelante hace falta historial, esto es lo primero a cambiar.
+
+def _correspondencia_file():
+    base = current_app.config.get('DATA_DIR') or os.path.join(
+        os.path.dirname(current_app.root_path), 'data')
+    return os.path.join(base, 'pick_to_light_correspondencia.json')
+
+
+def _correspondencia_cargar():
+    try:
+        with open(_correspondencia_file(), encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _correspondencia_guardar(datos):
+    with open(_correspondencia_file(), 'w', encoding='utf-8') as f:
+        json.dump(datos, f)
+
+
+@bp.route('/api/pick-to-light/correspondencia/informe', methods=['POST'])
+@requiere_pin_admin
+def api_ptl_guardar_informe():
+    """Guarda el ultimo informe de la prueba guiada LED-micro de esta placa."""
+    try:
+        from app.routes.sistema import _rfid_load_devices
+        datos = request.get_json(silent=True) or {}
+        device_id = (datos.get('device_id') or '').strip().lower()[:64]
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Falta device_id'}), 400
+
+        dev = (_rfid_load_devices() or {}).get(device_id) or {}
+        informe = {
+            'fecha': datetime.now().isoformat(),
+            'device_id': device_id,
+            'puesto_id': dev.get('puesto_id') or '',
+            'puesto_nombre': dev.get('puesto_nombre') or '',
+            'cancelado': bool(datos.get('cancelado')),
+            'resumen': datos.get('resumen') or {},
+            'detalle': datos.get('detalle') or [],
+        }
+        todo = _correspondencia_cargar()
+        todo[device_id] = informe
+        _correspondencia_guardar(todo)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar el informe')
+
+
+@bp.route('/api/pick-to-light/correspondencia/informe', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_obtener_informe():
+    """Ultimo informe guardado de esta placa, o None si nunca se hizo la prueba."""
+    try:
+        device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        informe = _correspondencia_cargar().get(device_id) if device_id else None
+        return jsonify({'success': True, 'informe': informe})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener el informe')
 
 
 # ==================== LO QUE MANDA LA PLACA ====================

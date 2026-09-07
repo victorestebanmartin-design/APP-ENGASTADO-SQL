@@ -455,6 +455,41 @@
                         <div id="ptl-lector-info" style="font-size:0.88em;color:#94a3b8;"></div>
                     </div>
 
+                    <!-- Mapa de cobertura del puesto -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🗺️ Mapa de cobertura del puesto</h2>
+                        <p class="instruccion">
+                            Qué canal físico tiene un terminal de verdad detrás y cuál está libre, en el
+                            puesto de este lector — sin mezclar terminales de otros puestos, aunque
+                            usen el mismo número de LED (son cajones físicos distintos). Se actualiza
+                            solo con el Live de micros de más abajo.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+                            <button class="btn-secondary" onclick="ptlCargarMapa()">🔄 Cargar mapa</button>
+                            <span id="ptl-mapa-msg" style="font-size:0.88em;color:#94a3b8;"></span>
+                        </div>
+                        <div id="ptl-mapa-resumen" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:0.88em;color:#94a3b8;"></div>
+                        <div id="ptl-mapa-grid" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+                    </div>
+
+                    <!-- Comprobación guiada LED-micro -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🧭 Comprobar correspondencia LED–micro</h2>
+                        <p class="instruccion">
+                            Enciende cada canal asignado uno a uno y espera a que abras la gaveta
+                            iluminada, para detectar LEDs o micros cruzados en el cableado. Solo
+                            diagnostica: no corrige ni guarda ningún mapeo automáticamente.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <label style="font-size:0.88em;color:#94a3b8;">Tiempo de espera por canal:</label>
+                            <input type="number" id="ptl-corr-timeout" min="5" max="120" value="25"
+                                style="width:60px;padding:6px 8px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;">
+                            <span style="font-size:0.85em;color:#94a3b8;">segundos</span>
+                            <button class="btn-primary" id="ptl-corr-btn-iniciar" onclick="ptlCorrIniciar()">▶ Comprobar correspondencia LED–micro</button>
+                        </div>
+                        <div id="ptl-corr-panel"></div>
+                    </div>
+
                     <!-- Prueba de LEDs -->
                     <div class="card" style="margin-top:16px;">
                         <h2>🔆 Prueba de LEDs (tira WS2813)</h2>
@@ -1653,6 +1688,9 @@
         var _ptlDesfileActivo = false;
         var _ptlMicroLiveActivo = false;
         var _ptlMicroLiveFueraPrevio = null;   // null = aun sin la primera lectura
+        var _ptlMapaCanales = [];   // [{canal, terminal, gaveta}] del ultimo /mapa cargado
+        var _ptlMapaTotal = 0;
+        var _ptlCorr = null;        // estado de la comprobacion guiada LED-micro, o null si no hay ninguna
         var _ptlLectorId = '';        // device_id del lector seleccionado
         var _ptlTotalGavetas = 0;     // gavetas del lector activo
         var _ptlLedActual = null;     // LED encendido ahora (1-based), o null
@@ -1805,8 +1843,14 @@
                 _ptlTotalGavetas = 0;
                 _ptlRenderLedGrid(0, null);
                 _ptlRenderMicroGrid(0, []);
+                _ptlMapaCanales = [];
+                _ptlMapaTotal = 0;
+                _ptlRenderMapa([], []);
+                var mapaMsg = document.getElementById('ptl-mapa-msg');
+                if (mapaMsg) mapaMsg.textContent = '';
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = _ptlLectorId ? 'Lector seleccionado: ' + _ptlLectorId : '';
+                if (_ptlLectorId) ptlCargarMapa();
             }
         });
 
@@ -1818,6 +1862,7 @@
 
         window.ptlTestLed = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             var n = parseInt(document.getElementById('ptl-led-num').value, 10);
             if (!n || n < 1 || n > 128) { _ptlMensaje('ptl-led-msg', 'Número de LED no válido (1-128)', false); return; }
             _ptlMensaje('ptl-led-msg', 'Encendiendo LED ' + n + '...', null);
@@ -1839,6 +1884,7 @@
 
         window.ptlTestTodos = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             _ptlMensaje('ptl-led-msg', 'Encendiendo todos...', null);
             try {
                 var d = await _ptlPost('/api/pick-to-light/test/todos', _ptlPayload({ color: _ptlColor }));
@@ -1858,6 +1904,7 @@
 
         window.ptlDesfile = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             if (_ptlDesfileActivo) {
                 _ptlDesfileActivo = false;
                 document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
@@ -1906,6 +1953,7 @@
                     var total = d.total || _ptlTotalGavetas;
                     _ptlTotalGavetas = total;
                     _ptlRenderMicroGrid(total, d.fuera || []);
+                    if (_ptlMapaTotal) _ptlRenderMapa(d.fuera || [], d.canales_error || []);
                     var fuera = (d.fuera || []).length;
                     _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' + (total - fuera) + ' puestas', true);
                     _ptlLog('Micros: total=' + total + ', fuera=[' + (d.fuera || []).join(',') + '], puestas=[' + (d.puestas || []).join(',') + ']');
@@ -1959,6 +2007,7 @@
                         }
                         _ptlMicroLiveFueraPrevio = fueraSet;
                         _ptlRenderMicroGrid(total, d.fuera || [], cambiados);
+                        if (_ptlMapaTotal) _ptlRenderMapa(d.fuera || [], d.canales_error || []);
                         _ptlMensaje('ptl-micro-msg', cambiados.size
                             ? '👉 Canal ' + Array.from(cambiados).join(', ') + ' acaba de cambiar'
                             : 'En vivo: ' + total + ' total, ' + fueraSet.size + ' fuera', true);
@@ -1972,12 +2021,482 @@
             }
         };
 
+        // ── Mapa de cobertura del puesto ─────────────────────────────────────
+
+        window.ptlCargarMapa = async function () {
+            if (!_ptlLectorId) { return; }
+            _ptlMensaje('ptl-mapa-msg', 'Cargando mapa...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/mapa?device_id=' + encodeURIComponent(_ptlLectorId));
+                var mapa = await resp.json();
+                if (!mapa.success) {
+                    _ptlMapaCanales = []; _ptlMapaTotal = 0;
+                    _ptlRenderMapa([], []);
+                    _ptlMensaje('ptl-mapa-msg', mapa.message || 'Error al cargar el mapa', false);
+                    return;
+                }
+                _ptlMapaCanales = mapa.canales || [];
+                _ptlMapaTotal = mapa.total_gavetas || 0;
+                if (!_ptlMapaTotal) {
+                    _ptlRenderMapa([], []);
+                    _ptlMensaje('ptl-mapa-msg',
+                        '⏳ Esta placa todavía no ha dicho cuántos canales tiene. Enciende un LED de ' +
+                        'prueba (más abajo) o espera su próximo latido y pulsa "Cargar mapa" otra vez.', false);
+                    return;
+                }
+                // Una lectura suelta para pintar algo antes de que llegue el primer Live.
+                var micros = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+                _ptlRenderMapa((micros && micros.fuera) || [], (micros && micros.canales_error) || []);
+                _ptlMensaje('ptl-mapa-msg', 'Mapa cargado — se actualiza solo con el Live de micros.', true);
+            } catch (e) {
+                _ptlMensaje('ptl-mapa-msg', 'Error de red', false);
+            }
+        };
+
+        function _ptlRenderMapa(fuera, canalesError) {
+            var grid = document.getElementById('ptl-mapa-grid');
+            var resumen = document.getElementById('ptl-mapa-resumen');
+            if (!grid || !resumen) return;
+            if (!_ptlMapaTotal) { grid.innerHTML = ''; resumen.innerHTML = ''; return; }
+
+            var fueraSet = new Set(fuera || []);
+            var errorSet = new Set(canalesError || []);
+            var porCanal = {};
+            _ptlMapaCanales.forEach(function (c) { porCanal[c.canal] = c; });
+
+            var asignados = 0, abiertos = 0;
+            var html = '';
+            for (var i = 1; i <= _ptlMapaTotal; i++) {
+                var info = porCanal[i] || { terminal: null, gaveta: null };
+                var esError = errorSet.has(i);
+                var esAsignado = !!info.terminal;
+                var esAbierto = fueraSet.has(i);
+                if (esAsignado) asignados++;
+                if (esAbierto) abiertos++;
+
+                var bg, borde, texto;
+                if (esError)          { bg = 'rgba(239,68,68,.18)';   borde = '#ef4444'; texto = '#f87171'; }
+                else if (!esAsignado) { bg = 'rgba(148,163,184,.08)'; borde = '#475569'; texto = '#94a3b8'; }
+                else if (esAbierto)   { bg = 'rgba(37,99,235,.18)';   borde = '#3b82f6'; texto = '#93c5fd'; }
+                else                  { bg = 'rgba(74,222,128,.18)'; borde = '#4ade80'; texto = '#4ade80'; }
+
+                var linea2 = esError ? 'ERROR LECTURA'
+                           : esAsignado ? (_dispEsc(info.terminal) + (info.gaveta ? ' · ' + _dispEsc(info.gaveta) : ''))
+                           : 'Canal libre';
+                var titulo = 'Canal ' + i + (esAsignado ? ': ' + info.terminal : ': sin asignar') +
+                             (esError ? ' — error de lectura del expansor' : esAbierto ? ' — ABIERTA' : ' — cerrada');
+
+                html += '<div title="' + titulo + '" style="width:118px;min-height:56px;border-radius:8px;' +
+                        'border:2px solid ' + borde + ';background:' + bg + ';padding:6px 8px;' +
+                        'display:flex;flex-direction:column;justify-content:center;">' +
+                        '<div style="font-weight:700;font-size:0.8em;color:' + texto + ';">Canal ' + i + '</div>' +
+                        '<div style="font-size:0.66em;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                        linea2 + '</div></div>';
+            }
+            grid.innerHTML = html;
+
+            var libres = _ptlMapaTotal - asignados;
+            resumen.innerHTML =
+                '<span>🔌 Detectados: <strong>' + _ptlMapaTotal + '</strong></span>' +
+                '<span>📦 Asignados: <strong>' + asignados + '</strong></span>' +
+                '<span>⬜ Libres: <strong>' + libres + '</strong></span>' +
+                '<span>🔵 Abiertos ahora: <strong>' + abiertos + '</strong></span>' +
+                '<span style="color:' + (errorSet.size ? '#f87171' : '#94a3b8') + ';">⚠️ Incidencias: <strong>' +
+                errorSet.size + '</strong></span>';
+        }
+
+        // ── Comprobación guiada LED–micro ────────────────────────────────────
+        //
+        // Orquestada aqui en el navegador, reutilizando test_led/test_micros/
+        // test_fin tal cual (mismos comandos que el resto del panel). Por cada
+        // canal ASIGNADO: se enciende su LED en solitario y se sondea test_micros
+        // hasta ver que gaveta se abre de verdad. La placa entra en "modo prueba"
+        // con el primer test_led (_iniciar_prueba en gavetas.py), que ya aisla
+        // esto de la logica operativa normal (nada de "robada" ni "recogida").
+        //
+        // _ptlCorr es un objeto de estado (o null si no hay prueba en marcha):
+        //   canales, indice, timeoutS, detalle[], fase, fueraPrevio, finEsperaMs...
+        // 'fase' manda que pinta _ptlCorrRender(): explicando, comprobando_cierre,
+        // ya_abierta, esperando, pausado, cruzado, sin_respuesta, error_led, informe.
+
+        window.ptlCorrIniciar = function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            if (_ptlCorr) return;
+            if (_ptlDesfileActivo) { alert('Para primero el desfile automático.'); return; }
+            if (!_ptlMapaTotal) { alert('Carga primero el mapa de cobertura de este puesto (arriba).'); return; }
+            var canales = _ptlMapaCanales.filter(function (c) { return !!c.terminal; });
+            if (!canales.length) { alert('No hay ningún canal asignado en este puesto todavía.'); return; }
+
+            var timeoutS = parseInt(document.getElementById('ptl-corr-timeout').value, 10) || 25;
+            _ptlCorr = {
+                canales: canales, indice: 0, timeoutS: timeoutS, detalle: [],
+                pollTimer: null, cuentaTimer: null, fase: 'explicando',
+            };
+            _ptlCorrRender();
+        };
+
+        window.ptlCorrEmpezarDeVerdad = function () {
+            if (!_ptlCorr) return;
+            _ptlLog('Comprobación de correspondencia iniciada: ' + _ptlCorr.canales.length + ' canal(es) asignado(s)');
+            _ptlCorrSiguienteCanal();
+        };
+
+        window.ptlCorrCancelarSinEmpezar = function () {
+            _ptlCorr = null;
+            _ptlCorrRender();
+        };
+
+        function _ptlCorrDetener() {
+            if (!_ptlCorr) return;
+            if (_ptlCorr.pollTimer) clearTimeout(_ptlCorr.pollTimer);
+            if (_ptlCorr.cuentaTimer) clearInterval(_ptlCorr.cuentaTimer);
+            _ptlCorr.pollTimer = null;
+            _ptlCorr.cuentaTimer = null;
+        }
+
+        function _ptlCorrCanalActual() {
+            return _ptlCorr.canales[_ptlCorr.indice];
+        }
+
+        function _ptlCorrRestanteS() {
+            if (!_ptlCorr || !_ptlCorr.finEsperaMs) return 0;
+            return Math.max(0, Math.ceil((_ptlCorr.finEsperaMs - Date.now()) / 1000));
+        }
+
+        async function _ptlCorrSiguienteCanal() {
+            if (!_ptlCorr) return;
+            if (_ptlCorr.indice >= _ptlCorr.canales.length) {
+                await _ptlCorrTerminar(false);
+                return;
+            }
+            _ptlCorr.fase = 'comprobando_cierre';
+            _ptlCorrRender();
+            await _ptlCorrComprobarCierre();
+        }
+
+        async function _ptlCorrComprobarCierre() {
+            if (!_ptlCorr) return;
+            var canal = _ptlCorrCanalActual();
+            var d = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+            if (!_ptlCorr) return;   // se canceló mientras se esperaba a la placa
+            var fuera = new Set((d && d.fuera) || []);
+            if (fuera.has(canal.canal)) {
+                _ptlCorr.fase = 'ya_abierta';
+                _ptlCorrRender();
+                return;
+            }
+            await _ptlCorrEncenderYEsperar();
+        }
+
+        window.ptlCorrYaLaCerre = async function () {
+            if (!_ptlCorr) return;
+            _ptlCorr.fase = 'comprobando_cierre';
+            _ptlCorrRender();
+            await _ptlCorrComprobarCierre();
+        };
+
+        window.ptlCorrOmitirAbierta = function () {
+            if (!_ptlCorr) return;
+            var canal = _ptlCorrCanalActual();
+            _ptlCorr.detalle.push({ canal: canal.canal, terminal: canal.terminal, gaveta: canal.gaveta,
+                                    resultado: 'omitido', motivo_omision: 'abierta_al_empezar' });
+            _ptlLog('Canal ' + canal.canal + ': omitido (ya estaba abierta al empezar)');
+            _ptlCorr.indice++;
+            _ptlCorrSiguienteCanal();
+        };
+
+        async function _ptlCorrEncenderYEsperar() {
+            if (!_ptlCorr) return;
+            var canal = _ptlCorrCanalActual();
+            var r = await _ptlPost('/api/pick-to-light/test/led',
+                                   _ptlPayload({ led: canal.canal, color: [0, 150, 0] }));
+            if (!_ptlCorr) return;
+            if (!r || !r.success) {
+                _ptlCorr.fase = 'error_led';
+                _ptlCorr.errorMsg = (r && r.message) || 'No se pudo encender el LED';
+                _ptlCorrRender();
+                return;
+            }
+            var estado = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+            if (!_ptlCorr) return;
+            _ptlCorr.fueraPrevio = new Set((estado && estado.fuera) || []);
+            _ptlCorr.finEsperaMs = Date.now() + _ptlCorr.timeoutS * 1000;
+            _ptlCorr.fase = 'esperando';
+            _ptlCorrRender();
+            _ptlLog('Canal ' + canal.canal + ' (' + canal.terminal + ') iluminado — esperando apertura');
+            _ptlCorrCuentaAtras();
+            _ptlCorrPollEspera();
+        }
+
+        function _ptlCorrCuentaAtras() {
+            if (!_ptlCorr) return;
+            if (_ptlCorr.cuentaTimer) clearInterval(_ptlCorr.cuentaTimer);
+            _ptlCorr.cuentaTimer = setInterval(function () {
+                if (!_ptlCorr || _ptlCorr.fase !== 'esperando') return;
+                var span = document.getElementById('ptl-corr-cuenta');
+                if (span) span.textContent = _ptlCorrRestanteS() + ' s';
+            }, 500);
+        }
+
+        async function _ptlCorrPollEspera() {
+            if (!_ptlCorr || _ptlCorr.fase !== 'esperando') return;
+            var canal = _ptlCorrCanalActual();
+            var d = await _ptlPost('/api/pick-to-light/test/micros', _ptlPayload({}));
+            if (!_ptlCorr || _ptlCorr.fase !== 'esperando') return;   // se pauso/repitio/cancelo mientras tanto
+            var fueraAhora = new Set((d && d.fuera) || []);
+            var nuevos = [];
+            fueraAhora.forEach(function (g) { if (!_ptlCorr.fueraPrevio.has(g)) nuevos.push(g); });
+
+            if (nuevos.indexOf(canal.canal) !== -1) {
+                _ptlCorr.detalle.push({ canal: canal.canal, terminal: canal.terminal, gaveta: canal.gaveta,
+                                        resultado: 'correcto' });
+                _ptlLog('Canal ' + canal.canal + ': correcto');
+                _ptlCorr.indice++;
+                _ptlCorrSiguienteCanal();
+                return;
+            }
+            if (nuevos.length) {
+                _ptlCorr.fase = 'cruzado';
+                _ptlCorr.abrioCanal = nuevos[0];
+                _ptlCorrRender();
+                return;
+            }
+            if (Date.now() >= _ptlCorr.finEsperaMs) {
+                _ptlCorr.fase = 'sin_respuesta';
+                _ptlCorrRender();
+                return;
+            }
+            _ptlCorr.pollTimer = setTimeout(_ptlCorrPollEspera, 500);
+        }
+
+        window.ptlCorrPausar = function () {
+            if (!_ptlCorr || _ptlCorr.fase !== 'esperando') return;
+            if (_ptlCorr.pollTimer) clearTimeout(_ptlCorr.pollTimer);
+            _ptlCorr.pausaInicioMs = Date.now();
+            _ptlCorr.fase = 'pausado';
+            _ptlCorrRender();
+        };
+
+        window.ptlCorrReanudar = function () {
+            if (!_ptlCorr || _ptlCorr.fase !== 'pausado') return;
+            var pausaMs = Date.now() - (_ptlCorr.pausaInicioMs || Date.now());
+            _ptlCorr.finEsperaMs += pausaMs;
+            _ptlCorr.fase = 'esperando';
+            _ptlCorrRender();
+            _ptlCorrPollEspera();
+        };
+
+        window.ptlCorrRepetirCanal = async function () {
+            if (!_ptlCorr) return;
+            _ptlCorrDetener();
+            _ptlCorr.fase = 'comprobando_cierre';
+            _ptlCorrRender();
+            await _ptlCorrComprobarCierre();
+        };
+
+        window.ptlCorrContinuarTrasCruce = function () {
+            if (!_ptlCorr) return;
+            var canal = _ptlCorrCanalActual();
+            _ptlCorr.detalle.push({ canal: canal.canal, terminal: canal.terminal, gaveta: canal.gaveta,
+                                    resultado: 'cruzado', abrio_canal: _ptlCorr.abrioCanal });
+            _ptlLog('Canal ' + canal.canal + ': CRUZADO con el canal ' + _ptlCorr.abrioCanal);
+            _ptlCorr.indice++;
+            _ptlCorrSiguienteCanal();
+        };
+
+        window.ptlCorrOmitirCanal = function () {
+            if (!_ptlCorr) return;
+            _ptlCorrDetener();
+            var canal = _ptlCorrCanalActual();
+            _ptlCorr.detalle.push({ canal: canal.canal, terminal: canal.terminal, gaveta: canal.gaveta,
+                                    resultado: 'omitido', motivo_omision: 'manual' });
+            _ptlLog('Canal ' + canal.canal + ': omitido');
+            _ptlCorr.indice++;
+            _ptlCorrSiguienteCanal();
+        };
+
+        window.ptlCorrAceptarSinRespuesta = function () {
+            if (!_ptlCorr) return;
+            var canal = _ptlCorrCanalActual();
+            _ptlCorr.detalle.push({ canal: canal.canal, terminal: canal.terminal, gaveta: canal.gaveta,
+                                    resultado: 'sin_respuesta' });
+            _ptlLog('Canal ' + canal.canal + ': sin respuesta');
+            _ptlCorr.indice++;
+            _ptlCorrSiguienteCanal();
+        };
+
+        window.ptlCorrCancelar = async function () {
+            if (!_ptlCorr) return;
+            await _ptlCorrTerminar(true);
+        };
+
+        async function _ptlCorrTerminar(cancelado) {
+            if (!_ptlCorr) return;
+            _ptlCorrDetener();
+            var detalle = _ptlCorr.detalle;
+            var resumen = { comprobados: detalle.length, correctos: 0, cruzados: 0, sin_respuesta: 0, omitidos: 0 };
+            detalle.forEach(function (d) {
+                if (d.resultado === 'correcto') resumen.correctos++;
+                else if (d.resultado === 'cruzado') resumen.cruzados++;
+                else if (d.resultado === 'sin_respuesta') resumen.sin_respuesta++;
+                else if (d.resultado === 'omitido') resumen.omitidos++;
+            });
+            _ptlLog('Comprobación de correspondencia ' + (cancelado ? 'CANCELADA' : 'terminada') + ': ' +
+                   resumen.correctos + ' correctos, ' + resumen.cruzados + ' cruzados, ' +
+                   resumen.sin_respuesta + ' sin respuesta, ' + resumen.omitidos + ' omitidos');
+
+            // Critico: pase lo que pase con el informe, la placa tiene que salir
+            // de modo prueba y apagar. Nunca condicionar esto a que lo de abajo salga bien.
+            try { await _ptlPost('/api/pick-to-light/test/fin', _ptlPayload({})); }
+            catch (e) { _ptlLog('Aviso: no se pudo confirmar el apagado (' + e + ')'); }
+
+            try {
+                await fetch('/api/pick-to-light/correspondencia/informe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, cancelado: cancelado,
+                                          resumen: resumen, detalle: detalle })
+                });
+            } catch (e) { _ptlLog('No se pudo guardar el informe: ' + e); }
+
+            _ptlCorr.fase = 'informe';
+            _ptlCorr.resumen = resumen;
+            _ptlCorr.cancelado = cancelado;
+            _ptlCorrRender();
+        }
+
+        window.ptlCorrCerrarInforme = function () {
+            _ptlCorr = null;
+            _ptlCorrRender();
+        };
+
+        function _ptlCorrRender() {
+            var panel = document.getElementById('ptl-corr-panel');
+            var btnIniciar = document.getElementById('ptl-corr-btn-iniciar');
+            if (!panel) return;
+            if (!_ptlCorr) {
+                panel.innerHTML = '';
+                if (btnIniciar) btnIniciar.disabled = false;
+                return;
+            }
+            if (btnIniciar) btnIniciar.disabled = true;
+
+            var canal = (_ptlCorr.fase !== 'informe' && _ptlCorr.indice < _ptlCorr.canales.length)
+                       ? _ptlCorrCanalActual() : null;
+            var cabecera = canal ? ('Canal ' + canal.canal + ' — ' + _dispEsc(canal.terminal) +
+                                    (canal.gaveta ? ' (' + _dispEsc(canal.gaveta) + ')' : '') +
+                                    ' — ' + (_ptlCorr.indice + 1) + ' de ' + _ptlCorr.canales.length) : '';
+
+            var html = '';
+            if (_ptlCorr.fase === 'explicando') {
+                html = '<div style="background:#1e293b;border-radius:10px;padding:14px;">' +
+                       '<p style="margin:0 0 10px;">Se va a comprobar, uno a uno, cada uno de los ' +
+                       '<strong>' + _ptlCorr.canales.length + '</strong> canal(es) con terminal asignado en ' +
+                       'este puesto. En cada paso se enciende SOLO ese LED y hay que abrir la gaveta ' +
+                       'iluminada. Nada se guarda en el mapeo automáticamente: esto es solo diagnóstico.</p>' +
+                       '<button class="btn-primary" onclick="ptlCorrEmpezarDeVerdad()">Sí, empezar</button> ' +
+                       '<button class="btn-secondary" onclick="ptlCorrCancelarSinEmpezar()">Cancelar</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'comprobando_cierre') {
+                html = '<div style="color:#94a3b8;">Comprobando estado de ' + cabecera + '...</div>';
+            } else if (_ptlCorr.fase === 'ya_abierta') {
+                html = '<div style="background:#3f2d12;border-radius:10px;padding:14px;border:1px solid #d97706;">' +
+                       '<p style="margin:0 0 10px;">⚠️ ' + cabecera + ' ya está ABIERTA antes de empezar. ' +
+                       'Ciérrala y pulsa "Ya la cerré" para continuar, u omite este canal.</p>' +
+                       '<button class="btn-primary" onclick="ptlCorrYaLaCerre()">Ya la cerré</button> ' +
+                       '<button class="btn-secondary" onclick="ptlCorrOmitirAbierta()">Omitir con incidencia</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'esperando' || _ptlCorr.fase === 'pausado') {
+                html = '<div style="background:#0f2e1a;border-radius:10px;padding:14px;border:1px solid #16a34a;">' +
+                       '<p style="margin:0 0 6px;font-weight:600;">' + cabecera + '</p>' +
+                       '<p style="margin:0 0 10px;">💡 Abre la gaveta iluminada.' +
+                       (_ptlCorr.fase === 'pausado'
+                           ? ' <strong>(en pausa)</strong>'
+                           : ' Tiempo restante: <span id="ptl-corr-cuenta">' + _ptlCorrRestanteS() + ' s</span>') +
+                       '</p>' +
+                       (_ptlCorr.fase === 'esperando'
+                           ? '<button class="btn-secondary" onclick="ptlCorrPausar()">⏸ Pausar</button> '
+                           : '<button class="btn-primary" onclick="ptlCorrReanudar()">▶ Reanudar</button> ') +
+                       '<button class="btn-secondary" onclick="ptlCorrRepetirCanal()">↻ Repetir canal</button> ' +
+                       '<button class="btn-secondary" onclick="ptlCorrOmitirCanal()">⏭ Omitir canal</button> ' +
+                       '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                       'onclick="ptlCorrCancelar()">✕ Cancelar prueba</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'cruzado') {
+                html = '<div style="background:#3f1d1d;border-radius:10px;padding:14px;border:1px solid #dc2626;">' +
+                       '<p style="margin:0 0 10px;">🔀 <strong>Cruce detectado.</strong> El LED del canal ' +
+                       canal.canal + ' corresponde físicamente al micro del canal <strong>' +
+                       _ptlCorr.abrioCanal + '</strong>, no al ' + canal.canal + '.</p>' +
+                       '<button class="btn-secondary" onclick="ptlCorrRepetirCanal()">↻ Repetir canal</button> ' +
+                       '<button class="btn-primary" onclick="ptlCorrContinuarTrasCruce()">Continuar</button> ' +
+                       '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                       'onclick="ptlCorrCancelar()">✕ Cancelar prueba</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'sin_respuesta') {
+                html = '<div style="background:#1e293b;border-radius:10px;padding:14px;border:1px solid #64748b;">' +
+                       '<p style="margin:0 0 10px;">⌛ ' + cabecera + ': no se detectó ningún cambio en ' +
+                       _ptlCorr.timeoutS + ' s.</p>' +
+                       '<button class="btn-secondary" onclick="ptlCorrRepetirCanal()">↻ Repetir canal</button> ' +
+                       '<button class="btn-primary" onclick="ptlCorrAceptarSinRespuesta()">⏭ Omitir</button> ' +
+                       '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                       'onclick="ptlCorrCancelar()">✕ Cancelar prueba</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'error_led') {
+                html = '<div style="background:#3f1d1d;border-radius:10px;padding:14px;border:1px solid #dc2626;">' +
+                       '<p style="margin:0 0 10px;">❌ No se pudo encender ' + cabecera + ': ' +
+                       _dispEsc(_ptlCorr.errorMsg || '') + '</p>' +
+                       '<button class="btn-secondary" onclick="ptlCorrRepetirCanal()">↻ Reintentar</button> ' +
+                       '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                       'onclick="ptlCorrCancelar()">✕ Cancelar prueba</button>' +
+                       '</div>';
+            } else if (_ptlCorr.fase === 'informe') {
+                var r = _ptlCorr.resumen;
+                var filas = _ptlCorr.detalle.map(function (d) {
+                    var color = d.resultado === 'correcto' ? '#4ade80' : d.resultado === 'cruzado' ? '#f87171'
+                              : d.resultado === 'sin_respuesta' ? '#fbbf24' : '#94a3b8';
+                    return '<tr><td style="padding:3px 8px;">' + d.canal + '</td>' +
+                           '<td style="padding:3px 8px;">' + _dispEsc(d.terminal || '') + '</td>' +
+                           '<td style="padding:3px 8px;">' + _dispEsc(d.gaveta || '') + '</td>' +
+                           '<td style="padding:3px 8px;color:' + color + ';font-weight:600;">' + d.resultado +
+                           (d.abrio_canal ? ' (con ' + d.abrio_canal + ')' : '') +
+                           (d.motivo_omision ? ' (' + d.motivo_omision + ')' : '') + '</td></tr>';
+                }).join('');
+                html = '<div style="background:#1e293b;border-radius:10px;padding:14px;">' +
+                       '<p style="margin:0 0 10px;font-weight:600;">' +
+                       (_ptlCorr.cancelado ? '✕ Prueba cancelada — informe parcial' : '✅ Informe de correspondencia') +
+                       '</p>' +
+                       '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:0.88em;">' +
+                       '<span>Comprobados: <strong>' + r.comprobados + '</strong></span>' +
+                       '<span style="color:#4ade80;">Correctos: <strong>' + r.correctos + '</strong></span>' +
+                       '<span style="color:#f87171;">Cruzados: <strong>' + r.cruzados + '</strong></span>' +
+                       '<span style="color:#fbbf24;">Sin respuesta: <strong>' + r.sin_respuesta + '</strong></span>' +
+                       '<span style="color:#94a3b8;">Omitidos: <strong>' + r.omitidos + '</strong></span>' +
+                       '</div>' +
+                       '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82em;">' +
+                       '<thead><tr><th style="text-align:left;padding:3px 8px;">Canal</th>' +
+                       '<th style="text-align:left;padding:3px 8px;">Terminal</th>' +
+                       '<th style="text-align:left;padding:3px 8px;">Gaveta</th>' +
+                       '<th style="text-align:left;padding:3px 8px;">Resultado</th></tr></thead>' +
+                       '<tbody>' + filas + '</tbody></table></div>' +
+                       '<div style="margin-top:12px;"><button class="btn-primary" onclick="ptlCorrCerrarInforme()">Cerrar</button></div>' +
+                       '</div>';
+            }
+            panel.innerHTML = html;
+        }
+
         window.ptlTestFin = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
             _ptlDesfileActivo = false;
             document.getElementById('ptl-btn-desfile').textContent = '▶ Desfile automático';
             _ptlMicroLiveActivo = false;
             document.getElementById('ptl-btn-micro-live').textContent = '🔴 Live (pulsa un micro)';
+            if (_ptlCorr) {
+                // "Apagar todo" es la parada de emergencia: corta la comprobación
+                // guiada sin generar informe (para eso está "Cancelar prueba").
+                _ptlCorrDetener();
+                _ptlCorr = null;
+                _ptlCorrRender();
+            }
             try {
                 await _ptlPost('/api/pick-to-light/test/fin', _ptlPayload({}));
                 _ptlLedActual = null;
@@ -1989,7 +2508,10 @@
             } catch (e) { _ptlMensaje('ptl-led-msg', 'Error de red', false); }
         };
 
-        // Limpiar el desfile y el live de micros al salir de la sección
+        // Limpiar el desfile, el live de micros y la comprobación guiada al
+        // salir de la sección. Critico para esta ultima: si no se apaga aqui,
+        // el LED del canal en curso se quedaria encendido y la placa atrapada
+        // en modo prueba hasta que caduque sola (ver TEST_TIMEOUT_MS).
         document.addEventListener('click', function (e) {
             if (e.target && e.target.dataset && e.target.dataset.section &&
                 e.target.dataset.section !== 'ptl-prueba') {
@@ -2001,6 +2523,31 @@
                     _ptlMicroLiveActivo = false;
                     document.getElementById('ptl-btn-micro-live').textContent = '🔴 Live (pulsa un micro)';
                 }
+                if (_ptlCorr) {
+                    var device = _ptlLectorId;
+                    _ptlCorrDetener();
+                    _ptlCorr = null;
+                    _ptlCorrRender();
+                    if (device) {
+                        fetch('/api/pick-to-light/test/fin', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ device_id: device })
+                        }).catch(function () {});
+                    }
+                }
+            }
+        });
+
+        // Ultima red de seguridad: si se cierra la pestaña o se navega fuera
+        // del todo con una comprobación guiada en marcha, sendBeacon es lo
+        // unico fiable en ese momento (fetch normal se puede cortar a medias).
+        window.addEventListener('pagehide', function () {
+            if (_ptlCorr && _ptlLectorId && navigator.sendBeacon) {
+                try {
+                    var blob = new Blob([JSON.stringify({ device_id: _ptlLectorId })],
+                                        { type: 'application/json' });
+                    navigator.sendBeacon('/api/pick-to-light/test/fin', blob);
+                } catch (e) { /* nada mas que hacer aqui */ }
             }
         });
 

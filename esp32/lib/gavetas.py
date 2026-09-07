@@ -65,6 +65,10 @@ ZUMBIDO_ON_MS = 120
 ZUMBIDO_OFF_MS = 90
 PARPADEO_MS = 250           # el rojo de la gaveta robada parpadea, no fijo
 TIMEOUT_AVISO_S = 2         # avisar al servidor no puede frenar el bucle
+# Red de seguridad del modo prueba: si Admin cierra la pestaña o se corta la
+# red a medio probar un cableado, nadie manda mas comandos de prueba y la
+# placa se quedaria con un LED encendido para siempre sin esto.
+TEST_TIMEOUT_MS = 5 * 60 * 1000
 
 
 class Gavetas:
@@ -83,6 +87,9 @@ class Gavetas:
         # None = sin lista todavia (firmware recien arrancado o servidor
         # viejo): no se restringe nada, que es como se comportaba siempre.
         self.validas = None
+        # Canales de un expansor que no respondio en la ultima lectura I2C:
+        # no son "gaveta fuera", son un fallo de lectura (cable/expansor).
+        self.canales_error = set()
 
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
@@ -95,6 +102,7 @@ class Gavetas:
         self._parpadeo_encendido = True
 
         self._en_prueba = False   # modo prueba de cableado
+        self._prueba_desde_ms = 0    # para la caducidad de seguridad, ver TEST_TIMEOUT_MS
         self._reintento_servidor_ms = 0
 
         self._servidor = self._abrir_servidor()
@@ -106,20 +114,28 @@ class Gavetas:
     # ── Hardware ────────────────────────────────────────────────────────────
 
     def _leer_micros(self):
-        """Conjunto de gavetas (1..N) que estan FUERA ahora mismo."""
+        """Conjunto de gavetas (1..N) que estan FUERA ahora mismo.
+
+        De paso deja en self.canales_error los canales de un expansor que no
+        respondio esta vez: sin esto, Admin no puede distinguir "todas
+        puestas" de "no se puede leer este trozo del bus I2C".
+        """
         fuera = set()
+        errores = set()
         for indice, exp in enumerate(self.expansores):
+            base = indice * mcp23017.CANALES
             try:
                 bits = exp.leer()
             except Exception as e:
                 # Un expansor que no contesta no puede tumbar a los demas ni
                 # inventarse que le han sacado las 16 gavetas de golpe.
                 print("Gavetas: expansor 0x%02X no responde:" % exp.direccion, e)
+                errores.update(range(base + 1, base + mcp23017.CANALES + 1))
                 continue
-            base = indice * mcp23017.CANALES
             for canal in range(mcp23017.CANALES):
                 if bits & (1 << canal):     # 1 = contacto abierto = gaveta fuera
                     fuera.add(base + canal + 1)
+        self.canales_error = errores
         return fuera
 
     def _pintar(self, gaveta, color):
@@ -199,6 +215,7 @@ class Gavetas:
             "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
             "validas": sorted(self.validas) if self.validas is not None else None,
+            "canales_error": sorted(self.canales_error),
             "http": self._servidor is not None,
         }
 
@@ -222,6 +239,7 @@ class Gavetas:
         self.equivocadas.clear()
         self._parar_zumbido()
         self._en_prueba = True
+        self._prueba_desde_ms = time.ticks_ms()
 
     def _finalizar_prueba(self):
         self._en_prueba = False
@@ -266,9 +284,15 @@ class Gavetas:
                     "estado": self.estado()}
 
         if datos.get("test_micros"):
+            if self._en_prueba:
+                # Sigue habiendo alguien mirando: no cuenta para la caducidad
+                # de seguridad (ver TEST_TIMEOUT_MS / _atender_timeout_prueba).
+                self._prueba_desde_ms = time.ticks_ms()
             leidas = self._leer_micros()
-            puestas = sorted(g for g in range(1, self.n_gavetas + 1) if g not in leidas)
+            puestas = sorted(g for g in range(1, self.n_gavetas + 1)
+                            if g not in leidas and g not in self.canales_error)
             return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
+                    "canales_error": sorted(self.canales_error),
                     "total": self.n_gavetas, "estado": self.estado()}
 
         if datos.get("test_fin"):
@@ -526,6 +550,21 @@ class Gavetas:
         ok, motivo = self.encender(led, datos.get("terminal") or "", datos.get("validas"))
         return {"ok": ok, "error": motivo, "estado": self.estado()}
 
+    def _atender_timeout_prueba(self, ahora):
+        """Saca sola del modo prueba si nadie manda un comando en TEST_TIMEOUT_MS.
+
+        Sin esto, cerrar la pestaña de Admin a medias de una prueba de
+        cableado (o un corte de wifi) dejaria la placa atrapada en modo
+        prueba, con un LED encendido, hasta la proxima visita al armario.
+        """
+        if not self._en_prueba:
+            return
+        if time.ticks_diff(ahora, self._prueba_desde_ms) < TEST_TIMEOUT_MS:
+            return
+        print("Gavetas: modo prueba caducado sin actividad, volviendo a normal")
+        self._finalizar_prueba()
+        self.apagar()
+
     # ── Bucle ───────────────────────────────────────────────────────────────
 
     def actualizar(self):
@@ -535,6 +574,7 @@ class Gavetas:
         self._atender_micros(ahora)
         self._atender_zumbador(ahora)
         self._atender_parpadeo(ahora)
+        self._atender_timeout_prueba(ahora)
 
 
 def _color(crudo, por_defecto):

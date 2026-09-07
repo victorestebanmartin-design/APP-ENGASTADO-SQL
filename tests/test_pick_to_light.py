@@ -41,12 +41,15 @@ def con_placa(monkeypatch):
     return enviados
 
 
-def _registrar_lector(app, device_id='aabbccddeeff', puesto_id='puesto_001', ip='192.168.50.151'):
+def _registrar_lector(app, device_id='aabbccddeeff', puesto_id='puesto_001', ip='192.168.50.151',
+                      gavetas=0):
     """Deja un lector RFID asignado a un puesto, como haría Admin."""
     ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    dispositivo = {'ip': ip, 'puesto_id': puesto_id, 'puesto_nombre': 'TERMINALES AMP'}
+    if gavetas:
+        dispositivo['gavetas'] = gavetas
     with open(ruta, 'w', encoding='utf-8') as f:
-        json.dump({device_id: {'ip': ip, 'puesto_id': puesto_id,
-                               'puesto_nombre': 'TERMINALES AMP'}}, f)
+        json.dump({device_id: dispositivo}, f)
     return device_id
 
 
@@ -641,3 +644,109 @@ def test_con_la_placa_a_mano_no_se_usa_el_sondeo(app, admin_client, monkeypatch)
                               json={'device_id': dev, 'led': 5}).get_json()
     assert datos['pendiente'] is False
     assert datos['estado']['gavetas'] == 16
+
+
+# ── Mapa de cobertura del puesto ─────────────────────────────────────────────
+
+def test_mapa_requiere_pin_admin(app, client):
+    dev = _registrar_lector(app, gavetas=8)
+    assert client.get('/api/pick-to-light/mapa?device_id=' + dev).status_code == 401
+
+
+def test_mapa_lector_no_encontrado(admin_client):
+    r = admin_client.get('/api/pick-to-light/mapa?device_id=noexiste')
+    assert r.status_code == 404
+
+
+def test_mapa_sin_gavetas_reportadas_aun(app, admin_client):
+    """La placa todavía no ha dicho cuántos canales tiene: lista vacía, no error."""
+    dev = _registrar_lector(app)   # gavetas=0 por defecto
+    r = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev)
+    datos = r.get_json()
+    assert r.status_code == 200
+    assert datos['total_gavetas'] == 0 and datos['canales'] == []
+
+
+def test_mapa_marca_asignados_y_libres_sin_mezclar_puestos(app, admin_client):
+    """El mismo número de LED en dos puestos son dos cajones físicos distintos."""
+    dev = _registrar_lector(app, gavetas=5)
+    admin_client.put('/api/terminal-gaveta/ZZMAPA1', json={'gaveta': 'A-1', 'led': 2})
+    admin_client.put('/api/terminal-gaveta/ZZMAPA2', json={'gaveta': 'B-9', 'led': 4})
+    _asignar_terminal_a_maquina(app, 'ZZMAPA1', puesto_id='puesto_001', maquina_id='maquina_mapa')
+    # ZZMAPA2 tiene led=4 pero está en OTRO puesto: no puede aparecer en el mapa de puesto_001.
+    _asignar_terminal_a_maquina(app, 'ZZMAPA2', puesto_id='puesto_mapa_otro',
+                                maquina_id='maquina_mapa_otro')
+
+    r = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev)
+    datos = r.get_json()
+
+    assert r.status_code == 200
+    assert datos['puesto_id'] == 'puesto_001'
+    assert datos['total_gavetas'] == 5
+    assert len(datos['canales']) == 5
+    por_canal = {c['canal']: c for c in datos['canales']}
+    assert por_canal[2] == {'canal': 2, 'terminal': 'ZZMAPA1', 'gaveta': 'A-1'}
+    assert por_canal[4] == {'canal': 4, 'terminal': None, 'gaveta': None}
+    assert por_canal[1] == {'canal': 1, 'terminal': None, 'gaveta': None}
+
+
+# ── Informe de correspondencia LED-micro ─────────────────────────────────────
+
+def test_informe_requiere_pin_admin(app, client):
+    dev = _registrar_lector(app)
+    assert client.post('/api/pick-to-light/correspondencia/informe',
+                       json={'device_id': dev}).status_code == 401
+    assert client.get('/api/pick-to-light/correspondencia/informe?device_id=' + dev).status_code == 401
+
+
+def test_informe_sin_device_id_se_rechaza(admin_client):
+    r = admin_client.post('/api/pick-to-light/correspondencia/informe', json={})
+    assert r.status_code == 400
+
+
+def test_informe_sin_prueba_previa_devuelve_none(admin_client):
+    r = admin_client.get('/api/pick-to-light/correspondencia/informe?device_id=nunca-probado')
+    assert r.status_code == 200 and r.get_json()['informe'] is None
+
+
+def test_informe_se_guarda_y_se_recupera(app, admin_client):
+    dev = _registrar_lector(app)
+    resumen = {'comprobados': 3, 'correctos': 2, 'cruzados': 1, 'sin_respuesta': 0, 'omitidos': 0}
+    detalle = [
+        {'canal': 1, 'terminal': '640204', 'gaveta': 'A-12', 'resultado': 'correcto'},
+        {'canal': 2, 'terminal': '640205', 'gaveta': 'A-13', 'resultado': 'cruzado', 'abrio_canal': 3},
+    ]
+    r = admin_client.post('/api/pick-to-light/correspondencia/informe',
+                          json={'device_id': dev, 'resumen': resumen, 'detalle': detalle})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+    informe = admin_client.get(
+        '/api/pick-to-light/correspondencia/informe?device_id=' + dev).get_json()['informe']
+    assert informe['device_id'] == dev
+    assert informe['puesto_id'] == 'puesto_001'
+    assert informe['cancelado'] is False
+    assert informe['resumen'] == resumen
+    assert informe['detalle'] == detalle
+    assert informe['fecha']   # se sella en el servidor
+
+
+def test_informe_cancelado_se_guarda_como_tal(app, admin_client):
+    dev = _registrar_lector(app)
+    admin_client.post('/api/pick-to-light/correspondencia/informe',
+                      json={'device_id': dev, 'cancelado': True,
+                            'resumen': {'comprobados': 1}, 'detalle': []})
+    informe = admin_client.get(
+        '/api/pick-to-light/correspondencia/informe?device_id=' + dev).get_json()['informe']
+    assert informe['cancelado'] is True
+
+
+def test_un_segundo_informe_sustituye_al_anterior(app, admin_client):
+    """Solo se guarda 'el último', como se pidió: nada de historial todavía."""
+    dev = _registrar_lector(app)
+    admin_client.post('/api/pick-to-light/correspondencia/informe',
+                      json={'device_id': dev, 'resumen': {'comprobados': 1}, 'detalle': []})
+    admin_client.post('/api/pick-to-light/correspondencia/informe',
+                      json={'device_id': dev, 'resumen': {'comprobados': 2}, 'detalle': []})
+    informe = admin_client.get(
+        '/api/pick-to-light/correspondencia/informe?device_id=' + dev).get_json()['informe']
+    assert informe['resumen']['comprobados'] == 2

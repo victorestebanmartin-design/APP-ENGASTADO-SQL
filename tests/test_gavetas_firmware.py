@@ -33,6 +33,17 @@ def gavetas():
     try:
         sys.modules.pop('gavetas', None)
         import gavetas as modulo
+        # CPython no trae los ticks_* de MicroPython. Los tests que necesitan
+        # un reloj controlable ya se montan el suyo con monkeypatch (y eso
+        # revierte solo); esto es solo para que el resto -- que solo entra en
+        # modo prueba sin mirar el tiempo -- no reviente por AttributeError.
+        if not hasattr(modulo.time, 'ticks_ms'):
+            compat = types.SimpleNamespace(
+                ticks_ms=lambda: 0,
+                ticks_diff=lambda a, b: a - b,
+                ticks_add=lambda a, b: a + b,
+            )
+            modulo.time = compat
         yield modulo
     finally:
         sys.path.remove(LIB)
@@ -295,6 +306,7 @@ def placa_con_tira(gavetas):
     obj.recogida = False
     obj.equivocadas = set()
     obj.validas = None
+    obj.canales_error = set()
     obj.fuera = set()
     obj._ultima_lectura_ms = 0
     obj._cambio_pendiente = {}
@@ -304,6 +316,7 @@ def placa_con_tira(gavetas):
     obj._parpadeo_hasta_ms = 0
     obj._parpadeo_encendido = True
     obj._en_prueba = False
+    obj._prueba_desde_ms = 0
     obj._servidor = None
 
     return obj, tira, expansores
@@ -367,6 +380,20 @@ def test_test_micros_devuelve_fuera_y_puestas(gavetas, placa_con_tira):
     assert resp['total'] == 8
 
 
+def test_test_micros_informa_los_canales_con_error(gavetas, placa_con_tira):
+    """Un expansor que no responde no es "todo puesto": Admin necesita verlo
+    distinto de una gaveta cerrada de verdad para no confiarse."""
+    obj, _, expansores = placa_con_tira
+    expansores[0].leer = lambda: (_ for _ in ()).throw(OSError('bus I2C caido'))
+
+    resp = gavetas.Gavetas._responder(obj, b'{"test_micros": true}')
+
+    assert resp['ok'] is True
+    assert resp['fuera'] == []
+    assert resp['puestas'] == []          # ni fuera ni puesta: no se sabe, es un fallo de lectura
+    assert resp['canales_error'] == list(range(1, 17))   # los 16 canales del expansor caido
+
+
 def test_test_fin_sale_del_modo_prueba_y_apaga(gavetas, placa_con_tira):
     obj, tira, _ = placa_con_tira
     # Entrar en prueba
@@ -377,6 +404,51 @@ def test_test_fin_sale_del_modo_prueba_y_apaga(gavetas, placa_con_tira):
     assert resp['ok'] is True
     assert obj._en_prueba is False
     assert all(tira[i] == (0, 0, 0) for i in range(8))
+
+
+def test_el_modo_prueba_caduca_solo_sin_actividad(gavetas, placa_con_tira, monkeypatch):
+    """Sin esta red de seguridad, cerrar el navegador a medio probar el
+    cableado dejaria un LED encendido para siempre: nadie manda mas comandos."""
+    obj, tira, _ = placa_con_tira
+    reloj = types.ModuleType('time')
+    reloj.ticks_diff = lambda a, b: a - b
+    reloj.ticks_add = lambda a, b: a + b
+    reloj.ticks_ms = lambda: 0
+    monkeypatch.setattr(gavetas, 'time', reloj)
+
+    gavetas.Gavetas._responder(obj, b'{"test_led": 3, "color": [100, 0, 0]}')
+    assert obj._en_prueba is True
+    assert tira[2] == (100, 0, 0)
+
+    gavetas.Gavetas._atender_timeout_prueba(obj, gavetas.TEST_TIMEOUT_MS - 1000)
+    assert obj._en_prueba is True   # todavia no ha pasado el timeout
+
+    gavetas.Gavetas._atender_timeout_prueba(obj, gavetas.TEST_TIMEOUT_MS + 1000)
+    assert obj._en_prueba is False
+    assert obj.objetivo is None
+    assert all(tira[i] == (0, 0, 0) for i in range(8))
+
+
+def test_seguir_pidiendo_micros_durante_la_prueba_no_deja_caducar(gavetas, placa_con_tira, monkeypatch):
+    """Mientras Admin sigue sondeando test_micros (la prueba guiada lo hace
+    sin parar), el timeout no puede saltar aunque haya pasado mucho rato."""
+    obj, _, _ = placa_con_tira
+    reloj = types.ModuleType('time')
+    reloj.ticks_diff = lambda a, b: a - b
+    reloj.ticks_add = lambda a, b: a + b
+    ahora = [0]
+    reloj.ticks_ms = lambda: ahora[0]
+    monkeypatch.setattr(gavetas, 'time', reloj)
+
+    gavetas.Gavetas._responder(obj, b'{"test_led": 3}')
+    assert obj._en_prueba is True
+
+    ahora[0] = gavetas.TEST_TIMEOUT_MS - 1000
+    gavetas.Gavetas._responder(obj, b'{"test_micros": true}')   # late "sigo aqui"
+
+    # Sin el refresco de arriba, este instante ya habria caducado (arranco en 0).
+    gavetas.Gavetas._atender_timeout_prueba(obj, ahora[0] + 1000)
+    assert obj._en_prueba is True
 
 
 def test_una_gaveta_ya_fuera_al_empezar_cuenta_como_robada(gavetas, placa_con_tira):
