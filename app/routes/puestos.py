@@ -1034,12 +1034,17 @@ def api_terminales_disponibles():
         ).fetchall()
         imagenes_map = {r[0]: r[1] for r in rows}
 
-        # Cargar gavetas de terminales (y su numero de LED en el pick-to-light)
-        rows_gav = db.session.execute(
-            text("SELECT terminal_codigo, gaveta, led FROM terminales_gavetas")
-        ).fetchall()
+        # Gaveta/LED/RFID: solo lectura aqui, se configuran en Admin -> Pick-to-Light
+        # (app/routes/pick_to_light.py). Un terminal solo tiene una asignacion
+        # activa a la vez, en el puesto de su propia maquina.
+        rows_gav = db.session.execute(text("""
+            SELECT terminal_codigo, etiqueta_gaveta, canal, puesto_id, uid_rfid
+            FROM pick_to_light_canales WHERE activo = 1
+        """)).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
         leds_map = {r[0]: r[2] for r in rows_gav}
+        ptl_puesto_map = {r[0]: r[3] for r in rows_gav}
+        ptl_rfid_map = {r[0]: bool(r[4]) for r in rows_gav}
 
         # Cargar terminales ignorados
         rows_ign = db.session.execute(
@@ -1057,6 +1062,8 @@ def api_terminales_disponibles():
                 'imagen_data': imagenes_map.get(terminal),
                 'gaveta': gavetas_map.get(terminal),
                 'led': leds_map.get(terminal),
+                'ptl_puesto_id': ptl_puesto_map.get(terminal),
+                'ptl_rfid': ptl_rfid_map.get(terminal, False),
                 'ignorado': terminal in ignorados_set
             }
             terminales_con_estado.append(estado)
@@ -1318,15 +1325,23 @@ def _led_gaveta_valido(bruto):
 
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['GET'])
 def api_obtener_gaveta_terminal(codigo):
-    """Obtener la gaveta (ubicación física) de un terminal."""
+    """Vista de solo lectura de la asignación Pick-to-Light de un terminal.
+
+    La escritura vive solo en Admin -> Pick-to-Light (app/routes/pick_to_light.py:
+    PUT/DELETE /api/pick-to-light/canal), para que nunca haya dos sitios
+    distintos tocando el mismo LED/gaveta/RFID. Mantiene 'gaveta'/'led' en la
+    respuesta por compatibilidad con quien ya los lee (p.ej. v3-seleccion.js).
+    """
     try:
-        row = db.session.execute(
-            text("SELECT gaveta, led FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
-            {'codigo': codigo}
-        ).fetchone()
-        return jsonify({'success': True,
-                        'gaveta': row[0] if row else None,
-                        'led': row[1] if row else None})
+        row = db.session.execute(text("""
+            SELECT etiqueta_gaveta, canal, puesto_id, uid_rfid
+            FROM pick_to_light_canales WHERE terminal_codigo = :codigo AND activo = 1
+        """), {'codigo': codigo}).fetchone()
+        if not row:
+            return jsonify({'success': True, 'gaveta': None, 'led': None,
+                            'puesto_id': None, 'rfid': False})
+        return jsonify({'success': True, 'gaveta': row[0], 'led': row[1],
+                        'puesto_id': row[2], 'rfid': bool(row[3])})
     except Exception as e:
         return error_interno(e, 'Error al obtener gaveta de terminal')
 
@@ -1334,53 +1349,19 @@ def api_obtener_gaveta_terminal(codigo):
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['PUT'])
 @requiere_pin_admin
 def api_guardar_gaveta_terminal(codigo):
-    """Guardar o actualizar la gaveta de un terminal."""
-    try:
-        data  = request.get_json(silent=True) or {}
-        gaveta = (data.get('gaveta') or '').strip()[:80]   # máx 80 caracteres
-
-        if not gaveta:
-            return jsonify({'success': False, 'message': 'La gaveta no puede estar vacía'}), 400
-
-        # 'led' ausente en el cuerpo = no se toca lo que ya hubiera guardado;
-        # 'led' presente y vacio = quitar la luz de esta gaveta.
-        if 'led' in data:
-            led, error_led = _led_gaveta_valido(data.get('led'))
-            if error_led:
-                return jsonify({'success': False, 'message': error_led}), 400
-            sql_led = 'led = excluded.led,'
-        else:
-            led, sql_led = None, ''
-
-        db.session.execute(text("""
-            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, led, updated_at)
-            VALUES (:codigo, :gaveta, :led, datetime('now'))
-            ON CONFLICT(terminal_codigo) DO UPDATE
-                SET gaveta     = excluded.gaveta,
-                    %s
-                    updated_at = excluded.updated_at
-        """ % sql_led), {'codigo': codigo, 'gaveta': gaveta, 'led': led})
-        db.session.commit()
-
-        return jsonify({'success': True, 'gaveta': gaveta, 'led': led})
-
-    except Exception as e:
-        return error_interno(e, 'Error al guardar gaveta de terminal')
+    """Deprecado: la gaveta/LED/RFID se configura solo desde Admin -> Pick-to-Light."""
+    return jsonify({'success': False,
+                    'message': 'La gaveta, el LED y el RFID se configuran desde '
+                               'Admin -> Pick-to-Light, no desde la ficha del terminal.'}), 410
 
 
 @bp.route('/api/terminal-gaveta/<codigo>', methods=['DELETE'])
 @requiere_pin_admin
 def api_eliminar_gaveta_terminal(codigo):
-    """Eliminar la gaveta de un terminal."""
-    try:
-        db.session.execute(
-            text("DELETE FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
-            {'codigo': codigo}
-        )
-        db.session.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        return error_interno(e, 'Error al eliminar gaveta de terminal')
+    """Deprecado: ver api_guardar_gaveta_terminal."""
+    return jsonify({'success': False,
+                    'message': 'La gaveta, el LED y el RFID se configuran desde '
+                               'Admin -> Pick-to-Light, no desde la ficha del terminal.'}), 410
 
 
 # ==================== KANBAN DE STOCK ====================
@@ -1469,9 +1450,9 @@ def api_kanban_terminales():
                     'tipo_operacion': maq.get('tipo_operacion', 'MANUAL'),
                 }
 
-        rows_gav = db.session.execute(
-            text("SELECT terminal_codigo, gaveta, led FROM terminales_gavetas")
-        ).fetchall()
+        rows_gav = db.session.execute(text("""
+            SELECT terminal_codigo, etiqueta_gaveta, canal FROM pick_to_light_canales WHERE activo = 1
+        """)).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
         leds_map = {r[0]: r[2] for r in rows_gav}
 
@@ -1723,7 +1704,9 @@ def api_exportar_pedido_excel():
             for t in maquina_repo.obtener_terminales_asignados(maq['id']):
                 terminal_maquina[t] = {'maquina': maq['nombre'], 'puesto': maq.get('puesto_nombre', '')}
 
-        rows_gav = db.session.execute(text("SELECT terminal_codigo, gaveta FROM terminales_gavetas")).fetchall()
+        rows_gav = db.session.execute(text(
+            "SELECT terminal_codigo, etiqueta_gaveta FROM pick_to_light_canales WHERE activo = 1"
+        )).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
 
         rows_stock = db.session.execute(
@@ -1784,6 +1767,15 @@ def api_exportar_pedido_excel():
 # sigue importando aqui sin problema; al reves no, y por eso sube el numero: un
 # servidor viejo avisa de que se actualice en vez de tragarse el fichero y
 # perder por el camino el mapa de LEDs sin decir nada.
+#
+# NOTA (migracion a pick_to_light_canales): este puente sigue leyendo/escribiendo
+# la vieja tabla terminales_gavetas a proposito, sin tocarla. Ya no gobierna
+# ninguna luz (eso lo hace pick_to_light_canales, por puesto), asi que
+# importar un fichero de aqui no configura Pick-to-Light por si solo: sirve
+# para llevarse la ETIQUETA de ubicacion y el stock de un servidor a otro:
+# el LED/canal y el RFID de cada puesto se siguen configurando a mano en
+# Admin -> Pick-to-Light en el servidor destino. Pendiente de una v3 que
+# tambien mueva pick_to_light_canales si hace falta mas adelante.
 KANBAN_DATOS_VERSION = 2
 
 

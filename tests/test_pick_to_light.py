@@ -6,6 +6,13 @@ seguir llegando a los paquetes. Un fallo de la bombilla no puede parar a nadie.
 
 El hardware real no está en CI, así que el envío a la placa se sustituye por
 un doble que registra lo que se le manda (ver _sin_placa / _con_placa).
+
+La configuración física (terminal -> gaveta -> LED) vive en
+pick_to_light_canales, una fila por (puesto, canal): el LED 1 del puesto A y
+el LED 1 del puesto B son cajones físicos distintos. Se escribe SOLO desde
+PUT/DELETE /api/pick-to-light/canal; la vieja ruta /api/terminal-gaveta/<cod>
+sigue existiendo en solo lectura (la usa v3-seleccion.js) más un GET, pero su
+PUT/DELETE están deprecados (410) a propósito: un único sitio de escritura.
 """
 import json
 import os
@@ -56,9 +63,10 @@ def _registrar_lector(app, device_id='aabbccddeeff', puesto_id='puesto_001', ip=
 def _asignar_terminal_a_maquina(app, terminal, puesto_id='puesto_001', maquina_id='maquina_001'):
     """Deja un terminal colgado de una máquina de un puesto, como en producción.
 
-    Hace falta para que _gavetas_validas_del_puesto lo encuentre: sin esta
-    asignación, terminales_gavetas por sí sola no dice a qué puesto pertenece
-    el terminal.
+    Hace falta para que la asignación de canal la acepte: un terminal solo
+    puede tener LED en el puesto de la máquina a la que está enganchado.
+    640204 y 640205 ya vienen así de fábrica (semilla de seed_inicial.json en
+    puesto_001), así que la mayoría de tests no necesita llamar a esto.
     """
     from repositories.puesto_repository import PuestoRepository
     from repositories.maquina_repository import MaquinaRepository
@@ -73,59 +81,142 @@ def _asignar_terminal_a_maquina(app, terminal, puesto_id='puesto_001', maquina_i
         mr.asignar_terminal(maquina_id, terminal)
 
 
-# ── La columna 'led' ─────────────────────────────────────────────────────────
-
-def test_gaveta_guarda_y_devuelve_el_numero_de_led(admin_client):
-    r = admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
-    assert r.status_code == 200 and r.get_json()['led'] == 7
-
-    r = admin_client.get('/api/terminal-gaveta/640204')
-    datos = r.get_json()
-    assert datos['gaveta'] == 'A-12' and datos['led'] == 7
+def _asignar_canal(admin_client, puesto_id, canal, terminal, etiqueta='A-12'):
+    """PUT /api/pick-to-light/canal: único sitio desde el que se escribe."""
+    return admin_client.put('/api/pick-to-light/canal',
+                            json={'puesto_id': puesto_id, 'canal': canal,
+                                  'terminal': terminal, 'etiqueta_gaveta': etiqueta})
 
 
-def test_gaveta_sin_led_sigue_siendo_valida(admin_client):
-    """Una instalación sin tira de LEDs guarda la gaveta como toda la vida."""
-    r = admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'Estante 3-B'})
-    assert r.status_code == 200
-    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['led'] is None
+def _seed_terminales_gavetas(app, terminal, gaveta, led=None):
+    """Inserta directamente en la vieja terminales_gavetas (sin pasar por la
+    API, que ya no escribe ahí): solo para probar el puente de exportación
+    /kanban-terminales, que sigue leyendo de la tabla vieja a propósito."""
+    from sqlalchemy import text
+    with app.app_context():
+        from app.routes.base import db
+        db.session.execute(text("""
+            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, led, updated_at)
+            VALUES (:t, :g, :l, datetime('now'))
+        """), {'t': terminal, 'g': gaveta, 'l': led})
+        db.session.commit()
 
 
-def test_led_vacio_quita_la_luz_sin_borrar_la_gaveta(admin_client):
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': ''})
+# ── Canal Pick-to-Light: asignar / cambiar / desasignar ──────────────────────
+
+def test_asignar_canal_guarda_y_se_puede_leer_despues(admin_client):
+    r = _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    assert r.status_code == 200 and r.get_json()['canal'] == 7
+
     datos = admin_client.get('/api/terminal-gaveta/640204').get_json()
-    assert datos['gaveta'] == 'A-12' and datos['led'] is None
+    assert datos['gaveta'] == 'A-12' and datos['led'] == 7 and datos['puesto_id'] == 'puesto_001'
 
 
-def test_led_fuera_de_rango_se_rechaza_con_motivo(admin_client):
-    r = admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 999})
+def test_terminal_sin_maquina_en_el_puesto_se_rechaza(admin_client):
+    r = _asignar_canal(admin_client, 'puesto_001', 7, 'SIN-MAQUINA', 'A-12')
+    assert r.status_code == 400
+    assert 'no pertenece a ninguna máquina' in r.get_json()['message']
+
+
+def test_terminal_de_otro_puesto_no_se_puede_asignar_aqui(app, admin_client):
+    """El terminal existe, pero su máquina está en OTRO puesto."""
+    _asignar_terminal_a_maquina(app, 'ZZOTRO', puesto_id='puesto_ajeno', maquina_id='maquina_ajena')
+    r = _asignar_canal(admin_client, 'puesto_001', 7, 'ZZOTRO', 'A-12')
+    assert r.status_code == 400
+    assert 'no pertenece a ninguna máquina de este puesto' in r.get_json()['message']
+
+
+def test_canal_fuera_de_rango_se_rechaza(admin_client):
+    r = _asignar_canal(admin_client, 'puesto_001', 999, '640204', 'A-12')
     assert r.status_code == 400
     assert 'entre 1 y' in r.get_json()['message']
 
 
-def test_editar_solo_la_etiqueta_no_borra_el_led(admin_client):
-    """Guardar sin mandar 'led' es cambiar el texto, no apagar la gaveta."""
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-13'})
-    datos = admin_client.get('/api/terminal-gaveta/640204').get_json()
-    assert datos['gaveta'] == 'A-13' and datos['led'] == 7
+def test_canal_por_encima_de_las_gavetas_detectadas_se_rechaza(app, admin_client):
+    """La placa de este puesto solo tiene 5 canales de verdad."""
+    _registrar_lector(app, gavetas=5)
+    r = _asignar_canal(admin_client, 'puesto_001', 6, '640204', 'A-12')
+    assert r.status_code == 400
+    assert 'no existe' in r.get_json()['message']
+
+
+def test_canal_dentro_de_las_gavetas_detectadas_se_acepta(app, admin_client):
+    _registrar_lector(app, gavetas=5)
+    r = _asignar_canal(admin_client, 'puesto_001', 5, '640204', 'A-12')
+    assert r.status_code == 200
+
+
+def test_no_se_puede_repetir_canal_dentro_del_mismo_puesto(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = _asignar_canal(admin_client, 'puesto_001', 7, '640205', 'A-13')
+    assert r.status_code == 400
+    assert '640204' in r.get_json()['message']
+
+
+def test_led_1_puede_existir_en_dos_puestos_distintos(app, admin_client):
+    """El canal 1 del puesto A y el canal 1 del puesto B son cajones físicos
+    distintos: cada placa tiene su propia numeración."""
+    _asignar_terminal_a_maquina(app, 'ZZOTRO', puesto_id='puesto_002', maquina_id='maquina_otra')
+    r1 = _asignar_canal(admin_client, 'puesto_001', 1, '640204', 'A-1')
+    r2 = _asignar_canal(admin_client, 'puesto_002', 1, 'ZZOTRO', 'B-1')
+    assert r1.status_code == 200 and r2.status_code == 200
+
+
+def test_un_terminal_no_puede_tener_dos_canales_en_el_mismo_puesto(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = _asignar_canal(admin_client, 'puesto_001', 8, '640204', 'A-13')
+    assert r.status_code == 400
+    assert 'canal 7' in r.get_json()['message']
+
+
+def test_reasignar_el_mismo_canal_y_terminal_actualiza_la_etiqueta(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-99')
+    assert r.status_code == 200
+    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['gaveta'] == 'A-99'
+
+
+def test_desasignar_canal_libera_el_terminal_y_el_canal(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = admin_client.delete('/api/pick-to-light/canal?puesto_id=puesto_001&canal=7')
+    assert r.status_code == 200
+
+    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['led'] is None
+    # El canal y el terminal quedan libres para una asignación nueva.
+    assert _asignar_canal(admin_client, 'puesto_001', 7, '640205', 'A-13').status_code == 200
+
+
+def test_asignar_canal_requiere_pin_admin(client):
+    r = client.put('/api/pick-to-light/canal',
+                   json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': '640204',
+                         'etiqueta_gaveta': 'A-12'})
+    assert r.status_code in (401, 403)
+
+
+def test_desasignar_canal_requiere_pin_admin(client):
+    r = client.delete('/api/pick-to-light/canal?puesto_id=puesto_001&canal=7')
+    assert r.status_code in (401, 403)
+
+
+def test_terminal_gaveta_put_delete_estan_deprecados(client, admin_client):
+    """La ficha de Terminales ya no puede escribir: solo Pick-to-Light."""
+    r = admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'X', 'led': 1})
+    assert r.status_code == 410
+    r = admin_client.delete('/api/terminal-gaveta/640204')
+    assert r.status_code == 410
 
 
 # ── Encender ─────────────────────────────────────────────────────────────────
 
 def test_encender_manda_el_led_a_la_placa(app, client, admin_client, con_placa):
     _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     r = client.post('/api/pick-to-light/encender',
                     json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     datos = r.get_json()
     assert r.status_code == 200
     assert datos['activo'] is True and datos['led'] == 7 and datos['gaveta'] == 'A-12'
-    # 640204 ya viene de fábrica asignado a una máquina de puesto_001 (semilla
-    # de schema_sqlite.sql), así que 'validas' ya trae su propio led: ver
-    # test_encender_manda_las_gavetas_validas_del_puesto para un puesto limpio.
     assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204', 'validas': [7]})]
 
 
@@ -135,20 +226,19 @@ def test_encender_manda_las_gavetas_validas_del_puesto(app, client, admin_client
     Un expansor MCP23017 trae 16 canales aunque solo se haya cableado un
     microinterruptor: sin esta lista, los canales sin cablear se leen como
     'fuera' permanentemente y se confunden con gavetas robadas. Usa un puesto
-    y terminales propios (no los de la semilla de schema_sqlite.sql) para no
-    depender de esos datos.
+    y terminales propios (no los de la semilla) para no depender de esos datos.
     """
     _registrar_lector(app, puesto_id='puesto_ptl_test')
-    admin_client.put('/api/terminal-gaveta/ZZTEST1', json={'gaveta': 'A-1', 'led': 7})
-    admin_client.put('/api/terminal-gaveta/ZZTEST2', json={'gaveta': 'A-2', 'led': 3})
     _asignar_terminal_a_maquina(app, 'ZZTEST1', puesto_id='puesto_ptl_test',
                                 maquina_id='maquina_ptl_test')
     _asignar_terminal_a_maquina(app, 'ZZTEST2', puesto_id='puesto_ptl_test',
                                 maquina_id='maquina_ptl_test')
+    _asignar_canal(admin_client, 'puesto_ptl_test', 7, 'ZZTEST1', 'A-1')
+    _asignar_canal(admin_client, 'puesto_ptl_test', 3, 'ZZTEST2', 'A-2')
     # Un terminal con gaveta pero de OTRO puesto no puede colarse en la lista.
-    admin_client.put('/api/terminal-gaveta/ZZTEST3', json={'gaveta': 'B-1', 'led': 12})
     _asignar_terminal_a_maquina(app, 'ZZTEST3', puesto_id='puesto_ptl_otro',
                                 maquina_id='maquina_ptl_otro')
+    _asignar_canal(admin_client, 'puesto_ptl_otro', 12, 'ZZTEST3', 'B-1')
 
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_ptl_test', 'terminal': 'ZZTEST1'})
@@ -159,7 +249,6 @@ def test_encender_manda_las_gavetas_validas_del_puesto(app, client, admin_client
 def test_encender_un_terminal_sin_led_no_es_un_error(app, client, admin_client, con_placa):
     """Sin luz configurada la app tiene que seguir, avisando del motivo."""
     _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12'})
 
     r = client.post('/api/pick-to-light/encender',
                     json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -170,7 +259,7 @@ def test_encender_un_terminal_sin_led_no_es_un_error(app, client, admin_client, 
 
 
 def test_encender_sin_lector_asignado_no_es_un_error(client, admin_client, con_placa):
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     r = client.post('/api/pick-to-light/encender',
                     json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -181,7 +270,7 @@ def test_encender_sin_lector_asignado_no_es_un_error(client, admin_client, con_p
 
 def test_encender_con_la_placa_caida_no_es_un_error(app, client, admin_client, sin_placa):
     _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     r = client.post('/api/pick-to-light/encender',
                     json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -192,7 +281,7 @@ def test_encender_con_la_placa_caida_no_es_un_error(app, client, admin_client, s
 
 def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_placa):
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -206,7 +295,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
 
 def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
     _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     respuesta = client.post('/api/pick-to-light/encender',
                             json={'puesto_id': 'puesto_001', 'terminal': '640204'},
@@ -237,7 +326,7 @@ def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admi
     que bastar para que el operario no se quede esperando delante del cajon.
     """
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -253,7 +342,7 @@ def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admi
 def test_sondeo_no_confirma_recogida_de_otro_led(app, client, admin_client, con_placa):
     """Un led distinto al objetivo actual no puede confirmar por error de sondeo."""
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -266,8 +355,8 @@ def test_sondeo_no_confirma_recogida_de_otro_led(app, client, admin_client, con_
 def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_client, con_placa):
     """Sin esto, el segundo terminal saltaría la puerta con la confirmación del primero."""
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
-    admin_client.put('/api/terminal-gaveta/640205', json={'gaveta': 'A-13', 'led': 8})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
 
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -284,7 +373,7 @@ def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_cl
 
 def test_la_gaveta_correcta_confirma_la_recogida(app, client, admin_client, con_placa):
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -298,7 +387,7 @@ def test_la_gaveta_correcta_confirma_la_recogida(app, client, admin_client, con_
 
 def test_la_gaveta_equivocada_se_marca_y_se_corrige(app, client, admin_client, con_placa):
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -314,7 +403,7 @@ def test_la_gaveta_equivocada_se_marca_y_se_corrige(app, client, admin_client, c
 
 def test_devolver_la_gaveta_correcta_se_marca_como_devuelta(app, client, admin_client, con_placa):
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -331,7 +420,7 @@ def test_sondeo_reconfirma_devolucion_si_se_pierde_el_aviso_post(app, client, ad
     """Igual que con la recogida: el GET periodico tiene que poder confirmar
     la devolucion por si solo, sin depender del POST suelto de 'devuelta'."""
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -347,7 +436,7 @@ def test_sondeo_reconfirma_devolucion_si_se_pierde_el_aviso_post(app, client, ad
 def test_varias_gavetas_robadas_se_listan_todas(app, client, admin_client, con_placa):
     """Con dos cajones abiertos que no tocan hay que nombrar los dos."""
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -370,7 +459,7 @@ def test_el_sondeo_manda_la_lista_entera_de_intrusas(app, client, admin_client, 
     dejaria una gaveta intrusa fantasma avisando para siempre.
     """
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     client.post('/api/esp32/rfid/gaveta',
@@ -383,7 +472,7 @@ def test_el_sondeo_manda_la_lista_entera_de_intrusas(app, client, admin_client, 
 
 def test_encender_manda_el_terminal_a_la_placa_para_el_display(app, client, admin_client, con_placa):
     _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
@@ -393,7 +482,7 @@ def test_encender_manda_el_terminal_a_la_placa_para_el_display(app, client, admi
 def test_el_sondeo_devuelve_el_terminal_en_curso(app, client, admin_client, con_placa):
     """La placa tras NAT tambien tiene que poder escribirlo en su pantalla."""
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
 
@@ -412,6 +501,7 @@ def test_el_aviso_deja_escrito_cuantas_gavetas_tiene_la_placa(app, client):
     with open(ruta, encoding='utf-8') as f:
         devs = json.load(f)
     assert devs[device_id]['gavetas'] == 32
+    assert devs[device_id]['expansores'] == 2
     assert devs[device_id]['last_seen']
 
 
@@ -431,7 +521,7 @@ def test_aviso_sin_device_id_se_rechaza(client):
 
 def test_apagar_limpia_el_estado_del_puesto(app, client, admin_client, con_placa):
     device_id = _registrar_lector(app)
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     client.post('/api/esp32/rfid/gaveta',
@@ -495,30 +585,31 @@ def test_probar_necesita_pin_de_admin(client, con_placa):
     assert con_placa == []
 
 
-# ── Export/import del kanban ─────────────────────────────────────────────────
+# ── Export/import del kanban (puente entre servidores) ───────────────────────
+#
+# Este puente sigue leyendo/escribiendo la vieja terminales_gavetas a
+# proposito (ver nota junto a KANBAN_DATOS_VERSION en puestos.py): ya no
+# gobierna ninguna luz, asi que se siembra con SQL directo en vez de con la
+# API (que ya no escribe ahi).
 
-def test_el_export_lleva_el_led_y_la_ida_y_vuelta_lo_conserva(admin_client):
+def test_el_export_lleva_el_led_y_la_ida_y_vuelta_lo_conserva(app, admin_client):
     import io as _io
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    _seed_terminales_gavetas(app, '640204', 'A-12', 7)
 
     exportado = json.loads(
         admin_client.get('/api/kanban-terminales/export-datos').data.decode('utf-8'))
     assert exportado['gavetas'] == [{'terminal_codigo': '640204', 'gaveta': 'A-12', 'led': 7}]
 
-    admin_client.delete('/api/terminal-gaveta/640204')
     contenido = json.dumps(exportado, ensure_ascii=False).encode('utf-8')
-    admin_client.post('/api/kanban-terminales/import-datos',
-                      data={'fichero': (_io.BytesIO(contenido), 'kanban.json')},
-                      content_type='multipart/form-data')
+    r = admin_client.post('/api/kanban-terminales/import-datos',
+                          data={'fichero': (_io.BytesIO(contenido), 'kanban.json')},
+                          content_type='multipart/form-data')
+    assert r.status_code == 200, r.get_json()
 
-    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['led'] == 7
 
-
-def test_importar_un_fichero_viejo_no_borra_los_leds(admin_client):
-    """Los ficheros v1 no traen 'led'; importarlos no puede apagar el puesto."""
+def test_importar_un_fichero_viejo_no_revienta(admin_client):
+    """Los ficheros v1 no traen 'led'; se siguen aceptando sin dar error."""
     import io as _io
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
-
     viejo = {'version': 1,
              'gavetas': [{'terminal_codigo': '640204', 'gaveta': 'A-12'}],
              'stock': []}
@@ -527,7 +618,6 @@ def test_importar_un_fichero_viejo_no_borra_los_leds(admin_client):
                           data={'fichero': (_io.BytesIO(contenido), 'kanban.json')},
                           content_type='multipart/form-data')
     assert r.status_code == 200, r.get_json()
-    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['led'] == 7
 
 
 # ── Pruebas de cableado con la placa fuera de alcance ────────────────────────
@@ -670,12 +760,12 @@ def test_mapa_sin_gavetas_reportadas_aun(app, admin_client):
 def test_mapa_marca_asignados_y_libres_sin_mezclar_puestos(app, admin_client):
     """El mismo número de LED en dos puestos son dos cajones físicos distintos."""
     dev = _registrar_lector(app, gavetas=5)
-    admin_client.put('/api/terminal-gaveta/ZZMAPA1', json={'gaveta': 'A-1', 'led': 2})
-    admin_client.put('/api/terminal-gaveta/ZZMAPA2', json={'gaveta': 'B-9', 'led': 4})
     _asignar_terminal_a_maquina(app, 'ZZMAPA1', puesto_id='puesto_001', maquina_id='maquina_mapa')
-    # ZZMAPA2 tiene led=4 pero está en OTRO puesto: no puede aparecer en el mapa de puesto_001.
+    _asignar_canal(admin_client, 'puesto_001', 2, 'ZZMAPA1', 'A-1')
+    # ZZMAPA2 tiene canal 4 pero está en OTRO puesto: no puede aparecer en el mapa de puesto_001.
     _asignar_terminal_a_maquina(app, 'ZZMAPA2', puesto_id='puesto_mapa_otro',
                                 maquina_id='maquina_mapa_otro')
+    _asignar_canal(admin_client, 'puesto_mapa_otro', 4, 'ZZMAPA2', 'B-9')
 
     r = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev)
     datos = r.get_json()
@@ -685,9 +775,45 @@ def test_mapa_marca_asignados_y_libres_sin_mezclar_puestos(app, admin_client):
     assert datos['total_gavetas'] == 5
     assert len(datos['canales']) == 5
     por_canal = {c['canal']: c for c in datos['canales']}
-    assert por_canal[2] == {'canal': 2, 'terminal': 'ZZMAPA1', 'gaveta': 'A-1'}
-    assert por_canal[4] == {'canal': 4, 'terminal': None, 'gaveta': None}
-    assert por_canal[1] == {'canal': 1, 'terminal': None, 'gaveta': None}
+    assert por_canal[2] == {'canal': 2, 'terminal': 'ZZMAPA1', 'gaveta': 'A-1', 'rfid': False}
+    assert por_canal[4] == {'canal': 4, 'terminal': None, 'gaveta': None, 'rfid': False}
+    assert por_canal[1] == {'canal': 1, 'terminal': None, 'gaveta': None, 'rfid': False}
+
+
+def test_mapa_puede_pedirse_por_puesto_id(app, admin_client):
+    """El flujo normal es elegir puesto primero; el lector se resuelve solo."""
+    _registrar_lector(app, gavetas=5)
+    r = admin_client.get('/api/pick-to-light/mapa?puesto_id=puesto_001')
+    assert r.status_code == 200 and r.get_json()['total_gavetas'] == 5
+
+
+def test_mapa_lista_terminales_disponibles_sin_los_ya_asignados(app, admin_client):
+    dev = _registrar_lector(app, gavetas=5)
+    r = _asignar_canal(admin_client, 'puesto_001', 3, '640204', 'A-12')
+    assert r.status_code == 200, r.get_json()
+
+    datos = admin_client.get('/api/pick-to-light/mapa?device_id=' + dev).get_json()
+    codigos = {t['terminal'] for t in datos['terminales_disponibles']}
+    assert '640204' not in codigos            # ya asignado
+    assert '640205' in codigos                # de una máquina del puesto, aún libre
+
+
+def test_mapa_incluye_el_estado_del_dispositivo(app, admin_client):
+    device_id = _registrar_lector(app, gavetas=5)
+    # Simula un latido real de la placa (expansores + en_prueba).
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    with open(ruta, encoding='utf-8') as f:
+        devs = json.load(f)
+    devs[device_id]['expansores'] = 1
+    devs[device_id]['en_prueba'] = True
+    devs[device_id]['nombre'] = 'Lector puesto 1'
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump(devs, f)
+
+    datos = admin_client.get('/api/pick-to-light/mapa?device_id=' + device_id).get_json()
+    assert datos['dispositivo']['expansores'] == 1
+    assert datos['dispositivo']['en_prueba'] is True
+    assert datos['dispositivo']['nombre'] == 'Lector puesto 1'
 
 
 # ── Informe de correspondencia LED-micro ─────────────────────────────────────

@@ -45,24 +45,31 @@ def test_imagen_terminal_escritura_requiere_pin(client):
 
 
 # ── Gavetas de terminal ───────────────────────────────────────────────────────
+#
+# Solo lectura desde aquí a propósito: la escritura vive únicamente en
+# Admin -> Pick-to-Light (ver tests/test_pick_to_light.py), para que nunca
+# haya dos sitios distintos tocando el mismo LED/gaveta/RFID.
 
-def test_gaveta_terminal_ciclo_completo(admin_client):
+def test_gaveta_terminal_es_solo_lectura(admin_client):
     r = admin_client.get('/api/terminal-gaveta/640204')
     assert r.status_code == 200 and r.get_json()['gaveta'] is None
 
     r = admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'Estante 3-B'})
-    assert r.status_code == 200 and r.get_json()['gaveta'] == 'Estante 3-B'
-
-    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['gaveta'] == 'Estante 3-B'
+    assert r.status_code == 410
 
     r = admin_client.delete('/api/terminal-gaveta/640204')
-    assert r.get_json()['success']
+    assert r.status_code == 410
+
+    # Ninguno de los dos intentos anteriores ha cambiado nada.
     assert admin_client.get('/api/terminal-gaveta/640204').get_json()['gaveta'] is None
 
 
-def test_gaveta_vacia_se_rechaza(admin_client):
-    r = admin_client.put('/api/terminal-gaveta/T1', json={'gaveta': '   '})
-    assert r.status_code == 400
+def test_gaveta_terminal_refleja_lo_asignado_desde_pick_to_light(admin_client):
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7,
+                           'terminal': '640204', 'etiqueta_gaveta': 'Estante 3-B'})
+    datos = admin_client.get('/api/terminal-gaveta/640204').get_json()
+    assert datos['gaveta'] == 'Estante 3-B' and datos['led'] == 7
 
 
 def test_gaveta_escritura_requiere_pin(client):

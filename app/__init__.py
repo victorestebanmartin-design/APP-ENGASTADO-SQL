@@ -263,6 +263,79 @@ def _apply_migrations(db_path):
         cur.execute("ALTER TABLE terminales_gavetas ADD COLUMN led INTEGER")
         conn.commit()
 
+    # Migración: pick_to_light_canales sustituye a terminales_gavetas.led.
+    #
+    # La vieja tabla guardaba (terminal -> gaveta+led) sin saber a que puesto
+    # pertenecia ese numero: dos puestos con LED 1 se confundian entre si en
+    # cuanto hubiera mas de un lector con gavetas. La nueva tabla guarda la
+    # asignacion por (puesto, canal), que es lo que de verdad representa el
+    # hardware (cada placa tiene su propia numeracion 1..N). 'activo' en vez
+    # de borrar de verdad: reasignar un canal conserva el historico sin que
+    # el indice unico de "activo" lo bloquee.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pick_to_light_canales (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            puesto_id       TEXT NOT NULL REFERENCES puestos(id) ON DELETE CASCADE,
+            canal           INTEGER NOT NULL,
+            terminal_codigo TEXT NOT NULL,
+            etiqueta_gaveta TEXT NOT NULL,
+            uid_rfid        TEXT,
+            activo          INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_ptl_canal_activo
+        ON pick_to_light_canales(puesto_id, canal) WHERE activo = 1
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_ptl_terminal_activo
+        ON pick_to_light_canales(puesto_id, terminal_codigo) WHERE activo = 1
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_ptl_uid_activo
+        ON pick_to_light_canales(uid_rfid) WHERE activo = 1 AND uid_rfid IS NOT NULL
+    """)
+    conn.commit()
+
+    # Migra lo que ya hubiera en terminales_gavetas.led, resolviendo el puesto
+    # via la maquina a la que este asignado el terminal. INSERT OR IGNORE hace
+    # esto idempotente entre reinicios y no pisa una asignacion que el admin
+    # ya haya tocado desde la consola nueva (el indice unico de terminal activo
+    # ya estaria ocupado por la version editada).
+    cur.execute("""
+        SELECT tg.terminal_codigo, tg.gaveta, tg.led, m.puesto_id
+        FROM terminales_gavetas tg
+        JOIN maquinas_terminales mt ON mt.terminal_codigo = tg.terminal_codigo AND mt.activo = 1
+        JOIN maquinas m ON m.id = mt.maquina_id
+        WHERE tg.led IS NOT NULL
+    """)
+    for terminal_codigo, gaveta, led, puesto_id in cur.fetchall():
+        cur.execute("""
+            INSERT OR IGNORE INTO pick_to_light_canales
+                (puesto_id, canal, terminal_codigo, etiqueta_gaveta)
+            VALUES (:puesto_id, :canal, :terminal, :gaveta)
+        """, {'puesto_id': puesto_id, 'canal': led, 'terminal': terminal_codigo, 'gaveta': gaveta})
+    conn.commit()
+
+    # Terminales con led pero SIN maquina asignada: no se puede saber su
+    # puesto, asi que no se migran solos. Queda constancia en el log de
+    # arranque para revisarlos a mano desde Admin -> Pick-to-Light.
+    cur.execute("""
+        SELECT tg.terminal_codigo FROM terminales_gavetas tg
+        WHERE tg.led IS NOT NULL
+          AND tg.terminal_codigo NOT IN (
+              SELECT terminal_codigo FROM maquinas_terminales WHERE activo = 1
+          )
+    """)
+    huerfanos = [r[0] for r in cur.fetchall()]
+    if huerfanos:
+        logging.getLogger(__name__).warning(
+            'MIGRACIÓN PENDIENTE Pick-to-Light: %d terminal(es) con LED pero sin máquina '
+            'asignada, no se pudieron migrar a pick_to_light_canales: %s',
+            len(huerfanos), ', '.join(huerfanos))
+
     # Migración: columnas tipo_operacion y pdf_instrucciones en maquinas
     cur.execute("PRAGMA table_info(maquinas)")
     maq_cols = {row[1] for row in cur.fetchall()}

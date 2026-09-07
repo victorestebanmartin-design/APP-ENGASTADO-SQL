@@ -234,37 +234,33 @@ def _puesto_del_terminal(terminal):
     return row[0] if row else ''
 
 
-def _gaveta_del_terminal(terminal):
-    row = db.session.execute(
-        text("SELECT gaveta, led FROM terminales_gavetas WHERE terminal_codigo = :codigo"),
-        {'codigo': terminal}
-    ).fetchone()
-    if not row:
-        return None, None
-    return row[0], row[1]
 
+# ==================== CANALES PICK-TO-LIGHT (por puesto) ====================
+#
+# pick_to_light_canales sustituye a la vieja terminales_gavetas: una fila por
+# (puesto, canal) en vez de por terminal solo, porque el LED 1 del puesto A y
+# el LED 1 del puesto B son dos cajones fisicos completamente distintos (cada
+# placa tiene su propia numeracion 1..N). 'activo' en vez de borrar de verdad
+# conserva historico sin que el indice UNIQUE de fila activa lo bloquee.
+#
+# ESTA es la unica tabla desde la que se escribe la asignacion terminal ->
+# gaveta -> LED -> RFID. La ficha de Terminales (app/routes/puestos.py) solo
+# lee de aqui para mostrarla; no tiene ningun PUT/DELETE propio.
 
-def _gavetas_asignadas_del_puesto(puesto_id):
-    """{led: {'terminal':..., 'gaveta':...}} de las maquinas de este puesto.
-
-    Un mismo numero de LED en dos puestos distintos son dos cajones fisicos
-    distintos (cada placa tiene su propia numeracion 1..N), asi que esto
-    nunca mezcla terminales de otros puestos.
-    """
+def _canales_del_puesto(puesto_id):
+    """{canal: {'terminal':..., 'gaveta':..., 'uid_rfid':...}} activos de este puesto."""
     if not puesto_id:
         return {}
     filas = db.session.execute(text("""
-        SELECT tg.led, tg.terminal_codigo, tg.gaveta
-        FROM terminales_gavetas tg
-        JOIN maquinas_terminales mt ON mt.terminal_codigo = tg.terminal_codigo AND mt.activo = 1
-        JOIN maquinas m ON m.id = mt.maquina_id
-        WHERE m.puesto_id = :puesto_id AND tg.led IS NOT NULL
+        SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid
+        FROM pick_to_light_canales
+        WHERE puesto_id = :puesto_id AND activo = 1
     """), {'puesto_id': puesto_id}).fetchall()
-    return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2]} for fila in filas}
+    return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2], 'uid_rfid': fila[3]} for fila in filas}
 
 
 def _gavetas_validas_del_puesto(puesto_id):
-    """LEDs con un terminal de verdad detras, entre los de las maquinas de este puesto.
+    """LEDs con un terminal de verdad detras, entre los de este puesto.
 
     Un expansor MCP23017 trae 16 canales aunque solo se haya cableado un
     microinterruptor: los que faltan quedan flotando con el pull-up interno y
@@ -272,7 +268,153 @@ def _gavetas_validas_del_puesto(puesto_id):
     gavetas robadas. Con ella, cualquier canal que no sea el numero de LED de
     algun terminal de este puesto es ruido del expansor y se ignora.
     """
-    return sorted(_gavetas_asignadas_del_puesto(puesto_id).keys())
+    return sorted(_canales_del_puesto(puesto_id).keys())
+
+
+def _canal_del_terminal_en_puesto(terminal, puesto_id):
+    """(canal, etiqueta_gaveta, uid_rfid) del terminal EN ESE puesto, o (None, None, None).
+
+    Buscar por (puesto, terminal) y no solo por terminal es lo que evita que
+    un terminal con el mismo codigo asignado (por error) en dos puestos a la
+    vez encienda la placa equivocada.
+    """
+    if not terminal or not puesto_id:
+        return None, None, None
+    row = db.session.execute(text("""
+        SELECT canal, etiqueta_gaveta, uid_rfid FROM pick_to_light_canales
+        WHERE puesto_id = :puesto_id AND terminal_codigo = :terminal AND activo = 1
+    """), {'puesto_id': puesto_id, 'terminal': terminal}).fetchone()
+    if not row:
+        return None, None, None
+    return row[0], row[1], row[2]
+
+
+def _maquina_del_terminal_en_puesto(terminal, puesto_id):
+    """True si el terminal esta asignado a alguna maquina de ESE puesto."""
+    row = db.session.execute(text("""
+        SELECT 1 FROM maquinas_terminales mt
+        JOIN maquinas m ON m.id = mt.maquina_id
+        WHERE mt.terminal_codigo = :terminal AND mt.activo = 1 AND m.puesto_id = :puesto_id
+        LIMIT 1
+    """), {'terminal': terminal, 'puesto_id': puesto_id}).fetchone()
+    return row is not None
+
+
+def _normalizar_uid(bruto):
+    """Mayusculas, sin espacios ni separadores: mismo formato en firmware,
+    API y SQLite para que una comparacion de cadenas baste."""
+    if not bruto:
+        return ''
+    return ''.join(str(bruto).split()).upper().replace(':', '').replace('-', '')
+
+
+def asignar_canal(puesto_id, canal, terminal, etiqueta):
+    """Valida y guarda una asignacion de canal. Devuelve (ok, error_o_None).
+
+    Comparte esta funcion la API interactiva y la importacion masiva del
+    kanban: las mismas reglas tienen que cumplirse vengan de donde vengan.
+    """
+    from app.routes.puestos import LED_GAVETA_MAX
+    if not puesto_id:
+        return False, 'Falta el puesto'
+    if not 1 <= canal <= LED_GAVETA_MAX:
+        return False, 'El canal tiene que estar entre 1 y %d' % LED_GAVETA_MAX
+    if not terminal:
+        return False, 'Falta el terminal'
+    etiqueta = (etiqueta or '').strip()[:80]
+    if not etiqueta:
+        return False, 'La etiqueta de la gaveta no puede estar vacía'
+
+    from app.routes.sistema import _rfid_load_devices
+    device_id, _ = _placa_del_puesto(puesto_id)
+    if device_id:
+        dev = (_rfid_load_devices() or {}).get(device_id) or {}
+        total = int(dev.get('gavetas') or 0)
+        if total and canal > total:
+            return False, 'El canal %d no existe: esta placa solo tiene %d' % (canal, total)
+
+    if not _maquina_del_terminal_en_puesto(terminal, puesto_id):
+        return False, ('El terminal %s no pertenece a ninguna máquina de este puesto' % terminal)
+
+    ocupante_canal = db.session.execute(text("""
+        SELECT terminal_codigo FROM pick_to_light_canales
+        WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
+    """), {'puesto_id': puesto_id, 'canal': canal}).fetchone()
+    if ocupante_canal and ocupante_canal[0] != terminal:
+        return False, 'El canal %d ya lo usa el terminal %s en este puesto' % (canal, ocupante_canal[0])
+
+    ocupante_terminal = db.session.execute(text("""
+        SELECT canal FROM pick_to_light_canales
+        WHERE puesto_id = :puesto_id AND terminal_codigo = :terminal AND activo = 1
+    """), {'puesto_id': puesto_id, 'terminal': terminal}).fetchone()
+    if ocupante_terminal and ocupante_terminal[0] != canal:
+        return False, ('El terminal %s ya está en el canal %d de este puesto'
+                       % (terminal, ocupante_terminal[0]))
+
+    db.session.execute(text("""
+        INSERT INTO pick_to_light_canales (puesto_id, canal, terminal_codigo, etiqueta_gaveta, activo)
+        VALUES (:puesto_id, :canal, :terminal, :etiqueta, 1)
+        ON CONFLICT(puesto_id, canal) WHERE activo = 1 DO UPDATE
+            SET terminal_codigo = excluded.terminal_codigo,
+                etiqueta_gaveta = excluded.etiqueta_gaveta,
+                updated_at      = datetime('now')
+    """), {'puesto_id': puesto_id, 'canal': canal, 'terminal': terminal, 'etiqueta': etiqueta})
+    db.session.commit()
+    return True, None
+
+
+def desasignar_canal(puesto_id, canal):
+    """activo=0 en vez de borrar: conserva el historico de esa asignacion."""
+    db.session.execute(text("""
+        UPDATE pick_to_light_canales SET activo = 0, updated_at = datetime('now')
+        WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
+    """), {'puesto_id': puesto_id, 'canal': canal})
+    db.session.commit()
+
+
+@bp.route('/api/pick-to-light/canal', methods=['PUT'])
+@requiere_pin_admin
+def api_pick_to_light_asignar_canal():
+    """Asigna o cambia el terminal de un canal fisico de un puesto.
+
+    Unico sitio desde el que se escribe la asignacion terminal -> gaveta ->
+    LED: la ficha de Terminales solo lee de aqui, nunca escribe.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        try:
+            canal = int(datos.get('canal'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+        terminal = (datos.get('terminal') or '').strip()[:40]
+        etiqueta = (datos.get('etiqueta_gaveta') or '').strip()[:80]
+
+        ok, error = asignar_canal(puesto_id, canal, terminal, etiqueta)
+        if not ok:
+            return jsonify({'success': False, 'message': error}), 400
+        return jsonify({'success': True, 'puesto_id': puesto_id, 'canal': canal,
+                        'terminal': terminal, 'etiqueta_gaveta': etiqueta})
+    except Exception as e:
+        return error_interno(e, 'Error al asignar el canal')
+
+
+@bp.route('/api/pick-to-light/canal', methods=['DELETE'])
+@requiere_pin_admin
+def api_pick_to_light_desasignar_canal():
+    try:
+        puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        try:
+            canal = int(request.args.get('canal'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+        if not puesto_id:
+            return jsonify({'success': False, 'message': 'Falta el puesto'}), 400
+
+        desasignar_canal(puesto_id, canal)
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al desasignar el canal')
 
 
 def _backend_pythonanywhere():
@@ -313,10 +455,10 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False,
                             'motivo': 'Falta el puesto o el terminal'})
 
-        gaveta, led = _gaveta_del_terminal(terminal)
+        led, gaveta, uid_rfid = _canal_del_terminal_en_puesto(terminal, puesto_id)
         if not led:
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta,
-                            'motivo': 'El terminal %s no tiene gaveta con luz' % terminal})
+                            'motivo': 'El terminal %s no tiene gaveta con luz en este puesto' % terminal})
 
         device_id, ip = _placa_del_puesto(puesto_id)
         if not device_id:
@@ -672,31 +814,68 @@ def api_ptl_test_fin():
 @bp.route('/api/pick-to-light/mapa', methods=['GET'])
 @requiere_pin_admin
 def api_pick_to_light_mapa():
-    """Mapa de cobertura del puesto de un lector: que canal tiene gaveta detras.
+    """Consola de un puesto: estado del lector + rejilla completa de canales.
 
-    Solo la parte ESTATICA (que terminal/etiqueta corresponde a cada canal):
-    el estado en vivo (abierta/cerrada, error de expansor) lo trae ya el
-    sondeo de /test/micros existente, que el panel cruza con esto en el
-    navegador para no duplicar trafico hacia la placa.
+    Acepta 'puesto_id' (flujo normal: elegir puesto primero) o 'device_id'
+    (compatibilidad con el resto del panel, que ya trabaja con el lector).
+    Solo la parte ESTATICA de cada canal (terminal/etiqueta/RFID): el estado
+    en vivo (abierta/cerrada, error de expansor) lo trae ya el sondeo de
+    /test/micros existente, que el panel cruza con esto en el navegador para
+    no duplicar trafico hacia la placa.
     """
     try:
         from app.routes.sistema import _rfid_load_devices
         device_id = (request.args.get('device_id') or '').strip().lower()[:64]
-        dev = (_rfid_load_devices() or {}).get(device_id) if device_id else None
+        puesto_id_pedido = (request.args.get('puesto_id') or '').strip()[:24]
+
+        devices = _rfid_load_devices() or {}
+        dev = None
+        if device_id:
+            dev = devices.get(device_id)
+        elif puesto_id_pedido:
+            for did, d in devices.items():
+                if d.get('puesto_id') == puesto_id_pedido:
+                    device_id, dev = did, d
+                    break
         if not dev:
             return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
 
         puesto_id = dev.get('puesto_id') or ''
         total = int(dev.get('gavetas') or 0)
-        asignados = _gavetas_asignadas_del_puesto(puesto_id) if puesto_id else {}
+        asignados = _canales_del_puesto(puesto_id) if puesto_id else {}
         canales = [{'canal': canal,
                     'terminal': (asignados.get(canal) or {}).get('terminal'),
-                    'gaveta': (asignados.get(canal) or {}).get('gaveta')}
+                    'gaveta': (asignados.get(canal) or {}).get('gaveta'),
+                    'rfid': bool((asignados.get(canal) or {}).get('uid_rfid'))}
                   for canal in range(1, total + 1)]
 
-        return jsonify({'success': True, 'device_id': device_id,
-                        'puesto_id': puesto_id, 'puesto_nombre': dev.get('puesto_nombre') or '',
-                        'total_gavetas': total, 'canales': canales})
+        # Terminales de las maquinas de este puesto que aun no tienen canal:
+        # son los unicos que tiene sentido ofrecer al asignar uno nuevo.
+        terminales_disponibles = []
+        if puesto_id:
+            asignados_ya = {info['terminal'] for info in asignados.values()}
+            filas = db.session.execute(text("""
+                SELECT DISTINCT mt.terminal_codigo, m.nombre
+                FROM maquinas_terminales mt
+                JOIN maquinas m ON m.id = mt.maquina_id
+                WHERE m.puesto_id = :puesto_id AND mt.activo = 1
+                ORDER BY mt.terminal_codigo
+            """), {'puesto_id': puesto_id}).fetchall()
+            terminales_disponibles = [{'terminal': fila[0], 'maquina': fila[1]}
+                                      for fila in filas if fila[0] not in asignados_ya]
+
+        return jsonify({
+            'success': True, 'device_id': device_id,
+            'puesto_id': puesto_id, 'puesto_nombre': dev.get('puesto_nombre') or '',
+            'dispositivo': {
+                'nombre': dev.get('nombre') or '', 'ip': dev.get('ip') or '',
+                'last_seen': dev.get('last_seen') or '', 'expansores': int(dev.get('expansores') or 0),
+                'ptl_http': dev.get('ptl_http'), 'en_prueba': bool(dev.get('en_prueba')),
+                'fw': dev.get('fw') or '',
+            },
+            'total_gavetas': total, 'canales': canales,
+            'terminales_disponibles': terminales_disponibles,
+        })
     except Exception as e:
         return error_interno(e, 'Error al construir el mapa de cobertura')
 
@@ -799,18 +978,27 @@ def api_esp32_rfid_gaveta():
             n_gavetas = int(datos.get('gavetas') or 0)
         except (TypeError, ValueError):
             n_gavetas = 0
+        try:
+            n_expansores = int(datos.get('expansores') or 0)
+        except (TypeError, ValueError):
+            n_expansores = 0
         # 'http' dice si la placa consiguio abrir su puerto 80. Una placa que
         # detecta los expansores pero no puede escuchar se ve igual de sana
         # desde Admin, y el unico sintoma es un ConnectionRefusedError al
         # empujarle una orden: guardarlo evita diagnosticar a ciegas.
         puerto_abierto = datos.get('http')
-        if n_gavetas or puerto_abierto is not None:
+        en_prueba = datos.get('en_prueba')
+        if n_gavetas or n_expansores or puerto_abierto is not None or en_prueba is not None:
             devs = _rfid_load_devices()
             dev = devs.setdefault(device_id, {})
             if n_gavetas:
                 dev['gavetas'] = n_gavetas
+            if n_expansores:
+                dev['expansores'] = n_expansores
             if puerto_abierto is not None:
                 dev['ptl_http'] = bool(puerto_abierto)
+            if en_prueba is not None:
+                dev['en_prueba'] = bool(en_prueba)
             _rfid_save_devices(devs)
 
         puesto_id = _puesto_de_la_placa(device_id)

@@ -3,9 +3,16 @@
 El stock y la gaveta de cada terminal se teclean a mano y solo viven en la BD,
 que no va al repositorio. Cuando la app corre en PythonAnywhere y en el PC de
 planta, ese trabajo tiene que poder viajar de uno a otro sin tocar consolas.
+
+Este puente sigue leyendo/escribiendo la vieja terminales_gavetas a propósito
+(ver la nota junto a KANBAN_DATOS_VERSION en app/routes/puestos.py): ya no
+gobierna ninguna luz -- eso lo hace pick_to_light_canales, por puesto -- así
+que se siembra con SQL directo en vez de con la API de Pick-to-Light.
 """
 import io
 import json
+
+from sqlalchemy import text
 
 
 def _fichero(datos):
@@ -14,8 +21,36 @@ def _fichero(datos):
     return {'fichero': (io.BytesIO(contenido), 'kanban_stock.json')}
 
 
-def _sembrar(admin_client):
-    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'F1-G3'})
+def _seed_gaveta(app, terminal, gaveta, led=None):
+    with app.app_context():
+        from app.routes.base import db
+        db.session.execute(text("""
+            INSERT INTO terminales_gavetas (terminal_codigo, gaveta, led, updated_at)
+            VALUES (:t, :g, :l, datetime('now'))
+        """), {'t': terminal, 'g': gaveta, 'l': led})
+        db.session.commit()
+
+
+def _borrar_gaveta(app, terminal):
+    with app.app_context():
+        from app.routes.base import db
+        db.session.execute(text("DELETE FROM terminales_gavetas WHERE terminal_codigo = :t"),
+                           {'t': terminal})
+        db.session.commit()
+
+
+def _leer_gaveta(app, terminal):
+    with app.app_context():
+        from app.routes.base import db
+        row = db.session.execute(
+            text("SELECT gaveta FROM terminales_gavetas WHERE terminal_codigo = :t"),
+            {'t': terminal}
+        ).fetchone()
+        return row[0] if row else None
+
+
+def _sembrar(app, admin_client):
+    _seed_gaveta(app, '640204', 'F1-G3')
     admin_client.put('/api/terminal-stock/640204',
                      json={'stock_actual': 4000, 'stock_minimo': 1500, 'notas': 'AMP roja'})
     admin_client.put('/api/terminal-stock/640205',
@@ -24,8 +59,8 @@ def _sembrar(admin_client):
 
 # ── Exportación ───────────────────────────────────────────────────────────────
 
-def test_export_devuelve_gavetas_y_stock(admin_client):
-    _sembrar(admin_client)
+def test_export_devuelve_gavetas_y_stock(app, admin_client):
+    _sembrar(app, admin_client)
 
     r = admin_client.get('/api/kanban-terminales/export-datos')
     assert r.status_code == 200
@@ -55,14 +90,14 @@ def test_export_con_la_base_vacia_no_falla(admin_client):
 
 # ── Ida y vuelta ──────────────────────────────────────────────────────────────
 
-def test_ida_y_vuelta_recupera_los_datos(admin_client):
+def test_ida_y_vuelta_recupera_los_datos(app, admin_client):
     """Lo exportado en un servidor, importado en otro, da lo mismo."""
-    _sembrar(admin_client)
+    _sembrar(app, admin_client)
     original = json.loads(
         admin_client.get('/api/kanban-terminales/export-datos').data.decode('utf-8'))
 
     # Simula el servidor de destino, que arranca con el kanban en blanco
-    admin_client.delete('/api/terminal-gaveta/640204')
+    _borrar_gaveta(app, '640204')
     admin_client.put('/api/terminal-stock/640204', json={'stock_actual': 0, 'stock_minimo': 0})
     admin_client.put('/api/terminal-stock/640205', json={'stock_actual': 0, 'stock_minimo': 0})
 
@@ -78,8 +113,8 @@ def test_ida_y_vuelta_recupera_los_datos(admin_client):
     assert vuelta['stock'] == original['stock']
 
 
-def test_import_sobrescribe_lo_que_trae_y_respeta_lo_demas(admin_client):
-    _sembrar(admin_client)
+def test_import_sobrescribe_lo_que_trae_y_respeta_lo_demas(app, admin_client):
+    _sembrar(app, admin_client)
     # Un terminal que solo existe en el servidor de destino
     admin_client.put('/api/terminal-stock/999999', json={'stock_actual': 77, 'stock_minimo': 7})
 
@@ -93,7 +128,7 @@ def test_import_sobrescribe_lo_que_trae_y_respeta_lo_demas(admin_client):
                           data=_fichero(datos), content_type='multipart/form-data')
     assert r.status_code == 200
 
-    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['gaveta'] == 'A2-G1'
+    assert _leer_gaveta(app, '640204') == 'A2-G1'
     final = json.loads(
         admin_client.get('/api/kanban-terminales/export-datos').data.decode('utf-8'))
     por_codigo = {s['terminal_codigo']: s for s in final['stock']}

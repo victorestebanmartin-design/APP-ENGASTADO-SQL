@@ -427,7 +427,7 @@ class Gavetas:
                 {"device_id": self.device_id, "led": gaveta,
                  "fuera": fuera, "resultado": resultado,
                  "gavetas": self.n_gavetas, "expansores": len(self.expansores),
-                 "http": self._servidor is not None},
+                 "http": self._servidor is not None, "en_prueba": self._en_prueba},
                 port=backend_cfg.BACKEND_PORT,
                 use_ssl=backend_cfg.BACKEND_USE_SSL,
                 timeout=TIMEOUT_AVISO_S)
