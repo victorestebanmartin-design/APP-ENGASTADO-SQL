@@ -53,6 +53,7 @@ COLOR_ERROR    = (110, 0, 0)    # rojo: esta no era
 COLOR_APAGADO  = (0, 0, 0)
 
 PUERTO_HTTP = 80
+REINTENTO_SERVIDOR_MS = 5000  # cada cuanto se reintenta abrir el puerto 80
 TIMEOUT_PETICION_S = 1      # leer la peticion ya recibida es cosa de ms
 MAX_CUERPO = 512            # el JSON que manda el PC son unos 30 bytes
 INTERVALO_MICROS_MS = 40    # cada cuanto se relee el bus I2C
@@ -84,6 +85,7 @@ class Gavetas:
         self._beep_hasta_ms = 0
 
         self._en_prueba = False   # modo prueba de cableado
+        self._reintento_servidor_ms = 0
 
         self._servidor = self._abrir_servidor()
         self._apagar_tira()
@@ -156,6 +158,7 @@ class Gavetas:
             "objetivo": self.objetivo,
             "recogida": self.recogida,
             "fuera": sorted(self.fuera),
+            "http": self._servidor is not None,
         }
 
     # ── Zumbador (sin bloquear el bucle) ────────────────────────────────────
@@ -278,9 +281,14 @@ class Gavetas:
         try:
             http_client.post_json(
                 backend_cfg.BACKEND_HOST, EVENTO_PATH,
+                # 'http' dice si el puerto 80 llego a abrirse. Sin este dato,
+                # una placa que detecta las gavetas pero no puede escuchar se
+                # ve identica a una sana desde Admin, y el unico sintoma es un
+                # ConnectionRefusedError en el panel de pruebas.
                 {"device_id": self.device_id, "led": gaveta,
                  "fuera": fuera, "resultado": resultado,
-                 "gavetas": self.n_gavetas, "expansores": len(self.expansores)},
+                 "gavetas": self.n_gavetas, "expansores": len(self.expansores),
+                 "http": self._servidor is not None},
                 port=backend_cfg.BACKEND_PORT,
                 use_ssl=backend_cfg.BACKEND_USE_SSL,
                 timeout=TIMEOUT_AVISO_S)
@@ -290,22 +298,50 @@ class Gavetas:
     # ── Servidor HTTP (el PC empuja la orden, no se sondea) ─────────────────
 
     def _abrir_servidor(self):
+        """Socket de escucha del puerto 80, o None si no se pudo abrir.
+
+        La direccion se resuelve con getaddrinfo igual que en el resto del
+        codigo que habla por red (http_client.py, lector_puesto.py): en
+        MicroPython bind() espera el formato que devuelve getaddrinfo, y la
+        tupla cruda ("0.0.0.0", 80) no es equivalente en todos los puertos.
+        Cuando falla, falla en silencio y el puerto queda cerrado: la placa
+        sigue leyendo tarjetas y encendiendo gavetas, pero nadie puede
+        empujarle una orden y el PC solo ve un ConnectionRefusedError.
+
+        El socket se cierra si algo peta a medias. Sin eso cada reintento
+        dejaria un descriptor colgado hasta agotarlos.
+        """
+        s = None
         try:
+            direccion = socket.getaddrinfo(
+                "0.0.0.0", PUERTO_HTTP, 0, socket.SOCK_STREAM)[0][-1]
             s = socket.socket()
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("0.0.0.0", PUERTO_HTTP))
+            s.bind(direccion)
             s.listen(2)   # dos peticiones pegadas no se pisan
             s.settimeout(0)     # accept() no bloquea: si no hay nadie, error
+            print("Gavetas: puerto %d escuchando" % PUERTO_HTTP)
             return s
         except Exception as e:
             print("Gavetas: no se pudo abrir el puerto %d:" % PUERTO_HTTP, e)
+            if s is not None:
+                try:
+                    s.close()
+                except Exception:
+                    pass
             return None
 
-    def _atender_http(self):
+    def _atender_http(self, ahora):
         if self._servidor is None:
+            # Reintento espaciado. Al arrancar, la red puede no estar lista
+            # todavia; sin el freno se abriria un socket nuevo por vuelta del
+            # bucle (milisegundos) y se agotarian los descriptores.
+            if time.ticks_diff(ahora, self._reintento_servidor_ms) < 0:
+                return
+            self._reintento_servidor_ms = time.ticks_add(ahora, REINTENTO_SERVIDOR_MS)
             self._servidor = self._abrir_servidor()
-        if self._servidor is None:
-            return
+            if self._servidor is None:
+                return
         try:
             cliente, _ = self._servidor.accept()
         except Exception:
@@ -424,9 +460,9 @@ class Gavetas:
     # ── Bucle ───────────────────────────────────────────────────────────────
 
     def actualizar(self):
-        """Se llama desde el bucle principal, junto al sondeo del RC522."""
+        """Se llama desde el bucle principal, junto al sondeo del lector."""
         ahora = time.ticks_ms()
-        self._atender_http()
+        self._atender_http(ahora)
         self._atender_micros(ahora)
         self._atender_zumbador(ahora)
 
