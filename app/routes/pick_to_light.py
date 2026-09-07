@@ -283,7 +283,8 @@ def api_pick_to_light_encender():
         # navegador sabe que ya no espera nada de un terminal anterior.
         estado = _estado_cargar()
         estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
-                             'recogida': False, 'error_led': None, 'eventos': []}
+                             'recogida': False, 'devuelta': False,
+                             'error_led': None, 'eventos': []}
         _estado_guardar(estado)
 
         remoto = not ok and _backend_pythonanywhere()
@@ -329,6 +330,7 @@ def api_pick_to_light_estado():
             'terminal': actual.get('terminal'),
             'gaveta': actual.get('gaveta'),
             'recogida': bool(actual.get('recogida')),
+            'devuelta': bool(actual.get('devuelta')),
             'error_led': actual.get('error_led'),
         })
     except Exception as e:
@@ -344,14 +346,14 @@ def api_pick_to_light_orden():
     consulta esta ruta y aplica la misma orden de forma local.
 
     De paso, la placa aprovecha este mismo sondeo (cada 750 ms, ver
-    lector_puesto.py) para RECONFIRMAR que ya ha sacado la gaveta correcta
-    ('led'/'recogida' como query params). El aviso inmediato de
-    /api/esp32/rfid/gaveta sigue existiendo por la latencia, pero es un POST
-    suelto: si se pierde (un handshake TLS lento hacia PythonAnywhere, un
-    corte de wifi de medio segundo), nadie lo repite y el operario se queda
-    delante del cajon abierto sin que la app se entere. El GET de aqui SÍ se
-    repite solo cada 750 ms, así que confirmar también por este lado lo
-    autocorrige sin depender de que un único intento llegue.
+    lector_puesto.py) para RECONFIRMAR el estado de la gaveta objetivo
+    ('led'/'recogida'/'puesta' como query params). Los avisos inmediatos de
+    /api/esp32/rfid/gaveta siguen existiendo por la latencia, pero son un
+    POST suelto: si se pierden (un handshake TLS lento hacia PythonAnywhere,
+    un corte de wifi de medio segundo), nadie los repite y la app se queda
+    sin enterarse de que la sacaron o de que ya la han devuelto. El GET de
+    aqui SÍ se repite solo cada 750 ms, así que confirmar también por este
+    lado lo autocorrige sin depender de que un único intento llegue.
     """
     try:
         device_id = (request.args.get('device_id') or '').strip().lower()[:64]
@@ -372,13 +374,21 @@ def api_pick_to_light_orden():
                 led_reportado = int(request.args.get('led') or 0)
             except (TypeError, ValueError):
                 led_reportado = 0
-            if led_reportado and request.args.get('recogida') == '1':
+            if led_reportado:
                 actual = estado_todo.get(puesto_id) or {}
-                if led_reportado == actual.get('led') and not actual.get('recogida'):
-                    actual['recogida'] = True
-                    actual['error_led'] = None
-                    estado_todo[puesto_id] = actual
-                    _estado_guardar(estado_todo)
+                if led_reportado == actual.get('led'):
+                    cambiado = False
+                    if request.args.get('recogida') == '1' and not actual.get('recogida'):
+                        actual['recogida'] = True
+                        actual['error_led'] = None
+                        cambiado = True
+                    puesta = request.args.get('puesta') == '1'
+                    if bool(actual.get('devuelta')) != puesta:
+                        actual['devuelta'] = puesta
+                        cambiado = True
+                    if cambiado:
+                        estado_todo[puesto_id] = actual
+                        _estado_guardar(estado_todo)
 
         estado = estado_todo.get(puesto_id) if puesto_id else None
         led = (estado or {}).get('led')
@@ -654,7 +664,10 @@ def api_esp32_rfid_gaveta():
         actual = estado.get(puesto_id) or {}
         if resultado == 'ok' and led and led == actual.get('led'):
             actual['recogida'] = True
+            actual['devuelta'] = False
             actual['error_led'] = None
+        elif resultado == 'devuelta' and led and led == actual.get('led'):
+            actual['devuelta'] = True
         elif resultado == 'equivocada':
             actual['error_led'] = led
         elif resultado == 'corregida' and actual.get('error_led') == led:

@@ -259,6 +259,38 @@ def test_la_gaveta_equivocada_se_marca_y_se_corrige(app, client, admin_client, c
     assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['error_led'] is None
 
 
+def test_devolver_la_gaveta_correcta_se_marca_como_devuelta(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['devuelta'] is False
+
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': False, 'resultado': 'devuelta'})
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['devuelta'] is True
+
+
+def test_sondeo_reconfirma_devolucion_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
+    """Igual que con la recogida: el GET periodico tiene que poder confirmar
+    la devolucion por si solo, sin depender del POST suelto de 'devuelta'."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/terminal-gaveta/640204', json={'gaveta': 'A-12', 'led': 7})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7&recogida=1&puesta=0' % device_id)
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['recogida'] is True and estado['devuelta'] is False
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7&recogida=1&puesta=1' % device_id)
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['devuelta'] is True
+
+
 def test_el_aviso_deja_escrito_cuantas_gavetas_tiene_la_placa(app, client):
     """Para verlo en Admin sin ir al puesto a contar cajones."""
     device_id = _registrar_lector(app)
