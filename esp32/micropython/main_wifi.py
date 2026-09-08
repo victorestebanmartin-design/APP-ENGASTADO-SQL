@@ -53,6 +53,7 @@ import machine
 import binascii
 from machine import SPI, SoftSPI, Pin
 import framebuf
+from uart_display import DisplayUart
 # network y socket se importan tarde, tras el primer draw
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
@@ -96,6 +97,14 @@ AVISO_MAX = 6          # y cuantas veces como mucho: pasados estos avisos se
                        # puesto colgado dejaria el zumbador pitando sin fin.
 VOLVER_LISTA_S = 30    # sin tocar nada, el detalle de un puesto vuelve solo a
                        # la lista (deja la pantalla libre para el siguiente)
+
+# Enlace opcional con una pantalla grande ESP32-P4. Se deja desactivado hasta
+# confirmar el pinout real y hacer la primera prueba con el carro apagado.
+# Los GPIO 3/45/46 son strapping: no conectar la pantalla durante el arranque
+# hasta validar que este cableado no fija ninguno de esos niveles.
+DISPLAY_UART_TX = None
+DISPLAY_UART_RX = None
+DISPLAY_UART_ID = 1
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
 # pantalla se identifica sola en el servidor (por su MAC) y el carro se le
@@ -433,6 +442,25 @@ work_idx   = 0     # paquete mostrado dentro de esa lista
 
 # Lo ya confirmado en esta pantalla: clave de puesto -> "lote|fase"
 confirmados = {}
+
+display_uart = DisplayUart(
+    uart_id=DISPLAY_UART_ID,
+    tx_pin=DISPLAY_UART_TX,
+    rx_pin=DISPLAY_UART_RX,
+)
+
+def _enviar_display(ops, carro, fw):
+    """Publica una instantánea; una pantalla desconectada no bloquea el carro."""
+    if not display_uart.activa:
+        return False
+    return display_uart.enviar({
+        'v': 1,
+        'tipo': 'estado',
+        'carro': str(carro or ''),
+        'fw': str(fw or ''),
+        'wifi': bool(conectado),
+        'ops': ops,
+    })
 
 # Version que anuncia el servidor: para pintar en reposo si estamos al dia.
 fw_servidor = ''
@@ -1212,6 +1240,7 @@ ultima_accion = time.ticks_ms()   # ultima pulsacion (para volver solo a la list
 ultimo_nfc    = 0                 # ultima consulta al lector NFC
 nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
 nfc_uid_ts    = 0                 # cuando se leyo
+display_fp    = ''                # ultima instantanea aceptada por la UART
 intentos_wifi = 0
 arranque_marcado = False   # se pone a True tras la 1a vuelta (arranque valido)
 
@@ -1425,6 +1454,9 @@ while True:
                         fw_servidor_shown = fw_servidor
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
+                if fp != display_fp:
+                    if _enviar_display(ops, ca, fw_servidor):
+                        display_fp = fp
                 if not ops:
                     if en_work_mode:
                         # Datos expirados o "clear" de todos → volver a reposo
