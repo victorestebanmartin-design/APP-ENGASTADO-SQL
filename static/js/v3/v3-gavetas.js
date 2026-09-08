@@ -63,6 +63,8 @@ async function esperarRecogidaGaveta() {
     document.body.appendChild(overlay);
 
     const avisoError = overlay.querySelector('#gaveta-aviso-error');
+    const avisoRfid = overlay.querySelector('#gaveta-aviso-rfid');
+    let ultimoEstado = null;
 
     try {
         await new Promise(resolve => {
@@ -74,7 +76,14 @@ async function esperarRecogidaGaveta() {
                 resolve();
             };
 
-            overlay.querySelector('#gaveta-continuar').onclick = acabar;
+            overlay.querySelector('#gaveta-continuar').onclick = () => {
+                // Saltarse la puerta con el RFID sin confirmar queda en el
+                // historial: el pin no bloquea, pero se sabe que paso.
+                if (gavetaLuzActual.rfid && ultimoEstado && !ultimoEstado.rfid_confirmado) {
+                    _avisarIncidenciaGaveta('rfid_bypass');
+                }
+                acabar();
+            };
 
             const temporizador = setInterval(async () => {
                 try {
@@ -82,6 +91,7 @@ async function esperarRecogidaGaveta() {
                                           + encodeURIComponent(puestoSeleccionado.id));
                     const d = await r.json();
                     if (!d || !d.success) return;
+                    ultimoEstado = d;
 
                     if (d.error_led) {
                         avisoError.textContent = '⚠️ Esa no es: has abierto la gaveta '
@@ -92,7 +102,23 @@ async function esperarRecogidaGaveta() {
                         avisoError.style.display = 'none';
                     }
 
-                    if (d.recogida) acabar();
+                    if (d.estado === 'rfid_incorrecto') {
+                        avisoRfid.textContent = '❌ Esa etiqueta no es de esta gaveta. '
+                                              + 'Acerca la etiqueta correcta al lector.';
+                        avisoRfid.style.background = '#f8d7da';
+                        avisoRfid.style.color = '#842029';
+                        avisoRfid.style.display = 'block';
+                    } else if (d.estado === 'esperando_rfid') {
+                        avisoRfid.textContent = '📛 Acerca la etiqueta RFID de la gaveta al lector '
+                                              + 'para confirmar.';
+                        avisoRfid.style.background = '#cfe2ff';
+                        avisoRfid.style.color = '#084298';
+                        avisoRfid.style.display = 'block';
+                    } else {
+                        avisoRfid.style.display = 'none';
+                    }
+
+                    if (d.estado === 'confirmada') acabar();
                 } catch (e) { /* un sondeo perdido no rompe nada */ }
             }, GAVETA_SONDEO_MS);
         });
@@ -106,6 +132,18 @@ async function esperarRecogidaGaveta() {
     // sola, pero sin este aviso en pantalla el operario oye el zumbador sin
     // saber por que (la puerta de arriba ya se ha cerrado).
     iniciarVigilanciaGaveta();
+}
+
+
+/** Registra en el servidor un bypass/timeout de RFID durante el trabajo
+ * (sin pin: la manda la pantalla de engastado, no Admin). Nunca bloquea. */
+function _avisarIncidenciaGaveta(tipo) {
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    fetch('/api/pick-to-light/incidencia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ puesto_id: puestoSeleccionado.id, tipo: tipo })
+    }).catch(() => { /* ignorar */ });
 }
 
 
@@ -236,8 +274,11 @@ function _crearPanelGaveta(luz) {
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
             <div style="color:#6c757d; margin-bottom:18px;">
-                Está en verde. Al sacarla se pondrá en azul y salen los paquetes.
+                Está en verde. Al sacarla se pondrá en azul${luz.rfid
+                    ? ' y tendrás que acercar su etiqueta RFID al lector' : ''}.
             </div>
+            <div id="gaveta-aviso-rfid" style="display:none; border-radius:8px; padding:10px;
+                 margin-bottom:16px; font-weight:bold;"></div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;
                  border:1px solid #f5c2c7; border-radius:8px; padding:10px; margin-bottom:16px;
                  font-weight:bold;"></div>
