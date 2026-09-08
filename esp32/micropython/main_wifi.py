@@ -100,9 +100,10 @@ VOLVER_LISTA_S = 30    # sin tocar nada, el detalle de un puesto vuelve solo a
 
 # Enlace opcional con una pantalla grande ESP32-P4. Cableado provisional:
 # GPIO45 (TX) -> GPIO52 (RX) y GPIO46 (RX) <- GPIO50 (TX). Ambos GPIO del S3
-# son strapping: no activar hasta validar el arranque con el cable conectado.
-DISPLAY_UART_TX = None
-DISPLAY_UART_RX = None
+# son strapping: la primera prueba de arranque debe hacerse con la pantalla
+# desconectada y después conectar los cables con ambas placas apagadas.
+DISPLAY_UART_TX = 45
+DISPLAY_UART_RX = 46
 DISPLAY_UART_ID = 1
 
 # Carro asignado a ESTA pantalla. NORMALMENTE NO HACE FALTA TOCARLO: la
