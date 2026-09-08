@@ -917,6 +917,14 @@ def _parse_ops(d):
 # ── HTTP GET mínimo sin urequests ──────────────────────────────────────────────
 def http_get(host, port, path):
     """HTTP/1.0 GET básico, devuelve el body como string o None."""
+    if USE_SSL:
+        try:
+            import http_client
+            body = http_client.get_bytes(host, path, port=port, use_ssl=True, timeout=8)
+            return body.decode('utf-8', 'ignore') if body is not None else None
+        except Exception as e:
+            print("HTTPS error:", e)
+            return None
     try:
         addr = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)[0][-1]
         s = socket.socket()
@@ -983,6 +991,13 @@ def _reinyectar_wifi(texto):
 
 def http_get_bytes(host, port, path):
     """GET que devuelve el body como bytes crudos (para descargar el firmware)."""
+    if USE_SSL:
+        try:
+            import http_client
+            return http_client.get_bytes(host, path, port=port, use_ssl=True, timeout=15)
+        except Exception as e:
+            print("HTTPS bytes error:", e)
+            return None
     try:
         addr = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)[0][-1]
         s = socket.socket()

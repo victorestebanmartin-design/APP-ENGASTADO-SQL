@@ -2084,6 +2084,14 @@ def api_esp32_flash_usb():
                                         'message': (f'Error al copiar {nombre}: ' + err)[-400:]
                                                    + _consejo_placa_ocupada(err)})
                     libs.append(nombre)
+            http_client_path = os.path.join(proyecto, 'esp32', 'http_client.py')
+            if os.path.exists(http_client_path):
+                r = _mpremote_insistiendo(mpremote, 'cp', http_client_path, ':http_client.py', puerto=puerto)
+                if r.returncode != 0:
+                    err = (r.stderr or r.stdout or '').strip()
+                    return jsonify({'success': False,
+                                    'message': (f'Error al copiar http_client.py: {err}')[-400:]})
+                libs.append('http_client.py')
 
             r = _mpremote_insistiendo(mpremote, 'cp', tmp_fw, ':app.py', puerto=puerto)
             if r.returncode != 0:
@@ -2212,6 +2220,9 @@ def _esp32_firmware_files():
     """
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
     files = [('app.py', os.path.join(base, 'main_wifi.py'))]
+    http_client = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'http_client.py')
+    if os.path.exists(http_client):
+        files.append(('http_client.py', http_client))
     lib_dir = os.path.join(base, 'lib')
     if os.path.isdir(lib_dir):
         for nombre in sorted(os.listdir(lib_dir)):
