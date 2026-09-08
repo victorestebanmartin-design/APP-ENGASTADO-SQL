@@ -83,6 +83,7 @@ DNS         = "192.168.50.5"
 # defecto para un flasheo a mano con mpremote.
 HOST_IP  = "192.168.50.1"
 PORT     = 5001
+USE_SSL  = False
 POLL_INTERVAL = 1      # segundos entre polls de /api/esp32/current. Es el techo
                        # de lo que tarda en aparecer un paquete: el servidor
                        # responde en <1 ms y aguanta 600+ req/s, asi que bajarlo
@@ -921,12 +922,21 @@ def http_get(host, port, path):
         s = socket.socket()
         s.settimeout(8)
         s.connect(addr)
+        if USE_SSL:
+            import ussl
+            s = ussl.wrap_socket(s, server_hostname=host)
         sep = '&' if '?' in path else '?'
         req = f"GET {path}{sep}esp32_ip={wifi_ip} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n"
-        s.send(req.encode())
+        try:
+            s.write(req.encode())
+        except AttributeError:
+            s.send(req.encode())
         resp = b""
         while True:
-            chunk = s.recv(512)
+            try:
+                chunk = s.read(512)
+            except AttributeError:
+                chunk = s.recv(512)
             if not chunk: break
             resp += chunk
         s.close()
@@ -978,11 +988,20 @@ def http_get_bytes(host, port, path):
         s = socket.socket()
         s.settimeout(15)
         s.connect(addr)
+        if USE_SSL:
+            import ussl
+            s = ussl.wrap_socket(s, server_hostname=host)
         req = "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n" % (path, host)
-        s.send(req.encode())
+        try:
+            s.write(req.encode())
+        except AttributeError:
+            s.send(req.encode())
         resp = b""
         while True:
-            chunk = s.recv(1024)
+            try:
+                chunk = s.read(1024)
+            except AttributeError:
+                chunk = s.recv(1024)
             if not chunk:
                 break
             resp += chunk

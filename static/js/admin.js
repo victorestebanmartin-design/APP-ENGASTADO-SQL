@@ -1996,6 +1996,7 @@ async function flashUSBRfid() {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    if (document.getElementById('usb-entorno')) actualizarEntornoDisplay();
     if (!document.getElementById('usb-puerto-rfid')) return;
     actualizarEntornoRfid();
     cargarPuertosUSBRfid();
@@ -2033,8 +2034,24 @@ function _usbMsg(texto, esError) {
     el.textContent = texto;
 }
 
+function actualizarEntornoDisplay() {
+    const laboratorio = document.getElementById('usb-entorno')?.value === 'laboratorio';
+    const ip = document.getElementById('usb-ip');
+    const host = document.getElementById('usb-host');
+    const pista = document.getElementById('usb-entorno-pista');
+    if (ip) ip.disabled = laboratorio;
+    if (host) host.disabled = laboratorio;
+    if (pista) {
+        pista.style.display = laboratorio ? 'block' : 'none';
+        pista.textContent = laboratorio
+            ? 'PAW: se grabará DHCP + viktor85.pythonanywhere.com por HTTPS. No rellenes IP ni servidor local.'
+            : '';
+    }
+}
+
 async function flashUSB() {
     const puerto = document.getElementById('usb-puerto')?.value;
+    const entorno = document.getElementById('usb-entorno')?.value || 'produccion';
     if (!puerto) { _usbMsg('Selecciona un puerto (pulsa 🔄 Buscar puertos con la pantalla conectada)', true); return; }
     // El SSID es obligatorio: el fichero del repo lleva un placeholder, no
     // credenciales reales. La contraseña sí puede ir vacía (red abierta).
@@ -2043,11 +2060,11 @@ async function flashUSB() {
         return;
     }
     // La IP fija no es opcional: la red de planta no reparte direcciones.
-    if (!document.getElementById('usb-ip')?.value) {
+    if (entorno === 'produccion' && !document.getElementById('usb-ip')?.value) {
         _usbMsg('Rellena la IP estática de esta pantalla (la red de planta no tiene DHCP).', true);
         return;
     }
-    if (!document.getElementById('usb-host')?.value) {
+    if (entorno === 'produccion' && !document.getElementById('usb-host')?.value) {
         _usbMsg('Rellena la IP del servidor: es a donde llamará la pantalla.', true);
         return;
     }
@@ -2062,6 +2079,7 @@ async function flashUSB() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 puerto: puerto,
+                entorno: entorno,
                 ssid: document.getElementById('usb-ssid')?.value || '',
                 password: document.getElementById('usb-pass')?.value || '',
                 ip_estatica: document.getElementById('usb-ip')?.value || '',

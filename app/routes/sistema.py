@@ -1829,10 +1829,17 @@ def _firmware_bytes(nombre, ruta):
         data = f.read()
     variable = _HOST_POR_FICHERO.get(nombre)
     host = _servidor_host_guardado()
+    if request.host.split(':', 1)[0].endswith('pythonanywhere.com'):
+        host = 'viktor85.pythonanywhere.com'
     if not variable or not host:
         return data
     try:
-        return _inyectar_host(data.decode('utf-8'), variable, host).encode('utf-8')
+        contenido = data.decode('utf-8')
+        contenido = _inyectar_host(contenido, variable, host)
+        if nombre == 'app.py':
+            contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % (443 if host.endswith('pythonanywhere.com') else PUERTO_SERVIDOR_PLACAS), contenido, count=1, flags=re.M)
+            contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % str(host.endswith('pythonanywhere.com')), contenido, count=1, flags=re.M)
+        return contenido.encode('utf-8')
     except UnicodeDecodeError:
         return data
 
@@ -1963,6 +1970,9 @@ def api_esp32_flash_usb():
         puerto = str(data.get('puerto', '')).strip()
         if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
             return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
+        entorno = str(data.get('entorno', 'produccion')).strip().lower()
+        if entorno not in ('laboratorio', 'produccion'):
+            return jsonify({'success': False, 'message': 'Entorno de instalación no válido'}), 400
 
         proyecto = os.path.dirname(current_app.root_path)
         fw = os.path.join(proyecto, 'esp32', 'micropython', 'main_wifi.py')
@@ -1988,12 +1998,21 @@ def api_esp32_flash_usb():
         # sin ella la pantalla no llega al servidor. Se valida antes de tocar
         # nada (rango, reservas y que no la tenga ya otra placa) para no dejar
         # media placa flasheada con una IP que luego se rechaza.
-        ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
-        if not ip_estatica:
+        if entorno == 'laboratorio':
+            ip_estatica = ''
+            host_srv = 'viktor85.pythonanywhere.com'
+            puerto_placa = 443
+            usar_ssl = True
+        else:
+            ip_estatica = _ip_estatica_normalizar(data.get('ip_estatica'))
+            host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
+            puerto_placa = PUERTO_SERVIDOR_PLACAS
+            usar_ssl = False
+        if entorno == 'produccion' and not ip_estatica:
             return jsonify({'success': False,
                             'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
                                        'Mira las libres en Admin → IPs de placas.'}), 400
-        error_ip = _ip_estatica_error(ip_estatica)
+        error_ip = _ip_estatica_error(ip_estatica) if ip_estatica else None
         if error_ip:
             return jsonify({'success': False, 'message': error_ip}), 400
         contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP   = %r' % ip_estatica,
@@ -2002,13 +2021,15 @@ def api_esp32_flash_usb():
         # A donde llama la pantalla. Sin esto se grabaria el literal del repo,
         # que puede ser de otra red y deja la pantalla conectada pero muda
         # (no se registra en el admin porque su poll no llega a ningun sitio).
-        host_srv = str(data.get('host_servidor', '')).strip() or _servidor_host_sugerido()
         error_host = _servidor_host_error(host_srv)
         if error_host:
             return jsonify({'success': False, 'message': error_host}), 400
         contenido = _inyectar_host(contenido, 'HOST_IP', host_srv)
+        contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % puerto_placa, contenido, count=1, flags=re.M)
+        contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % usar_ssl, contenido, count=1, flags=re.M)
         # Se recuerda para el proximo flasheo y para lo que se sirva por OTA.
-        _servidor_host_guardar(host_srv)
+        if entorno == 'produccion':
+            _servidor_host_guardar(host_srv)
 
         # Copia temporal (posiblemente parcheada) que es la que se sube
         base = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
@@ -2123,10 +2144,14 @@ def api_esp32_flash_usb():
 
         cambios = ' (WiFi actualizado)' if (ssid or password) else ''
         extra = f' Módulos: {", ".join(libs)}.' if libs else ''
-        red = (f' IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
+        red = (f' Laboratorio/PAW: DHCP, apuntando a {host_srv}:443 por HTTPS.'
+               if entorno == 'laboratorio' else
+               f' IP fija {ip_estatica} (máscara {IP_MASCARA}, puerta de enlace {IP_GATEWAY}), '
                f'apuntando al servidor {host_srv}:{PUERTO_SERVIDOR_PLACAS}.')
         # Ya grabada en la placa: se anota para que no se le dé a otra.
-        if dev_id:
+        if entorno == 'laboratorio':
+            red += ' La placa obtendrá su IP por DHCP.'
+        elif dev_id:
             ok_ip, msg_ip = _ip_estatica_guardar(dev_id, ip_estatica, tipo='display')
             if not ok_ip:
                 red += f' AVISO: la IP no se pudo anotar en la app ({msg_ip}).'
