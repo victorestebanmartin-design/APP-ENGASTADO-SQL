@@ -74,3 +74,11 @@ Para obtener la hoja impres en el taller:
 1. Abre [esp32/schematics/esquema_carro_A4.html](esp32/schematics/esquema_carro_A4.html) en Microsoft Edge o Google Chrome.
 2. Pulsa el botón **"Imprimir / Guardar en PDF"** o presiona `Ctrl + P`.
 3. Selecciona la impresora o "Guardar como PDF", orientándolo a **A4 Vertical**.
+
+## 🔗 5. Pantalla grande ESP32-P4
+
+La pantalla secundaria se documenta en
+[HARDWARE_PANTALLA_P4_101.md](HARDWARE_PANTALLA_P4_101.md). El cableado
+provisional usa GPIO45/GPIO46 del carro hacia GPIO52/GPIO50 de la placa P4,
+además de una masa común. GPIO45 y GPIO46 son pines de strapping: no activar
+esta conexión en firmware hasta comprobar el arranque con el cable conectado.

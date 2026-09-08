@@ -98,10 +98,9 @@ AVISO_MAX = 6          # y cuantas veces como mucho: pasados estos avisos se
 VOLVER_LISTA_S = 30    # sin tocar nada, el detalle de un puesto vuelve solo a
                        # la lista (deja la pantalla libre para el siguiente)
 
-# Enlace opcional con una pantalla grande ESP32-P4. Se deja desactivado hasta
-# confirmar el pinout real y hacer la primera prueba con el carro apagado.
-# Los GPIO 3/45/46 son strapping: no conectar la pantalla durante el arranque
-# hasta validar que este cableado no fija ninguno de esos niveles.
+# Enlace opcional con una pantalla grande ESP32-P4. Cableado provisional:
+# GPIO45 (TX) -> GPIO52 (RX) y GPIO46 (RX) <- GPIO50 (TX). Ambos GPIO del S3
+# son strapping: no activar hasta validar el arranque con el cable conectado.
 DISPLAY_UART_TX = None
 DISPLAY_UART_RX = None
 DISPLAY_UART_ID = 1
