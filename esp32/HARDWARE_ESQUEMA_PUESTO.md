@@ -61,10 +61,22 @@ Fuente Externa PTL (GND)
 - **Negativo (-):** Pad 1 / 21 / 25 (GND).
 - Emite pitidos de lectura correcta (1 bep), rechazado (2 beps) o error de comunicación (3 beps).
 
-### C. Expansor I2C Multiplexor 1 (MCP23017)
+### C. Expansores I2C Multiplexor (MCP23017)
 - **Alimentación Lógica:** **SIEMPRE a 3.3V** desde DB9-3 (Pad 20) y GND desde DB9-1 (Pad 25).
 - **Bus I2C:** SCL a DB9-5 (GPIO48) y SDA a DB9-6 (GPIO47).
-- **Pull-Ups:** Colocar dos resistencias de **4.7 kΩ** entre SDA y 3.3V, y entre SCL y 3.3V.
+- **Pull-Ups:** Colocar dos resistencias de **4.7 kΩ** entre SDA y 3.3V, y entre SCL y 3.3V en el primer expansor.
+- **Codificación de Direcciones I2C (Pines A2, A1, A0):** Ver documento completo en [esp32/HARDWARE_EXPANSORES_MCP23017.md](esp32/HARDWARE_EXPANSORES_MCP23017.md).
+
+| Nº Expansor | Rango Gavetas | Dirección Hex | A2 (Pin 17) | A1 (Pin 16) | A0 (Pin 15) |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| **MUX 1** | Gavetas 1 – 16 | `0x20` | GND | GND | GND |
+| **MUX 2** | Gavetas 17 – 32 | `0x21` | GND | GND | **+3.3V** |
+| **MUX 3** | Gavetas 33 – 48 | `0x22` | GND | **+3.3V** | GND |
+| **MUX 4** | Gavetas 49 – 64 | `0x23` | GND | **+3.3V** | **+3.3V** |
+| **MUX 5** | Gavetas 65 – 80 | `0x24` | **+3.3V** | GND | GND |
+| **MUX 6** | Gavetas 81 – 96 | `0x25` | **+3.3V** | GND | **+3.3V** |
+| **MUX 7** | Gavetas 97 – 112 | `0x26` | **+3.3V** | **+3.3V** | GND |
+| **MUX 8** | Gavetas 113 – 128 | `0x27` | **+3.3V** | **+3.3V** | **+3.3V** |
 
 ---
 

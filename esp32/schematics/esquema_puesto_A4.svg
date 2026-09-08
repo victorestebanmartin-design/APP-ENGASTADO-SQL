@@ -370,11 +370,16 @@
         </g>
 
         <!-- Daisy Chain note -->
-        <g transform="translate(0, 290)">
-          <text x="0" y="15" class="pin-label">ENCADENAMIENTO DE MÁS EXPANTSORES (MUX 2..N):</text>
-          <text x="0" y="32" class="text-small">• Llevar 5V y GND a los siguientes módulos directo desde la fuente.</text>
-          <text x="0" y="47" class="text-small">• Encadenar solo las líneas de datos I2C (SDA y SCL a 3.3V).</text>
-          <text x="0" y="62" class="text-small">• Cambiar direcciones I2C (A0, A1, A2) de 0x20 a 0x27 en cada MCP.</text>
+        <g transform="translate(0, 280)">
+          <text x="0" y="12" class="pin-label">CODIFICACIÓN DIRECCIONES I2C MUX 1..8 (PINES A2, A1, A0):</text>
+          <text x="0" y="26" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 1 (0x20):</tspan> A2=GND, A1=GND, A0=GND (G1-16)</text>
+          <text x="0" y="38" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 2 (0x21):</tspan> A2=GND, A1=GND, A0=3.3V (G17-32)</text>
+          <text x="0" y="50" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 3 (0x22):</tspan> A2=GND, A1=3.3V, A0=GND (G33-48)</text>
+          <text x="0" y="62" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 4 (0x23):</tspan> A2=GND, A1=3.3V, A0=3.3V (G49-64)</text>
+          <text x="210" y="26" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 5 (0x24):</tspan> A2=3.3V, A1=GND, A0=GND (G65-80)</text>
+          <text x="210" y="38" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 6 (0x25):</tspan> A2=3.3V, A1=GND, A0=3.3V (G81-96)</text>
+          <text x="210" y="50" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 7 (0x26):</tspan> A2=3.3V, A1=3.3V, A0=GND (G97-112)</text>
+          <text x="210" y="62" class="text-small" fill="#15803d"><tspan class="text-bold">MUX 8 (0x27):</tspan> A2=3.3V, A1=3.3V, A0=3.3V (G113-128)</text>
         </g>
       </g>
     </g>

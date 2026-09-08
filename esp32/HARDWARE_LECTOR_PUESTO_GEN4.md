@@ -267,7 +267,19 @@ Para MUX 2 y posteriores:
 
 1. Llevar 5 V y GND desde los bornes de la fuente a cada modulo en estrella.
 2. Encadenar solo SDA (DB9-6, violeta) y SCL (DB9-5, azul), con GND comun; cada
-   MCP23017 debe tener direccion distinta de 0x20 a 0x27 mediante A0/A1/A2.
+   MCP23017 debe tener direccion distinta de 0x20 a 0x27 configurando sus patillas **A2 (pin 17), A1 (pin 16) y A0 (pin 15)** según esta tabla (ver detalles completos en `esp32/HARDWARE_EXPANSORES_MCP23017.md`):
+
+| Expansor | Gavetas | Dir I2C | A2 (Pin 17) | A1 (Pin 16) | A0 (Pin 15) |
+|---|---|---|---|---|---|
+| **MUX 1** | 1 – 16 | `0x20` | GND | GND | GND |
+| **MUX 2** | 17 – 32 | `0x21` | GND | GND | **3.3V** |
+| **MUX 3** | 33 – 48 | `0x22` | GND | **3.3V** | GND |
+| **MUX 4** | 49 – 64 | `0x23` | GND | **3.3V** | **3.3V** |
+| **MUX 5** | 65 – 80 | `0x24` | **3.3V** | GND | GND |
+| **MUX 6** | 81 – 96 | `0x25` | **3.3V** | GND | **3.3V** |
+| **MUX 7** | 97 – 112 | `0x26` | **3.3V** | **3.3V** | GND |
+| **MUX 8** | 113 – 128 | `0x27` | **3.3V** | **3.3V** | **3.3V** |
+
 3. Encadenar la tira WS2813 por su salida de datos entre tiras, no uniendo
    salidas de dos conversores de nivel.
 4. Usar **un solo juego** de pull-ups I2C de 4.7 k a 3.3 V en todo el bus. Con
