@@ -33,6 +33,10 @@ void dibujarEstado(const char *estado, uint16_t color) {
 
 void procesarLinea(const String &mensaje) {
   if (mensaje.length() == 0) return;
+  Serial.print("RX (");
+  Serial.print(mensaje.length());
+  Serial.print(" bytes): ");
+  Serial.println(mensaje);
   // En esta fase solo verificamos el enlace. El parser de paquetes vendra
   // despues de validar LCD, tactil y UART con el hardware real.
   if (mensaje.indexOf("\"tipo\":\"estado\"") >= 0) {
@@ -57,6 +61,7 @@ void setup() {
   displayUart.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
   dibujarEstado("ESPERANDO CARRO", ORANGE);
   Serial.println("P4 display diagnostic ready");
+  Serial.printf("UART1 rx=%d tx=%d baud=%u\n", UART_RX_PIN, UART_TX_PIN, UART_BAUD);
 }
 
 void loop() {
@@ -68,12 +73,14 @@ void loop() {
     } else if (c != '\r' && linea.length() < 4096) {
       linea += c;
     } else if (linea.length() >= 4096) {
+      Serial.println("RX overflow, linea descartada");
       linea = "";
     }
   }
 
-  if (millis() - ultimoEstado > 30000) {
+  if (millis() - ultimoEstado > 3000) {
     ultimoEstado = millis();
+    Serial.println("heartbeat: monitor vivo");
     gfx.touch_Update();
     if (gfx.touch_GetPen() != NOTOUCH) {
       Serial.printf("TOUCH x=%d y=%d\n", gfx.touch_GetX(), gfx.touch_GetY());
