@@ -406,13 +406,16 @@ static void ui_actualizar(bool forzar) {
 }
 
 // ── LVGL: pintar / tactil / tick ───────────────────────────────────────────
+// El framebuffer del panel es vertical (800x1280). La UI es apaisada
+// (1280x800). Se rota 90 CW al volcar: nx = (NAT_W-1) - ly ; ny = lx.
 static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px) {
-    int w = a->x2 - a->x1 + 1;
     const uint16_t *src = (const uint16_t *)px;
-    for (int y = a->y1; y <= a->y2; y++) {
-        uint16_t *dst = (uint16_t *)fb + (uint32_t)y * NAT_W + a->x1;
-        memcpy(dst, src, (size_t)w * 2);
-        src += w;
+    uint16_t *dst = (uint16_t *)fb;
+    for (int ly = a->y1; ly <= a->y2; ly++) {
+        int nx = (NAT_W - 1) - ly;
+        for (int lx = a->x1; lx <= a->x2; lx++) {
+            dst[(uint32_t)lx * NAT_W + nx] = *src++;
+        }
     }
     lv_display_flush_ready(d);
 }
@@ -422,8 +425,8 @@ static void touch_cb(lv_indev_t *i, lv_indev_data_t *data) {
     if (gfx.touch_GetPen() != NOTOUCH) {
         int nx = gfx.touch_GetX();
         int ny = gfx.touch_GetY();
-        data->point.x = ny;
-        data->point.y = NAT_W - 1 - nx;
+        data->point.x = ny;                  // lx = ny
+        data->point.y = (NAT_W - 1) - nx;    // ly = (NAT_W-1) - nx
         data->state = LV_INDEV_STATE_PRESSED;
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
@@ -570,10 +573,10 @@ void setup() {
     void *b2 = heap_caps_malloc(BUFPX * 2, MALLOC_CAP_SPIRAM);
     if (!b1 || !b2) { Serial.println("SIN PSRAM para los buffers LVGL"); }
 
-    lv_display_t *disp = lv_display_create(NAT_W, NAT_H);
+    // La UI es apaisada; la rotacion al framebuffer vertical la hace flush_cb.
+    lv_display_t *disp = lv_display_create(LV_W, LV_H);
     lv_display_set_flush_cb(disp, flush_cb);
     lv_display_set_buffers(disp, b1, b2, BUFPX * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
-    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
 
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
