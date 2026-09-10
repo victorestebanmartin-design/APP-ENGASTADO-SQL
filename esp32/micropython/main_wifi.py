@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-08-18b"
+FW_VERSION = "2026-09-10a"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -1275,6 +1275,7 @@ ultimo_nfc    = 0                 # ultima consulta al lector NFC
 nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
 nfc_uid_ts    = 0                 # cuando se leyo
 display_fp    = ''                # ultima instantanea aceptada por la UART
+display_ts    = 0                 # cuando se envio la ultima (para el reenvio)
 intentos_wifi = 0
 arranque_marcado = False   # se pone a True tras la 1a vuelta (arranque valido)
 
@@ -1488,9 +1489,15 @@ while True:
                         fw_servidor_shown = fw_servidor
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
-                if fp != display_fp:
+                # Reenvio periodico aunque no cambie nada: si la pantalla P4 se
+                # reinicia (reflasheo, corte de 5V), sin esto se queda en "sin
+                # carro" hasta el proximo cambio de estado -- habia que apagar y
+                # encender el carro para que volviera a mandarle algo.
+                reenvio = time.ticks_diff(now, display_ts) >= 5000
+                if fp != display_fp or reenvio:
                     if _enviar_display(ops, ca, fw_servidor):
                         display_fp = fp
+                        display_ts = time.ticks_ms()
                 if not ops:
                     if en_work_mode:
                         # Datos expirados o "clear" de todos → volver a reposo
