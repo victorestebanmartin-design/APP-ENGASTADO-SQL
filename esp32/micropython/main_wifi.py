@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-10a"
+FW_VERSION = "2026-09-10b"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -450,8 +450,14 @@ display_uart = DisplayUart(
     rx_pin=DISPLAY_UART_RX,
 )
 
-def _enviar_display(ops, carro, fw):
-    """Publica una instantánea; una pantalla desconectada no bloquea el carro."""
+def _enviar_display(ops, carro, fw, sel=''):
+    """Publica una instantánea; una pantalla desconectada no bloquea el carro.
+
+    'sel' es la clave del puesto que se está mirando en detalle (tras pasar
+    tarjeta o pulsar botón); vacío = nadie identificado. La pantalla P4 solo
+    enseña los paquetes del puesto seleccionado: en la lista no muestra nada,
+    para que con dos o tres puestos activos no sea un caos.
+    """
     if not display_uart.activa:
         return False
     return display_uart.enviar({
@@ -460,6 +466,7 @@ def _enviar_display(ops, carro, fw):
         'carro': str(carro or ''),
         'fw': str(fw or ''),
         'wifi': bool(conectado),
+        'sel': str(sel or ''),
         'ops': ops,
     })
 
@@ -1275,6 +1282,7 @@ ultimo_nfc    = 0                 # ultima consulta al lector NFC
 nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
 nfc_uid_ts    = 0                 # cuando se leyo
 display_fp    = ''                # ultima instantanea aceptada por la UART
+display_sel   = None              # ultimo puesto seleccionado enviado a la P4
 display_ts    = 0                 # cuando se envio la ultima (para el reenvio)
 intentos_wifi = 0
 arranque_marcado = False   # se pone a True tras la 1a vuelta (arranque valido)
@@ -1489,14 +1497,18 @@ while True:
                         fw_servidor_shown = fw_servidor
                 ops = _parse_ops(d)
                 fp = _fingerprint(ops)
+                # Puesto identificado (tarjeta/boton) que la P4 debe detallar;
+                # vacio = nadie -> la P4 solo lista, sin paquetes.
+                sel_disp = sel_clave if vista == 'detalle' else ''
                 # Reenvio periodico aunque no cambie nada: si la pantalla P4 se
                 # reinicia (reflasheo, corte de 5V), sin esto se queda en "sin
                 # carro" hasta el proximo cambio de estado -- habia que apagar y
                 # encender el carro para que volviera a mandarle algo.
                 reenvio = time.ticks_diff(now, display_ts) >= 5000
-                if fp != display_fp or reenvio:
-                    if _enviar_display(ops, ca, fw_servidor):
+                if fp != display_fp or sel_disp != display_sel or reenvio:
+                    if _enviar_display(ops, ca, fw_servidor, sel_disp):
                         display_fp = fp
+                        display_sel = sel_disp
                         display_ts = time.ticks_ms()
                 if not ops:
                     if en_work_mode:

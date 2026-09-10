@@ -9,30 +9,34 @@ El carro (`esp32/micropython/main_wifi.py`) manda por UART una instantánea JSON
 cada vez que cambia algo:
 
 ```json
-{"v":1,"tipo":"estado","carro":"1","fw":"2026-09-01a","wifi":true,
- "ops":[{"operario":"clave","data":{"puesto_nombre":"MONTAJE 3","fase":"recoger",
-         "lote":"L-2231","paquetes":[{"etiqueta":"12","elem":"...","bloqueado":false}]}}]}
+{"v":1,"tipo":"estado","carro":"1","fw":"2026-09-10b","wifi":true,"sel":"puesto_3",
+ "ops":[{"operario":"puesto_3","data":{"puesto_nombre":"MONTAJE 3","puesto_id":"puesto_3",
+   "fase":"recoger","lote":"L-2231","boton":1,
+   "paquetes":[{"etiqueta":"12","elem":"...","cod":"...","bloqueado":false}]}}]}
 ```
 
 `fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz **apaisada**
 (1280x800) con la identidad del SW web (COJO): fondo claro, cabecera azul en
-degradado.
+degradado. La cabecera lleva la marca `COJO sw`, `CARRO N` centrado, la pastilla
+de WiFi y la versión de firmware del carro.
 
-- Cabecera: marca `COJO sw`, `CARRO N` centrado, pastilla de estado WiFi y
-  versión de firmware del carro.
-- Una tarjeta blanca por puesto (máximo 3; la altura se reparte, así que con un
-  solo puesto la tarjeta es enorme): nombre, lote, fase en una pastilla de color
-  (ámbar recoger, azul en proceso, verde devolver, gris finalizado) y un
-  **mosaico con hasta 5 paquetes a la vez** (etiqueta grande + elemento; franja
-  roja si está bloqueado). El carro pasa los paquetes de uno en uno por su
-  pantalla pequeña; aquí se ven todos. Si el puesto tiene más de 5, el último
-  hueco muestra `+N`.
-- Pie: `Conectado — hace N s` mientras llegan tramas (se refresca cada 2 s); si
-  pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo **con una línea de
-  diagnóstico**: bytes recibidos por la UART y el último error de parseo, para
-  saber sin cable serie si el problema es cableado (0 bytes) o formato (bytes
-  pero JSON inválido). Si el carro tiene más de 3 puestos, el pie indica cuántos
-  quedan sin mostrar.
+**Dos vistas, según `sel`** (la clave del puesto que se está mirando en detalle
+en el carro; vacío = nadie identificado):
+
+- **Lista** (`sel` vacío): una fila por puesto con trabajo — distintivo del
+  botón, nombre, fase en pastilla de color y `N paq`. **No se ven los
+  paquetes**: con dos o tres puestos activos a la vez sería un caos. Hasta 7
+  filas; el resto se cuenta en el pie.
+- **Detalle** (`sel` = clave de un puesto, tras pasar tarjeta o pulsar el botón
+  en el carro): solo ese puesto, a pantalla completa, con un **mosaico de hasta
+  5 paquetes** (etiqueta grande + elemento + código; franja roja si está
+  bloqueado; `+N` si tiene más de 5). El carro pasa los paquetes de uno en uno
+  por su pantalla pequeña; aquí se ven los cinco. Cuando el carro vuelve solo a
+  la lista (a los `VOLVER_LISTA_S`), la P4 también.
+
+Pie: `Conectado — hace N s` mientras llegan tramas (se refresca cada 2 s); si
+pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo con una línea de diagnóstico
+(bytes recibidos por la UART y último error de parseo).
 
 No confirma acciones: es un espejo. La confirmación sigue en los botones del
 carro. El táctil de momento solo imprime coordenadas por el monitor serie.
@@ -77,8 +81,8 @@ Ya instaladas en `~/Documents/Arduino/libraries`:
 2. Conectar la P4 por USB y comprobar el puerto (COM6).
 3. `./compilar.sh COM6`.
 4. Monitor serie de UART0 a 115200: debe salir
-   `P4 pantalla_p4_101 v4 (apaisado, mosaico paquetes) ready` y la pantalla
-   `Esperando al carro`.
+   `P4 pantalla_p4_101 v5 (lista / detalle por identificacion) ready` y la
+   pantalla `Esperando al carro`.
 5. Con ambas placas apagadas, conectar primero GND, luego el TX del carro al RX
    de la P4, y por último el TX de la P4 al RX del carro. Al llegar la primera
    instantánea la pantalla pasa a mostrar la lista de puestos.
