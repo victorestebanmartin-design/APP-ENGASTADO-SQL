@@ -89,6 +89,9 @@ unsigned long ultimo_pie   = 0;
 bool          tiene_datos   = false;
 unsigned long rx_bytes     = 0;                 // bytes leidos de UART1 (diag)
 char          diag[48]      = "sin tramas";     // ultimo resultado de parseo
+char          lastline[260] = "";               // ultima linea recibida (saneada)
+String        pendiente;                        // linea completa por procesar
+bool          hay_pendiente = false;
 
 // ── Helpers de fase ─────────────────────────────────────────────────────────
 static uint16_t colorFase(const char *f) {
@@ -129,6 +132,36 @@ static void recorta(char *s, int cap, int maxw) {
     }
     int L = strlen(s);
     if (L + 3 <= cap) { s[L] = '.'; s[L + 1] = '.'; s[L + 2] = '\0'; }
+}
+
+// Guarda la ultima linea recibida, con los no imprimibles como '.'
+static void guardarLinea(const String &s) {
+    int n = s.length();
+    if (n > (int)sizeof(lastline) - 1) n = sizeof(lastline) - 1;
+    for (int i = 0; i < n; i++) {
+        char c = s[i];
+        lastline[i] = (c >= 32 && c < 127) ? c : '.';
+    }
+    lastline[n] = '\0';
+}
+
+// Drena la UART sin parsear: acumula en 'buf' y, al ver '\n', deja la linea
+// lista en 'pendiente'. Se llama tambien durante el dibujo para que una trama
+// que llegue mientras se pinta no se pierda.
+static void pump() {
+    while (carroUart.available()) {
+        char c = static_cast<char>(carroUart.read());
+        rx_bytes++;
+        if (c == '\n') {
+            String s = buf; s.trim(); buf = "";
+            if (s.length() > 0) { pendiente = s; hay_pendiente = true; }
+        } else if (c != '\r' && buf.length() < 8192) {
+            buf += c;
+        } else if (buf.length() >= 8192) {
+            snprintf(diag, sizeof(diag), "overflow (%lu B)", rx_bytes);
+            buf = "";
+        }
+    }
 }
 
 // Copia un campo JSON (string, numero o null) a un char[]
@@ -308,11 +341,46 @@ static void dibujarVacio(const char *titulo, const char *pista) {
     }
 }
 
+// Tarjeta de diagnostico: se pinta en vez de la lista cuando no hay datos
+// validos pero SI han entrado bytes por la UART. Enseña la ultima linea cruda.
+static void dibujarDiagnostico() {
+    int x = MARGEN, y = Y_BODY + 16, w = CARD_W, h = Y_PIE - y - 12;
+    gfx.RoundRectFilledAA(x, y, w, h, 16, C_TARJETA);
+
+    gfx.Font(2); gfx.TextSize(3); gfx.TextColor(C_ROJO);
+    gfx.MoveTo(x + 34, y + 24); gfx.print("Llegan bytes pero no son una trama valida");
+
+    char l1[110];
+    snprintf(l1, sizeof(l1), "UART1 rx=52 tx=50  115200   |   %lu B recibidos   |   buf %d B",
+             rx_bytes, buf.length());
+    gfx.Font(2); gfx.TextSize(2); gfx.TextColor(C_TINTA);
+    gfx.MoveTo(x + 34, y + 86); gfx.print(l1);
+
+    char l2[90];
+    snprintf(l2, sizeof(l2), "ultimo parseo:  %s", diag);
+    gfx.MoveTo(x + 34, y + 124); gfx.print(l2);
+
+    gfx.Font(2); gfx.TextSize(2); gfx.TextColor(C_GRIS);
+    gfx.MoveTo(x + 34, y + 176); gfx.print("ultima linea recibida:");
+
+    gfx.Font(2); gfx.TextSize(1); gfx.TextColor(C_TINTA);
+    int py = y + 210;
+    int L = strlen(lastline);
+    for (int off = 0; off < L && py < y + h - 16; off += 82) {
+        char seg[84];
+        strncpy(seg, lastline + off, 82); seg[82] = '\0';
+        gfx.MoveTo(x + 34, py); gfx.print(seg);
+        py += 22;
+    }
+    if (L == 0) { gfx.MoveTo(x + 34, py); gfx.print("(vacia)"); }
+}
+
 static void dibujarPantalla() {
     gfx.Cls(C_FONDO);
     dibujarCabecera();
     if (nops == 0) {
-        dibujarVacio("Sin puestos activos", "");
+        if (rx_bytes > 0 && !tiene_datos) dibujarDiagnostico();
+        else                              dibujarVacio("Sin puestos activos", "");
     } else {
         int bodyH = Y_PIE - Y_BODY - 8;
         int cardH = (bodyH - (nops - 1) * CARD_GAP) / nops;
@@ -321,6 +389,7 @@ static void dibujarPantalla() {
         for (int i = 0; i < nops; i++) {
             dibujarTarjeta(i, y, cardH);
             y += cardH + CARD_GAP;
+            pump();                        // no perder tramas mientras se pinta
         }
     }
     dibujarPie();
@@ -339,17 +408,17 @@ static void procesarLinea(const String &msg) {
         snprintf(diag, sizeof(diag), "JSON err: %s", err.c_str());
         Serial.print("JSON err: "); Serial.println(err.c_str());
         Serial.print("  raw: ");
-        for (int i = 0; i < (int)msg.length() && i < 48; i++)
+        for (int i = 0; i < (int)msg.length() && i < 64; i++)
             Serial.printf("%02X ", (uint8_t)msg[i]);
         Serial.println();
-        if (!tiene_datos) dibujarPie();
+        if (!tiene_datos) dibujarPantalla();
         return;
     }
 
     const char *tipo = doc["tipo"] | "";
     if (strcmp(tipo, "estado") != 0) {
         snprintf(diag, sizeof(diag), "tipo '%s' ignorado", tipo);
-        if (!tiene_datos) dibujarPie();
+        if (!tiene_datos) dibujarPantalla();
         return;
     }
 
@@ -413,19 +482,12 @@ void setup() {
 }
 
 void loop() {
-    while (carroUart.available()) {
-        char c = static_cast<char>(carroUart.read());
-        rx_bytes++;
-        if (c == '\n') {
-            String s = buf; s.trim(); buf = "";
-            if (s.length() > 0) procesarLinea(s);
-        } else if (c != '\r' && buf.length() < 8192) {
-            buf += c;
-        } else if (buf.length() >= 8192) {
-            Serial.println("RX overflow, descartado");
-            snprintf(diag, sizeof(diag), "overflow (%lu B)", rx_bytes);
-            buf = "";
-        }
+    pump();
+    if (hay_pendiente) {
+        hay_pendiente = false;
+        String linea = pendiente;       // copia: pump() puede reescribir pendiente
+        guardarLinea(linea);
+        procesarLinea(linea);
     }
 
     unsigned long now = millis();
