@@ -25,6 +25,11 @@
 
 #include <Arduino.h>
 #include "gfx4desp32_ESP32_P4_101CT_CLB.h"
+
+// El servidor puede colar 'NaN'/'Infinity' (JSON no estandar) en algun numero;
+// que ArduinoJson lo acepte en vez de tumbar la trama entera.
+#define ARDUINOJSON_ENABLE_NAN 1
+#define ARDUINOJSON_ENABLE_INFINITY 1
 #include <ArduinoJson.h>
 
 // ── UART del carro ───────────────────────────────────────────────────────────
@@ -89,7 +94,7 @@ unsigned long ultimo_pie   = 0;
 bool          tiene_datos   = false;
 unsigned long rx_bytes     = 0;                 // bytes leidos de UART1 (diag)
 char          diag[48]      = "sin tramas";     // ultimo resultado de parseo
-char          lastline[260] = "";               // ultima linea recibida (saneada)
+char          lastline[900] = "";               // ultima linea recibida (saneada)
 String        pendiente;                        // linea completa por procesar
 bool          hay_pendiente = false;
 
@@ -404,6 +409,15 @@ static void procesarLinea(const String &msg) {
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, msg);
+    if (err) {
+        // Resincronizar: si la linea trae basura antes del JSON, reintentar
+        // desde la primera llave.
+        int b = msg.indexOf('{');
+        if (b > 0) {
+            DeserializationError e2 = deserializeJson(doc, msg.substring(b));
+            if (!e2) { err = e2; Serial.printf("recuperado tras %d bytes de basura\n", b); }
+        }
+    }
     if (err) {
         snprintf(diag, sizeof(diag), "JSON err: %s", err.c_str());
         Serial.print("JSON err: "); Serial.println(err.c_str());
