@@ -13,12 +13,13 @@
  *    "ops":[{"operario":"puesto_3","data":{"puesto_nombre":"...","puesto_id":"...",
  *       "fase":"recoger|trabajando|devolver","lote":"...","boton":1,
  *       "grupo":1,"grupos":5,"paquetes":[{"etiqueta":12,"elem":"S206","cod":"...",
- *          "cables":3,"term":5,"bloqueado":false}]}}]}
+ *          "cables":3,"term":5,"color":"#2563eb","tcolor":"#ffffff","bloqueado":false}]}}]}
  *
  *   - "sel" vacio  -> LISTA: una fila por puesto (boton, nombre, fase, nº paq).
- *   - "sel" = clave -> DETALLE: ese puesto con sus paquetes en filas, calcadas
- *     del modal de paquetes del SW web (distintivo ambar con la etiqueta,
- *     elemento en grande, codigo debajo y los contadores cables / term.).
+ *   - "sel" = clave -> DETALLE: ese puesto con sus paquetes en un grid de 5
+ *     (3 arriba, 2 abajo). Cada celda lleva el nº de etiqueta enorme y el
+ *     nombre del elemento, con el fondo del color de la etiqueta (el mismo
+ *     color que usa el modal del SW web) y los contadores cables / term.
  *
  * Requiere, ademas de GFX4dESP32P4 y ArduinoJson, la libreria LVGL 9:
  *     arduino-cli lib install lvgl
@@ -54,7 +55,7 @@ static constexpr int LV_H  = 800;
 #define COL_VERDE   lv_color_hex(0x30D46A)
 #define COL_AMBAR   lv_color_hex(0xF6A524)
 #define COL_ROJO    lv_color_hex(0xF2554B)
-#define COL_AZUL    lv_color_hex(0x4D96FF)   /* contador de cables, como el modal */
+#define COL_AZUL    lv_color_hex(0x4D96FF)   /* acento azul (reserva de paleta) */
 #define COL_NEGRO   lv_color_hex(0x0B0F17)
 
 #define F_XS  &lv_font_montserrat_14
@@ -68,7 +69,8 @@ static constexpr int MAX_OPS  = 8;
 static constexpr int MAX_ROWS = 7;
 static constexpr int MAX_TILE = 5;
 
-struct Paq { char etiqueta[10]; char elem[24]; char cod[18]; int cables; int term; bool bloq; };
+struct Paq { char etiqueta[10]; char elem[24]; char cod[18]; int cables; int term; bool bloq;
+             uint32_t rgb; uint32_t trgb; };   // rgb = color de la etiqueta; trgb = color de texto
 struct Op {
     char clave[40]; char puesto[40]; char fase[16]; char lote[20];
     int  boton; int npaq; int nbuf; int grupo; int grupos; Paq paq[MAX_TILE];
@@ -138,6 +140,24 @@ static void pump() {
     if (buf.length() > 0 && millis() - ultimo_byte > 150) buf = "";
 }
 
+// "#rrggbb" o "rrggbb" -> 0xRRGGBB. Devuelve def si no hay 6 hex validos.
+static uint32_t parseHexColor(JsonVariant v, uint32_t def) {
+    if (!v.is<const char *>()) return def;
+    const char *s = v.as<const char *>();
+    if (!s) return def;
+    if (*s == '#') s++;
+    uint32_t out = 0; int n = 0;
+    for (; n < 6 && s[n]; n++) {
+        char c = s[n]; uint32_t d;
+        if      (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else return def;
+        out = (out << 4) | d;
+    }
+    return n == 6 ? out : def;
+}
+
 static void copiaCampo(char *dst, size_t n, JsonVariant v, const char *def) {
     if (v.isNull()) { strncpy(dst, def, n - 1); dst[n - 1] = '\0'; return; }
     if (v.is<const char *>()) { strncpy(dst, v.as<const char *>(), n - 1); dst[n - 1] = '\0'; return; }
@@ -177,8 +197,8 @@ static uint32_t huellaActual() {
         h = fnv(t, h);
         for (int k = 0; k < o.nbuf; k++) {
             const Paq &q = o.paq[k];
-            snprintf(t, sizeof(t), "%s|%s|%d|%d|%d", q.etiqueta, q.elem,
-                     q.cables, q.term, (int)q.bloq);
+            snprintf(t, sizeof(t), "%s|%s|%d|%d|%d|%lu", q.etiqueta, q.elem,
+                     q.cables, q.term, (int)q.bloq, (unsigned long)q.rgb);
             h = fnv(t, h);
         }
     } else {
@@ -309,73 +329,48 @@ static void ui_lista(bool aviso_sel) {
     }
 }
 
-static lv_obj_t *contador(lv_obj_t *parent, int valor, const char *etiq, lv_color_t col) {
-    lv_obj_t *c = lv_obj_create(parent);
-    lv_obj_set_size(c, 92, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(c, 0, 0);
-    lv_obj_set_style_pad_all(c, 0, 0);
-    lv_obj_set_style_pad_gap(c, 0, 0);
-    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *n = lv_label_create(c);
-    lv_label_set_text_fmt(n, "%d", valor);
-    lv_obj_set_style_text_font(n, F_LG, 0);
-    lv_obj_set_style_text_color(n, col, 0);
-    txt(c, etiq, F_XS, COL_MUTE);
-    return c;
-}
+// Una celda del grid de paquetes: el fondo es el color de la etiqueta (el mismo
+// que pinta el modal del SW web), con el numero de etiqueta enorme, el nombre
+// del elemento debajo y los contadores cables / term. en pequeno.
+static void celdaPaquete(lv_obj_t *parent, const Paq &p, int cw, int ch) {
+    lv_color_t bg = p.bloq ? lv_color_hex(0x39414F) : lv_color_hex(p.rgb);
+    lv_color_t tc = p.bloq ? COL_MUTE               : lv_color_hex(p.trgb);
 
-// Una fila de paquete, calcada del modal del SW: barra de color a la izquierda,
-// distintivo ambar con el numero de etiqueta, elemento en grande con el codigo
-// debajo y los dos contadores (cables / term.) a la derecha.
-static void filaPaquete(lv_obj_t *parent, const Paq &p, int alto) {
-    lv_color_t acento = p.bloq ? COL_ROJO : COL_AMBAR;
+    lv_obj_t *cell = lv_obj_create(parent);
+    lv_obj_set_size(cell, cw, ch);
+    lv_obj_set_style_bg_color(cell, bg, 0);
+    lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(cell, 18, 0);
+    lv_obj_set_style_border_width(cell, p.bloq ? 2 : 0, 0);
+    lv_obj_set_style_border_color(cell, COL_ROJO, 0);
+    lv_obj_set_style_shadow_width(cell, 16, 0);
+    lv_obj_set_style_shadow_opa(cell, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_color(cell, lv_color_black(), 0);
+    lv_obj_set_style_shadow_offset_y(cell, 4, 0);
+    lv_obj_set_style_pad_all(cell, 14, 0);
+    lv_obj_set_style_pad_gap(cell, 2, 0);
+    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *row = lv_obj_create(parent);
-    lv_obj_set_width(row, LV_PCT(100));
-    lv_obj_set_height(row, alto);
-    lv_obj_set_style_bg_color(row, COL_PANEL2, 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(row, 12, 0);
-    lv_obj_set_style_border_color(row, acento, 0);
-    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
-    lv_obj_set_style_border_width(row, 6, 0);
-    lv_obj_set_style_pad_hor(row, 14, 0);
-    lv_obj_set_style_pad_ver(row, 8, 0);
-    lv_obj_set_style_pad_column(row, 16, 0);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *n = lv_label_create(cell);
+    lv_label_set_text(n, p.etiqueta[0] ? p.etiqueta : "-");
+    lv_obj_set_style_text_font(n, F_XL, 0);
+    lv_obj_set_style_text_color(n, tc, 0);
 
-    // Distintivo con el numero de etiqueta
-    lv_obj_t *badge = lv_label_create(row);
-    lv_label_set_text(badge, p.etiqueta[0] ? p.etiqueta : "-");
-    lv_obj_set_style_text_font(badge, F_MD, 0);
-    lv_obj_set_style_text_color(badge, COL_NEGRO, 0);
-    lv_obj_set_style_bg_color(badge, acento, 0);
-    lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(badge, 10, 0);
-    lv_obj_set_style_pad_hor(badge, 16, 0);
-    lv_obj_set_style_pad_ver(badge, 8, 0);
+    lv_obj_t *e = lv_label_create(cell);
+    lv_label_set_text(e, p.bloq ? "EN USO" : (p.elem[0] ? p.elem : "(sin nombre)"));
+    lv_obj_set_style_text_font(e, F_MD, 0);
+    lv_obj_set_style_text_color(e, tc, 0);
+    lv_obj_set_width(e, LV_PCT(100));
+    lv_label_set_long_mode(e, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(e, LV_TEXT_ALIGN_CENTER, 0);
 
-    // Elemento + codigo
-    lv_obj_t *col = lv_obj_create(row);
-    lv_obj_set_height(col, LV_SIZE_CONTENT);
-    lv_obj_set_flex_grow(col, 1);
-    lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(col, 0, 0);
-    lv_obj_set_style_pad_all(col, 0, 0);
-    lv_obj_set_style_pad_gap(col, 0, 0);
-    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
-    txt(col, p.elem[0] ? p.elem : "(sin elemento)", F_LG, p.bloq ? COL_MUTE : COL_TXT);
-    if (p.bloq)          txt(col, "BLOQUEADO", F_SM, COL_ROJO);
-    else if (p.cod[0])   txt(col, p.cod, F_XS, COL_MUTE);
-
-    contador(row, p.cables, "cables", COL_AZUL);
-    contador(row, p.term,   "term.",  COL_AMBAR);
+    lv_obj_t *m = lv_label_create(cell);
+    lv_label_set_text_fmt(m, "%d cbl   ·   %d term", p.cables, p.term);
+    lv_obj_set_style_text_font(m, F_XS, 0);
+    lv_obj_set_style_text_color(m, tc, 0);
+    lv_obj_set_style_text_opa(m, LV_OPA_70, 0);
 }
 
 static void ui_detalle(int idx) {
@@ -415,34 +410,30 @@ static void ui_detalle(int idx) {
     lv_obj_set_style_text_font(meta, F_SM, 0);
     lv_obj_set_style_text_color(meta, COL_MUTE, 0);
 
-    // Lista de paquetes
-    lv_obj_t *lista = lv_obj_create(c);
-    lv_obj_set_width(lista, LV_PCT(100));
-    lv_obj_set_flex_grow(lista, 1);
-    lv_obj_set_style_bg_opa(lista, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(lista, 0, 0);
-    lv_obj_set_style_pad_all(lista, 0, 0);
-    lv_obj_set_style_pad_row(lista, 8, 0);
-    lv_obj_set_flex_flow(lista, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_scrollbar_mode(lista, LV_SCROLLBAR_MODE_OFF);
+    // Grid de paquetes: fila con wrap -> 3 celdas arriba, 2 abajo (centradas).
+    lv_obj_t *grid = lv_obj_create(c);
+    lv_obj_set_width(grid, LV_PCT(100));
+    lv_obj_set_flex_grow(grid, 1);
+    lv_obj_set_style_bg_opa(grid, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(grid, 0, 0);
+    lv_obj_set_style_pad_all(grid, 0, 0);
+    lv_obj_set_style_pad_column(grid, 16, 0);
+    lv_obj_set_style_pad_row(grid, 16, 0);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scrollbar_mode(grid, LV_SCROLLBAR_MODE_OFF);
 
-    if (o.nbuf <= 0) { txt(lista, "Sin paquetes", F_LG, COL_MUTE); return; }
+    if (o.nbuf <= 0) { txt(grid, "Sin paquetes", F_LG, COL_MUTE); return; }
 
-    bool overflow = (o.npaq > o.nbuf);
-    // Reparto vertical: las filas visibles + la de "y N mas" si hace falta
-    int filas = o.nbuf + (overflow ? 1 : 0);
-    int alto  = (LV_H - 100 - 40 - 130 - (filas - 1) * 8) / filas;
-    if (alto < 64)  alto = 64;
-    if (alto > 110) alto = 110;
+    // 3 celdas por fila, 2 filas. Descuento paddings de cont (40) y card (32).
+    int gw = LV_W - 40 - 32;
+    int gh = LV_H - 100 - 40 - 32 - 64 - 28 - 30;   // header, pads, cabecera, meta, gaps
+    int cw = (gw - 2 * 16 - 6) / 3;                 // -6: margen para que quepan 3
+    int ch = (gh - 16) / 2;
+    if (ch < 150) ch = 150;
+    if (ch > 300) ch = 300;
 
-    for (int t = 0; t < o.nbuf; t++) filaPaquete(lista, o.paq[t], alto);
-    if (overflow) {
-        lv_obj_t *l = lv_label_create(lista);
-        lv_label_set_text_fmt(l, "y %d paquete%s mas", o.npaq - o.nbuf,
-                              (o.npaq - o.nbuf) == 1 ? "" : "s");
-        lv_obj_set_style_text_font(l, F_SM, 0);
-        lv_obj_set_style_text_color(l, COL_MUTE, 0);
-    }
+    for (int t = 0; t < o.nbuf; t++) celdaPaquete(grid, o.paq[t], cw, ch);
 }
 
 static void ui_actualizar(bool forzar) {
@@ -557,6 +548,8 @@ static void procesarLinea(const String &msg) {
             q.cables = p["cables"] | 0;
             q.term   = p["term"]   | 0;
             q.bloq   = p["bloqueado"] | false;
+            q.rgb    = parseHexColor(p["color"],  0x2B3550);
+            q.trgb   = parseHexColor(p["tcolor"], 0xF4F7FB);
             d.nbuf++;
         }
         nops++;

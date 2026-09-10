@@ -11,9 +11,14 @@ cada vez que cambia algo:
 ```json
 {"v":1,"tipo":"estado","carro":"1","fw":"2026-09-10b","wifi":true,"sel":"puesto_3",
  "ops":[{"operario":"puesto_3","data":{"puesto_nombre":"MONTAJE 3","puesto_id":"puesto_3",
-   "fase":"recoger","lote":"L-2231","boton":1,
-   "paquetes":[{"etiqueta":"12","elem":"...","cod":"...","bloqueado":false}]}}]}
+   "fase":"recoger","lote":"L-2231","boton":1,"grupo":1,"grupos":3,
+   "paquetes":[{"etiqueta":"12","elem":"S206","cod":"640D10002","cables":3,"term":5,
+     "color":"#2563eb","tcolor":"#ffffff","bloqueado":false}]}}]}
 ```
+
+`color` / `tcolor` son el color de fondo y de texto de la etiqueta, calculados
+en el SW web (`getCodCableColor`, `static/js/cable-colors.js`): así la celda de
+la P4 sale exactamente del mismo color que el distintivo del modal de paquetes.
 
 `fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz con **LVGL 9**:
 apaisada (1280x800), tema oscuro, tipos de letra suavizados (Montserrat),
@@ -37,11 +42,14 @@ en el carro; vacío = nadie identificado):
   paquetes**: con dos o tres puestos activos a la vez sería un caos. Hasta 7
   filas; el resto se cuenta en el pie.
 - **Detalle** (`sel` = clave de un puesto, tras pasar tarjeta o pulsar el botón
-  en el carro): solo ese puesto, a pantalla completa, con un **mosaico de hasta
-  5 paquetes** (etiqueta grande + elemento + código; franja roja si está
-  bloqueado; `+N` si tiene más de 5). El carro pasa los paquetes de uno en uno
-  por su pantalla pequeña; aquí se ven los cinco. Cuando el carro vuelve solo a
-  la lista (a los `VOLVER_LISTA_S`), la P4 también.
+  en el carro): solo ese puesto, a pantalla completa, con un **grid de hasta 5
+  paquetes** (3 celdas arriba, 2 abajo y centradas). Cada celda lleva el nº de
+  etiqueta enorme y el nombre del elemento, y **el fondo es el color de la
+  etiqueta** (el mismo que el modal del SW web); debajo, `N cbl · M term`. Un
+  paquete en uso por otro puesto sale en gris con borde rojo y «EN USO». El
+  carro pasa los paquetes de uno en uno por su pantalla pequeña; aquí se ven
+  los cinco del grupo. Cuando el carro vuelve solo a la lista (a los
+  `VOLVER_LISTA_S`), la P4 también.
 
 Pie: `Conectado` (punto verde) mientras llegan tramas; si pasan 90 s sin
 ninguna, `SIN DATOS DEL CARRO` en rojo con una línea de diagnóstico (bytes

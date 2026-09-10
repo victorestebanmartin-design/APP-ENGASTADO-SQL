@@ -395,17 +395,23 @@ function _payloadESP32(carro, extra) {
         // para saber quién confirma (recoger/devolver), sin depender del puesto.
         operario_tag: operarioTagUid          || '',
     }, extra, {
-        paquetes: (extra.paquetes || []).map(p => ({
-            etiqueta: p.numeroEtiqueta ?? null,
-            cod:  p.cod_cable  || '',
-            elem: p.elemento   || '',
-            bloqueado: !!p.bloqueado,
-            por: p.bloqueado_por || '',
-            // La pantalla grande del carro (ESP32-P4) pinta los paquetes como
-            // este modal, con los dos contadores a la derecha.
-            cables: p.num_cables      || 0,
-            term:   p.num_terminales  || 0
-        }))
+        paquetes: (extra.paquetes || []).map(p => {
+            const _col = getCodCableColor(p.cod_cable);
+            return {
+                etiqueta: p.numeroEtiqueta ?? null,
+                cod:  p.cod_cable  || '',
+                elem: p.elemento   || '',
+                bloqueado: !!p.bloqueado,
+                por: p.bloqueado_por || '',
+                cables: p.num_cables      || 0,
+                term:   p.num_terminales  || 0,
+                // La pantalla grande del carro (ESP32-P4) pinta cada paquete
+                // como una celda de un grid con el fondo del color de su
+                // etiqueta (el mismo color/texto que el distintivo de este modal).
+                color:  _col.bg,
+                tcolor: _col.text
+            };
+        })
     });
 }
 
