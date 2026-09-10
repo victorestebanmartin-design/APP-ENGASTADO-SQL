@@ -11,20 +11,28 @@ cada vez que cambia algo:
 ```json
 {"v":1,"tipo":"estado","carro":"1","fw":"2026-09-01a","wifi":true,
  "ops":[{"operario":"clave","data":{"puesto_nombre":"MONTAJE 3","fase":"recoger",
-         "lote":"L-2231","paquetes":[...]}}]}
+         "lote":"L-2231","paquetes":[{"etiqueta":"12","elem":"...","bloqueado":false}]}}]}
 ```
 
-`fase` es `recoger` | `trabajando` | `devolver` | `fin`. La interfaz usa la
-identidad del SW web (COJO): fondo claro y cabecera azul en degradado.
+`fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz **apaisada**
+(1280x800) con la identidad del SW web (COJO): fondo claro, cabecera azul en
+degradado.
 
-- Cabecera: marca `COJO sw`, `Carro N`, pastilla de estado WiFi y versión de
-  firmware del carro.
-- Una tarjeta blanca por puesto (máximo 5 visibles): nombre, lote, la fase en
-  una pastilla de color (ámbar recoger, azul en proceso, verde devolver, gris
-  finalizado) y el número de paquetes en grande.
-- Pie: `Conectado — hace N s` mientras llegan tramas (el contador se refresca
-  cada segundo); si pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo. Si el
-  carro tiene más de 5 puestos, el pie indica cuántos quedan sin mostrar.
+- Cabecera: marca `COJO sw`, `CARRO N` centrado, pastilla de estado WiFi y
+  versión de firmware del carro.
+- Una tarjeta blanca por puesto (máximo 3; la altura se reparte, así que con un
+  solo puesto la tarjeta es enorme): nombre, lote, fase en una pastilla de color
+  (ámbar recoger, azul en proceso, verde devolver, gris finalizado) y un
+  **mosaico con hasta 5 paquetes a la vez** (etiqueta grande + elemento; franja
+  roja si está bloqueado). El carro pasa los paquetes de uno en uno por su
+  pantalla pequeña; aquí se ven todos. Si el puesto tiene más de 5, el último
+  hueco muestra `+N`.
+- Pie: `Conectado — hace N s` mientras llegan tramas (se refresca cada 2 s); si
+  pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo **con una línea de
+  diagnóstico**: bytes recibidos por la UART y el último error de parseo, para
+  saber sin cable serie si el problema es cableado (0 bytes) o formato (bytes
+  pero JSON inválido). Si el carro tiene más de 3 puestos, el pie indica cuántos
+  quedan sin mostrar.
 
 No confirma acciones: es un espejo. La confirmación sigue en los botones del
 carro. El táctil de momento solo imprime coordenadas por el monitor serie.
@@ -32,8 +40,8 @@ carro. El táctil de momento solo imprime coordenadas por el monitor serie.
 ## Hardware confirmado
 
 - Placa: 4D Systems ESP32-P4 MIPI / ESP32-P4-101CT-CLB.
-- Panel: 800 x 1280, orientación vertical. LCD JD9365B (2 lanes MIPI-DSI),
-  táctil GT911.
+- Panel: 800 x 1280 nativo, se usa en apaisado (1280 x 800). LCD JD9365B (2 lanes
+  MIPI-DSI), táctil GT911.
 - UART de datos: P4 GPIO52 RX y GPIO50 TX.
   Carro GPIO45 TX -> P4 GPIO52 RX; carro GPIO46 RX <- P4 GPIO50 TX.
 - Masa: P4 pin 3 o 4 a GND del carro. Los 5 V **no** se unen (cada placa con su
@@ -68,8 +76,22 @@ Ya instaladas en `~/Documents/Arduino/libraries`:
 1. Desconectar los tres cables UART del carro durante la carga.
 2. Conectar la P4 por USB y comprobar el puerto (COM6).
 3. `./compilar.sh COM6`.
-4. Monitor serie de UART0 a 115200: debe salir `P4 pantalla_p4_101 v3 (UI) ready`
-   y la pantalla `Esperando al carro`.
+4. Monitor serie de UART0 a 115200: debe salir
+   `P4 pantalla_p4_101 v4 (apaisado, mosaico paquetes) ready` y la pantalla
+   `Esperando al carro`.
 5. Con ambas placas apagadas, conectar primero GND, luego el TX del carro al RX
    de la P4, y por último el TX de la P4 al RX del carro. Al llegar la primera
    instantánea la pantalla pasa a mostrar la lista de puestos.
+
+## Si pone «SIN DATOS DEL CARRO»
+
+El pie enseña `... N B ... <motivo>`:
+
+- **`0 B`**: no entra nada por la UART. El carro no está enviando (sin WiFi no
+  hace el poll al servidor y no manda nada; míralo en su propia pantalla), o el
+  cable de su TX (GPIO45) al RX de la P4 (GPIO52) / la masa común está mal.
+- **`N B` con `JSON err`**: llegan bytes pero no son una trama válida. Casi
+  siempre baudios (los dos extremos a 115200) o masa flotante. El monitor serie
+  de UART0 imprime `raw:` con los primeros bytes en hexadecimal.
+- **`N B` con `OK …` pero el pie sigue en rojo**: llegó una trama buena hace
+  más de 90 s y no ha habido otra (el carro solo reenvía cuando cambia algo).
