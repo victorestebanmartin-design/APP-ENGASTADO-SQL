@@ -142,7 +142,7 @@ def draw_status(ok, hora=""):
 
 draw_sw_logo()
 
-vp=ve=vt=-1; ultimo_rx=0; buf=""
+vp=ve=vt=-1; ultimo_rx=0; buf=""; layout_ok=False
 poll=select.poll(); poll.register(sys.stdin,select.POLLIN)
 
 while True:
@@ -155,11 +155,13 @@ while True:
                     d=json.loads(line)
                     np=int(d.get('p',-1)); ne=int(d.get('e',-1)); nt=int(d.get('t',-1))
                     hora=str(d.get('hora','--:--')); fecha=str(d.get('fecha','--/--'))
+                    if not layout_ok: layout_ok=True; draw_static()
                     if np!=vp: vp=np; draw_num(Y_ROW1,YELLOW,vp)
                     if ne!=ve: ve=ne; draw_num(Y_ROW2,ORANGE,ve)
                     if nt!=vt: vt=nt; draw_num(Y_ROW3,GREEN,vt)
                     draw_datetime(fecha,hora); ultimo_rx=time.ticks_ms(); draw_status(True,hora)
-                except: pass
+                    print("UART RX p=%d e=%d t=%d %s %s"%(np,ne,nt,hora,fecha))
+                except Exception as ex: print("JSON err:",ex)
         elif c not in('\r','\x03','\x04'): buf+=c
     if ultimo_rx and time.ticks_diff(time.ticks_ms(),ultimo_rx)>90000:
         ultimo_rx=0; draw_status(False)
