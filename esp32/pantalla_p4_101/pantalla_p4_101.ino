@@ -30,6 +30,9 @@
 #include <lvgl.h>
 #include "gfx4desp32_ESP32_P4_101CT_CLB.h"
 #include "esp_cache.h"   // esp_cache_msync: volcar la cache al framebuffer PSRAM
+#include <Preferences.h> // NVS: guardar la calibracion tactil
+#include <Wire.h>        // sonda I2C del GT911 al arrancar
+#include <math.h>        // lround, fabs, sqrt (ajuste afin de la calibracion)
 
 #define ARDUINOJSON_ENABLE_NAN 1
 #define ARDUINOJSON_ENABLE_INFINITY 1
@@ -108,6 +111,50 @@ uint8_t*                      fb            = nullptr;
 
 // ── LVGL: objetos persistentes ─────────────────────────────────────────────
 static lv_obj_t *lbl_carro, *lbl_wifi, *lbl_fw, *cont;
+
+// ── Tactil: velo de confirmacion + diagnostico ────────────────────────────
+// La libreria 4D entrega el toque ya "rotado" segun su propio 'rotation', y
+// sin llamar a gfx.Orientation() sus ejes no cuadran con la rotacion manual
+// que hace flush_cb -> el toque caia fuera de la barra CONFIRMAR. Mientras se
+// afina el mapa exacto (rotulo TOUCH_DEBUG de abajo), un velo transparente
+// sobre TODA la pantalla capta el toque en cualquier punto cuando el carro
+// pide OK: cumple lo pedido ("Enter / barra espaciadora en toda la zona").
+static lv_obj_t *ok_overlay = nullptr;
+
+#define TOUCH_DEBUG 0   // 1 = rotulo de diagnostico tactil abajo-izquierda
+#if TOUCH_DEBUG
+static lv_obj_t         *lbl_dbg   = nullptr;
+static volatile int      dbg_pen   = 0, dbg_rawx = 0, dbg_rawy = 0, dbg_mapx = 0, dbg_mapy = 0;
+static volatile uint32_t dbg_ms    = 0;
+static volatile uint32_t dbg_clicks = 0;
+#endif
+
+// ── Calibracion tactil (mapa afin raw -> LVGL) ────────────────────────────
+// La libreria 4D entrega el toque en un sistema propio que, sin llamar a
+// gfx.Orientation(), no cuadra con la rotacion manual que hace flush_cb. En
+// vez de deducir la formula a mano, el panel pide 5 toques sobre unas cruces
+// al arrancar y ajusta por minimos cuadrados:
+//     lx = ax*rawx + bx*rawy + cx ;  ly = ay*rawx + by*rawy + cy
+// Un afin absorbe cualquier giro/espejo/escala. Se guarda en NVS; en arranques
+// posteriores hay una ventana corta para repetir la calibracion.
+static Preferences prefs;
+static bool   cal_valida = false;
+static double cal_ax = 1, cal_bx = 0, cal_cx = 0;
+static double cal_ay = 0, cal_by = 1, cal_cy = 0;
+static char   cal_i2c[24] = "?";   // resultado de la sonda I2C del GT911
+
+// Lee el tactil SIN pasar por el gate del pin INT de touch_Update() (que en
+// esta placa lo dejaba mudo: nunca detectaba la pulsacion). touch_GetTouchPoints
+// consulta el GT911 por I2C directamente. Devuelve true con el crudo del 1er
+// contacto; el mapa afin de la calibracion lo convierte a coordenadas LVGL.
+static bool touch_raw(int *x, int *y) {
+    int tx[5], ty[5];
+    int n = gfx.touch_GetTouchPoints(tx, ty);
+    if (n <= 0) return false;
+    *x = tx[0];
+    *y = ty[0];
+    return true;
+}
 
 // ── Helpers de fase ─────────────────────────────────────────────────────────
 static lv_color_t colorFase(const char *f) {
@@ -298,10 +345,275 @@ static void ok_anim_opa_cb(void *obj, int32_t v) {
 }
 static void ok_click_cb(lv_event_t *e) {
     (void)e;
+#if TOUCH_DEBUG
+    dbg_clicks++;
+#endif
     uint32_t now = millis();
     if (now - ok_toque_ms < 1500) return;   // antirrebote / doble toque
     ok_toque_ms = now;
     ok_tx_iniciar();
+    // "OK" grande y fugaz para que el operario vea que el toque entro
+    if (ok_overlay) {
+        lv_obj_t *fx = lv_label_create(ok_overlay);
+        lv_label_set_text(fx, "OK");
+        lv_obj_set_style_text_font(fx, F_XL, 0);
+        lv_obj_set_style_text_color(fx, COL_VERDE, 0);
+        lv_obj_set_style_bg_color(fx, COL_NEGRO, 0);
+        lv_obj_set_style_bg_opa(fx, LV_OPA_70, 0);
+        lv_obj_set_style_pad_all(fx, 18, 0);
+        lv_obj_set_style_radius(fx, 16, 0);
+        lv_obj_center(fx);
+        lv_obj_delete_delayed(fx, 700);
+    }
+}
+
+// Velo transparente que capta el toque en cualquier parte de la pantalla
+// cuando el carro pide confirmacion. Se crea sobre la pantalla activa (no
+// dentro de 'cont', que lv_obj_clean vacia en cada refresco) y se retira en
+// cuanto el carro deja de pedir OK.
+static void ok_overlay_quitar() {
+    if (ok_overlay) { lv_obj_delete(ok_overlay); ok_overlay = nullptr; }
+}
+static void ok_overlay_poner() {
+    if (ok_overlay) return;
+    ok_overlay = lv_obj_create(lv_screen_active());
+    lv_obj_remove_style_all(ok_overlay);
+    lv_obj_set_size(ok_overlay, LV_W, 340);          // toda la zona inferior = tecla Enter
+    lv_obj_set_pos(ok_overlay, 0, LV_H - 340);
+    lv_obj_remove_flag(ok_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(ok_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ok_overlay, ok_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_move_foreground(ok_overlay);
+}
+
+// ── Calibracion tactil: rutina guiada ─────────────────────────────────────
+enum { CAL_N = 5 };
+
+// Resuelve un sistema 3x3 (eliminacion de Gauss con pivoteo). true si va bien.
+static bool cal_resolver3(double A[3][3], double b[3], double x[3]) {
+    double m[3][4];
+    for (int r = 0; r < 3; r++) { for (int c = 0; c < 3; c++) m[r][c] = A[r][c]; m[r][3] = b[r]; }
+    for (int col = 0; col < 3; col++) {
+        int piv = col; double best = fabs(m[col][col]);
+        for (int r = col + 1; r < 3; r++) if (fabs(m[r][col]) > best) { best = fabs(m[r][col]); piv = r; }
+        if (best < 1e-9) return false;
+        if (piv != col) for (int c = 0; c < 4; c++) { double t = m[col][c]; m[col][c] = m[piv][c]; m[piv][c] = t; }
+        double d = m[col][col];
+        for (int c = col; c < 4; c++) m[col][c] /= d;
+        for (int r = 0; r < 3; r++) {
+            if (r == col) continue;
+            double f = m[r][col];
+            for (int c = col; c < 4; c++) m[r][c] -= f * m[col][c];
+        }
+    }
+    x[0] = m[0][3]; x[1] = m[1][3]; x[2] = m[2][3];
+    return true;
+}
+
+// Pantalla de un punto: cruz + anillo en (tx,ty) e instruccion.
+static void cal_pantalla(int idx, int total, int tx, int ty) {
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_clean(scr);
+    lv_obj_set_style_bg_color(scr, COL_BG, 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    lv_obj_t *h = lv_obj_create(scr);
+    lv_obj_remove_style_all(h);
+    lv_obj_set_size(h, 90, 6);
+    lv_obj_set_style_bg_color(h, COL_VERDE, 0);
+    lv_obj_set_style_bg_opa(h, LV_OPA_COVER, 0);
+    lv_obj_set_pos(h, tx - 45, ty - 3);
+
+    lv_obj_t *v = lv_obj_create(scr);
+    lv_obj_remove_style_all(v);
+    lv_obj_set_size(v, 6, 90);
+    lv_obj_set_style_bg_color(v, COL_VERDE, 0);
+    lv_obj_set_style_bg_opa(v, LV_OPA_COVER, 0);
+    lv_obj_set_pos(v, tx - 3, ty - 45);
+
+    lv_obj_t *ring = lv_obj_create(scr);
+    lv_obj_remove_style_all(ring);
+    lv_obj_set_size(ring, 64, 64);
+    lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(ring, 4, 0);
+    lv_obj_set_style_border_color(ring, COL_VERDE, 0);
+    lv_obj_set_pos(ring, tx - 32, ty - 32);
+
+    lv_obj_t *t = lv_label_create(scr);
+    lv_label_set_text_fmt(t, "CALIBRACION TACTIL\n\nToca el centro de la cruz\n\nPunto %d de %d", idx, total);
+    lv_obj_set_style_text_font(t, F_MD, 0);
+    lv_obj_set_style_text_color(t, COL_TXT, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, ty > LV_H / 2 ? -170 : 170);
+
+    lv_refr_now(NULL);
+}
+
+// Mensaje a pantalla completa durante 'ms'.
+static void cal_aviso(const char *msg, lv_color_t col, uint32_t ms) {
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_clean(scr);
+    lv_obj_set_style_bg_color(scr, COL_BG, 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    lv_obj_t *t = lv_label_create(scr);
+    lv_label_set_text(t, msg);
+    lv_obj_set_style_text_font(t, F_MD, 0);
+    lv_obj_set_style_text_color(t, col, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(t);
+    lv_refr_now(NULL);
+    uint32_t t0 = millis();
+    while (millis() - t0 < ms) { lv_refr_now(NULL); delay(20); }
+}
+
+// Espera un toque completo y devuelve el crudo promediado. false si no llega.
+static bool cal_leer_punto(int *rawx, int *rawy) {
+    int x, y;
+    uint32_t t0 = millis();
+    while (touch_raw(&x, &y)) {                 // suelta un dedo previo
+        if (millis() - t0 > 5000) break;
+        delay(10);
+    }
+    t0 = millis();
+    while (!touch_raw(&x, &y)) {                // espera pulsacion
+        if (millis() - t0 > 25000) return false;  // tactil sin respuesta
+        delay(10);
+    }
+    long sx = 0, sy = 0; int n = 0;
+    uint32_t tp = millis();
+    while (millis() - tp < 300) {               // promedia con el dedo abajo
+        if (!touch_raw(&x, &y)) break;
+        sx += x; sy += y; n++;
+        delay(10);
+    }
+    if (n < 2) return false;
+    *rawx = (int)(sx / n);
+    *rawy = (int)(sy / n);
+    t0 = millis();
+    while (touch_raw(&x, &y)) {                 // espera liberacion
+        if (millis() - t0 > 5000) break;
+        delay(10);
+    }
+    return true;
+}
+
+static void cal_cargar() {
+    prefs.begin("p4touch", true);
+    cal_valida = prefs.getBool("ok", false);
+    if (cal_valida) {
+        cal_ax = prefs.getDouble("ax", 1); cal_bx = prefs.getDouble("bx", 0); cal_cx = prefs.getDouble("cx", 0);
+        cal_ay = prefs.getDouble("ay", 0); cal_by = prefs.getDouble("by", 1); cal_cy = prefs.getDouble("cy", 0);
+    }
+    prefs.end();
+    Serial.printf("cal: %s  ax=%.5f bx=%.5f cx=%.2f  ay=%.5f by=%.5f cy=%.2f\n",
+                  cal_valida ? "cargada de NVS" : "SIN calibrar",
+                  cal_ax, cal_bx, cal_cx, cal_ay, cal_by, cal_cy);
+}
+
+static void cal_guardar() {
+    prefs.begin("p4touch", false);
+    prefs.putDouble("ax", cal_ax); prefs.putDouble("bx", cal_bx); prefs.putDouble("cx", cal_cx);
+    prefs.putDouble("ay", cal_ay); prefs.putDouble("by", cal_by); prefs.putDouble("cy", cal_cy);
+    prefs.putBool("ok", true);
+    prefs.end();
+    cal_valida = true;
+}
+
+// Ventana breve al arrancar (solo si ya habia calibracion) para repetirla.
+static bool cal_pedir_recalibrado(uint32_t ms) {
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_clean(scr);
+    lv_obj_set_style_bg_color(scr, COL_BG, 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    lv_obj_t *t = lv_label_create(scr);
+    lv_obj_set_style_text_font(t, F_MD, 0);
+    lv_obj_set_style_text_color(t, COL_MUTE, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(t);
+    uint32_t t0 = millis();
+    bool tocado = false;
+    int x, y;
+    while (millis() - t0 < ms) {
+        if (touch_raw(&x, &y)) { tocado = true; break; }
+        lv_label_set_text_fmt(t, "Tactil calibrado.\n\nToca la pantalla ahora para\nrepetir la calibracion   (%lu)",
+                              (unsigned long)((ms - (millis() - t0)) / 1000 + 1));
+        lv_refr_now(NULL);
+        delay(15);
+    }
+    if (tocado) {
+        uint32_t r0 = millis();
+        while (touch_raw(&x, &y)) { if (millis() - r0 > 4000) break; delay(10); }
+    }
+    lv_obj_clean(scr);
+    return tocado;
+}
+
+// Rutina completa: 5 cruces -> ajuste afin por minimos cuadrados -> NVS.
+static void calibrar() {
+    const int TX[CAL_N] = { 120, LV_W - 120, LV_W - 120, 120, LV_W / 2 };
+    const int TY[CAL_N] = { 120, 120, LV_H - 120, LV_H - 120, LV_H / 2 };
+    int rx[CAL_N], ry[CAL_N], gx[CAL_N], gy[CAL_N], got = 0;
+
+    for (int i = 0; i < CAL_N; i++) {
+        cal_pantalla(i + 1, CAL_N, TX[i], TY[i]);
+        int a, b;
+        if (cal_leer_punto(&a, &b)) {
+            rx[got] = a; ry[got] = b; gx[got] = TX[i]; gy[got] = TY[i]; got++;
+            Serial.printf("cal p%d  target=(%d,%d)  raw=(%d,%d)\n", i + 1, TX[i], TY[i], a, b);
+            lv_obj_t *ok = lv_label_create(lv_screen_active());
+            lv_label_set_text(ok, "OK");
+            lv_obj_set_style_text_font(ok, F_XL, 0);
+            lv_obj_set_style_text_color(ok, COL_VERDE, 0);
+            lv_obj_center(ok);
+            lv_refr_now(NULL);
+            delay(300);
+        } else {
+            Serial.printf("cal p%d  SIN toque (timeout)\n", i + 1);
+        }
+    }
+
+    if (got < 3) {
+        char m[128];
+        snprintf(m, sizeof(m), "Tactil sin respuesta.\n\nGT911 I2C: %s\n\nSe mantiene el mapa anterior.", cal_i2c);
+        cal_aviso(m, COL_ROJO, 4000);
+        lv_obj_clean(lv_screen_active());
+        return;
+    }
+
+    double Sxx = 0, Sxy = 0, Sx = 0, Syy = 0, Sy = 0;
+    double bx0 = 0, bx1 = 0, bx2 = 0, by0 = 0, by1 = 0, by2 = 0;
+    for (int k = 0; k < got; k++) {
+        double X = rx[k], Y = ry[k];
+        Sxx += X * X; Sxy += X * Y; Sx += X; Syy += Y * Y; Sy += Y;
+        bx0 += X * gx[k]; bx1 += Y * gx[k]; bx2 += gx[k];
+        by0 += X * gy[k]; by1 += Y * gy[k]; by2 += gy[k];
+    }
+    double A[3][3] = { { Sxx, Sxy, Sx }, { Sxy, Syy, Sy }, { Sx, Sy, (double)got } };
+    double cx[3], cy[3], bxv[3] = { bx0, bx1, bx2 }, byv[3] = { by0, by1, by2 };
+    if (!cal_resolver3(A, bxv, cx) || !cal_resolver3(A, byv, cy)) {
+        cal_aviso("No se pudo calcular.\n\nSe mantiene el mapa anterior.", COL_ROJO, 3000);
+        lv_obj_clean(lv_screen_active());
+        return;
+    }
+
+    double err = 0;
+    for (int k = 0; k < got; k++) {
+        double px = cx[0] * rx[k] + cx[1] * ry[k] + cx[2];
+        double py = cy[0] * rx[k] + cy[1] * ry[k] + cy[2];
+        err += (px - gx[k]) * (px - gx[k]) + (py - gy[k]) * (py - gy[k]);
+    }
+    err = sqrt(err / got);
+
+    cal_ax = cx[0]; cal_bx = cx[1]; cal_cx = cx[2];
+    cal_ay = cy[0]; cal_by = cy[1]; cal_cy = cy[2];
+    cal_guardar();
+    Serial.printf("cal OK  rms=%.1fpx  ax=%.5f bx=%.5f cx=%.2f  ay=%.5f by=%.5f cy=%.2f\n",
+                  err, cal_ax, cal_bx, cal_cx, cal_ay, cal_by, cal_cy);
+
+    char m[128];
+    snprintf(m, sizeof(m), "Calibracion guardada.\n\nError medio: %d px\n\nArrancando el panel...", (int)lround(err));
+    cal_aviso(m, err < 45 ? COL_VERDE : COL_AMBAR, 2600);
+    lv_obj_clean(lv_screen_active());
 }
 
 // ── Vistas ─────────────────────────────────────────────────────────────────
@@ -548,6 +860,10 @@ static void ui_actualizar(bool forzar) {
         if (si >= 0) ui_detalle(si);
         else         ui_lista(sel_id[0] != '\0');
     }
+
+    // El velo de confirmacion solo vive mientras haya detalle y el carro pida OK.
+    if (tiene_datos && selIndex() >= 0 && pide_ok) ok_overlay_poner();
+    else                                           ok_overlay_quitar();
 }
 
 // ── LVGL: pintar / tactil / tick ───────────────────────────────────────────
@@ -580,15 +896,33 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px) {
 }
 
 static void touch_cb(lv_indev_t *i, lv_indev_data_t *data) {
-    gfx.touch_Update();
-    if (gfx.touch_GetPen() != NOTOUCH) {
-        int nx = gfx.touch_GetX();
-        int ny = gfx.touch_GetY();
-        data->point.x = ny;                  // lx = ny
-        data->point.y = (NAT_W - 1) - nx;    // ly = (NAT_W-1) - nx
+    int nx, ny;
+    if (touch_raw(&nx, &ny)) {
+        int lx, ly;
+        if (cal_valida) {
+            lx = (int)lround(cal_ax * nx + cal_bx * ny + cal_cx);
+            ly = (int)lround(cal_ay * nx + cal_by * ny + cal_cy);
+        } else {                        // sin calibrar: crudo tal cual
+            lx = nx;
+            ly = ny;
+        }
+        // Se recorta para que LVGL siempre situe el punto dentro de la pantalla.
+        if (lx < 0) lx = 0; else if (lx >= LV_W) lx = LV_W - 1;
+        if (ly < 0) ly = 0; else if (ly >= LV_H) ly = LV_H - 1;
+        data->point.x = lx;
+        data->point.y = ly;
         data->state = LV_INDEV_STATE_PRESSED;
+#if TOUCH_DEBUG
+        if (dbg_pen == 0)
+            Serial.printf("TOUCH raw=(%d,%d) map=(%d,%d)\n", nx, ny, lx, ly);
+        dbg_pen = 1; dbg_rawx = nx; dbg_rawy = ny; dbg_mapx = lx; dbg_mapy = ly;
+        dbg_ms = millis();
+#endif
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
+#if TOUCH_DEBUG
+        dbg_pen = 0;
+#endif
     }
 }
 
@@ -727,6 +1061,17 @@ static void ui_build() {
     lv_obj_set_style_pad_row(cont, 12, 0);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF);
+
+#if TOUCH_DEBUG
+    lbl_dbg = lv_label_create(scr);
+    lv_label_set_text(lbl_dbg, "touch: sin toque");
+    lv_obj_set_style_text_font(lbl_dbg, F_XS, 0);
+    lv_obj_set_style_text_color(lbl_dbg, COL_AMBAR, 0);
+    lv_obj_set_style_bg_color(lbl_dbg, COL_NEGRO, 0);
+    lv_obj_set_style_bg_opa(lbl_dbg, LV_OPA_50, 0);
+    lv_obj_set_style_pad_hor(lbl_dbg, 6, 0);
+    lv_obj_align(lbl_dbg, LV_ALIGN_BOTTOM_LEFT, 6, -6);
+#endif
 }
 
 // ── Setup / loop ───────────────────────────────────────────────────────────
@@ -736,6 +1081,17 @@ void setup() {
     gfx.BacklightOn(true);
     gfx.touch_Set(TOUCH_ENABLE);
     fb = gfx.SelectFB(0);
+
+    // Sonda I2C del GT911 (bus 7/8, lo abrio gfx.begin()). Deja constancia en
+    // pantalla si la calibracion no recibe toques: distingue "sin cablear /
+    // sin masa" de "coordenadas raras".
+    {
+        Wire.beginTransmission(0x5D); int e5d = Wire.endTransmission();
+        Wire.beginTransmission(0x14); int e14 = Wire.endTransmission();
+        snprintf(cal_i2c, sizeof(cal_i2c), "0x5D=%s 0x14=%s",
+                 e5d == 0 ? "OK" : "no", e14 == 0 ? "OK" : "no");
+        Serial.printf("GT911 %s\n", cal_i2c);
+    }
 
     // Pinta el framebuffer entero del color de fondo antes de arrancar LVGL.
     // En modo PARTIAL, LVGL solo repinta lo que cambia; si algun borde no lo
@@ -771,11 +1127,18 @@ void setup() {
     lv_indev_set_read_cb(indev, touch_cb);
     lv_indev_set_display(indev, disp);
 
+    // Calibracion tactil: obligatoria la primera vez; despues, una ventana de
+    // 2,5 s al arrancar para repetirla. Va antes de construir la UI porque usa
+    // la pantalla activa como lienzo.
+    cal_cargar();
+    if (!cal_valida || cal_pedir_recalibrado(2500))
+        calibrar();
+
     ui_build();
     ui_actualizar(true);
     lv_obj_invalidate(lv_screen_active());   // repinta TODA la pantalla al menos una vez
 
-    Serial.println("P4 pantalla_p4_101 v8 (LVGL) ready");
+    Serial.println("P4 pantalla_p4_101 v12 (LVGL) ready");
     Serial.printf("UART1 rx=%d tx=%d baud=%lu rxbuf=4096\n", UART_RX_PIN, UART_TX_PIN,
                   (unsigned long)UART_BAUD);
 }
@@ -806,6 +1169,19 @@ void loop() {
             Serial.print("]: "); Serial.println(lastline);
         }
     }
+
+#if TOUCH_DEBUG
+    static uint32_t dbg_lbl_ms = 0;
+    if (lbl_dbg && now - dbg_lbl_ms > 150) {
+        dbg_lbl_ms = now;
+        lv_label_set_text_fmt(lbl_dbg,
+            "cal=%d  touch pen=%d raw(%d,%d) map(%d,%d) clk=%lu age=%lums ovl=%d",
+            cal_valida ? 1 : 0, dbg_pen, dbg_rawx, dbg_rawy, dbg_mapx, dbg_mapy,
+            (unsigned long)dbg_clicks,
+            (unsigned long)(dbg_ms ? now - dbg_ms : 0),
+            ok_overlay ? 1 : 0);
+    }
+#endif
 
     lv_timer_handler();
     delay(4);

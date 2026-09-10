@@ -18,16 +18,33 @@ en detalle, los paquetes de un puesto. Firmware: `esp32/pantalla_p4_101/pantalla
   filas nativas escritas, y una vez tras el prefill de `setup()`. La librería GFX4d hace ese
   mismo msync tras cada dibujo (`EndWrite()`, `gfx4desp32_mipi_panel.cpp:654`). **Compila
   limpio.** Falta flashear (`./compilar.sh COM6`) y confirmar que se fueron.
-- **Botón OK táctil en la P4 — implementado, sin flashear/desplegar:**
+- **Botón OK táctil en la P4 — flasheado (v10), pendiente validar en el carro:**
   - Aparece SOLO cuando el carro manda `"ok":true` en la instantánea (`_pide_accion` del puesto
     en `sel`). Barra `CONFIRMAR` full-width abajo, 96 px, verde, **parpadea** (`lv_anim` de opacidad).
-  - Al tocarla: la P4 manda `{"tipo":"ok","carro","sel","id":<millis>}` al carro por la misma
-    UART (TX GPIO50 → carro RX GPIO46, ya cableado) y **reintenta 3× cada 200 ms hasta recibir
-    `{"tipo":"ack","id":N}`**. Antirrebote de 1,5 s en el toque.
+  - El toque se recoge con un **velo transparente sobre toda la zona inferior** (340 px, ancho
+    completo) = tecla Enter, más el `ok_click_cb` de la propia barra. Al tocar: la P4 manda
+    `{"tipo":"ok","carro","sel","id":<millis>}` al carro por la misma UART (TX GPIO50 → carro
+    RX GPIO46) y **reintenta 3× cada 200 ms hasta recibir `{"tipo":"ack","id":N}`**. Antirrebote
+    1,5 s + "OK" verde fugaz de feedback.
   - Carro (`main_wifi.py`): lee `display_uart.leer()` cada vuelta del loop, ACKea siempre (aunque
     sea repetido), deduplica por `id` (ventana 5 s) y si `sel` coincide con `sel_clave` en
     `vista=='detalle'` llama al **mismo `confirmar_ok()`** que el pulsador 8. `FW_VERSION`
     subida a `2026-09-10c`. `lib/uart_display.py`: `rxbuf=512`, `timeout=0`.
+- **Táctil — RESUELTO (v12), funciona en el carro:**
+  - **Causa 1:** `touch_Update()` de la librería 4D tiene una compuerta sobre el pin INT
+    (GPIO5) que en esta placa la dejaba muda (nunca detectaba la pulsación). **Fix:** leer el
+    GT911 por I2C directo con `gfx.touch_GetTouchPoints()` (misma consulta, sin la compuerta).
+    Helper `touch_raw()`; se usa en `touch_cb`, `cal_leer_punto()` y `cal_pedir_recalibrado()`.
+  - **Causa 2:** sin `gfx.Orientation()` los ejes del táctil no cuadran con la rotación manual
+    de `flush_cb`. **Fix:** `calibrar()` pide **5 toques sobre cruces** y ajusta por mínimos
+    cuadrados un **afín** `lx=ax·rawx+bx·rawy+cx`, `ly=ay·rawx+by·rawy+cy` (absorbe
+    giro/espejo/escala). Se guarda en **NVS** (`Preferences`, namespace `p4touch`) → **permanente,
+    sobrevive apagones**. `touch_cb` aplica el afín si `cal_valida`.
+  - 1ª vez (NVS vacía): calibra obligatorio. Después: ventana de 2,5 s al arrancar
+    ("toca para repetir la calibración"); si no tocas, carga la de NVS y sigue.
+  - Sonda I2C al arrancar → `cal_i2c` (`0x5D=OK/no 0x14=OK/no`), se enseña si la calibración
+    no recibe toques (distingue "sin masa/cable" de "coordenadas raras").
+  - `#define TOUCH_DEBUG 0` (rótulo de diagnóstico apagado; `1` para volver a verlo).
 
 ## 3. DECISIONES TOMADAS
 - Toolchain: `arduino-cli` (Arduino IDE) vía `compilar.sh`, NO PlatformIO.
@@ -45,10 +62,10 @@ en detalle, los paquetes de un puesto. Firmware: `esp32/pantalla_p4_101/pantalla
   al puesto de `sel`; en vista lista no hay botón.
 
 ## 4. SIGUIENTE PASO CONCRETO
-1. **Flashear la P4:** `./esp32/pantalla_p4_101/compilar.sh COM6`. Comprobar en el monitor
-   serie (UART0, 115200) `P4 pantalla_p4_101 v8 (LVGL) ready`. Verificar: (a) **rayas negras
-   fuera**; (b) con un puesto en detalle que espere confirmación, sale la barra `CONFIRMAR`
-   parpadeando y al tocarla el carro confirma (mismo efecto que el pulsador 8).
+1. **Subir a `main`** el firmware de la P4 (`esp32/pantalla_p4_101/pantalla_p4_101.ino`, v12):
+   rayas negras + OK táctil + calibración funcionan y confirmados en el carro. En `main` está
+   solo hasta `daf24a3` (v8, sin táctil). El resto del árbol (carro `2026-09-10c`, web) ya
+   está en `main` desde `daf24a3`.
 2. **Desplegar el carro:** desplegar el servidor primero (ver paso 3), luego el OTA del carro
    se sirve solo — la placa coge `2026-09-10c` en el siguiente poll. Verificar en
    Admin → Lectores RFID / estado del carro que cambió de versión.
