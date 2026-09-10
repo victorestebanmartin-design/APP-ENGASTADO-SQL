@@ -153,13 +153,25 @@ static void guardarLinea(const String &s) {
 // Drena la UART sin parsear: acumula en 'buf' y, al ver '\n', deja la linea
 // lista en 'pendiente'. Se llama tambien durante el dibujo para que una trama
 // que llegue mientras se pinta no se pierda.
+//
+// La linea RX recoge ruido en reposo (masa larga / cable sin apantallar): antes
+// de cada trama valida llegan unos bytes basura. Por eso:
+//   - no se empieza a acumular hasta ver la '{' que abre el JSON;
+//   - un parcial parado > 150 ms (no hay burst) se tira: era ruido o trama rota.
+static unsigned long ultimo_byte = 0;
+
 static void pump() {
     while (carroUart.available()) {
         char c = static_cast<char>(carroUart.read());
         rx_bytes++;
+        ultimo_byte = millis();
         if (c == '\n') {
-            String s = buf; s.trim(); buf = "";
-            if (s.length() > 0) { pendiente = s; hay_pendiente = true; }
+            String s = buf; buf = ""; s.trim();
+            if (s.length() > 1 && s[0] == '{') { pendiente = s; hay_pendiente = true; }
+            else if (s.length() > 0)
+                snprintf(diag, sizeof(diag), "linea sin JSON (%u B ruido)", (unsigned)s.length());
+        } else if (buf.length() == 0) {
+            if (c == '{') buf += c;                      // ignora el ruido previo
         } else if (c != '\r' && buf.length() < 8192) {
             buf += c;
         } else if (buf.length() >= 8192) {
@@ -167,6 +179,7 @@ static void pump() {
             buf = "";
         }
     }
+    if (buf.length() > 0 && millis() - ultimo_byte > 150) buf = "";
 }
 
 // Copia un campo JSON (string, numero o null) a un char[]
@@ -408,14 +421,16 @@ static void procesarLinea(const String &msg) {
     Serial.println(msg.substring(0, 140));
 
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, msg);
+    DeserializationError err = deserializeJson(doc, msg.c_str(), msg.length());
     if (err) {
-        // Resincronizar: si la linea trae basura antes del JSON, reintentar
-        // desde la primera llave.
-        int b = msg.indexOf('{');
-        if (b > 0) {
-            DeserializationError e2 = deserializeJson(doc, msg.substring(b));
-            if (!e2) { err = e2; Serial.printf("recuperado tras %d bytes de basura\n", b); }
+        // Resincronizar: si la linea trae ruido antes del JSON, reintentar
+        // desde cada '{' (indexOf no vale: el ruido puede traer un \0).
+        const char *p = msg.c_str();
+        int len = msg.length();
+        for (int b = 1; b < len && b < 400 && err; b++) {
+            if (p[b] != '{') continue;
+            DeserializationError e2 = deserializeJson(doc, p + b, len - b);
+            if (!e2) { err = e2; Serial.printf("recuperado tras %d bytes de ruido\n", b); }
         }
     }
     if (err) {
@@ -522,6 +537,10 @@ void loop() {
         Serial.printf("hb: rx=%luB buf=%d nops=%d/%d wifi=%d rx_age=%lums | %s\n",
                       rx_bytes, buf.length(), nops, ops_totales, (int)wifi_ok,
                       ultimo_rx ? now - ultimo_rx : 0UL, diag);
+        if (!tiene_datos && lastline[0]) {
+            Serial.print("LASTLINE["); Serial.print((int)strlen(lastline));
+            Serial.print("]: "); Serial.println(lastline);
+        }
         gfx.touch_Update();
         if (gfx.touch_GetPen() != NOTOUCH) {
             Serial.printf("TOUCH x=%d y=%d\n", gfx.touch_GetX(), gfx.touch_GetY());

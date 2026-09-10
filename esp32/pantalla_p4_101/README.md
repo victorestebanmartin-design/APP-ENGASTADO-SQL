@@ -95,3 +95,22 @@ El pie enseña `... N B ... <motivo>`:
   de UART0 imprime `raw:` con los primeros bytes en hexadecimal.
 - **`N B` con `OK …` pero el pie sigue en rojo**: llegó una trama buena hace
   más de 90 s y no ha habido otra (el carro solo reenvía cuando cambia algo).
+
+### Ruido en la línea RX
+
+En reposo la línea RX de la P4 recoge basura (masa larga, cable sin apantallar):
+antes de cada trama buena entran unos bytes sueltos. El firmware lo lleva —
+solo empieza a acumular al ver la `{` que abre el JSON y descarta cualquier
+parcial que se quede quieto más de 150 ms— así que la pantalla funciona igual.
+Pero el arreglo de verdad es eléctrico: **masa común corta y directa entre las
+dos placas**, cable de datos corto y, si aún así hay fallos sueltos, bajar la
+UART a 57600 o 38400 en los dos extremos. Un byte de ruido colado en mitad de
+una trama sí la tira (hasta la siguiente).
+
+### Serie por USB para depurar
+
+Con la config normal, `Serial` sale por los pines de UART0, no por el USB. Para
+ver los logs en el COM del PC hay que compilar una vez con
+`USBMode=hwcdc,CDCOnBoot=cdc` añadido al FQBN (menús *USB Mode → Hardware CDC and
+JTAG* y *CDC On Boot → Enabled* en el Arduino IDE). `compilar.sh` usa la config
+normal, así que al reflashear con él vuelve a quedar sin consola USB.
