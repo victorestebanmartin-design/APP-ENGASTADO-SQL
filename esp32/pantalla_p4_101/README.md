@@ -16,9 +16,17 @@ cada vez que cambia algo:
 ```
 
 `fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz **apaisada**
-(1280x800) con la identidad del SW web (COJO): fondo claro, cabecera azul en
-degradado. La cabecera lleva la marca `COJO sw`, `CARRO N` centrado, la pastilla
-de WiFi y la versión de firmware del carro.
+(1280x800), **estilo oscuro a juego con la pantalla pequeña del carro**: fondo
+negro, mismos acentos (verde recoger, ámbar en proceso, rojo devolver). La
+cabecera lleva `COJO sw` + `ENGASTADO`, `CARRO N` centrado, la pastilla de WiFi
+y la versión de firmware del carro.
+
+**Refresco silencioso.** Se pinta a un frame buffer oculto y se vuelca de golpe
+(`DrawToframebuffer(1)` → `DrawFrameBuffer(1)`), y solo cuando cambia el
+contenido: se compara una huella (FNV) de lo que se va a mostrar con la
+anterior. El carro reenvía la instantánea cada 5 s aunque no cambie nada
+(para que una P4 recién reiniciada se recupere sola); esas tramas iguales no
+repintan nada.
 
 **Dos vistas, según `sel`** (la clave del puesto que se está mirando en detalle
 en el carro; vacío = nadie identificado):
@@ -34,9 +42,9 @@ en el carro; vacío = nadie identificado):
   por su pantalla pequeña; aquí se ven los cinco. Cuando el carro vuelve solo a
   la lista (a los `VOLVER_LISTA_S`), la P4 también.
 
-Pie: `Conectado — hace N s` mientras llegan tramas (se refresca cada 2 s); si
-pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo con una línea de diagnóstico
-(bytes recibidos por la UART y último error de parseo).
+Pie: `Conectado` (punto verde) mientras llegan tramas; si pasan 90 s sin
+ninguna, `SIN DATOS DEL CARRO` en rojo con una línea de diagnóstico (bytes
+recibidos por la UART y último error de parseo).
 
 No confirma acciones: es un espejo. La confirmación sigue en los botones del
 carro. El táctil de momento solo imprime coordenadas por el monitor serie.
@@ -81,7 +89,7 @@ Ya instaladas en `~/Documents/Arduino/libraries`:
 2. Conectar la P4 por USB y comprobar el puerto (COM6).
 3. `./compilar.sh COM6`.
 4. Monitor serie de UART0 a 115200: debe salir
-   `P4 pantalla_p4_101 v5 (lista / detalle por identificacion) ready` y la
+   `P4 pantalla_p4_101 v6 (oscuro, refresco silencioso) ready` y la
    pantalla `Esperando al carro`.
 5. Con ambas placas apagadas, conectar primero GND, luego el TX del carro al RX
    de la P4, y por último el TX de la P4 al RX del carro. Al llegar la primera
@@ -97,8 +105,9 @@ El pie enseña `... N B ... <motivo>`:
 - **`N B` con `JSON err`**: llegan bytes pero no son una trama válida. Casi
   siempre baudios (los dos extremos a 115200) o masa flotante. El monitor serie
   de UART0 imprime `raw:` con los primeros bytes en hexadecimal.
-- **`N B` con `OK …` pero el pie sigue en rojo**: llegó una trama buena hace
-  más de 90 s y no ha habido otra (el carro solo reenvía cuando cambia algo).
+- **`N B` con `OK …` pero el pie sigue en rojo**: llegó una trama buena pero
+  hace más de 90 s que no llega otra (el carro reenvía cada 5 s, así que esto
+  significa que ha dejado de emitir).
 
 ### Ruido en la línea RX
 
