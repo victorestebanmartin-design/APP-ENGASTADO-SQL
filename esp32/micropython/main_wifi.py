@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-10b"
+FW_VERSION = "2026-09-10c"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -450,13 +450,17 @@ display_uart = DisplayUart(
     rx_pin=DISPLAY_UART_RX,
 )
 
-def _enviar_display(ops, carro, fw, sel=''):
+def _enviar_display(ops, carro, fw, sel='', pide_ok=False):
     """Publica una instantánea; una pantalla desconectada no bloquea el carro.
 
     'sel' es la clave del puesto que se está mirando en detalle (tras pasar
     tarjeta o pulsar botón); vacío = nadie identificado. La pantalla P4 solo
     enseña los paquetes del puesto seleccionado: en la lista no muestra nada,
     para que con dos o tres puestos activos no sea un caos.
+
+    'pide_ok' = ese puesto espera una confirmación: la P4 saca su botón
+    CONFIRMAR (parpadeando). Al tocarlo la P4 devuelve {"tipo":"ok"} y aquí se
+    trata igual que el pulsador 8. Sin esto, la P4 nunca muestra botón.
     """
     if not display_uart.activa:
         return False
@@ -467,6 +471,7 @@ def _enviar_display(ops, carro, fw, sel=''):
         'fw': str(fw or ''),
         'wifi': bool(conectado),
         'sel': str(sel or ''),
+        'ok': bool(pide_ok),
         'ops': ops,
     })
 
@@ -1283,7 +1288,10 @@ nfc_uid_prev  = ''                # ultima tarjeta leida (anti-repeticion)
 nfc_uid_ts    = 0                 # cuando se leyo
 display_fp    = ''                # ultima instantanea aceptada por la UART
 display_sel   = None              # ultimo puesto seleccionado enviado a la P4
+display_ok    = False             # ultimo valor de 'ok' (pide confirmacion) enviado
 display_ts    = 0                 # cuando se envio la ultima (para el reenvio)
+ok_p4_id      = ''                # id del ultimo OK tactil atendido (anti-repeticion)
+ok_p4_ts      = 0                 # cuando se atendio
 intentos_wifi = 0
 arranque_marcado = False   # se pone a True tras la 1a vuelta (arranque valido)
 
@@ -1410,6 +1418,28 @@ while True:
             avisar_pulsa_puesto()
     btn_ok_prev = b_ok
 
+    # ── OK tactil desde la P4: mismo efecto que el pulsador 8 ─────────
+    # La P4 solo saca su boton cuando aqui le mandamos 'ok:true', y reintenta
+    # hasta recibir el ACK. Confirmamos el ACK siempre (aunque sea repetido)
+    # para que deje de reintentar, pero solo actuamos una vez por 'id' y solo
+    # si sigue apuntando al mismo puesto que tenemos en detalle.
+    msg_p4 = display_uart.leer()
+    if msg_p4 and msg_p4.get('tipo') == 'ok':
+        raw_id = msg_p4.get('id')                       # numero, tal cual lo manda la P4
+        id_ok = str(raw_id if raw_id is not None else '')
+        # El 'id' del ACK va como numero: la P4 lo compara con as<uint32_t>().
+        display_uart.enviar({'v': 1, 'tipo': 'ack', 'id': raw_id})
+        repetido = (id_ok and id_ok == ok_p4_id
+                    and time.ticks_diff(now, ok_p4_ts) < 5000)
+        ok_p4_id = id_ok
+        ok_p4_ts = now
+        if not repetido and en_work_mode and vista == 'detalle' \
+                and str(msg_p4.get('sel') or '') == sel_clave:
+            print("OK tactil P4 id", id_ok, "puesto", sel_clave)
+            ultima_accion = now
+            ultimo_avance = now
+            confirmar_ok()
+
     # ── Volver solo a la lista tras un rato sin tocar nada ────────────
     if en_work_mode and vista == 'detalle' \
             and time.ticks_diff(now, ultima_accion) >= VOLVER_LISTA_S * 1000:
@@ -1500,15 +1530,26 @@ while True:
                 # Puesto identificado (tarjeta/boton) que la P4 debe detallar;
                 # vacio = nadie -> la P4 solo lista, sin paquetes.
                 sel_disp = sel_clave if vista == 'detalle' else ''
+                # ¿Ese puesto espera confirmacion? -> la P4 saca el boton
+                # CONFIRMAR. Se mira sobre 'ops' recien parseado (work_ops aun
+                # no esta actualizado en esta vuelta).
+                pide_ok = False
+                if sel_disp:
+                    for _o in ops:
+                        if _clave(_o) == sel_disp:
+                            pide_ok = _pide_accion(_o)
+                            break
                 # Reenvio periodico aunque no cambie nada: si la pantalla P4 se
                 # reinicia (reflasheo, corte de 5V), sin esto se queda en "sin
                 # carro" hasta el proximo cambio de estado -- habia que apagar y
                 # encender el carro para que volviera a mandarle algo.
                 reenvio = time.ticks_diff(now, display_ts) >= 5000
-                if fp != display_fp or sel_disp != display_sel or reenvio:
-                    if _enviar_display(ops, ca, fw_servidor, sel_disp):
+                if fp != display_fp or sel_disp != display_sel \
+                        or pide_ok != display_ok or reenvio:
+                    if _enviar_display(ops, ca, fw_servidor, sel_disp, pide_ok):
                         display_fp = fp
                         display_sel = sel_disp
+                        display_ok = pide_ok
                         display_ts = time.ticks_ms()
                 if not ops:
                     if en_work_mode:

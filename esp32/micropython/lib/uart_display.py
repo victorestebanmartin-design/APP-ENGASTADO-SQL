@@ -26,6 +26,8 @@ class DisplayUart:
                 stop=1,
                 tx=Pin(tx_pin),
                 rx=Pin(rx_pin),
+                rxbuf=512,
+                timeout=0,
             )
         except Exception as exc:
             self.error = str(exc)

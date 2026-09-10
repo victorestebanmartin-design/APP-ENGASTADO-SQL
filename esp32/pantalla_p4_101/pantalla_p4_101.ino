@@ -29,6 +29,7 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include "gfx4desp32_ESP32_P4_101CT_CLB.h"
+#include "esp_cache.h"   // esp_cache_msync: volcar la cache al framebuffer PSRAM
 
 #define ARDUINOJSON_ENABLE_NAN 1
 #define ARDUINOJSON_ENABLE_INFINITY 1
@@ -87,6 +88,7 @@ char          sel_id[40]  = "";
 char          carro_id[8] = "--";
 char          fw_buf[28]   = "---";
 bool          wifi_ok      = false;
+bool          pide_ok      = false;   // el carro pide confirmar el puesto en detalle
 unsigned long ultimo_rx    = 0;
 unsigned long ultimo_hb    = 0;
 bool          tiene_datos   = false;
@@ -197,8 +199,8 @@ static uint32_t huellaActual() {
     int si = selIndex();
     if (si >= 0) {
         const Op &o = ops_buf[si];
-        snprintf(t, sizeof(t), "D%s|%s|%s|%d|%d|%d|%d", o.puesto, o.fase, o.lote,
-                 o.npaq, o.nbuf, o.grupo, o.grupos);
+        snprintf(t, sizeof(t), "D%s|%s|%s|%d|%d|%d|%d|%d", o.puesto, o.fase, o.lote,
+                 o.npaq, o.nbuf, o.grupo, o.grupos, (int)pide_ok);
         h = fnv(t, h);
         for (int k = 0; k < o.nbuf; k++) {
             const Paq &q = o.paq[k];
@@ -254,6 +256,52 @@ static lv_obj_t *txt(lv_obj_t *parent, const char *s, const lv_font_t *fnt, lv_c
     lv_obj_set_style_text_font(l, fnt, 0);
     lv_obj_set_style_text_color(l, col, 0);
     return l;
+}
+
+// ── OK tactil -> carro ─────────────────────────────────────────────────────
+// El boton solo sale cuando el carro pide confirmacion (campo "ok" de la
+// trama). Al tocarlo se manda {"tipo":"ok",...} al carro por la misma UART y
+// se reintenta (3x cada 200 ms) hasta recibir su {"tipo":"ack","id":N}: una
+// pulsacion perdida dejaria al operario esperando.
+static bool     ok_tx_activo   = false;
+static int      ok_tx_intentos = 0;
+static uint32_t ok_tx_ultimo   = 0;
+static uint32_t ok_tx_id       = 0;
+static uint32_t ok_toque_ms    = 0;
+
+static void ok_tx_iniciar() {
+    ok_tx_id       = millis();
+    ok_tx_activo   = true;
+    ok_tx_intentos = 0;
+    ok_tx_ultimo   = 0;            // dispara el primer envio de inmediato
+}
+static void ok_tx_paso() {
+    if (!ok_tx_activo) return;
+    uint32_t now = millis();
+    if (ok_tx_ultimo && now - ok_tx_ultimo < 200) return;
+    if (ok_tx_intentos >= 3) {
+        ok_tx_activo = false;
+        snprintf(diag, sizeof(diag), "OK tactil sin ACK del carro");
+        return;
+    }
+    char linea[110];
+    snprintf(linea, sizeof(linea),
+             "{\"v\":1,\"tipo\":\"ok\",\"carro\":\"%s\",\"sel\":\"%s\",\"id\":%lu}\n",
+             carro_id, sel_id, (unsigned long)ok_tx_id);
+    carroUart.print(linea);
+    ok_tx_intentos++;
+    ok_tx_ultimo = now;
+}
+
+static void ok_anim_opa_cb(void *obj, int32_t v) {
+    lv_obj_set_style_bg_opa((lv_obj_t *)obj, v, 0);
+}
+static void ok_click_cb(lv_event_t *e) {
+    (void)e;
+    uint32_t now = millis();
+    if (now - ok_toque_ms < 1500) return;   // antirrebote / doble toque
+    ok_toque_ms = now;
+    ok_tx_iniciar();
 }
 
 // ── Vistas ─────────────────────────────────────────────────────────────────
@@ -435,17 +483,52 @@ static void ui_detalle(int idx) {
     lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollbar_mode(grid, LV_SCROLLBAR_MODE_OFF);
 
-    if (o.nbuf <= 0) { txt(grid, "Sin paquetes", F_LG, COL_MUTE); return; }
+    if (o.nbuf <= 0) {
+        txt(grid, "Sin paquetes", F_LG, COL_MUTE);
+    } else {
+        // 3 celdas por fila, 2 filas. Descuento paddings de cont (40) y card (32).
+        int gw = LV_W - 40 - 32;
+        int gh = LV_H - 100 - 40 - 32 - 64 - 28 - 30;   // header, pads, cabecera, meta, gaps
+        if (pide_ok) gh -= 106;                         // hueco de la barra CONFIRMAR
+        int cw = (gw - 2 * 16 - 6) / 3;                 // -6: margen para que quepan 3
+        int ch = (gh - 16) / 2;
+        if (ch < 150) ch = 150;
+        if (ch > 300) ch = 300;
+        for (int t = 0; t < o.nbuf; t++) celdaPaquete(grid, o.paq[t], cw, ch);
+    }
 
-    // 3 celdas por fila, 2 filas. Descuento paddings de cont (40) y card (32).
-    int gw = LV_W - 40 - 32;
-    int gh = LV_H - 100 - 40 - 32 - 64 - 28 - 30;   // header, pads, cabecera, meta, gaps
-    int cw = (gw - 2 * 16 - 6) / 3;                 // -6: margen para que quepan 3
-    int ch = (gh - 16) / 2;
-    if (ch < 150) ch = 150;
-    if (ch > 300) ch = 300;
+    // Barra CONFIRMAR: solo cuando el carro la pide. Parpadea para que se vea
+    // desde lejos; al tocarla se manda el OK al carro (con ACK y reintento).
+    if (!pide_ok) return;
+    lv_obj_t *ok = lv_obj_create(c);
+    lv_obj_set_width(ok, LV_PCT(100));
+    lv_obj_set_height(ok, 96);
+    lv_obj_set_style_bg_color(ok, COL_VERDE, 0);
+    lv_obj_set_style_bg_opa(ok, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(ok, 18, 0);
+    lv_obj_set_style_border_width(ok, 0, 0);
+    lv_obj_set_style_shadow_width(ok, 20, 0);
+    lv_obj_set_style_shadow_opa(ok, LV_OPA_40, 0);
+    lv_obj_set_style_shadow_color(ok, lv_color_black(), 0);
+    lv_obj_remove_flag(ok, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(ok, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ok, ok_click_cb, LV_EVENT_CLICKED, NULL);
 
-    for (int t = 0; t < o.nbuf; t++) celdaPaquete(grid, o.paq[t], cw, ch);
+    lv_obj_t *okt = lv_label_create(ok);
+    lv_label_set_text(okt, "CONFIRMAR");
+    lv_obj_set_style_text_font(okt, F_XL, 0);
+    lv_obj_set_style_text_color(okt, COL_NEGRO, 0);
+    lv_obj_center(okt);
+
+    lv_anim_t an;
+    lv_anim_init(&an);
+    lv_anim_set_var(&an, ok);
+    lv_anim_set_exec_cb(&an, ok_anim_opa_cb);
+    lv_anim_set_values(&an, LV_OPA_40, LV_OPA_COVER);
+    lv_anim_set_duration(&an, 450);
+    lv_anim_set_playback_duration(&an, 450);
+    lv_anim_set_repeat_count(&an, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&an);
 }
 
 static void ui_actualizar(bool forzar) {
@@ -481,6 +564,18 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px) {
             src++;
         }
     }
+    // El framebuffer DPI vive en PSRAM y lo lee por DMA el controlador MIPI-DSI.
+    // Si la cache de la CPU no se vuelca a memoria, el DSI ve filas a medio
+    // escribir -> "rayas negras" del ancho de una linea de cache (64 B = 32 px).
+    // La libreria GFX4d hace este mismo msync tras cada dibujo (EndWrite()); al
+    // pintar nosotros directos en 'fb' hay que hacerlo aqui. Las columnas LVGL
+    // (a->x1..a->x2) son filas nativas; se vuelca ese rango entero de filas.
+    int r0 = a->x1 < 0 ? 0 : a->x1;
+    int r1 = a->x2 >= NAT_H ? NAT_H - 1 : a->x2;
+    if (fb && r1 >= r0)
+        esp_cache_msync(fb + (size_t)r0 * NAT_W * 2,
+                        (size_t)(r1 - r0 + 1) * NAT_W * 2,
+                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
     lv_display_flush_ready(d);
 }
 
@@ -522,6 +617,14 @@ static void procesarLinea(const String &msg) {
     }
 
     const char *tipo = doc["tipo"] | "";
+    if (!strcmp(tipo, "ack")) {
+        uint32_t id = doc["id"] | 0u;
+        if (ok_tx_activo && id == ok_tx_id) {
+            ok_tx_activo = false;
+            snprintf(diag, sizeof(diag), "OK confirmado por el carro");
+        }
+        return;
+    }
     if (strcmp(tipo, "estado") != 0) {
         snprintf(diag, sizeof(diag), "tipo '%s' ignorado", tipo);
         if (!tiene_datos) ui_actualizar(false);
@@ -532,6 +635,9 @@ static void procesarLinea(const String &msg) {
     copiaCampo(fw_buf,   sizeof(fw_buf),   doc["fw"],    "---");
     copiaCampo(sel_id,   sizeof(sel_id),   doc["sel"],   "");
     wifi_ok = doc["wifi"] | false;
+    pide_ok = doc["ok"]   | false;
+    // El carro ya no pide OK (o cambio de puesto): corta cualquier reintento vivo.
+    if (!pide_ok) ok_tx_activo = false;
 
     JsonArray arr = doc["ops"].as<JsonArray>();
     nops = 0;
@@ -639,6 +745,8 @@ void setup() {
         const uint16_t bg565 = ((0x0B >> 3) << 11) | ((0x0F >> 2) << 5) | (0x17 >> 3);
         uint16_t *pfb = (uint16_t *)fb;
         for (uint32_t i = 0; i < (uint32_t)NAT_W * NAT_H; i++) pfb[i] = bg565;
+        esp_cache_msync(fb, (size_t)NAT_W * NAT_H * 2,
+                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
     }
 
     buf.reserve(2048);
@@ -667,13 +775,14 @@ void setup() {
     ui_actualizar(true);
     lv_obj_invalidate(lv_screen_active());   // repinta TODA la pantalla al menos una vez
 
-    Serial.println("P4 pantalla_p4_101 v7 (LVGL) ready");
+    Serial.println("P4 pantalla_p4_101 v8 (LVGL) ready");
     Serial.printf("UART1 rx=%d tx=%d baud=%lu rxbuf=4096\n", UART_RX_PIN, UART_TX_PIN,
                   (unsigned long)UART_BAUD);
 }
 
 void loop() {
     pump();
+    ok_tx_paso();
     if (hay_pendiente) {
         hay_pendiente = false;
         String linea = pendiente;
