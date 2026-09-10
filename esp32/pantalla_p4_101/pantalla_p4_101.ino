@@ -58,11 +58,16 @@ static constexpr int LV_H  = 800;
 #define COL_AZUL    lv_color_hex(0x4D96FF)   /* acento azul (reserva de paleta) */
 #define COL_NEGRO   lv_color_hex(0x0B0F17)
 
-#define F_XS  &lv_font_montserrat_14
-#define F_SM  &lv_font_montserrat_18
-#define F_MD  &lv_font_montserrat_24
-#define F_LG  &lv_font_montserrat_36
-#define F_XL  &lv_font_montserrat_48
+#define F_XS   &lv_font_montserrat_14
+#define F_SM   &lv_font_montserrat_18
+#define F_MD   &lv_font_montserrat_24
+#define F_LG   &lv_font_montserrat_36
+#define F_XL   &lv_font_montserrat_48
+// Nº de etiqueta: Montserrat Bold 128 px (solo digitos y '-'), generada con
+// lv_font_conv y embebida en lv_font_num128.c. LVGL no trae fuentes >48.
+// El .c se compila como C: hace falta enlace C para que resuelva el simbolo.
+extern "C" const lv_font_t lv_font_num128;
+#define F_HUGE &lv_font_num128
 
 // ── Estado (datos del carro) ────────────────────────────────────────────────
 static constexpr int MAX_OPS  = 8;
@@ -347,28 +352,35 @@ static void celdaPaquete(lv_obj_t *parent, const Paq &p, int cw, int ch) {
     lv_obj_set_style_shadow_opa(cell, LV_OPA_30, 0);
     lv_obj_set_style_shadow_color(cell, lv_color_black(), 0);
     lv_obj_set_style_shadow_offset_y(cell, 4, 0);
-    lv_obj_set_style_pad_all(cell, 14, 0);
-    lv_obj_set_style_pad_gap(cell, 2, 0);
+    lv_obj_set_style_pad_hor(cell, 12, 0);
+    lv_obj_set_style_pad_ver(cell, 8, 0);
+    lv_obj_set_style_pad_gap(cell, 0, 0);
     lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *n = lv_label_create(cell);
-    lv_label_set_text(n, p.etiqueta[0] ? p.etiqueta : "-");
-    lv_obj_set_style_text_font(n, F_XL, 0);
-    lv_obj_set_style_text_color(n, tc, 0);
-
+    // Nombre del elemento arriba
     lv_obj_t *e = lv_label_create(cell);
     lv_label_set_text(e, p.bloq ? "EN USO" : (p.elem[0] ? p.elem : "(sin nombre)"));
-    lv_obj_set_style_text_font(e, F_MD, 0);
+    lv_obj_set_style_text_font(e, F_LG, 0);
     lv_obj_set_style_text_color(e, tc, 0);
     lv_obj_set_width(e, LV_PCT(100));
     lv_label_set_long_mode(e, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(e, LV_TEXT_ALIGN_CENTER, 0);
 
+    // Nº de etiqueta flotando en el centro (SPACE_BETWEEN lo deja centrado
+    // entre el nombre y los contadores), enorme
+    lv_obj_t *n = lv_label_create(cell);
+    lv_label_set_text(n, p.etiqueta[0] ? p.etiqueta : "-");
+    lv_obj_set_style_text_font(n, F_HUGE, 0);
+    lv_obj_set_style_text_color(n, tc, 0);
+    lv_obj_set_width(n, LV_PCT(100));
+    lv_obj_set_style_text_align(n, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Contadores abajo
     lv_obj_t *m = lv_label_create(cell);
     lv_label_set_text_fmt(m, "%d cbl   ·   %d term", p.cables, p.term);
-    lv_obj_set_style_text_font(m, F_XS, 0);
+    lv_obj_set_style_text_font(m, F_SM, 0);
     lv_obj_set_style_text_color(m, tc, 0);
     lv_obj_set_style_text_opa(m, LV_OPA_70, 0);
 }
@@ -463,8 +475,10 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px) {
     uint16_t *dst = (uint16_t *)fb;
     for (int ly = a->y1; ly <= a->y2; ly++) {
         int nx = (NAT_W - 1) - ly;
+        if (nx < 0 || nx >= NAT_W) { src += (a->x2 - a->x1 + 1); continue; }
         for (int lx = a->x1; lx <= a->x2; lx++) {
-            dst[(uint32_t)lx * NAT_W + nx] = *src++;
+            if (lx >= 0 && lx < NAT_H) dst[(uint32_t)lx * NAT_W + nx] = *src;
+            src++;
         }
     }
     lv_display_flush_ready(d);
@@ -571,7 +585,7 @@ static void ui_build() {
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *head = lv_obj_create(scr);
-    lv_obj_set_size(head, LV_W, 96);
+    lv_obj_set_size(head, LV_W, 100);          // llega justo a 'cont' (y=100): sin franja negra en la costura
     lv_obj_set_pos(head, 0, 0);
     lv_obj_set_style_bg_color(head, COL_BG, 0);
     lv_obj_set_style_bg_opa(head, LV_OPA_COVER, 0);
@@ -617,6 +631,16 @@ void setup() {
     gfx.touch_Set(TOUCH_ENABLE);
     fb = gfx.SelectFB(0);
 
+    // Pinta el framebuffer entero del color de fondo antes de arrancar LVGL.
+    // En modo PARTIAL, LVGL solo repinta lo que cambia; si algun borde no lo
+    // toca nunca, se queda con este color (tema oscuro) en vez de negro
+    // -> se acaban las "rayas negras" en los bordes de la pantalla.
+    if (fb) {
+        const uint16_t bg565 = ((0x0B >> 3) << 11) | ((0x0F >> 2) << 5) | (0x17 >> 3);
+        uint16_t *pfb = (uint16_t *)fb;
+        for (uint32_t i = 0; i < (uint32_t)NAT_W * NAT_H; i++) pfb[i] = bg565;
+    }
+
     buf.reserve(2048);
     carroUart.setRxBufferSize(4096);
     carroUart.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
@@ -641,6 +665,7 @@ void setup() {
 
     ui_build();
     ui_actualizar(true);
+    lv_obj_invalidate(lv_screen_active());   // repinta TODA la pantalla al menos una vez
 
     Serial.println("P4 pantalla_p4_101 v7 (LVGL) ready");
     Serial.printf("UART1 rx=%d tx=%d baud=%lu rxbuf=4096\n", UART_RX_PIN, UART_TX_PIN,

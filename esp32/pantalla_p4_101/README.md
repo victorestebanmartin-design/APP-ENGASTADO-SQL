@@ -29,10 +29,16 @@ y versión de firmware del carro.
 
 La placa 4D (`GFX4dESP32P4`) solo enciende el panel MIPI, la retro y el táctil;
 LVGL pinta directamente en su framebuffer (`gfx.SelectFB(0)`), que el
-controlador DSI refresca solo. LVGL redibuja únicamente lo que cambia, y encima
-solo se reconstruye la UI cuando cambia una huella (FNV) del contenido: el carro
-reenvía la instantánea cada 5 s aunque no cambie nada (para que una P4 recién
-reiniciada se recupere sola) y esas tramas iguales no tocan la pantalla.
+controlador DSI refresca solo. El framebuffer es vertical (800x1280) y la UI
+apaisada (1280x800) se rota 90° a mano en el `flush_cb`. LVGL redibuja
+únicamente lo que cambia, y encima solo se reconstruye la UI cuando cambia una
+huella (FNV) del contenido: el carro reenvía la instantánea cada 5 s aunque no
+cambie nada (para que una P4 recién reiniciada se recupere sola) y esas tramas
+iguales no tocan la pantalla.
+
+Como en modo PARTIAL LVGL no toca lo que no cambia, `setup()` pinta el
+framebuffer entero del color de fondo **antes** de arrancar LVGL: así ningún
+borde se queda en negro si LVGL no llega a repintarlo.
 
 **Dos vistas, según `sel`** (la clave del puesto que se está mirando en detalle
 en el carro; vacío = nadie identificado):
@@ -43,13 +49,14 @@ en el carro; vacío = nadie identificado):
   filas; el resto se cuenta en el pie.
 - **Detalle** (`sel` = clave de un puesto, tras pasar tarjeta o pulsar el botón
   en el carro): solo ese puesto, a pantalla completa, con un **grid de hasta 5
-  paquetes** (3 celdas arriba, 2 abajo y centradas). Cada celda lleva el nº de
-  etiqueta enorme y el nombre del elemento, y **el fondo es el color de la
-  etiqueta** (el mismo que el modal del SW web); debajo, `N cbl · M term`. Un
-  paquete en uso por otro puesto sale en gris con borde rojo y «EN USO». El
-  carro pasa los paquetes de uno en uno por su pantalla pequeña; aquí se ven
-  los cinco del grupo. Cuando el carro vuelve solo a la lista (a los
-  `VOLVER_LISTA_S`), la P4 también.
+  paquetes** (3 celdas arriba, 2 abajo y centradas). Cada celda: nombre del
+  elemento arriba (Montserrat 36), **nº de etiqueta enorme al centro**
+  (Montserrat 48 escalado ~1,6× con `transform_scale`, porque LVGL no trae
+  fuentes de más de 48 px) y `N cbl · M term` abajo, todo sobre **el color de
+  fondo de la etiqueta** (el mismo que el modal del SW web). Un paquete en uso por otro
+  puesto sale en gris con borde rojo y «EN USO». El carro pasa los paquetes de
+  uno en uno por su pantalla pequeña; aquí se ven los cinco del grupo. Cuando
+  el carro vuelve solo a la lista (a los `VOLVER_LISTA_S`), la P4 también.
 
 Pie: `Conectado` (punto verde) mientras llegan tramas; si pasan 90 s sin
 ninguna, `SIN DATOS DEL CARRO` en rojo con una línea de diagnóstico (bytes
