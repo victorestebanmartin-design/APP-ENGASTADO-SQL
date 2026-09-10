@@ -10,18 +10,21 @@ cada vez que cambia algo:
 
 ```json
 {"v":1,"tipo":"estado","carro":"1","fw":"2026-09-01a","wifi":true,
- "ops":[{"operario":"clave","data":{"puesto_nombre":"MONTAJE 3",
-         "fase":"recoger","paquetes":[...]}}]}
+ "ops":[{"operario":"clave","data":{"puesto_nombre":"MONTAJE 3","fase":"recoger",
+         "lote":"L-2231","paquetes":[...]}}]}
 ```
 
-`fase` es `recoger` | `trabajando` | `devolver` | `fin`. El panel pinta, en
-vertical:
+`fase` es `recoger` | `trabajando` | `devolver` | `fin`. La interfaz usa la
+identidad del SW web (COJO): fondo claro y cabecera azul en degradado.
 
-- Cabecera: `CARRO N`, estado WiFi y versión de firmware del carro.
-- Una fila por puesto (máximo 5 visibles): nombre, nº de paquetes y la fase con
-  color (amarillo recoger, naranja en proceso, verde devolver).
-- Pie: `Conectado` mientras llegan tramas; si pasan 90 s sin nada, `Sin datos
-  del carro`.
+- Cabecera: marca `COJO sw`, `Carro N`, pastilla de estado WiFi y versión de
+  firmware del carro.
+- Una tarjeta blanca por puesto (máximo 5 visibles): nombre, lote, la fase en
+  una pastilla de color (ámbar recoger, azul en proceso, verde devolver, gris
+  finalizado) y el número de paquetes en grande.
+- Pie: `Conectado — hace N s` mientras llegan tramas (el contador se refresca
+  cada segundo); si pasan 90 s sin nada, `SIN DATOS DEL CARRO` en rojo. Si el
+  carro tiene más de 5 puestos, el pie indica cuántos quedan sin mostrar.
 
 No confirma acciones: es un espejo. La confirmación sigue en los botones del
 carro. El táctil de momento solo imprime coordenadas por el monitor serie.
@@ -65,8 +68,8 @@ Ya instaladas en `~/Documents/Arduino/libraries`:
 1. Desconectar los tres cables UART del carro durante la carga.
 2. Conectar la P4 por USB y comprobar el puerto (COM6).
 3. `./compilar.sh COM6`.
-4. Monitor serie de UART0 a 115200: debe salir `P4 pantalla_p4_101 v2 ready` y
-   la pantalla `ESPERANDO CARRO`.
+4. Monitor serie de UART0 a 115200: debe salir `P4 pantalla_p4_101 v3 (UI) ready`
+   y la pantalla `Esperando al carro`.
 5. Con ambas placas apagadas, conectar primero GND, luego el TX del carro al RX
    de la P4, y por último el TX de la P4 al RX del carro. Al llegar la primera
    instantánea la pantalla pasa a mostrar la lista de puestos.
