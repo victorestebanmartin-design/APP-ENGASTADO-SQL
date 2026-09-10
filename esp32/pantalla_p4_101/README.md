@@ -15,18 +15,19 @@ cada vez que cambia algo:
    "paquetes":[{"etiqueta":"12","elem":"...","cod":"...","bloqueado":false}]}}]}
 ```
 
-`fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz **apaisada**
-(1280x800), **estilo oscuro a juego con la pantalla pequeña del carro**: fondo
-negro, mismos acentos (verde recoger, ámbar en proceso, rojo devolver). La
-cabecera lleva `COJO sw` + `ENGASTADO`, `CARRO N` centrado, la pastilla de WiFi
-y la versión de firmware del carro.
+`fase` es `recoger` | `trabajando` | `devolver` | `fin`. Interfaz con **LVGL 9**:
+apaisada (1280x800), tema oscuro, tipos de letra suavizados (Montserrat),
+tarjetas con esquinas redondeadas y sombra, chips de fase de color. Acentos a
+juego con la pantalla pequeña del carro (verde recoger, ámbar en proceso, rojo
+devolver). Cabecera con `COJO sw` + `ENGASTADO`, `CARRO N` centrado, estado WiFi
+y versión de firmware del carro.
 
-**Refresco silencioso.** Se pinta a un frame buffer oculto y se vuelca de golpe
-(`DrawToframebuffer(1)` → `DrawFrameBuffer(1)`), y solo cuando cambia el
-contenido: se compara una huella (FNV) de lo que se va a mostrar con la
-anterior. El carro reenvía la instantánea cada 5 s aunque no cambie nada
-(para que una P4 recién reiniciada se recupere sola); esas tramas iguales no
-repintan nada.
+La placa 4D (`GFX4dESP32P4`) solo enciende el panel MIPI, la retro y el táctil;
+LVGL pinta directamente en su framebuffer (`gfx.SelectFB(0)`), que el
+controlador DSI refresca solo. LVGL redibuja únicamente lo que cambia, y encima
+solo se reconstruye la UI cuando cambia una huella (FNV) del contenido: el carro
+reenvía la instantánea cada 5 s aunque no cambie nada (para que una P4 recién
+reiniciada se recupere sola) y esas tramas iguales no tocan la pantalla.
 
 **Dos vistas, según `sel`** (la clave del puesto que se está mirando en detalle
 en el carro; vacío = nadie identificado):
@@ -77,11 +78,23 @@ Displays**, Display Model **ESP32-P4-101CT-CLB** y Partition Scheme
 
 ### Librerías necesarias
 
-Ya instaladas en `~/Documents/Arduino/libraries`:
+En `~/Documents/Arduino/libraries`:
 
 - `GFX4dESP32P4` — driver de 4D Systems (no está en registros; se copia a mano
   o se instala desde el Arduino IDE). https://github.com/4dsystems/GFX4dESP32P4
 - `ArduinoJson` (>= 7) — parser de las tramas del carro.
+- `lvgl` (9.x) — interfaz. Instalar una vez:
+
+  ```bash
+  arduino-cli lib install lvgl
+  ```
+
+  La config es `lv_conf.h` de esta carpeta. LVGL lo encuentra solo porque
+  `__has_include("lv_conf.h")` (la carpeta del sketch está en el include path).
+  Si al compilar se queja de que no encuentra `lv_conf.h`, copia este a
+  `~/Documents/Arduino/libraries/lv_conf.h` (al lado de la carpeta `lvgl`).
+  **No metas `#include` de cabeceras C en `lv_conf.h`**: LVGL lo arrastra a un
+  `.S` y el ensamblador de RISC-V no sabe leerlas.
 
 ## Primera carga
 
@@ -89,8 +102,7 @@ Ya instaladas en `~/Documents/Arduino/libraries`:
 2. Conectar la P4 por USB y comprobar el puerto (COM6).
 3. `./compilar.sh COM6`.
 4. Monitor serie de UART0 a 115200: debe salir
-   `P4 pantalla_p4_101 v6 (oscuro, refresco silencioso) ready` y la
-   pantalla `Esperando al carro`.
+   `P4 pantalla_p4_101 v7 (LVGL) ready` y la pantalla `Esperando al carro`.
 5. Con ambas placas apagadas, conectar primero GND, luego el TX del carro al RX
    de la P4, y por último el TX de la P4 al RX del carro. Al llegar la primera
    instantánea la pantalla pasa a mostrar la lista de puestos.
