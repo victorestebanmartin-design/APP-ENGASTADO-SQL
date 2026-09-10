@@ -400,7 +400,11 @@ function _payloadESP32(carro, extra) {
             cod:  p.cod_cable  || '',
             elem: p.elemento   || '',
             bloqueado: !!p.bloqueado,
-            por: p.bloqueado_por || ''
+            por: p.bloqueado_por || '',
+            // La pantalla grande del carro (ESP32-P4) pinta los paquetes como
+            // este modal, con los dos contadores a la derecha.
+            cables: p.num_cables      || 0,
+            term:   p.num_terminales  || 0
         }))
     });
 }

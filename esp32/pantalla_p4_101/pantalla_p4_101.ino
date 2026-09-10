@@ -12,14 +12,17 @@
  *   {"v":1,"tipo":"estado","carro":"1","fw":"...","wifi":true,"sel":"puesto_3",
  *    "ops":[{"operario":"puesto_3","data":{"puesto_nombre":"...","puesto_id":"...",
  *       "fase":"recoger|trabajando|devolver","lote":"...","boton":1,
- *       "paquetes":[{"etiqueta":"12","elem":"...","cod":"...","bloqueado":false}]}}]}
+ *       "grupo":1,"grupos":5,"paquetes":[{"etiqueta":12,"elem":"S206","cod":"...",
+ *          "cables":3,"term":5,"bloqueado":false}]}}]}
  *
  *   - "sel" vacio  -> LISTA: una fila por puesto (boton, nombre, fase, nº paq).
- *   - "sel" = clave -> DETALLE: ese puesto con el mosaico de hasta 5 paquetes.
+ *   - "sel" = clave -> DETALLE: ese puesto con sus paquetes en filas, calcadas
+ *     del modal de paquetes del SW web (distintivo ambar con la etiqueta,
+ *     elemento en grande, codigo debajo y los contadores cables / term.).
  *
  * Requiere, ademas de GFX4dESP32P4 y ArduinoJson, la libreria LVGL 9:
  *     arduino-cli lib install lvgl
- * La config es lv_conf.h de esta carpeta (se activa con build_opt.h).
+ * La config es lv_conf.h de esta misma carpeta.
  */
 
 #include <Arduino.h>
@@ -51,6 +54,7 @@ static constexpr int LV_H  = 800;
 #define COL_VERDE   lv_color_hex(0x30D46A)
 #define COL_AMBAR   lv_color_hex(0xF6A524)
 #define COL_ROJO    lv_color_hex(0xF2554B)
+#define COL_AZUL    lv_color_hex(0x4D96FF)   /* contador de cables, como el modal */
 #define COL_NEGRO   lv_color_hex(0x0B0F17)
 
 #define F_XS  &lv_font_montserrat_14
@@ -64,10 +68,10 @@ static constexpr int MAX_OPS  = 8;
 static constexpr int MAX_ROWS = 7;
 static constexpr int MAX_TILE = 5;
 
-struct Paq { char etiqueta[10]; char elem[24]; char cod[18]; bool bloq; };
+struct Paq { char etiqueta[10]; char elem[24]; char cod[18]; int cables; int term; bool bloq; };
 struct Op {
     char clave[40]; char puesto[40]; char fase[16]; char lote[20];
-    int  boton; int npaq; int nbuf; Paq paq[MAX_TILE];
+    int  boton; int npaq; int nbuf; int grupo; int grupos; Paq paq[MAX_TILE];
 };
 
 Op            ops_buf[MAX_OPS];
@@ -168,10 +172,13 @@ static uint32_t huellaActual() {
     int si = selIndex();
     if (si >= 0) {
         const Op &o = ops_buf[si];
-        snprintf(t, sizeof(t), "D%s|%s|%s|%d|%d", o.puesto, o.fase, o.lote, o.npaq, o.nbuf);
+        snprintf(t, sizeof(t), "D%s|%s|%s|%d|%d|%d|%d", o.puesto, o.fase, o.lote,
+                 o.npaq, o.nbuf, o.grupo, o.grupos);
         h = fnv(t, h);
         for (int k = 0; k < o.nbuf; k++) {
-            snprintf(t, sizeof(t), "%s|%s|%d", o.paq[k].etiqueta, o.paq[k].elem, (int)o.paq[k].bloq);
+            const Paq &q = o.paq[k];
+            snprintf(t, sizeof(t), "%s|%s|%d|%d|%d", q.etiqueta, q.elem,
+                     q.cables, q.term, (int)q.bloq);
             h = fnv(t, h);
         }
     } else {
@@ -302,6 +309,75 @@ static void ui_lista(bool aviso_sel) {
     }
 }
 
+static lv_obj_t *contador(lv_obj_t *parent, int valor, const char *etiq, lv_color_t col) {
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_size(c, 92, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_set_style_pad_gap(c, 0, 0);
+    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(c, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *n = lv_label_create(c);
+    lv_label_set_text_fmt(n, "%d", valor);
+    lv_obj_set_style_text_font(n, F_LG, 0);
+    lv_obj_set_style_text_color(n, col, 0);
+    txt(c, etiq, F_XS, COL_MUTE);
+    return c;
+}
+
+// Una fila de paquete, calcada del modal del SW: barra de color a la izquierda,
+// distintivo ambar con el numero de etiqueta, elemento en grande con el codigo
+// debajo y los dos contadores (cables / term.) a la derecha.
+static void filaPaquete(lv_obj_t *parent, const Paq &p, int alto) {
+    lv_color_t acento = p.bloq ? COL_ROJO : COL_AMBAR;
+
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_set_width(row, LV_PCT(100));
+    lv_obj_set_height(row, alto);
+    lv_obj_set_style_bg_color(row, COL_PANEL2, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(row, 12, 0);
+    lv_obj_set_style_border_color(row, acento, 0);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_width(row, 6, 0);
+    lv_obj_set_style_pad_hor(row, 14, 0);
+    lv_obj_set_style_pad_ver(row, 8, 0);
+    lv_obj_set_style_pad_column(row, 16, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Distintivo con el numero de etiqueta
+    lv_obj_t *badge = lv_label_create(row);
+    lv_label_set_text(badge, p.etiqueta[0] ? p.etiqueta : "-");
+    lv_obj_set_style_text_font(badge, F_MD, 0);
+    lv_obj_set_style_text_color(badge, COL_NEGRO, 0);
+    lv_obj_set_style_bg_color(badge, acento, 0);
+    lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(badge, 10, 0);
+    lv_obj_set_style_pad_hor(badge, 16, 0);
+    lv_obj_set_style_pad_ver(badge, 8, 0);
+
+    // Elemento + codigo
+    lv_obj_t *col = lv_obj_create(row);
+    lv_obj_set_height(col, LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(col, 1);
+    lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(col, 0, 0);
+    lv_obj_set_style_pad_all(col, 0, 0);
+    lv_obj_set_style_pad_gap(col, 0, 0);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+    txt(col, p.elem[0] ? p.elem : "(sin elemento)", F_LG, p.bloq ? COL_MUTE : COL_TXT);
+    if (p.bloq)          txt(col, "BLOQUEADO", F_SM, COL_ROJO);
+    else if (p.cod[0])   txt(col, p.cod, F_XS, COL_MUTE);
+
+    contador(row, p.cables, "cables", COL_AZUL);
+    contador(row, p.term,   "term.",  COL_AMBAR);
+}
+
 static void ui_detalle(int idx) {
     lv_obj_clean(cont);
     const Op &o = ops_buf[idx];
@@ -310,8 +386,9 @@ static void ui_detalle(int idx) {
     lv_obj_t *c = card(cont, cf);
     lv_obj_set_height(c, LV_PCT(100));
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_gap(c, 12, 0);
+    lv_obj_set_style_pad_gap(c, 10, 0);
 
+    // Cabecera de la tarjeta: puesto + fase
     lv_obj_t *head = lv_obj_create(c);
     lv_obj_set_width(head, LV_PCT(100));
     lv_obj_set_height(head, LV_SIZE_CONTENT);
@@ -321,68 +398,50 @@ static void ui_detalle(int idx) {
     lv_obj_set_flex_flow(head, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_remove_flag(head, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *nm = txt(head, o.puesto[0] ? o.puesto : "(sin nombre)", F_XL, COL_TXT);
+    lv_obj_t *nm = txt(head, o.puesto[0] ? o.puesto : "(sin nombre)", F_LG, COL_TXT);
     lv_obj_set_flex_grow(nm, 1);
     chip(head, labelFase(o.fase), cf, F_MD);
 
     lv_obj_t *meta = lv_label_create(c);
-    if (o.lote[0]) lv_label_set_text_fmt(meta, "Lote %s   ·   %d paquetes", o.lote, o.npaq);
-    else           lv_label_set_text_fmt(meta, "%d paquetes", o.npaq);
-    lv_obj_set_style_text_font(meta, F_MD, 0);
+    if (o.grupos > 1 && o.lote[0])
+        lv_label_set_text_fmt(meta, "Grupo %d de %d   ·   %d paquetes   ·   Lote %s",
+                              o.grupo, o.grupos, o.npaq, o.lote);
+    else if (o.grupos > 1)
+        lv_label_set_text_fmt(meta, "Grupo %d de %d   ·   %d paquetes", o.grupo, o.grupos, o.npaq);
+    else if (o.lote[0])
+        lv_label_set_text_fmt(meta, "%d paquetes   ·   Lote %s", o.npaq, o.lote);
+    else
+        lv_label_set_text_fmt(meta, "%d paquetes", o.npaq);
+    lv_obj_set_style_text_font(meta, F_SM, 0);
     lv_obj_set_style_text_color(meta, COL_MUTE, 0);
 
-    lv_obj_t *rowt = lv_obj_create(c);
-    lv_obj_set_width(rowt, LV_PCT(100));
-    lv_obj_set_flex_grow(rowt, 1);
-    lv_obj_set_style_bg_opa(rowt, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(rowt, 0, 0);
-    lv_obj_set_style_pad_all(rowt, 0, 0);
-    lv_obj_set_style_pad_column(rowt, 14, 0);
-    lv_obj_set_flex_flow(rowt, LV_FLEX_FLOW_ROW);
-    lv_obj_remove_flag(rowt, LV_OBJ_FLAG_SCROLLABLE);
+    // Lista de paquetes
+    lv_obj_t *lista = lv_obj_create(c);
+    lv_obj_set_width(lista, LV_PCT(100));
+    lv_obj_set_flex_grow(lista, 1);
+    lv_obj_set_style_bg_opa(lista, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(lista, 0, 0);
+    lv_obj_set_style_pad_all(lista, 0, 0);
+    lv_obj_set_style_pad_row(lista, 8, 0);
+    lv_obj_set_flex_flow(lista, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scrollbar_mode(lista, LV_SCROLLBAR_MODE_OFF);
 
-    if (o.nbuf <= 0) { txt(rowt, "Sin paquetes", F_LG, COL_MUTE); return; }
+    if (o.nbuf <= 0) { txt(lista, "Sin paquetes", F_LG, COL_MUTE); return; }
 
-    int nreal = o.nbuf;
     bool overflow = (o.npaq > o.nbuf);
-    if (overflow && nreal == MAX_TILE) nreal = MAX_TILE - 1;
+    // Reparto vertical: las filas visibles + la de "y N mas" si hace falta
+    int filas = o.nbuf + (overflow ? 1 : 0);
+    int alto  = (LV_H - 100 - 40 - 130 - (filas - 1) * 8) / filas;
+    if (alto < 64)  alto = 64;
+    if (alto > 110) alto = 110;
 
-    for (int t = 0; t < nreal; t++) {
-        const Paq &p = o.paq[t];
-        lv_obj_t *tile = lv_obj_create(rowt);
-        lv_obj_set_height(tile, LV_PCT(100));
-        lv_obj_set_flex_grow(tile, 1);
-        lv_obj_set_style_bg_color(tile, COL_PANEL2, 0);
-        lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(tile, 12, 0);
-        lv_obj_set_style_border_width(tile, 0, 0);
-        lv_obj_set_style_pad_all(tile, 14, 0);
-        lv_obj_set_style_pad_gap(tile, 8, 0);
-        lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
-
-        txt(tile, p.etiqueta[0] ? p.etiqueta : "-", F_XL, p.bloq ? COL_MUTE : COL_TXT);
-        if (p.elem[0]) txt(tile, p.elem, F_MD, COL_TXT);
-        if (p.cod[0])  txt(tile, p.cod, F_XS, COL_MUTE);
-        if (p.bloq)    chip(tile, "BLOQUEADO", COL_ROJO, F_XS);
-    }
+    for (int t = 0; t < o.nbuf; t++) filaPaquete(lista, o.paq[t], alto);
     if (overflow) {
-        lv_obj_t *tile = lv_obj_create(rowt);
-        lv_obj_set_height(tile, LV_PCT(100));
-        lv_obj_set_flex_grow(tile, 1);
-        lv_obj_set_style_bg_color(tile, COL_PANEL2, 0);
-        lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(tile, 12, 0);
-        lv_obj_set_style_border_width(tile, 0, 0);
-        lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *l = lv_label_create(tile);
-        lv_label_set_text_fmt(l, "+%d", o.npaq - nreal);
-        lv_obj_set_style_text_font(l, F_XL, 0);
+        lv_obj_t *l = lv_label_create(lista);
+        lv_label_set_text_fmt(l, "y %d paquete%s mas", o.npaq - o.nbuf,
+                              (o.npaq - o.nbuf) == 1 ? "" : "s");
+        lv_obj_set_style_text_font(l, F_SM, 0);
         lv_obj_set_style_text_color(l, COL_MUTE, 0);
-        txt(tile, "mas", F_MD, COL_MUTE);
     }
 }
 
@@ -482,7 +541,9 @@ static void procesarLinea(const String &msg) {
             copiaCampo(d.clave, sizeof(d.clave), data["puesto_id"], "");
         else
             copiaCampo(d.clave, sizeof(d.clave), op["operario"], "");
-        d.boton = data["boton"] | 0;
+        d.boton  = data["boton"]  | 0;
+        d.grupo  = data["grupo"]  | 0;
+        d.grupos = data["grupos"] | 0;
 
         JsonArray paq = data["paquetes"].as<JsonArray>();
         d.npaq = paq.size();
@@ -493,7 +554,9 @@ static void procesarLinea(const String &msg) {
             copiaCampo(q.etiqueta, sizeof(q.etiqueta), p["etiqueta"], "-");
             copiaCampo(q.elem,     sizeof(q.elem),     p["elem"],     "");
             copiaCampo(q.cod,      sizeof(q.cod),      p["cod"],      "");
-            q.bloq = p["bloqueado"] | false;
+            q.cables = p["cables"] | 0;
+            q.term   = p["term"]   | 0;
+            q.bloq   = p["bloqueado"] | false;
             d.nbuf++;
         }
         nops++;
