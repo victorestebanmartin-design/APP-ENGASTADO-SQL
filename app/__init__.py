@@ -504,7 +504,12 @@ def create_app(config_class=Config):
 
     # Guardar extensión DB en app
     app.extensions['db'] = db
-    
+
+    # Observabilidad: peticiones lentas al log + carga por endpoint. Antes de
+    # registrar el blueprint, porque añade una ruta de diagnóstico.
+    from app.observabilidad import instalar as _instalar_observabilidad
+    _instalar_observabilidad(app)
+
     # Registrar blueprints/rutas
     from app import routes
     routes.init_routes(app)

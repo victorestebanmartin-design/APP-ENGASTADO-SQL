@@ -112,6 +112,15 @@ if __name__ == '__main__':
     # Antes de ponerse a servir, y desde el hilo principal (que es el que se
     # queda dentro de serve()): que el PC no se duerma dejando la nave sin app.
     despierto, detalle_reposo = mantener_despierto()
+
+    # Copia de seguridad automatica en un hilo de fondo (solo en el proceso
+    # local de planta; nunca en tests ni en wsgi.py).
+    try:
+        from app.backup_auto import arrancar as arrancar_backup
+        arrancar_backup(app)
+    except Exception as _e:
+        print(f"Backup automatico no arrancado: {_e}")
+
     print(f"\nEntorno: {'development' if app.debug else 'production'}")
     print(f"Suspension del PC: {'evitada' if despierto else 'SIN evitar'} -> {detalle_reposo}")
     print(f"Base de datos: SQLite -> {Config.DB_PATH}")
@@ -132,7 +141,16 @@ if __name__ == '__main__':
     # igual con el dev server de Flask que con el pool de threads de waitress.
     try:
         from waitress import serve
-        serve(app, host='0.0.0.0', port=port, threads=8)
+        # En planta hay ~8 pantallas de carro + ~10 lectores RFID sondeando en
+        # bucle, mas 10 PCs con la web. threads=8 dejaba 8 huecos para ~40-50
+        # peticiones/s: una sola atascada esperando el lock de SQLite se comia
+        # 1/8 del servidor. Con el estado ya atomico (docs/plan-escalabilidad.md
+        # fase 1) las peticiones son cortas; 24 hilos van sobrados y absorben
+        # picos. channel_timeout bajo: una placa que se va (WiFi) deja el socket
+        # colgado y hay que reciclarlo pronto.
+        serve(app, host='0.0.0.0', port=port,
+              threads=24, channel_timeout=60, connection_limit=300,
+              ident='engastado')
     except ImportError:
         print("=" * 80)
         print("AVISO: waitress no esta instalado.")

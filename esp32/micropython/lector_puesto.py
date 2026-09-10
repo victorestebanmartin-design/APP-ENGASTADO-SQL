@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-08a"
+FW_VERSION = "2026-09-11a"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -59,6 +59,15 @@ DB9_PINS = (17, 15, 48, 47, 38, 39)
 NFC_POLL_MS = 300
 NFC_REPETIR_MS = 3000
 NFC_REINTENTO_S = 10
+# Sondeo de /api/esp32/rfid/gaveta/orden. Rapido mientras hay trabajo (LED
+# encendido o lectura RFID armada); en reposo se espacia, porque con el
+# servidor en la LAN el encendido llega por empuje al puerto 80 y este GET
+# solo es la red de seguridad. Tras fallos seguidos (servidor caido, sin red)
+# se estira hasta GAVETA_POLL_MAX_MS para no machacar a un servidor que ya
+# esta mal. Con ~10 lectores esto baja el sondeo de fondo de ~13 req/s a ~2.
+GAVETA_POLL_MS = 750
+GAVETA_POLL_IDLE_MS = 4000
+GAVETA_POLL_MAX_MS = 15000
 # El modo de verificacion RFID de una orden productiva se refresca en cada
 # sondeo (cada 750 ms); este margen solo cubre saltarse uno o dos sin
 # desarmarse de golpe (un handshake lento, un paquete perdido).
@@ -542,6 +551,7 @@ _ptl_rfid_modo = None
 ultimo_wifi = 0
 ultimo_latido = 0
 ultima_orden_gavetas = 0
+gaveta_fallos = 0
 
 beep(80)
 conectar_wifi()
@@ -596,8 +606,13 @@ while True:
         # nadie lo reintenta y la app se queda sin enterarse. Este GET si se
         # repite solo cada 750 ms, asi que mandar el estado tambien aqui lo
         # autocorrige sin depender de que un unico intento llegue.
+        _pausa_gaveta = GAVETA_POLL_MS
+        if gav is not None and gav.objetivo is None and _ptl_rfid_modo is None:
+            _pausa_gaveta = GAVETA_POLL_IDLE_MS
+        if gaveta_fallos:
+            _pausa_gaveta = min(GAVETA_POLL_MAX_MS, _pausa_gaveta * (1 + gaveta_fallos))
         if (gav and http_client is not None and backend_cfg is not None and
-                time.ticks_diff(now, ultima_orden_gavetas) > 750):
+                time.ticks_diff(now, ultima_orden_gavetas) > _pausa_gaveta):
             ultima_orden_gavetas = now
             parametros = "device_id=" + DEVICE_ID
             if gav.objetivo:
@@ -612,6 +627,7 @@ while True:
                 port=backend_cfg.BACKEND_PORT,
                 use_ssl=backend_cfg.BACKEND_USE_SSL,
                 timeout=2)
+            gaveta_fallos = 0 if orden is not None else min(gaveta_fallos + 1, 8)
             if orden and orden.get("success"):
                 test = orden.get("test")
                 if test and "ptl_rfid_modo" in test:

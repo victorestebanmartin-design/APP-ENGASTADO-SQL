@@ -595,35 +595,46 @@ def api_esp32_current():
         version_srv = _esp32_firmware_version()   # para que la pantalla sepa si esta al dia
         if dev_id:
             fw = (request.args.get('fw') or '').strip()[:24]
-            nfc = (request.args.get('nfc') or '').strip()[:4]
+            nfc = (request.args.get('nfc') or '').strip()[:4] if request.args.get('nfc') else ''
+            nfc = nfc if nfc in ('off', 'ok', 'ko') else ''
             ip_arg = request.args.get('esp32_ip')
-            holder = {}
+            # last_seen con granularidad de minuto: basta para "online en los
+            # ultimos 4 min" y permite saltarse la escritura si nada cambio.
+            ahora_min = datetime.now().replace(second=0, microsecond=0).isoformat()
 
-            def _touch(devs):
-                dev = devs.setdefault(dev_id, {})
-                dev['ip'] = ip_arg or dev.get('ip', '')
-                dev['last_seen'] = datetime.now().isoformat()
-                if fw:
-                    dev['fw'] = fw
-                # Estado del lector NFC de esa pantalla: off (sin lector), ok, ko
-                if nfc in ('off', 'ok', 'ko'):
-                    dev['nfc'] = nfc
-                # OTA: si Admin lo pidio y la version no coincide, ofrecer la
-                # actualizacion; si ya coincide, dar por hecha y limpiar.
-                if dev.get('ota_pedido'):
-                    if fw and version_srv and fw == version_srv:
+            dev_prev = _esp32_load_devices().get(dev_id, {})
+            cerrar_ota = bool(dev_prev.get('ota_pedido') and fw and version_srv and fw == version_srv)
+            cambio = (
+                cerrar_ota
+                or (ip_arg and dev_prev.get('ip', '') != ip_arg)
+                or (fw and dev_prev.get('fw') != fw)
+                or (nfc and dev_prev.get('nfc') != nfc)
+                or str(dev_prev.get('last_seen', ''))[:16] != ahora_min[:16]
+            )
+
+            if cambio:
+                def _touch(devs):
+                    dev = devs.setdefault(dev_id, {})
+                    if ip_arg:
+                        dev['ip'] = ip_arg
+                    dev['last_seen'] = ahora_min
+                    if fw:
+                        dev['fw'] = fw
+                    if nfc:
+                        dev['nfc'] = nfc
+                    # OTA: si ya reporta la version publicada, dar por hecha.
+                    if dev.get('ota_pedido') and fw and version_srv and fw == version_srv:
                         dev['ota_pedido'] = False
-                    else:
-                        holder['ota'] = {'update': True, 'version': version_srv,
-                                         'files': _esp32_firmware_manifest()}
-                holder['carro'] = dev.get('carro')
-                return devs
+                    return devs
+                dev_prev = _esp32_devices_actualizar(_touch).get(dev_id, dev_prev)
 
-            _esp32_devices_actualizar(_touch)
-            ota = holder.get('ota')
+            # OTA pendiente: se ofrece sin necesidad de escribir nada.
+            if dev_prev.get('ota_pedido') and not cerrar_ota:
+                ota = {'update': True, 'version': version_srv,
+                       'files': _esp32_firmware_manifest()}
             # La asignacion del Admin manda sobre la config local de la pantalla
-            if holder.get('carro'):
-                carro = holder['carro']
+            if dev_prev.get('carro'):
+                carro = dev_prev['carro']
 
         extra = {'carro_asignado': carro or '', 'ota': ota, 'fw_server': version_srv}
         ops_dict = _esp32_load_ops(_esp32_file(carro))

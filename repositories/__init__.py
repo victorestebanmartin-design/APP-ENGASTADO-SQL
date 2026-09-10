@@ -34,7 +34,13 @@ def init_db(app):
         pool_recycle=app.config.get('SQLALCHEMY_POOL_RECYCLE', 3600),
         pool_timeout=app.config.get('SQLALCHEMY_POOL_TIMEOUT', 30),
         pool_pre_ping=True,  # Verificar conexiones antes de usar
-        connect_args={'timeout': 30}
+        # busy_timeout: cuanto espera un escritor a que se libere el lock antes
+        # de rendirse con "database is locked". Estaba en 30 s -> una peticion
+        # de sondeo podia dejar un hilo de waitress congelado medio minuto. Con
+        # el estado fuera de SQLite y ya atomico (fase 1) los escritores son
+        # rapidos; 10 s tolera un import de Excel lento y falla pronto en vez
+        # de arrastrar el pool. Los clientes ESP32 reintentan solos.
+        connect_args={'timeout': 10}
     )
 
     # PRAGMAs por conexión (SQLite los aplica por conexión, no globalmente)
@@ -43,6 +49,7 @@ def init_db(app):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=10000")
         cursor.close()
     
     # Crear sesión con scope thread-safe

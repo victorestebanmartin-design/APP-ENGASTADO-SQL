@@ -160,6 +160,17 @@ class Config:
     # =====================================================
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
     LOG_FILE = os.path.join(BASE_DIR, 'logs', 'app.log')
+    # Cada petición que pase de esto se registra como 'LENTA' en el log
+    # (ver app/observabilidad.py). La carga por endpoint se ve en
+    # GET /api/sistema/carga (solo admin).
+    SLOW_REQUEST_MS = int(os.environ.get('SLOW_REQUEST_MS', '1000'))
+
+    # =====================================================
+    # COPIA DE SEGURIDAD AUTOMÁTICA (app/backup_auto.py)
+    # =====================================================
+    # Cada cuántas horas se copia data/ a data/backups_auto/. 0 = desactivada.
+    AUTO_BACKUP_HORAS = os.environ.get('AUTO_BACKUP_HORAS', '6')
+    AUTO_BACKUP_RETENER = int(os.environ.get('AUTO_BACKUP_RETENER', '20'))
     
     @staticmethod
     def init_app(app):

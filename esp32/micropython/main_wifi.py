@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-10c"
+FW_VERSION = "2026-09-11a"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -84,10 +84,11 @@ DNS         = "192.168.50.5"
 HOST_IP  = "192.168.50.1"
 PORT     = 5001
 USE_SSL  = False
-POLL_INTERVAL = 1      # segundos entre polls de /api/esp32/current. Es el techo
-                       # de lo que tarda en aparecer un paquete: el servidor
-                       # responde en <1 ms y aguanta 600+ req/s, asi que bajarlo
-                       # de 3s a 1s no le supone nada y se nota de inmediato.
+POLL_INTERVAL = 2      # segundos entre polls de /api/esp32/current. Es el techo
+                       # de lo que tarda en aparecer un paquete. Con ~8 carros a
+                       # la vez, 1s eran 8 req/s de fondo constante; 2s las
+                       # baja a la mitad sin que se note al usar el carro (el
+                       # OK del pulsador va por UART, no depende del poll).
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
 OTA_HOLD_MS = 5000     # mantener OK (boton 8) 5s EN REPOSO = actualizar por WiFi

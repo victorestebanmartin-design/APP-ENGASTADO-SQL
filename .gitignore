@@ -38,6 +38,8 @@ data/pick_to_light_test.json
 data/pick_to_light_rfid_armado.json
 data/pick_to_light_correspondencia.json
 data/.tmp_*.json
+# Copias de seguridad automáticas (app/backup_auto.py)
+data/backups_auto/
 
 # Datos reales de producción: nunca al repo (es público)
 # - Excel de cortes subidos por el usuario

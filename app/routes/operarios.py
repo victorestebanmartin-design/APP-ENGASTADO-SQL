@@ -212,9 +212,25 @@ def api_operarios_activar(op_id):
 
 LOGIN_CADUCIDAD_MINUTOS = 3  # sin latido durante este tiempo => login fantasma
 
+# El barrido de logins caducados se llamaba en CADA GET /api/operarios/logins,
+# que el navegador de cada PC sondea cada 750 ms: un UPDATE (un escritor
+# SQLite) por poll, casi siempre sin nada que caducar. Con este freno se
+# ejecuta como mucho una vez cada _EXPIRACION_CADA_S; los sitios donde el
+# resultado tiene que ser inmediato (login manual, entrada por tarjeta) pasan
+# forzar=True.
+_EXPIRACION_CADA_S = 30
+_ultima_expiracion = [0.0]
+_expiracion_lock = threading.Lock()
 
-def _expirar_logins_fantasma(conn):
-    """Desactiva logins cuyo último latido es demasiado antiguo."""
+
+def _expirar_logins_fantasma(conn, forzar=False):
+    """Desactiva logins cuyo último latido es demasiado antiguo (con freno)."""
+    if not forzar:
+        ahora = time.monotonic()
+        with _expiracion_lock:
+            if ahora - _ultima_expiracion[0] < _EXPIRACION_CADA_S:
+                return
+            _ultima_expiracion[0] = ahora
     limite = (datetime.now() - timedelta(minutes=LOGIN_CADUCIDAD_MINUTOS)).isoformat()
     conn.execute(text(
         "UPDATE operario_logins SET activo=0 WHERE activo=1 AND ultimo_latido < :limite"
@@ -235,7 +251,7 @@ def api_operario_login():
             return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
 
         with db.engine.connect() as conn:
-            _expirar_logins_fantasma(conn)
+            _expirar_logins_fantasma(conn, forzar=True)
 
             existente = conn.execute(text(
                 "SELECT timestamp_login FROM operario_logins "
@@ -769,7 +785,7 @@ def api_engastado_v3_entrada():
                     return jsonify({'success': False, 'error': motivo}), 403
 
             # Check if operario already has active session
-            _expirar_logins_fantasma(conn)
+            _expirar_logins_fantasma(conn, forzar=True)
             existente = conn.execute(text(
                 "SELECT ol.id, ol.puesto_id, ol.modulo, p.nombre "
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
