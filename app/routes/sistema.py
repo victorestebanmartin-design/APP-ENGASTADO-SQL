@@ -43,6 +43,7 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
+from app.estado_json import cargar as _json_cargar, guardar as _json_guardar, actualizar as _json_actualizar
 from app.config_manager import ConfigManager
 
 
@@ -435,16 +436,16 @@ def _esp32_devices_file():
 
 
 def _esp32_load_devices():
-    try:
-        with open(_esp32_devices_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return _json_cargar(_esp32_devices_file(), {})
 
 
 def _esp32_save_devices(devs):
-    with open(_esp32_devices_file(), 'w', encoding='utf-8') as f:
-        json.dump(devs, f)
+    _json_guardar(_esp32_devices_file(), devs)
+
+
+def _esp32_devices_actualizar(fn):
+    """read-modify-write atómico del registro de pantallas de carro."""
+    return _json_actualizar(_esp32_devices_file(), {}, fn)
 
 
 def _esp32_device_id(raw):
@@ -593,30 +594,36 @@ def api_esp32_current():
         ota = None
         version_srv = _esp32_firmware_version()   # para que la pantalla sepa si esta al dia
         if dev_id:
-            devs = _esp32_load_devices()
-            dev = devs.setdefault(dev_id, {})
-            dev['ip'] = request.args.get('esp32_ip') or dev.get('ip', '')
-            dev['last_seen'] = datetime.now().isoformat()
-            # Version de firmware que reporta la pantalla
             fw = (request.args.get('fw') or '').strip()[:24]
-            if fw:
-                dev['fw'] = fw
-            # Estado del lector NFC de esa pantalla: off (sin lector), ok, ko
             nfc = (request.args.get('nfc') or '').strip()[:4]
-            if nfc in ('off', 'ok', 'ko'):
-                dev['nfc'] = nfc
-            # OTA: si Admin lo pidio y la version no coincide, ofrecer la
-            # actualizacion; si ya coincide, dar por hecha y limpiar.
-            if dev.get('ota_pedido'):
-                if fw and version_srv and fw == version_srv:
-                    dev['ota_pedido'] = False
-                else:
-                    ota = {'update': True, 'version': version_srv,
-                           'files': _esp32_firmware_manifest()}
-            _esp32_save_devices(devs)
+            ip_arg = request.args.get('esp32_ip')
+            holder = {}
+
+            def _touch(devs):
+                dev = devs.setdefault(dev_id, {})
+                dev['ip'] = ip_arg or dev.get('ip', '')
+                dev['last_seen'] = datetime.now().isoformat()
+                if fw:
+                    dev['fw'] = fw
+                # Estado del lector NFC de esa pantalla: off (sin lector), ok, ko
+                if nfc in ('off', 'ok', 'ko'):
+                    dev['nfc'] = nfc
+                # OTA: si Admin lo pidio y la version no coincide, ofrecer la
+                # actualizacion; si ya coincide, dar por hecha y limpiar.
+                if dev.get('ota_pedido'):
+                    if fw and version_srv and fw == version_srv:
+                        dev['ota_pedido'] = False
+                    else:
+                        holder['ota'] = {'update': True, 'version': version_srv,
+                                         'files': _esp32_firmware_manifest()}
+                holder['carro'] = dev.get('carro')
+                return devs
+
+            _esp32_devices_actualizar(_touch)
+            ota = holder.get('ota')
             # La asignacion del Admin manda sobre la config local de la pantalla
-            if dev.get('carro'):
-                carro = dev['carro']
+            if holder.get('carro'):
+                carro = holder['carro']
 
         extra = {'carro_asignado': carro or '', 'ota': ota, 'fw_server': version_srv}
         ops_dict = _esp32_load_ops(_esp32_file(carro))
@@ -656,14 +663,12 @@ def _esp32_registrar_evento(evento):
     y NFC de la pantalla del carro) y la entrada RFID de puesto (ver
     api_engastado_v3_entrada en operarios.py), para que ambos tipos de
     hardware aparezcan en el mismo panel de chequeo."""
-    try:
-        with open(_esp32_eventos_file(), encoding='utf-8') as f:
-            eventos = json.load(f)
-    except Exception:
-        eventos = []
-    eventos.append(evento)
-    with open(_esp32_eventos_file(), 'w', encoding='utf-8') as f:
-        json.dump(eventos[-100:], f, ensure_ascii=False)
+    def _append(eventos):
+        if not isinstance(eventos, list):
+            eventos = []
+        eventos.append(evento)
+        return eventos[-100:]
+    _json_actualizar(_esp32_eventos_file(), [], _append)
 
 
 @bp.route('/api/esp32/evento', methods=['GET'])
@@ -714,20 +719,17 @@ def api_esp32_evento():
 
         # Confirmación: guardar la última por (carro, puesto)
         if evento['tipo'] in ('confirmacion', 'confirmacion_manual'):
-            try:
-                with open(_esp32_confirmaciones_file(), encoding='utf-8') as f:
-                    confs = json.load(f)
-            except Exception:
-                confs = {}
             # Clave por puesto; si el push no traía puesto se cae al operario
             clave = _esp32_conf_key(evento['carro'], evento['puesto'] or evento['operario'])
-            confs[clave] = {
-                'lote': evento['lote'], 'grupo': evento['grupo'],
-                'fase': evento['fase'], 'tipo': evento['tipo'],
-                'operario': evento['operario'], 'ts': evento['ts'],
-            }
-            with open(_esp32_confirmaciones_file(), 'w', encoding='utf-8') as f:
-                json.dump(confs, f, ensure_ascii=False)
+
+            def _set_conf(confs):
+                confs[clave] = {
+                    'lote': evento['lote'], 'grupo': evento['grupo'],
+                    'fase': evento['fase'], 'tipo': evento['tipo'],
+                    'operario': evento['operario'], 'ts': evento['ts'],
+                }
+                return confs
+            _json_actualizar(_esp32_confirmaciones_file(), {}, _set_conf)
 
         return jsonify({'success': True})
     except Exception as e:
@@ -918,16 +920,11 @@ def _pcs_vistos_file():
 
 
 def _pcs_vistos_cargar():
-    try:
-        with open(_pcs_vistos_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return _json_cargar(_pcs_vistos_file(), {})
 
 
 def _pcs_vistos_guardar(pcs):
-    with open(_pcs_vistos_file(), 'w', encoding='utf-8') as f:
-        json.dump(pcs, f)
+    _json_guardar(_pcs_vistos_file(), pcs)
 
 
 # Cada cuanto se refresca el last_seen de un PC. Los endpoints por los que se
@@ -970,22 +967,27 @@ def _pc_registrar(ip):
     if not ip or not ip.startswith(IP_PREFIJO) or ip in IP_RESERVADAS:
         return
     try:
-        pcs = _pcs_vistos_cargar()
         ahora = datetime.now()
-        anterior = pcs.get(ip, {}).get('last_seen', '')
+        # Freno barato antes de tocar el fichero: si se vio hace poco, ni leer
+        # bajo candado hace falta reescribir.
+        anterior = _pcs_vistos_cargar().get(ip, {}).get('last_seen', '')
         if anterior:
             try:
                 if (ahora - datetime.fromisoformat(anterior)).total_seconds() < _PC_REFRESCO_S:
                     return
             except ValueError:
                 pass
-        # Se aprovecha la escritura (como mucho una cada 30 s) para tirar los
-        # caducados: asi el fichero se limpia solo sin tarea de mantenimiento.
+
         limite = _PC_OLVIDO_DIAS * 86400
-        pcs = {k: v for k, v in pcs.items()
-               if (_pc_antiguedad_segundos(v, ahora) or 0) <= limite}
-        pcs[ip] = {'last_seen': ahora.isoformat()}
-        _pcs_vistos_guardar(pcs)
+
+        def _anotar(pcs):
+            # Se aprovecha la escritura (como mucho una cada 30 s) para tirar
+            # los caducados: el fichero se limpia solo sin tarea aparte.
+            pcs = {k: v for k, v in pcs.items()
+                   if (_pc_antiguedad_segundos(v, ahora) or 0) <= limite}
+            pcs[ip] = {'last_seen': ahora.isoformat()}
+            return pcs
+        _json_actualizar(_pcs_vistos_file(), {}, _anotar)
     except Exception:
         pass   # detectar PCs es un extra: nunca puede tumbar la peticion real
 
@@ -1723,16 +1725,11 @@ def _servidor_file():
 
 def _servidor_host_guardado():
     """Host configurado para las placas ('' si no se ha fijado ninguno)."""
-    try:
-        with open(_servidor_file(), encoding='utf-8') as f:
-            return str(json.load(f).get('host', '')).strip()
-    except Exception:
-        return ''
+    return str(_json_cargar(_servidor_file(), {}).get('host', '')).strip()
 
 
 def _servidor_host_guardar(host):
-    with open(_servidor_file(), 'w', encoding='utf-8') as f:
-        json.dump({'host': host}, f)
+    _json_guardar(_servidor_file(), {'host': host})
 
 
 def _servidor_host_detectado():
@@ -2231,15 +2228,39 @@ def _esp32_firmware_files():
     return files
 
 
+# Cache de FW_VERSION por (ruta -> (mtime, valor)). El firmware es un fichero
+# de código que solo cambia al desplegar, pero _esp32_firmware_version se
+# llamaba en CADA /api/esp32/current (1/s por pantalla): leer + regex de un
+# .py de 1600 líneas en bucle no aporta nada. Se relee solo si cambia el mtime.
+_fw_version_cache: dict = {}
+_fw_version_cache_lock = threading.Lock()
+
+
+def _fw_version_de(ruta):
+    """FW_VERSION declarada en el .py de 'ruta', cacheada por mtime. '' si falla."""
+    try:
+        mtime = os.path.getmtime(ruta)
+    except OSError:
+        return ''
+    with _fw_version_cache_lock:
+        cacheado = _fw_version_cache.get(ruta)
+        if cacheado and cacheado[0] == mtime:
+            return cacheado[1]
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            m = re.search(r'^FW_VERSION\s*=\s*["\'](.*?)["\']', f.read(), re.M)
+        valor = m.group(1) if m else ''
+    except OSError:
+        return ''
+    with _fw_version_cache_lock:
+        _fw_version_cache[ruta] = (mtime, valor)
+    return valor
+
+
 def _esp32_firmware_version():
     """Version declarada en FW_VERSION dentro de main_wifi.py ('' si no hay)."""
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
-    try:
-        with open(os.path.join(base, 'main_wifi.py'), encoding='utf-8') as f:
-            m = re.search(r'^FW_VERSION\s*=\s*["\'](.*?)["\']', f.read(), re.M)
-            return m.group(1) if m else ''
-    except Exception:
-        return ''
+    return _fw_version_de(os.path.join(base, 'main_wifi.py'))
 
 
 def _esp32_firmware_manifest():
@@ -2341,12 +2362,7 @@ def _rfid_firmware_files():
 def _rfid_firmware_version():
     """Version declarada en FW_VERSION dentro de esp32/main.py ('' si no hay)."""
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
-    try:
-        with open(os.path.join(base, 'main.py'), encoding='utf-8') as f:
-            m = re.search(r'^FW_VERSION\s*=\s*["\'](.*?)["\']', f.read(), re.M)
-            return m.group(1) if m else ''
-    except Exception:
-        return ''
+    return _fw_version_de(os.path.join(base, 'main.py'))
 
 
 def _rfid_firmware_manifest():
@@ -2384,12 +2400,14 @@ def api_esp32_rfid_firmware_version():
             # resuelta cuando ya reporta la versión publicada en servidor.
             fw = (request.args.get('fw') or '').strip()[:24]
             version_srv = _rfid_firmware_version()
-            devs = _rfid_load_devices()
-            dev = devs.get(dev_id) or {}
-            if dev.get('ota_pedido') and fw and version_srv and fw == version_srv:
-                dev['ota_pedido'] = False
-                devs[dev_id] = dev
-                _rfid_save_devices(devs)
+
+            def _cerrar_ota(devs):
+                dev = devs.get(dev_id) or {}
+                if dev.get('ota_pedido') and fw and version_srv and fw == version_srv:
+                    dev['ota_pedido'] = False
+                    devs[dev_id] = dev
+                return devs
+            _rfid_devices_actualizar(_cerrar_ota)
         return jsonify({'version': _rfid_firmware_version(),
                         'files': _rfid_firmware_manifest()})
     except Exception as e:
@@ -2434,28 +2452,29 @@ def _rfid_devices_file():
 
 
 def _rfid_load_devices():
-    try:
-        with open(_rfid_devices_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return _json_cargar(_rfid_devices_file(), {})
 
 
 def _rfid_save_devices(devs):
-    with open(_rfid_devices_file(), 'w', encoding='utf-8') as f:
-        json.dump(devs, f)
+    _json_guardar(_rfid_devices_file(), devs)
+
+
+def _rfid_devices_actualizar(fn):
+    """read-modify-write atómico del registro de lectores RFID."""
+    return _json_actualizar(_rfid_devices_file(), {}, fn)
 
 
 def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
     """Actualiza last_seen/ip/fw de un lector (lo crea si es la primera vez)."""
-    devs = _rfid_load_devices()
-    dev = devs.setdefault(dev_id, {})
-    dev['last_seen'] = datetime.now().isoformat()
-    if ip:
-        dev['ip'] = ip
-    if fw:
-        dev['fw'] = fw
-    _rfid_save_devices(devs)
+    def _touch(devs):
+        dev = devs.setdefault(dev_id, {})
+        dev['last_seen'] = datetime.now().isoformat()
+        if ip:
+            dev['ip'] = ip
+        if fw:
+            dev['fw'] = fw
+        return devs
+    _rfid_devices_actualizar(_touch)
 
 
 @bp.route('/api/esp32/rfid/devices', methods=['GET'])
@@ -3417,11 +3436,7 @@ def _hotspot_file():
 
 
 def _hotspot_cargar():
-    try:
-        with open(_hotspot_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {'ssid': '', 'password': ''}
+    return _json_cargar(_hotspot_file(), {'ssid': '', 'password': ''})
 
 
 @bp.route('/api/hotspot/credenciales', methods=['GET'])
@@ -3444,8 +3459,7 @@ def api_hotspot_credenciales_set():
         password = str(data.get('password', ''))
         if not ssid:
             return jsonify({'success': False, 'message': 'El SSID es obligatorio'}), 400
-        with open(_hotspot_file(), 'w', encoding='utf-8') as f:
-            json.dump({'ssid': ssid, 'password': password}, f)
+        _json_guardar(_hotspot_file(), {'ssid': ssid, 'password': password})
         return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)

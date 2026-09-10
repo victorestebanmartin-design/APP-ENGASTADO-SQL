@@ -40,8 +40,7 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
-
-_rfid_estado_lock = threading.Lock()
+from app.estado_json import cargar as _json_cargar, guardar as _json_guardar, actualizar as _json_actualizar
 
 
 # ==================== OPERARIOS ====================
@@ -556,34 +555,30 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
     el mensaje ("avisa al administrador", "pasa la tarjeta otra vez"...): sin
     eso un rechazo deja al operario parado sin saber que hacer.
     """
-    with _rfid_estado_lock:
-        try:
-            with open(_rfid_estado_file_path(), encoding='utf-8') as f:
-                eventos = json.load(f)
-        except Exception:
-            eventos = []
+    entrada = {
+        'ts': datetime.now().isoformat(),
+        'estado': estado,
+        'motivo': motivo or '',
+        'consejo': consejo or '',
+        'error_code': error_code or '',
+        'device_id': (device_id or '')[:32],
+        'tag_uid': (tag_uid or '')[:20],
+        'puesto_id': (puesto_id or '')[:24],
+        'puesto_nombre': puesto_nombre or '',
+        'modulo': (modulo or '')[:24],
+        'operario_nombre': operario_nombre or '',
+    }
 
-        eventos.append({
-            'ts': datetime.now().isoformat(),
-            'estado': estado,
-            'motivo': motivo or '',
-            'consejo': consejo or '',
-            'error_code': error_code or '',
-            'device_id': (device_id or '')[:32],
-            'tag_uid': (tag_uid or '')[:20],
-            'puesto_id': (puesto_id or '')[:24],
-            'puesto_nombre': puesto_nombre or '',
-            'modulo': (modulo or '')[:24],
-            'operario_nombre': operario_nombre or '',
-        })
-        # encoding='utf-8' explicito, aqui y al leer: los motivos y consejos llevan
-        # acentos y flechas ('Admin -> Operarios' se escribe con '\u2192'), y sin
-        # esto open() usa la codificacion por defecto del sistema. En un servidor
-        # Windows eso es cp1252, que no sabe escribir esa flecha: el registro del
-        # rechazo petaba y el operario acababa viendo un fallo del servidor en vez
-        # del motivo real (una tarjeta sin permisos o sin dar de alta).
-        with open(_rfid_estado_file_path(), 'w', encoding='utf-8') as f:
-            json.dump(eventos[-120:], f, ensure_ascii=False)
+    # read-modify-write at\u00f3mico (candado + os.replace en app/estado_json.py):
+    # varias pantallas sondean este fichero cada 750 ms y antes pod\u00edan leerlo a
+    # medio escribir. El JSON va con ensure_ascii=False (lo hace estado_json):
+    # los motivos llevan acentos y flechas ('Admin \u2192 Operarios').
+    def _append(eventos):
+        if not isinstance(eventos, list):
+            eventos = []
+        eventos.append(entrada)
+        return eventos[-120:]
+    _json_actualizar(_rfid_estado_file_path(), [], _append)
 
 
 @bp.route('/api/rfid/entrada/estado', methods=['GET'])
@@ -699,9 +694,8 @@ def api_engastado_v3_entrada():
         # de tarjetas nuevas depende solo de los lectores RFID de la entrada.
         try:
             from app.routes.sistema import _esp32_tags_file
-            with open(_esp32_tags_file(), 'w', encoding='utf-8') as f:
-                json.dump({'uid': tag_uid, 'device_id': device_id, 'carro': '',
-                          'ts': datetime.now().isoformat()}, f)
+            _json_guardar(_esp32_tags_file(), {'uid': tag_uid, 'device_id': device_id,
+                                               'carro': '', 'ts': datetime.now().isoformat()})
         except Exception:
             current_app.logger.exception('No se pudo registrar la ultima tarjeta vista (lector RFID)')
 

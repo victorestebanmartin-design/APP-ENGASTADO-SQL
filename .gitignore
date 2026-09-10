@@ -23,6 +23,21 @@ data/esp32_current*.json
 data/engastado.db
 data/*.db
 data/engastado.db.backup_*
+# Estado vivo de las placas y PCs (latidos, pick-to-light, tarjetas, eventos).
+# Lo escribe la app en marcha; cada instalación tiene el suyo, nunca al repo.
+data/esp32_devices.json
+data/esp32_rfid_devices.json
+data/esp32_eventos.json
+data/esp32_confirmaciones.json
+data/esp32_tags.json
+data/esp32_ip.txt
+data/pcs_vistos.json
+data/rfid_entrada_estado.json
+data/pick_to_light_estado.json
+data/pick_to_light_test.json
+data/pick_to_light_rfid_armado.json
+data/pick_to_light_correspondencia.json
+data/.tmp_*.json
 
 # Datos reales de producción: nunca al repo (es público)
 # - Excel de cortes subidos por el usuario

@@ -29,6 +29,7 @@ from flask import request, jsonify, current_app
 from sqlalchemy import text
 
 from app.auth import requiere_pin_admin
+from app.estado_json import cargar, guardar, actualizar
 from app.routes.base import bp, db, error_interno
 
 PUERTO_PLACA = 80          # el mini servidor HTTP de esp32/lib/gavetas.py
@@ -49,16 +50,17 @@ def _estado_file():
 
 
 def _estado_cargar():
-    try:
-        with open(_estado_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return cargar(_estado_file(), {})
 
 
 def _estado_guardar(estado):
-    with open(_estado_file(), 'w', encoding='utf-8') as f:
-        json.dump(estado, f)
+    guardar(_estado_file(), estado)
+
+
+def _estado_actualizar(fn):
+    """read-modify-write atómico del estado del pick-to-light (todos los
+    puestos). 'fn' recibe el dict {puesto_id: {...}} y lo modifica in situ."""
+    return actualizar(_estado_file(), {}, fn)
 
 
 # ==================== PRUEBAS POR SONDEO ====================
@@ -83,16 +85,11 @@ def _test_file():
 
 
 def _test_cargar():
-    try:
-        with open(_test_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return cargar(_test_file(), {})
 
 
 def _test_guardar(datos):
-    with open(_test_file(), 'w', encoding='utf-8') as f:
-        json.dump(datos, f)
+    guardar(_test_file(), datos)
 
 
 def _test_encolar(device_id, comando):
@@ -102,12 +99,16 @@ def _test_encolar(device_id, comando):
     resultado anterior se borra: si no, el panel leeria el de la prueba de
     antes y diria que ya esta hecha.
     """
-    todo = _test_cargar()
-    entrada = todo.get(device_id) or {}
-    seq = int(entrada.get('seq') or 0) + 1
-    todo[device_id] = {'cmd': comando, 'seq': seq}
-    _test_guardar(todo)
-    return seq
+    seq_ref = {}
+
+    def _encolar(todo):
+        entrada = todo.get(device_id) or {}
+        seq_ref['n'] = int(entrada.get('seq') or 0) + 1
+        todo[device_id] = {'cmd': comando, 'seq': seq_ref['n']}
+        return todo
+
+    actualizar(_test_file(), {}, _encolar)
+    return seq_ref['n']
 
 
 # ==================== LA PLACA DEL PUESTO ====================
@@ -478,16 +479,11 @@ def _rfid_armado_file():
 
 
 def _rfid_armado_cargar():
-    try:
-        with open(_rfid_armado_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return cargar(_rfid_armado_file(), {})
 
 
 def _rfid_armado_guardar(datos):
-    with open(_rfid_armado_file(), 'w', encoding='utf-8') as f:
-        json.dump(datos, f)
+    guardar(_rfid_armado_file(), datos)
 
 
 def _rfid_ocupante(uid, excluir_puesto=None, excluir_canal=None):
@@ -668,8 +664,7 @@ def api_esp32_rfid_gaveta_lectura():
             if not puesto_id:
                 return jsonify({'success': True, 'ok': False, 'mensaje': 'Lector sin puesto'})
 
-            estado = _estado_cargar()
-            actual = estado.get(puesto_id) or {}
+            actual = _estado_cargar().get(puesto_id) or {}
             # Del lector de OTRO puesto no puede llegar (device_id ya resuelve
             # el puesto), y una orden vieja (id distinto, o ya sin objetivo)
             # no puede confirmar la de ahora: por eso manda el orden_id, no
@@ -682,22 +677,32 @@ def api_esp32_rfid_gaveta_lectura():
             if not uid_esperado:
                 return jsonify({'success': True, 'ok': False, 'mensaje': 'Esta gaveta no lleva RFID'})
 
-            if uid != uid_esperado:
-                actual['uid_incorrecto'] = uid
-                estado[puesto_id] = actual
-                _estado_guardar(estado)
+            correcto = uid == uid_esperado
+
+            def _marcar(estado):
+                act = estado.get(puesto_id) or {}
+                # Revalida bajo el candado: entre la lectura de arriba y aqui
+                # la orden puede haber cambiado.
+                if not act.get('led') or act.get('orden_id') != orden_id:
+                    return estado
+                if correcto:
+                    act['rfid_confirmado'] = True
+                    act['uid_incorrecto'] = None
+                else:
+                    act['uid_incorrecto'] = uid
+                estado[puesto_id] = act
+                return estado
+
+            _estado_actualizar(_marcar)
+
+            if not correcto:
                 _registrar_incidencia(puesto_id, actual.get('led'), actual.get('terminal'),
                                       'rfid_incorrecto', 'esperado=%s leido=%s' % (uid_esperado, uid))
                 return jsonify({'success': True, 'ok': False,
                                 'mensaje': 'La etiqueta leída no corresponde a la gaveta esperada'})
-
             # UID correcto: se guarda como validado aunque el micro correcto
             # aun no se haya abierto (puede llegar antes); la confirmacion
             # final la decide _calcular_estado_orden con las dos cosas.
-            actual['rfid_confirmado'] = True
-            actual['uid_incorrecto'] = None
-            estado[puesto_id] = actual
-            _estado_guardar(estado)
             return jsonify({'success': True, 'ok': True, 'mensaje': 'Gaveta verificada'})
 
         return jsonify({'success': True, 'ok': False, 'mensaje': 'Modo no soportado'}), 400
@@ -766,13 +771,14 @@ def api_pick_to_light_encender():
 
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
-        estado = _estado_cargar()
-        estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
-                             'recogida': False, 'devuelta': False, 'validas': validas,
-                             'error_led': None, 'intrusas': [], 'eventos': [],
-                             'orden_id': orden_id, 'uid_esperado': uid_rfid,
-                             'rfid_confirmado': False, 'uid_incorrecto': None}
-        _estado_guardar(estado)
+        def _set(estado):
+            estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
+                                 'recogida': False, 'devuelta': False, 'validas': validas,
+                                 'error_led': None, 'intrusas': [], 'eventos': [],
+                                 'orden_id': orden_id, 'uid_esperado': uid_rfid,
+                                 'rfid_confirmado': False, 'uid_incorrecto': None}
+            return estado
+        _estado_actualizar(_set)
 
         remoto = not ok and _backend_pythonanywhere()
         return jsonify({'success': True, 'activo': ok or remoto, 'led': led, 'gaveta': gaveta,
@@ -796,10 +802,10 @@ def api_pick_to_light_apagar():
         if device_id:
             ok, _ = _enviar_a_placa(ip, {'apagar': True})
 
-        estado = _estado_cargar()
-        if puesto_id in estado:
-            del estado[puesto_id]
-            _estado_guardar(estado)
+        def _borrar(estado):
+            estado.pop(puesto_id, None)
+            return estado
+        _estado_actualizar(_borrar)
 
         return jsonify({'success': True, 'activo': ok})
     except Exception as e:
@@ -879,36 +885,49 @@ def api_pick_to_light_orden():
 
         puesto_id = _puesto_de_la_placa(device_id)
 
+        try:
+            led_reportado = int(request.args.get('led') or 0)
+        except (TypeError, ValueError):
+            led_reportado = 0
+        arg_recogida = request.args.get('recogida') == '1'
+        arg_puesta = request.args.get('puesta') == '1'
+        intrusas = _parsear_intrusas(request.args.get('intrusas'))
+
+        def _falta_reconfirmar(actual):
+            if not actual or led_reportado != actual.get('led'):
+                return False
+            if arg_recogida and not actual.get('recogida'):
+                return True
+            if bool(actual.get('devuelta')) != arg_puesta:
+                return True
+            return list(actual.get('intrusas') or []) != intrusas
+
+        def _reconfirmar(estado_todo):
+            # La placa reconfirma en cada sondeo el estado de SU gaveta. Va bajo
+            # el candado del fichero (via _estado_actualizar) para no pisar la
+            # reconfirmacion simultanea de otra placa: son claves distintas del
+            # mismo dict, pero el fichero se reescribe entero.
+            actual = estado_todo.get(puesto_id) or {}
+            if led_reportado != actual.get('led'):
+                return estado_todo
+            if arg_recogida and not actual.get('recogida'):
+                actual['recogida'] = True
+                actual['error_led'] = None
+            if bool(actual.get('devuelta')) != arg_puesta:
+                actual['devuelta'] = arg_puesta
+            # La placa manda la lista ENTERA de gavetas abiertas que no tocan,
+            # no un cambio suelto: asi el estado no se queda con una intrusa
+            # fantasma si se perdio el aviso de que la devolvieron.
+            if list(actual.get('intrusas') or []) != intrusas:
+                actual['intrusas'] = intrusas
+                actual['error_led'] = intrusas[0] if intrusas else None
+            estado_todo[puesto_id] = actual
+            return estado_todo
+
         estado_todo = _estado_cargar()
-        if puesto_id:
-            try:
-                led_reportado = int(request.args.get('led') or 0)
-            except (TypeError, ValueError):
-                led_reportado = 0
-            if led_reportado:
-                actual = estado_todo.get(puesto_id) or {}
-                if led_reportado == actual.get('led'):
-                    cambiado = False
-                    if request.args.get('recogida') == '1' and not actual.get('recogida'):
-                        actual['recogida'] = True
-                        actual['error_led'] = None
-                        cambiado = True
-                    puesta = request.args.get('puesta') == '1'
-                    if bool(actual.get('devuelta')) != puesta:
-                        actual['devuelta'] = puesta
-                        cambiado = True
-                    # La placa manda la lista ENTERA de gavetas abiertas que no
-                    # tocan, no un cambio suelto: asi el estado no se queda con
-                    # una intrusa fantasma si se perdio el aviso de que la
-                    # devolvieron.
-                    intrusas = _parsear_intrusas(request.args.get('intrusas'))
-                    if list(actual.get('intrusas') or []) != intrusas:
-                        actual['intrusas'] = intrusas
-                        actual['error_led'] = intrusas[0] if intrusas else None
-                        cambiado = True
-                    if cambiado:
-                        estado_todo[puesto_id] = actual
-                        _estado_guardar(estado_todo)
+        if (puesto_id and led_reportado
+                and _falta_reconfirmar(estado_todo.get(puesto_id) or {})):
+            estado_todo = _estado_actualizar(_reconfirmar)
 
         estado = estado_todo.get(puesto_id) if puesto_id else None
         led = (estado or {}).get('led')
@@ -1008,14 +1027,15 @@ def api_pick_to_light_probar():
             return jsonify({'success': False, 'message': motivo}), 502
 
         if remoto:
-            estado = _estado_cargar()
-            if apagar:
-                estado.pop(puesto_id, None)
-            else:
-                estado[puesto_id] = {'led': led, 'terminal': '',
-                                     'gaveta': 'Prueba LED %d' % led,
-                                     'recogida': False, 'error_led': None, 'eventos': []}
-            _estado_guardar(estado)
+            def _prueba(estado):
+                if apagar:
+                    estado.pop(puesto_id, None)
+                else:
+                    estado[puesto_id] = {'led': led, 'terminal': '',
+                                         'gaveta': 'Prueba LED %d' % led,
+                                         'recogida': False, 'error_led': None, 'eventos': []}
+                return estado
+            _estado_actualizar(_prueba)
         return jsonify({'success': True,
                         'message': 'La placa recibirá la orden por sondeo.' if remoto else ''})
     except Exception as e:
@@ -1225,16 +1245,11 @@ def _correspondencia_file():
 
 
 def _correspondencia_cargar():
-    try:
-        with open(_correspondencia_file(), encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return cargar(_correspondencia_file(), {})
 
 
 def _correspondencia_guardar(datos):
-    with open(_correspondencia_file(), 'w', encoding='utf-8') as f:
-        json.dump(datos, f)
+    guardar(_correspondencia_file(), datos)
 
 
 @bp.route('/api/pick-to-light/correspondencia/informe', methods=['POST'])
@@ -1365,8 +1380,8 @@ def api_esp32_rfid_gaveta():
     o arranque.
     """
     try:
-        from app.routes.sistema import (_esp32_device_id, _rfid_load_devices,
-                                        _rfid_save_devices, _rfid_registrar_dispositivo)
+        from app.routes.sistema import (_esp32_device_id, _rfid_devices_actualizar,
+                                        _rfid_registrar_dispositivo)
         datos = request.get_json(silent=True) or {}
         device_id = _esp32_device_id(datos.get('device_id'))
         if not device_id:
@@ -1397,17 +1412,18 @@ def api_esp32_rfid_gaveta():
         puerto_abierto = datos.get('http')
         en_prueba = datos.get('en_prueba')
         if n_gavetas or n_expansores or puerto_abierto is not None or en_prueba is not None:
-            devs = _rfid_load_devices()
-            dev = devs.setdefault(device_id, {})
-            if n_gavetas:
-                dev['gavetas'] = n_gavetas
-            if n_expansores:
-                dev['expansores'] = n_expansores
-            if puerto_abierto is not None:
-                dev['ptl_http'] = bool(puerto_abierto)
-            if en_prueba is not None:
-                dev['en_prueba'] = bool(en_prueba)
-            _rfid_save_devices(devs)
+            def _touch(devs):
+                dev = devs.setdefault(device_id, {})
+                if n_gavetas:
+                    dev['gavetas'] = n_gavetas
+                if n_expansores:
+                    dev['expansores'] = n_expansores
+                if puerto_abierto is not None:
+                    dev['ptl_http'] = bool(puerto_abierto)
+                if en_prueba is not None:
+                    dev['en_prueba'] = bool(en_prueba)
+                return devs
+            _rfid_devices_actualizar(_touch)
 
         puesto_id = _puesto_de_la_placa(device_id)
         if not puesto_id:
@@ -1415,27 +1431,28 @@ def api_esp32_rfid_gaveta():
             # de arriba ya se ha guardado, que es lo que necesita Admin.
             return jsonify({'success': True})
 
-        estado = _estado_cargar()
-        actual = estado.get(puesto_id) or {}
-        intrusas = set(actual.get('intrusas') or [])
-        if resultado == 'ok' and led and led == actual.get('led'):
-            actual['recogida'] = True
-            actual['devuelta'] = False
-            actual['error_led'] = None
-        elif resultado == 'devuelta' and led and led == actual.get('led'):
-            actual['devuelta'] = True
-        elif resultado == 'equivocada':
-            intrusas.add(led)
-        elif resultado == 'corregida':
-            intrusas.discard(led)
-        actual['intrusas'] = sorted(intrusas)
-        actual['error_led'] = actual['intrusas'][0] if actual['intrusas'] else None
+        def _aplicar_aviso(estado):
+            actual = estado.get(puesto_id) or {}
+            intrusas = set(actual.get('intrusas') or [])
+            if resultado == 'ok' and led and led == actual.get('led'):
+                actual['recogida'] = True
+                actual['devuelta'] = False
+                actual['error_led'] = None
+            elif resultado == 'devuelta' and led and led == actual.get('led'):
+                actual['devuelta'] = True
+            elif resultado == 'equivocada':
+                intrusas.add(led)
+            elif resultado == 'corregida':
+                intrusas.discard(led)
+            actual['intrusas'] = sorted(intrusas)
+            actual['error_led'] = actual['intrusas'][0] if actual['intrusas'] else None
 
-        eventos = (actual.get('eventos') or [])
-        eventos.append({'led': led, 'fuera': fuera, 'resultado': resultado})
-        actual['eventos'] = eventos[-MAX_EVENTOS_PUESTO:]
-        estado[puesto_id] = actual
-        _estado_guardar(estado)
+            eventos = (actual.get('eventos') or [])
+            eventos.append({'led': led, 'fuera': fuera, 'resultado': resultado})
+            actual['eventos'] = eventos[-MAX_EVENTOS_PUESTO:]
+            estado[puesto_id] = actual
+            return estado
+        _estado_actualizar(_aplicar_aviso)
 
         return jsonify({'success': True})
     except Exception as e:
