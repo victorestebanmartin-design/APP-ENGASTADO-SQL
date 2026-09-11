@@ -118,13 +118,17 @@ llega solo. Al desplegar el servidor:
 - **Carro (`main_wifi.py`):** el OTA lo sirve `_esp32_firmware_files` como
   `app.py` y lee `FW_VERSION` de ese mismo fichero → subir `FW_VERSION` (hecho,
   `2026-09-11a`) + desplegar servidor + verificar en Admin → Display Carro.
-- **Lector RFID (`lector_puesto.py`):** OJO, hay un desajuste heredado — el OTA
-  de `sistema.py` (`_rfid_firmware_files` / `_rfid_firmware_version`) sirve
-  `esp32/main.py` (que **no tiene `FW_VERSION`** y parece el panel serie viejo),
-  no `lector_puesto.py`. Antes de contar con que el backoff de gaveta llegue por
-  OTA hay que aclarar cómo se instala hoy `lector_puesto.py` en las placas y
-  apuntar ahí el `FW_VERSION` (subido a `2026-09-11a` en el fichero, por si el
-  OTA se corrige, pero puede que hoy haya que flashear por USB).
+- **Lector RFID (`lector_puesto.py`, perfil `gen4_pn532`): SIN OTA, confirmado.**
+  El endpoint `/api/esp32/rfid/firmware/version` (`_rfid_firmware_files` /
+  `_rfid_firmware_version` en `sistema.py`) sirve `esp32/main.py`, que es del
+  perfil `devkit` (ESP32 DevKit V1 + RC522, hardware de baja) — y ese fichero
+  ni siquiera existe ya en el repo, igual que `ota_update.py`. El lector
+  `gen4_pn532` (el que hay en planta) se instala por USB
+  (`/api/esp32/rfid/flash_usb`, Admin → Lectores RFID) y no comprueba versión
+  ni descarga nada por WiFi: es la única vía. El backoff de `/gaveta/orden`
+  (2.3/2.4) requiere reflashear cada lector por USB para entrar en vigor;
+  no es urgente (rebaja tráfico, no arregla nada roto). `FW_VERSION` del
+  fichero ya está en `2026-09-11a`.
 
 ### Fase 4 — Arquitectura (cuando Fases 1-3 estén asentadas)
 
