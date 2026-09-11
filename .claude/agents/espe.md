@@ -82,6 +82,83 @@ servidor Flask desde el firmware "clásico" (no MicroPython puro de placa).
    incidentes documentados (interruptor en EN-RST que no apaga de verdad,
    PN532 que se cuelga por caída de tensión, etc.) que no conviene repetir.
 
+## El OTA pisa la configuración de la placa (la trampa gorda)
+
+Esto costó una tarde entera de diagnóstico. Lo que el OTA sirve es el fichero
+del repo, y el repo lleva **placeholders** a propósito (`SSID = "YOUR_SSID"`).
+Solo dos variables las inyecta el servidor al servir el OTA (`_HOST_POR_FICHERO`
+en `sistema.py`): `HOST_IP` en `app.py` y `BACKEND_HOST` en `backend_config.py`.
+**Todo lo demás que se inyecta al flashear por USB, el OTA lo pisa**: `SSID`,
+`PASSWORD`, `STATIC_IP`, `PORT`, `USE_SSL`, `BACKEND_PORT`, `BACKEND_USE_SSL`.
+
+La solución que hay montada es del lado de la placa: antes de escribir el
+fichero descargado, la propia placa reinyecta su configuración actual
+(`_reinyectar_config_app` / `_reinyectar_config_backend` en
+`lector_puesto.py`, `_reinyectar_wifi` en `main_wifi.py`). Dos consecuencias:
+
+- **Si añades una variable de configuración por placa, añádela también a la
+  reinyección**, o el primer OTA se la lleva por delante.
+- **La reinyección solo protege el OTA que aplica una placa que YA la tiene.**
+  Al subir una placa desde una versión anterior al arreglo, el que ejecuta la
+  descarga es el firmware viejo, que no sabe reinyectar: esa placa pierde el
+  WiFi y hay que reflashearla por USB una vez. Es un peaje de una sola vez por
+  placa, y conviene avisarlo antes de publicar.
+
+`DISPLAY_ROTATION` fue la misma trampa con otra cara: era inyectable por USB y
+el OTA la reponía al literal del repo, girando placas que estaban bien. Se
+resolvió quitando la opción y fijándola en el firmware (todas las cajas se
+montan igual). Esa es la vía preferible: **lo que no tiene por qué variar entre
+placas, mejor fijo en el código que inyectado**.
+
+## Un servidor viejo DEGRADA las placas
+
+La comprobación es `version_srv != FW_VERSION`, **no** "es más nueva". Si el
+servidor anuncia una versión anterior, la placa se "actualiza" hacia atrás. Por
+eso una placa recién flasheada puede aparecer sola en una versión antigua a los
+pocos minutos.
+
+Y hay **dos servidores**, no uno:
+
+- **Local** (`produccion`): el PC de planta con `run.bat`. Lee `FW_VERSION` del
+  fichero en SU disco, así que necesita `git pull` ahí.
+- **PAW** (`laboratorio`): PythonAnywhere (`viktor85.pythonanywhere.com:443`).
+  **`git push` a `main` NO lo despliega**: hay que desplegarlo aparte.
+
+El entorno se elige al flashear por USB y define SSID/IP/host/puerto/SSL. Una
+placa en modo laboratorio solo habla con PAW: si PAW está desactualizado, la
+degradará una y otra vez por mucho que `main` esté al día. **Despliega PAW y el
+PC local antes de tocar placas por USB**, o te pelearás con un fantasma.
+
+## Sonidos: el ritmo, no la nota
+
+Todos los zumbadores de planta son **activos** (`BUZZER_PASIVO = False`): sueltan
+una frecuencia fija y **las notas no se oyen**. Dos avisos que solo se
+diferencien por la nota suenan idénticos. Diferéncialos por **ritmo** (corto-
+corto-largo vs largo-corto-corto) y **textura** (`tono` liso vs `trino`
+rasposo). Las notas se dejan puestas igualmente, porque con un piezo pasivo
+convierten el mismo patrón en melodía.
+
+El vocabulario está en `main_wifi.py` (`bip_*`), `lector_puesto.py` (`beep_*`) y
+`gavetas.py` (`PATRON_*`), y las tablas en `HARDWARE.md` y
+`HARDWARE_LECTOR_PUESTO_GEN4.md`. En `gavetas.py` los avisos son secuencias de
+`(nota, ms)` que avanza `_atender_zumbador` sin bloquear; en los otros dos son
+bloqueantes porque solo suenan en puntos muertos.
+
+## Flashear por USB: lo que se ve y lo que no
+
+- El endpoint copia los 9 ficheros en una sola invocación de `mpremote`, y
+  escribe `app_prev.py` con **el mismo contenido** que `app.py` (para que un
+  rollback no deshaga el flasheo) y `boot_fails.txt` a `0`. Si responde
+  `success`, todos los `cp` fueron bien.
+- `_interrumpir_placa` es una **carrera**: resetea por DTR/RTS y machaca Ctrl-C
+  3 s para pillar la placa antes de que entre en el WiFi. Puede perderla, y con
+  el WiFi caído la placa pasa más tiempo bloqueada reintentando, lo que la hace
+  más difícil de interrumpir. El síntoma es `could not enter raw repl`.
+- **No cuentes con leer la consola serie desde el servidor.** En la gen4
+  (ESP32-S3, USB nativo) no se consiguió sacar ni un `print()` por COM con
+  pyserial ni con `mpremote` (ni reseteando, ni con DTR afirmado). Para ver los
+  `print()` de arranque, Thonny en el propio PC.
+
 ## Dónde mirar antes de tocar algo
 
 - `esp32/HARDWARE.md` — pantalla del carro (gen4-ESP32-24).
@@ -104,6 +181,15 @@ Antes de dar el trabajo por hecho, verifica explícitamente:
       que lo consume.
 - [ ] Ningún `open()` nuevo dentro de `esp32/` con `encoding=` (falla en
       MicroPython).
+- [ ] ¿Añadiste alguna variable de configuración por placa? Entonces va también
+      en la reinyección del OTA.
 - [ ] Si tocaste `pick_to_light.py`, el camino de fallo sigue devolviendo 200.
+- [ ] Nada de lo que corre en el bucle de `gavetas.py` bloquea.
 - [ ] `python -m pytest` sigue en verde (los tests de encoding y de arranque
-      no dependen del hardware real).
+      no dependen del hardware real). **Ojo**: la suite completa arrastra un
+      fallo preexistente ajeno a `esp32/` (`AssertionError: The setup method
+      'route' can no longer be called on the blueprint 'main'`, por llamar a
+      `create_app()` varias veces en el mismo proceso). Los tests pasan
+      lanzados de uno en uno; no es tuyo.
+- [ ] Al publicar: despliega **PAW y el PC local** antes de que ninguna placa
+      vaya a por el OTA, y avisa si alguna necesita reflasheo por USB.

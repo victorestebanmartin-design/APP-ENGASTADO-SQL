@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-11a"
+FW_VERSION = "2026-09-11b"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -343,11 +343,14 @@ def bip_recogido():
     tono(190, _SOL)
 
 def bip_devuelto():
-    """OK a una DEVOLUCION: descendente, suena a 'cerrado'. Se distingue del
-    de recogida aunque el zumbador sea de una sola nota, por el ritmo."""
-    tono(70, _SOL); pausa(35)
-    tono(70, _MI); pausa(35)
-    tono(190, _DO)
+    """OK a una DEVOLUCION: nota larga primero y dos ticks detras, o sea el
+    ritmo INVERSO al de recogida (corto-corto-largo). Antes solo cambiaba la
+    nota y el ritmo era identico, asi que con el zumbador ACTIVO de planta
+    -- donde todas las notas suenan igual -- recoger y devolver sonaban
+    exactamente igual. Ahora se distinguen con los ojos cerrados."""
+    tono(190, _SOL); pausa(45)
+    tono(60, _MI); pausa(35)
+    tono(60, _DO)
 
 def bip_seleccion():
     """Has pulsado el boton de tu puesto: dos ticks rapidos."""

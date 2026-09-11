@@ -58,9 +58,29 @@ TIMEOUT_PETICION_S = 1      # leer la peticion ya recibida es cosa de ms
 MAX_CUERPO = 512            # el JSON que manda el PC son unos 30 bytes
 INTERVALO_MICROS_MS = 40    # cada cuanto se relee el bus I2C
 ANTIRREBOTE_MS = 80         # un micro rebota unos ms al abrir y al cerrar
-BEEP_OK_MS = 120            # confirmacion corta de recogida correcta
+
+# Avisos del zumbador: secuencias de (nota, ms), con nota 0 = silencio. Con un
+# zumbador ACTIVO todas las notas suenan igual, asi que lo que distingue un
+# aviso de otro es el RITMO -- mismo idioma que la pantalla del carro
+# (main_wifi.py) y que el propio lector (lector_puesto.py).
+#
+# El aviso de recogida era antes un tono liso de 120 ms, que es exactamente la
+# misma textura que cada golpe de la alarma de abajo: confirmar sonaba igual
+# que equivocarse. Ahora son dos toques cortos que SUBEN, y la devolucion los
+# mismos al reves.
+_DO = 2093
+_MI = 2637
+_SOL = 3136
+_FA = 1397
+
+PATRON_COGIDA = ((_MI, 40), (0, 30), (_SOL, 70))     # sube: "bien, es esa"
+PATRON_DEVUELTA = ((_SOL, 70), (0, 30), (_DO, 40))   # baja: "cerrado"
+
 # Alarma de gaveta robada: corta y rapida molesta mucho mas que un pitido
 # largo, y es la unica forma de que alguien suelte el cajon y lo devuelva.
+# Grave y repetida sin fin: no se puede confundir con los dos avisos de
+# arriba, que son agudos y se acaban solos.
+NOTA_ALARMA = _FA
 ZUMBIDO_ON_MS = 120
 ZUMBIDO_OFF_MS = 90
 PARPADEO_MS = 250           # el rojo de la gaveta robada parpadea, no fijo
@@ -97,7 +117,9 @@ class Gavetas:
 
         self._zumbido_hasta_ms = 0
         self._zumbido_encendido = False
-        self._beep_hasta_ms = 0
+        self._patron = None         # aviso corto en curso (ver _lanzar)
+        self._patron_paso = 0
+        self._patron_hasta_ms = 0
         self._parpadeo_hasta_ms = 0
         self._parpadeo_encendido = True
 
@@ -224,13 +246,58 @@ class Gavetas:
     def _parar_zumbido(self):
         self._zumbido_hasta_ms = 0
         self._zumbido_encendido = False
-        self._beep_hasta_ms = 0
+        self._patron = None
+        self._patron_paso = 0
+        self._patron_hasta_ms = 0
         self._parpadeo_hasta_ms = 0
         self._parpadeo_encendido = True
+        self._callar()
+
+    # ── Avisos cortos (sin bloquear) ────────────────────────────────────────
+
+    def _sonar(self, nota):
+        """Enciende el zumbador en esa nota, si el puente sabe de notas."""
+        try:
+            en_nota = getattr(self.buzzer, "nota", None)
+            if en_nota is not None:
+                en_nota(nota)
+            else:
+                self.buzzer.on()
+        except Exception:
+            pass
+
+    def _callar(self):
         try:
             self.buzzer.off()
         except Exception:
             pass
+
+    def _lanzar(self, patron):
+        """Arranca un aviso. Aqui no suena nada todavia: lo va sacando
+        _atender_zumbador desde el bucle principal, porque en este fichero
+        NADA bloquea (el mismo bucle esta leyendo tarjetas)."""
+        self._patron = patron
+        self._patron_paso = 0
+        self._patron_hasta_ms = 0
+
+    def _atender_patron(self, ahora):
+        """Avanza el aviso en curso. True mientras siga sonando."""
+        if self._patron is None:
+            return False
+        if self._patron_hasta_ms and time.ticks_diff(ahora, self._patron_hasta_ms) < 0:
+            return True
+        if self._patron_paso >= len(self._patron):
+            self._patron = None
+            self._callar()
+            return False
+        nota, ms = self._patron[self._patron_paso]
+        self._patron_paso += 1
+        self._patron_hasta_ms = time.ticks_add(ahora, ms)
+        if nota:
+            self._sonar(nota)
+        else:
+            self._callar()
+        return True
 
     def _iniciar_prueba(self):
         """Entra en modo prueba: pausa la logica normal para verificar el cableado."""
@@ -302,33 +369,26 @@ class Gavetas:
 
         return None
 
-    def _beep_ok(self):
-        self._beep_hasta_ms = time.ticks_add(time.ticks_ms(), BEEP_OK_MS)
-        self.buzzer.on()
-
     def _atender_zumbador(self, ahora):
-        # El beep corto de confirmacion manda sobre el zumbido de error: si
+        # El aviso corto de confirmacion manda sobre el zumbido de error: si
         # suenan a la vez, lo que el operario necesita oir es el "correcta".
-        if self._beep_hasta_ms:
-            if time.ticks_diff(ahora, self._beep_hasta_ms) >= 0:
-                self._beep_hasta_ms = 0
-                self.buzzer.off()
+        if self._atender_patron(ahora):
             return
 
         if not self.equivocadas:
             if self._zumbido_encendido:
                 self._zumbido_encendido = False
-                self.buzzer.off()
+                self._callar()
             return
 
         if time.ticks_diff(ahora, self._zumbido_hasta_ms) < 0:
             return
         self._zumbido_encendido = not self._zumbido_encendido
         if self._zumbido_encendido:
-            self.buzzer.on()
+            self._sonar(NOTA_ALARMA)
             self._zumbido_hasta_ms = time.ticks_add(ahora, ZUMBIDO_ON_MS)
         else:
-            self.buzzer.off()
+            self._callar()
             self._zumbido_hasta_ms = time.ticks_add(ahora, ZUMBIDO_OFF_MS)
 
     # ── Micro-interruptores ─────────────────────────────────────────────────
@@ -381,11 +441,12 @@ class Gavetas:
             if ahora_fuera:
                 self.recogida = True
                 self._pintar(gaveta, COLOR_EN_USO)
-                self._beep_ok()
+                self._lanzar(PATRON_COGIDA)
                 self._avisar(gaveta, True, "ok")
             else:
                 # Devolver la gaveta buena no apaga la luz: sigue siendo la del
                 # trabajo en curso hasta que el servidor diga que se acabo.
+                self._lanzar(PATRON_DEVUELTA)
                 self._avisar(gaveta, False, "devuelta")
             return
 

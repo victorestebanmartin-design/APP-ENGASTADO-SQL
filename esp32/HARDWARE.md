@@ -266,14 +266,21 @@ así que cada aviso se reconoce por **ritmo y textura** (`tono` = liso,
 `trino` = cortes rápidos, suena rasposo). Con un piezo pasivo
 (`BUZZER_PASIVO = True`) los mismos patrones suenan además como melodías.
 
+Por eso **dos avisos nunca pueden diferenciarse solo por la nota**: en planta
+todos los zumbadores son activos y la nota no se oye. Recogida y devolución
+compartían ritmo y solo cambiaban de nota — sonaban idénticos en el carro — y
+por eso hoy la devolución lleva el ritmo invertido. La misma regla vale para el
+lector de puesto (ver `HARDWARE_LECTOR_PUESTO_GEN4.md`), que habla el mismo
+idioma.
+
 | Evento | Patrón |
 |---|---|
 | Arranque | trino corto + nota |
 | Pulsas el botón de tu puesto | dos ticks rápidos |
 | Contenido actualizado | tic casi imperceptible (14 ms) |
 | Alguien tiene que venir al carro | tres golpes separados, se repite cada 25 s |
-| OK a una recogida | fanfarria **ascendente** de tres notas |
-| OK a una devolución | las mismas tres notas **descendentes** ("cerrado") |
+| OK a una recogida | fanfarria **ascendente**: corto-corto-**largo** |
+| OK a una devolución | el ritmo **inverso**: **largo**-corto-corto ("cerrado") |
 | Llegan paquetes en reposo | melodía de cuatro notas, la llamada más larga |
 | Gesto no válido (puesto sin trabajo, OK a destiempo) | dos zumbidos rasposos y graves |
 

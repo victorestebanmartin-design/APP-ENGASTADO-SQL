@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-11d"
+FW_VERSION = "2026-09-11e"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -211,36 +211,105 @@ except Exception:
     buzzer = None
 
 
-def beep(duration_ms, frequency=2400):
+# Mismo "idioma" que la pantalla del carro (main_wifi.py): con un zumbador
+# ACTIVO todas las notas suenan igual, asi que lo que distingue un aviso de
+# otro es el RITMO y la TEXTURA -- tono liso vs trino rasposo. Con un piezo
+# PASIVO ademas se oyen las notas y los mismos patrones suenan a melodia.
+_DO = 2093
+_MI = 2637
+_SOL = 3136
+_LA = 1760
+_FA = 1397
+
+
+def _bz_on(frecuencia):
+    if buzzer is None:
+        return
+    if BUZZER_PASIVO:
+        buzzer.freq(frecuencia)
+        buzzer.duty_u16(32768)
+    else:
+        buzzer(1)
+
+
+def _bz_off():
+    if buzzer is None:
+        return
+    if BUZZER_PASIVO:
+        buzzer.duty_u16(0)
+    else:
+        buzzer(0)
+
+
+def tono(ms, frecuencia=2400):
+    """Sonido liso."""
     if buzzer is None:
         return
     try:
-        if BUZZER_PASIVO:
-            buzzer.freq(frequency)
-            buzzer.duty_u16(32768)
-        else:
-            buzzer(1)
-        time.sleep_ms(duration_ms)
+        _bz_on(frecuencia)
+        time.sleep_ms(ms)
     finally:
-        if buzzer is not None:
-            if BUZZER_PASIVO:
-                buzzer.duty_u16(0)
-            else:
-                buzzer(0)
+        _bz_off()
+
+
+def trino(ms, frecuencia=2400, corte=14):
+    """Textura rasposa: el zumbador se corta cada 'corte' ms. Suena a vibrado
+    y se distingue de un tono liso aunque el zumbador sea de una sola nota."""
+    if buzzer is None:
+        return
+    try:
+        fin = time.ticks_add(time.ticks_ms(), ms)
+        while time.ticks_diff(fin, time.ticks_ms()) > 0:
+            _bz_on(frecuencia)
+            time.sleep_ms(corte)
+            _bz_off()
+            time.sleep_ms(corte)
+    finally:
+        _bz_off()
+
+
+def pausa(ms):
+    if ms:
+        time.sleep_ms(ms)
+
+
+def beep(duration_ms=60, frequency=2400):
+    """Compatibilidad: un pitido suelto."""
+    tono(duration_ms, frequency)
+
+
+def beep_arranque():
+    """Arranque: trino corto + nota que sube. 'El lector esta vivo'."""
+    trino(90, _MI)
+    pausa(40)
+    tono(110, _SOL)
 
 
 def beep_ok():
-    beep(60, 2093); time.sleep_ms(35); beep(80, 2637); time.sleep_ms(35); beep(180, 3136)
+    """Tarjeta aceptada: ASCENDENTE y corto (corto-corto-largo). El unico
+    aviso liso que sube: suena a 'adelante'."""
+    tono(60, _DO)
+    pausa(30)
+    tono(60, _MI)
+    pausa(30)
+    tono(170, _SOL)
 
 
 def beep_rechazo():
-    beep(130, 1397); time.sleep_ms(80); beep(130, 1397)
+    """Decision del servidor sobre esa tarjeta (4xx): dos trinos graves y
+    cortos. Rasposo = 'no', y el trino lo separa de cualquier confirmacion."""
+    trino(90, _FA, 22)
+    pausa(70)
+    trino(90, _FA, 22)
 
 
 def beep_error():
-    for _ in range(3):
-        beep(100, 1800)
-        time.sleep_ms(80)
+    """Error tecnico (5xx o sin respuesta): trino corto y otro largo mas
+    grave. Es el aviso mas LARGO y el unico que baja: no se confunde con un
+    rechazo, que son dos golpes iguales."""
+    trino(120, _LA, 18)
+    pausa(50)
+    trino(240, _FA, 26)
 
 
 # El DB9 queda en reposo hasta que gavetas.py detecta MCP23017 en su bus I2C.
@@ -254,18 +323,23 @@ class _ConfiguracionGavetas:
 
 
 class _BuzzerGavetas:
+    """Puente entre gavetas.py y el zumbador.
+
+    'nota' es opcional a proposito: gavetas.py la usa si existe para dar
+    melodia a sus avisos y cae a on()/off() si no (ver _sonar alli), asi que
+    un gavetas.py mas nuevo sigue funcionando con un lector_puesto.py viejo.
+    Todo pasa por _bz_on/_bz_off, que ya aguantan buzzer = None: antes, con
+    BUZZER_PASIVO y el zumbador sin inicializar, esto reventaba en cada aviso.
+    """
+
     def on(self):
-        if BUZZER_PASIVO:
-            buzzer.freq(2400)
-            buzzer.duty_u16(32768)
-        elif buzzer is not None:
-            buzzer(1)
+        _bz_on(2400)
 
     def off(self):
-        if BUZZER_PASIVO:
-            buzzer.duty_u16(0)
-        elif buzzer is not None:
-            buzzer(0)
+        _bz_off()
+
+    def nota(self, frecuencia):
+        _bz_on(frecuencia)
 
 
 def draw_idle():
@@ -697,7 +771,7 @@ ultimo_latido = 0
 ultima_orden_gavetas = 0
 gaveta_fallos = 0
 
-beep(80)
+beep_arranque()
 conectar_wifi()
 # gavetas.crear() va aqui, despues de conectar_wifi(), para que _abrir_servidor()
 # pueda hacer el bind en el socket cuando la red ya esta activa.  Si se mueve

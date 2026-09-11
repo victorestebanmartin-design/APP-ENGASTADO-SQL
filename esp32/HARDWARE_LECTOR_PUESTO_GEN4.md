@@ -328,6 +328,33 @@ ampliacion y no se cablea en este DB9.
 6. Probar una tarjeta registrada, una no registrada y la repeticion de una
    tarjeta mantenida sobre el lector.
 
+## Sonidos del zumbador
+
+Mismo idioma que la pantalla del carro (ver `HARDWARE.md`): con un zumbador
+**activo** la nota no se oye, asi que cada aviso se reconoce por **ritmo y
+textura** -- `tono` liso frente a `trino` rasposo. Dos avisos nunca se
+distinguen solo por la nota.
+
+| Evento | Patron | Donde |
+|---|---|---|
+| Arranque | trino corto + nota que sube | `lector_puesto.py:beep_arranque` |
+| Tarjeta aceptada | ascendente, corto-corto-**largo** | `beep_ok` |
+| Tarjeta rechazada (4xx del servidor) | **dos trinos** graves e iguales | `beep_rechazo` |
+| Error tecnico (5xx o sin respuesta) | trino corto + trino **largo** mas grave | `beep_error` |
+| Gaveta correcta recogida | dos toques cortos que **suben** (~140 ms) | `gavetas.py:PATRON_COGIDA` |
+| Gaveta devuelta a su sitio | los mismos al reves, **bajan** | `PATRON_DEVUELTA` |
+| Gaveta robada (la que no tocaba) | grave, repetido **sin fin** hasta devolverla | `NOTA_ALARMA` |
+
+Dos reglas al tocar esto:
+
+- **En `gavetas.py` nada bloquea.** Sus avisos son secuencias de `(nota, ms)`
+  que reproduce `_atender_zumbador` paso a paso desde el bucle principal, que
+  es el mismo que lee tarjetas. Nunca metas un `sleep` ahi. Los de
+  `lector_puesto.py` si son bloqueantes, pero solo suenan en puntos muertos
+  (arranque, respuesta a una tarjeta), donde no hay nada que atender.
+- **La confirmacion manda sobre la alarma.** Si suenan a la vez, lo que el
+  operario necesita oir es el "correcta"; la alarma sigue sola despues.
+
 ## Lecciones aprendidas en la primera instalacion
 
 Estos errores ya se cometieron y se documentan para no repetirlos.
