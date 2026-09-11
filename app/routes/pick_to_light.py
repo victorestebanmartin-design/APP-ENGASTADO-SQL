@@ -421,7 +421,7 @@ def api_pick_to_light_desasignar_canal():
 
 # ==================== ALTA DE RFID POR CANAL (admin) ====================
 #
-# Las etiquetas RFID de gaveta se leen con el MISMO RC522 que ya usa el
+# Las etiquetas RFID de gaveta se leen con el MISMO PN532 que ya usa el
 # lector para el login de operarios: no hay hardware nuevo, hay que saber
 # distinguir una lectura de la otra. La placa arma un "modo" (armado aqui, en
 # el servidor) para la SIGUIENTE tarjeta que pase; mientras no este armado,

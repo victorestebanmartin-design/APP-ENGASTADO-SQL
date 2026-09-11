@@ -118,17 +118,25 @@ llega solo. Al desplegar el servidor:
 - **Carro (`main_wifi.py`):** el OTA lo sirve `_esp32_firmware_files` como
   `app.py` y lee `FW_VERSION` de ese mismo fichero → subir `FW_VERSION` (hecho,
   `2026-09-11a`) + desplegar servidor + verificar en Admin → Display Carro.
-- **Lector RFID (`lector_puesto.py`, perfil `gen4_pn532`): SIN OTA, confirmado.**
-  El endpoint `/api/esp32/rfid/firmware/version` (`_rfid_firmware_files` /
-  `_rfid_firmware_version` en `sistema.py`) sirve `esp32/main.py`, que es del
-  perfil `devkit` (ESP32 DevKit V1 + RC522, hardware de baja) — y ese fichero
-  ni siquiera existe ya en el repo, igual que `ota_update.py`. El lector
-  `gen4_pn532` (el que hay en planta) se instala por USB
-  (`/api/esp32/rfid/flash_usb`, Admin → Lectores RFID) y no comprueba versión
-  ni descarga nada por WiFi: es la única vía. El backoff de `/gaveta/orden`
-  (2.3/2.4) requiere reflashear cada lector por USB para entrar en vigor;
-  no es urgente (rebaja tráfico, no arregla nada roto). `FW_VERSION` del
-  fichero ya está en `2026-09-11a`.
+- **Lector RFID (`lector_puesto.py`): DevKit retirado, OTA implementado
+  (2026-09-11).** El modelo antiguo (ESP32 DevKit V1 + RC522) ya no existe ni
+  en planta ni en el repo: se quitó todo su código (rama `perfil` en
+  `api_esp32_rfid_flash_usb`, `_MODELO_FIRMWARE`, comentarios). El único
+  lector es gen4-ESP32-24 + PN532. `_rfid_firmware_files`/`_rfid_firmware_version`
+  ahora sirven de verdad `lector_puesto.py` (como `app.py`) + sus drivers
+  (`pn532_i2c.py`, `gavetas.py`, `mcp23017.py`, `http_client.py`,
+  `backend_config.py`); `boot.py`/`launcher.py` (main.py) siguen siendo
+  USB-only. El lector **se autoactualiza sin preguntar**: no tiene un
+  pulsador de confirmación como el carro, así que en cada latido (cada
+  minuto, `registrar_dispositivo()`) compara su `FW_VERSION` con la del
+  servidor y, si difiere, se aplica sola — salvo que tenga una gaveta
+  encendida en ese momento, en cuyo caso espera al siguiente latido. Misma
+  red de seguridad que el carro: `launcher.py` revierte a `app_prev.py` si el
+  `app.py` nuevo no arranca tras varios intentos. Primer paso: reflashear
+  cada lector por USB una vez (Admin → Lectores RFID → USB) para que quede
+  con `lector_puesto.py` + el fichero de OTA correcto; a partir de ahí, las
+  siguientes versiones (como el backoff de 2.3/2.4, ya incluido en
+  `FW_VERSION 2026-09-11b`) llegan solas.
 
 ### Fase 4 — Arquitectura (cuando Fases 1-3 estén asentadas)
 
@@ -159,3 +167,12 @@ llega solo. Al desplegar el servidor:
   la UI) y **Fase 4** (MQTT / RFID-USB / VLAN — son decisiones, no código).
   Firmware cambiado (carro + lector): NO se aplica hasta desplegar; ver la nota
   de despliegue.
+- **2026-09-11** — Retirado el lector RFID `devkit` (ESP32 DevKit V1 + RC522):
+  código muerto en `sistema.py` (rama `perfil`, `_MODELO_FIRMWARE`), `admin.js`
+  y comentarios (`pick_to_light.py`, tests, `HARDWARE_LECTOR_PUESTO_GEN4.md`)
+  eliminados o corregidos (eran "RC522" cuando el hardware real es PN532).
+  El OTA del lector gen4+PN532 (`_rfid_firmware_files`/`_rfid_firmware_version`)
+  ahora sirve de verdad `lector_puesto.py` + drivers, y el lector se
+  **autoactualiza sin preguntar** (sin pulsador de confirmación, a diferencia
+  del carro) en cada latido, salvo con una gaveta encendida. `FW_VERSION` del
+  lector → `2026-09-11b`. Ver la nota de despliegue actualizada.

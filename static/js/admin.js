@@ -1505,8 +1505,9 @@ async function eliminarDisplay(id) {
 
 
 // ============================================================================
-// LECTORES RFID — perfiles DevKit+RC522 y gen4+PN532 asignados a un puesto.
-// Mismo patron que "Display Carro" de arriba, pero device_id -> puesto.
+// LECTORES RFID — gen4-ESP32-24 + PN532 asignados a un puesto (el modelo
+// anterior, DevKit + RC522, se retiro). Mismo patron que "Display Carro" de
+// arriba, pero device_id -> puesto.
 // ============================================================================
 
 function _rfidMsg(texto, esError) {
@@ -1927,7 +1928,6 @@ function actualizarEntornoRfid() {
 
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
-    const perfil = 'gen4_pn532';
     const orientacion = document.getElementById('usb-orientacion-rfid')?.value || '180';
     const entorno = document.getElementById('usb-entorno-rfid')?.value || 'produccion';
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
@@ -1952,9 +1952,9 @@ async function flashUSBRfid() {
     btn.disabled = true;
     const txtOriginal = btn.textContent;
     btn.textContent = '⏳ Subiendo... (no desconectes la placa)';
-    const nombrePerfil = perfil === 'gen4_pn532' ? 'Display gen4-ESP32-24 + PN532' : 'ESP32 DevKit + RC522';
+    const nombrePerfil = 'gen4-ESP32-24 + PN532';
     _usbProgresoRfid(8, `Preparando ${nombrePerfil} en ${puerto}...`);
-    _usbMsgRfid('Subiendo perfil ' + nombrePerfil + ' por ' + puerto + '...');
+    _usbMsgRfid('Subiendo firmware (' + nombrePerfil + ') por ' + puerto + '...');
     const etapas = [
         [28, 'Conectando con la placa y copiando ficheros base...'],
         [58, 'Copiando firmware de aplicación...'],
@@ -1970,7 +1970,7 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, perfil, orientacion, entorno, ssid, password, ip_estatica,
+            body: JSON.stringify({ puerto, orientacion, entorno, ssid, password, ip_estatica,
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();

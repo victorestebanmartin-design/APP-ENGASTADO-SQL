@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-11a"
+FW_VERSION = "2026-09-11b"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -410,31 +410,114 @@ def enviar_entrada(tag_uid):
 
 
 def registrar_dispositivo():
-    """Actualiza el latido del lector en Admin sin depender del perfil DevKit."""
-    if socket is None or not wifi_ip:
+    """Latido de presencia (aparece en Admin -> Lectores RFID) y comprueba OTA.
+
+    Se llama al arrancar y cada ~60 s (ver el bucle principal). Este lector no
+    tiene un pulsador de confirmacion como el del carro, asi que si el
+    servidor anuncia una version distinta se actualiza sola, sin preguntar --
+    la red de seguridad es launcher.py (main.py): si el app.py nuevo no llega
+    a arrancar unas pocas veces seguidas, restaura el anterior solo. Se evita
+    interrumpir un trabajo en curso (gaveta encendida): se reintenta en el
+    siguiente latido, un minuto despues.
+    """
+    if http_client is None or backend_cfg is None or not wifi_ip:
         return
-    connection = None
-    try:
-        address = socket.getaddrinfo(HOST_IP, PORT, 0, socket.SOCK_STREAM)[0][-1]
-        connection = socket.socket()
-        connection.settimeout(8)
-        connection.connect(address)
-        if USE_SSL:
-            connection = ssl.wrap_socket(connection, server_hostname=HOST_IP)
-        path = "/api/esp32/rfid/firmware/version?id=%s&ip=%s&fw=%s" % (
-            DEVICE_ID, wifi_ip, FW_VERSION)
-        connection.write(("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n" %
-                          (path, HOST_IP)).encode("utf-8"))
-        while connection.read(256):
-            pass
-    except Exception as error:
-        print("Latido RFID:", error)
-    finally:
+    info = http_client.get_json(
+        backend_cfg.BACKEND_HOST,
+        "/api/esp32/rfid/firmware/version?id=%s&ip=%s&fw=%s" % (DEVICE_ID, wifi_ip, FW_VERSION),
+        port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=8)
+    if not info:
+        return
+    version_srv = info.get("version") or ""
+    ocupado = gav is not None and gav.objetivo is not None
+    if version_srv and version_srv != FW_VERSION and not ocupado:
+        hacer_ota(info)
+
+
+# ── OTA de aplicacion por WiFi ────────────────────────────────────────────────
+# Descarga app.py (+ drivers) del servidor, verifica sha256 y reinicia. Mismo
+# patron probado en la pantalla del carro (main_wifi.py:hacer_ota): descarga y
+# verifica TODO antes de tocar nada; boot.py/launcher.py (main.py) no se tocan.
+
+def _sha256_hex(data):
+    import uhashlib
+    import ubinascii
+    return ubinascii.hexlify(uhashlib.sha256(data).digest()).decode()
+
+
+def _ota_fallo(msg):
+    print("OTA fallo:", msg)
+    draw_result("ACTUALIZACION", ("fallo: " + msg)[:24], RED)
+    beep_error()
+    time.sleep_ms(1500)
+    actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+
+
+def hacer_ota(info):
+    """Aplica una actualizacion: descarga+verifica TODO y solo entonces
+    intercambia y reinicia. Ante cualquier fallo, no toca nada (sigue con el
+    firmware actual)."""
+    archivos = info.get("files") or []
+    version = info.get("version") or ""
+    if not archivos:
+        return
+
+    draw_result("ACTUALIZANDO", "NO DESENCHUFAR", ORANGE)
+    if version:
+        rect(0, 195, DISPLAY_WIDTH, 20, BLACK)   # borra el "PASA TU TARJETA" de debajo
+        text_center(204, version[:24], GRAY, BLACK, 1)
+
+    descargados = {}
+    for f in archivos:
+        nombre = f.get("name")
+        if not nombre:
+            return _ota_fallo("nombre")
+        data = http_client.get_bytes(
+            backend_cfg.BACKEND_HOST, "/api/esp32/rfid/firmware/file?name=" + nombre,
+            port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=15)
+        if data is None:
+            return _ota_fallo("descarga " + nombre)
+        size = f.get("size")
+        if size is not None and len(data) != size:
+            return _ota_fallo("tam " + nombre)
+        sha = f.get("sha256")
+        if sha and _sha256_hex(data) != sha:
+            return _ota_fallo("sha " + nombre)
+        descargados[nombre] = data
+
+    # Escribir a *.new (todavia no se pisa el firmware en uso)
+    for nombre, data in descargados.items():
         try:
-            if connection:
-                connection.close()
-        except Exception:
+            with open(nombre + ".new", "wb") as fp:
+                fp.write(data)
+        except Exception as error:
+            print("OTA write:", error)
+            return _ota_fallo("escritura")
+
+    # Copia de seguridad del app.py actual (para el rollback del lanzador)
+    try:
+        with open("app.py", "rb") as fp:
+            actual = fp.read()
+        with open("app_prev.py", "wb") as fp:
+            fp.write(actual)
+    except OSError:
+        pass
+
+    # Intercambio: borrar el original y renombrar el .new encima
+    import os as _os
+    for nombre in descargados:
+        try:
+            _os.remove(nombre)
+        except OSError:
             pass
+        try:
+            _os.rename(nombre + ".new", nombre)
+        except OSError as error:
+            print("OTA rename:", error)
+
+    draw_result("ACTUALIZADO", "REINICIANDO...", GREEN)
+    time.sleep_ms(700)
+    machine.reset()
 
 
 def ejecutar_test_gavetas(test, seq):

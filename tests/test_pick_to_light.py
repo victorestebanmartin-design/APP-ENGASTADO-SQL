@@ -895,11 +895,11 @@ def test_un_segundo_informe_sustituye_al_anterior(app, admin_client):
 
 # ── Alta de RFID por canal ────────────────────────────────────────────────────
 #
-# El RC522 es el MISMO que el login de operarios: aquí solo se prueba la
+# El PN532 es el MISMO que el login de operarios: aquí solo se prueba la
 # parte servidor (armar/sondear/confirmar/desvincular + unicidad). El "modo"
 # del firmware que evita mezclar una lectura de gaveta con un login normal
 # se prueba en tests/test_gavetas_firmware.py-style, en el propio fichero de
-# firmware si aplica, o queda para verificación manual (no hay runner JS/RC522
+# firmware si aplica, o queda para verificación manual (no hay runner JS/PN532
 # en CI para el bucle principal completo de lector_puesto.py).
 
 def test_normalizar_uid(app):

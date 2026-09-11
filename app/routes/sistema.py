@@ -2339,41 +2339,46 @@ def api_esp32_device_ota(device_id):
         return error_interno(e)
 
 
-# ==================== OTA FIRMWARE ESP32 RFID (entrada Engastado V3) ====================
+# ==================== OTA FIRMWARE ESP32 RFID (lector de puesto gen4+PN532) ====================
 #
-# Mismo patron que el OTA de la pantalla de arriba, pero para la placa
-# lectora RFID de entrada (ESP32 DevKit V1 Type-C + RC522, carpeta esp32/
-# sin el subdirectorio micropython/). Solo main.py y esp32/lib/*.py son
-# actualizables por OTA; boot.py, ota_update.py, http_client.py y
-# wifi_config.py se instalan una vez por USB y nunca se tocan por WiFi (asi
-# un OTA roto nunca puede inutilizar el propio mecanismo de OTA). La placa
-# comprueba esto mismo al arrancar y periodicamente (ver esp32/ota_update.py).
+# Mismo patron que el OTA de la pantalla del carro, pero para el lector RFID +
+# pick-to-light (gen4-ESP32-24 + PN532; el modelo anterior, ESP32 DevKit V1 +
+# RC522, se retiro: no queda hardware de ese tipo en planta ni codigo suyo en
+# el repo). 'app.py' (= esp32/micropython/lector_puesto.py) y los drivers son
+# actualizables por OTA; boot.py y launcher.py (= main.py) se instalan una vez
+# por USB y nunca se tocan por WiFi, para que un OTA roto nunca inutilice el
+# propio mecanismo de OTA -- launcher.py hace el rollback si el app.py nuevo
+# no llega a arrancar (ver esp32/micropython/launcher.py). La placa comprueba
+# esto en cada latido (cada minuto, ver registrar_dispositivo() en
+# lector_puesto.py) y se actualiza sola si hay version nueva: no tiene un
+# pulsador de confirmacion como el carro, asi que no pregunta.
 
 def _rfid_firmware_files():
-    """Ficheros del firmware de la placa RFID: (nombre_destino, ruta_absoluta).
+    """Ficheros del firmware del lector RFID: (nombre_destino, ruta_absoluta).
 
-    'main.py' es el fichero que cambia normalmente; 'backend_config.py' se
-    incluye para poder migrar el host del backend (p.ej. de PythonAnywhere
-    al servidor local) sin pasar por USB; lib/*.py por si hiciera falta
-    actualizar el driver MFRC522 tambien sin USB.
+    'app.py' es lector_puesto.py, el que cambia normalmente; los drivers
+    (pn532_i2c, gavetas, mcp23017) y backend_config.py se incluyen para poder
+    actualizarlos sin USB. launcher.py/boot.py NO entran (ver arriba).
     """
     base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
-    files = [
-        ('main.py', os.path.join(base, 'main.py')),
+    gen4_dir = os.path.join(base, 'micropython')
+    files = [('app.py', os.path.join(gen4_dir, 'lector_puesto.py'))]
+    for nombre, ruta in (
+        ('http_client.py', os.path.join(base, 'http_client.py')),
         ('backend_config.py', os.path.join(base, 'backend_config.py')),
-    ]
-    lib_dir = os.path.join(base, 'lib')
-    if os.path.isdir(lib_dir):
-        for nombre in sorted(os.listdir(lib_dir)):
-            if nombre.endswith('.py'):
-                files.append((nombre, os.path.join(lib_dir, nombre)))
+        ('pn532_i2c.py', os.path.join(gen4_dir, 'lib', 'pn532_i2c.py')),
+        ('gavetas.py', os.path.join(base, 'lib', 'gavetas.py')),
+        ('mcp23017.py', os.path.join(base, 'lib', 'mcp23017.py')),
+    ):
+        if os.path.exists(ruta):
+            files.append((nombre, ruta))
     return files
 
 
 def _rfid_firmware_version():
-    """Version declarada en FW_VERSION dentro de esp32/main.py ('' si no hay)."""
-    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32')
-    return _fw_version_de(os.path.join(base, 'main.py'))
+    """Version declarada en FW_VERSION dentro de lector_puesto.py ('' si no hay)."""
+    base = os.path.join(os.path.dirname(current_app.root_path), 'esp32', 'micropython')
+    return _fw_version_de(os.path.join(base, 'lector_puesto.py'))
 
 
 def _rfid_firmware_manifest():
@@ -2619,26 +2624,26 @@ def api_esp32_rfid_device_delete(device_id):
 @requiere_pin_admin
 def api_esp32_rfid_flash_usb():
     """Configura y sube TODOS los ficheros de una placa lectora RFID por USB
-    de una vez: http_client.py, ota_update.py, wifi_config.py (con el WiFi, la
-    IP fija y la contraseña de WebREPL que se rellenen aquí), lib/mfrc522.py,
-    boot.py, backend_config.py y main.py.
+    de una vez: pn532_i2c.py, gavetas.py, mcp23017.py, http_client.py,
+    backend_config.py, boot.py, launcher.py (como main.py) y lector_puesto.py
+    (como app.py, con el SSID/clave/IP fija/orientación que se rellenen aquí).
 
-    Pensado para el primer flasheo de una placa nueva (o para reinstalar
-    todo desde cero): a partir de ahi, main.py se actualiza solo por WiFi
-    (ver esp32/ota_update.py) y no hace falta volver a tocar el USB.
+    Pensado para el primer flasheo de una placa nueva (o para reinstalar todo
+    desde cero): a partir de ahi, app.py se actualiza solo por WiFi (la placa
+    se autoactualiza sola, sin pulsador de confirmacion; ver
+    lector_puesto.py:registrar_dispositivo) y no hace falta volver a tocar
+    el USB salvo para renovar boot.py/launcher.py.
 
-    Solo funciona en el servidor LOCAL con la placa conectada por USB (usa
-    el mismo /api/esp32/puertos que la pantalla del carro; en PythonAnywhere
-    no hay puertos USB, asi que esto no tiene efecto ahi).
+    Único hardware soportado: gen4-ESP32-24 + PN532 (el modelo anterior,
+    ESP32 DevKit + RC522, se retiró). Solo funciona en el servidor LOCAL con
+    la placa conectada por USB (usa el mismo /api/esp32/puertos que la
+    pantalla del carro; en PythonAnywhere no hay puertos USB).
     """
     try:
         data = request.get_json(force=True) or {}
         puerto = str(data.get('puerto', '')).strip()
         if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
             return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
-        perfil = str(data.get('perfil', 'devkit')).strip().lower()
-        if perfil not in ('devkit', 'gen4_pn532'):
-            return jsonify({'success': False, 'message': 'Perfil de lector no válido'}), 400
         orientacion = str(data.get('orientacion', '180')).strip()
         if orientacion not in ('0', '180'):
             return jsonify({'success': False, 'message': 'Orientación de pantalla no válida'}), 400
@@ -2651,11 +2656,6 @@ def api_esp32_rfid_flash_usb():
         # network.WLAN.connect(ssid, "") en MicroPython conecta igual a una
         # red sin clave, asi que aqui NO se exige que tenga contenido.
         password = str(data.get('password', ''))
-        # WebREPL (consola remota por WiFi, puerto 8266): opcional y apagado
-        # por defecto. Ya no se pide en el formulario -- nadie lo usaba y
-        # dejaba un servicio abierto en cada placa. Se sigue admitiendo por
-        # si se llama a la API con una contrasena a proposito.
-        webrepl_password = str(data.get('webrepl_password', ''))
         if not ssid:
             return jsonify({'success': False,
                             'message': 'El SSID es obligatorio (deja la contraseña WiFi vacía '
@@ -2689,44 +2689,28 @@ def api_esp32_rfid_flash_usb():
         proyecto = os.path.dirname(current_app.root_path)
         base = os.path.join(proyecto, 'esp32')
         gen4_dir = os.path.join(base, 'micropython')
-        cfg_path = os.path.join(base, 'wifi_config.py')
         app_gen4_path = os.path.join(gen4_dir, 'lector_puesto.py')
-        if perfil == 'devkit' and not os.path.exists(cfg_path):
-            return jsonify({'success': False, 'message': 'No se encuentra esp32/wifi_config.py'})
-        if perfil == 'gen4_pn532' and not os.path.exists(app_gen4_path):
+        if not os.path.exists(app_gen4_path):
             return jsonify({'success': False, 'message': 'No se encuentra esp32/micropython/lector_puesto.py'})
 
         datadir = current_app.config.get('DATA_DIR') or os.path.join(proyecto, 'data')
-        tmp_cfg = os.path.join(datadir, '_rfid_wifi_config_tmp.py')
         tmp_gen4_app = os.path.join(datadir, '_rfid_gen4_app_tmp.py')
-        if perfil == 'devkit':
-            with open(cfg_path, encoding='utf-8') as f:
-                cfg_contenido = f.read()
-            cfg_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, cfg_contenido, count=1, flags=re.M)
-            cfg_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, cfg_contenido, count=1, flags=re.M)
-            cfg_contenido = re.sub(r'^WEBREPL_PASSWORD\s*=.*$', 'WEBREPL_PASSWORD = %r' % webrepl_password,
-                                   cfg_contenido, count=1, flags=re.M)
-            cfg_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
-                                   cfg_contenido, count=1, flags=re.M)
-            with open(tmp_cfg, 'w', encoding='utf-8') as f:
-                f.write(cfg_contenido)
-        else:
-            with open(app_gen4_path, encoding='utf-8') as f:
-                gen4_contenido = f.read()
-            gen4_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, gen4_contenido, count=1, flags=re.M)
-            gen4_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, gen4_contenido, count=1, flags=re.M)
-            gen4_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
-                                    gen4_contenido, count=1, flags=re.M)
-            gen4_contenido = _inyectar_host(gen4_contenido, 'HOST_IP', host_srv)
-            gen4_contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % puerto_placa,
-                                    gen4_contenido, count=1, flags=re.M)
-            gen4_contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % usar_ssl,
-                                    gen4_contenido, count=1, flags=re.M)
-            gen4_contenido = re.sub(r'^DISPLAY_ROTATION\s*=.*$',
-                                    'DISPLAY_ROTATION = %s' % orientacion,
-                                    gen4_contenido, count=1, flags=re.M)
-            with open(tmp_gen4_app, 'w', encoding='utf-8') as f:
-                f.write(gen4_contenido)
+        with open(app_gen4_path, encoding='utf-8') as f:
+            gen4_contenido = f.read()
+        gen4_contenido = re.sub(r'^SSID\s*=.*$', 'SSID = %r' % ssid, gen4_contenido, count=1, flags=re.M)
+        gen4_contenido = re.sub(r'^PASSWORD\s*=.*$', 'PASSWORD = %r' % password, gen4_contenido, count=1, flags=re.M)
+        gen4_contenido = re.sub(r'^STATIC_IP\s*=.*$', 'STATIC_IP = %r' % ip_estatica,
+                                gen4_contenido, count=1, flags=re.M)
+        gen4_contenido = _inyectar_host(gen4_contenido, 'HOST_IP', host_srv)
+        gen4_contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % puerto_placa,
+                                gen4_contenido, count=1, flags=re.M)
+        gen4_contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % usar_ssl,
+                                gen4_contenido, count=1, flags=re.M)
+        gen4_contenido = re.sub(r'^DISPLAY_ROTATION\s*=.*$',
+                                'DISPLAY_ROTATION = %s' % orientacion,
+                                gen4_contenido, count=1, flags=re.M)
+        with open(tmp_gen4_app, 'w', encoding='utf-8') as f:
+            f.write(gen4_contenido)
 
         # backend_config.py con el host inyectado. Se sube este, no el del
         # repo: si no, la placa arrancaria llamando a la direccion de ejemplo.
@@ -2748,15 +2732,8 @@ def api_esp32_rfid_flash_usb():
         if entorno == 'produccion':
             _servidor_host_guardar(host_srv)
 
-        # Los .py del lector son pequenos: 20 s bastan para cada copia. Si el
-        # firmware anterior no suelta el REPL, _mpremote_insistiendo reinicia
-        # y reintenta en vez de dejar la pantalla web bloqueada 90 s por paso.
         def mpremote(*args, timeout=20):
             return subprocess.run(
-                # _interrumpir_placa deja la placa en raw REPL. Sin "resume",
-                # mpremote hace un soft reset al abrir cada comando, relanza
-                # boot.py y la gen4 vuelve a bloquear en WiFi antes de copiar
-                # el primer fichero.
                 [sys.executable, '-m', 'mpremote', 'connect', puerto, 'resume'] + list(args),
                 capture_output=True, text=True, timeout=timeout)
 
@@ -2773,7 +2750,7 @@ def api_esp32_rfid_flash_usb():
         dev_id = _leer_device_id_usb(mpremote, puerto)
         otra = _ip_estatica_ocupada_por_otra(dev_id, ip_estatica) if dev_id and ip_estatica else ''
         if otra:
-            for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
+            for tmp in (tmp_bc, tmp_gen4_app):
                 try:
                     os.remove(tmp)
                 except OSError:
@@ -2793,88 +2770,37 @@ def api_esp32_rfid_flash_usb():
             return (f'Error al copiar {etiqueta}: {resumen}')[:400]
 
         try:
-            if perfil == 'gen4_pn532':
-                pasos = [
-                    ('pn532_i2c.py', os.path.join(gen4_dir, 'lib', 'pn532_i2c.py'), 'pn532_i2c.py'),
-                    ('gavetas.py', os.path.join(base, 'lib', 'gavetas.py'), 'gavetas.py'),
-                    ('mcp23017.py', os.path.join(base, 'lib', 'mcp23017.py'), 'mcp23017.py'),
-                    ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
-                    ('backend_config.py', tmp_bc, 'backend_config.py'),
-                    ('boot.py', os.path.join(gen4_dir, 'boot.py'), 'boot.py'),
-                    ('launcher.py', os.path.join(gen4_dir, 'launcher.py'), 'main.py'),
-                    ('app.py', tmp_gen4_app, 'app.py'),
-                    ('app_prev.py (copia de seguridad)', tmp_gen4_app, 'app_prev.py'),
-                ]
-            else:
-                pasos = [
-                    ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
-                    ('ota_update.py', os.path.join(base, 'ota_update.py'), 'ota_update.py'),
-                    ('wifi_config.py', tmp_cfg, 'wifi_config.py'),
-                ]
-            # Los ficheros de esp32/lib/ se suben SUELTOS a la raiz de la
-            # placa (sin subcarpeta): main.py los importa de forma plana
-            # (`from mfrc522 import MFRC522`) y asi coincide exactamente con
-            # los nombres que ya usa el manifiesto OTA (_rfid_firmware_files).
-            lib_dir = os.path.join(base, 'lib')
-            if perfil == 'devkit' and os.path.isdir(lib_dir):
-                for nombre in sorted(os.listdir(lib_dir)):
-                    if nombre.endswith('.py'):
-                        pasos.append((nombre, os.path.join(lib_dir, nombre), nombre))
-            if perfil == 'devkit':
-                pasos.append(('boot.py', os.path.join(base, 'boot.py'), 'boot.py'))
-                pasos.append(('backend_config.py', tmp_bc, 'backend_config.py'))
-                pasos.append(('main.py', os.path.join(base, 'main.py'), 'main.py'))
-            # La copia de seguridad del rollback se deja apuntando a ESTE
-            # mismo main.py. Si no, main_prev.py conserva el firmware que
-            # hubiera antes del flasheo (posiblemente incompatible con la
-            # wifi_config.py/backend_config.py que se acaban de subir) y un
-            # rollback restauraria algo que no arranca.
-                pasos.append(('main_prev.py (copia de seguridad)',
-                              os.path.join(base, 'main.py'), 'main_prev.py'))
-
+            pasos = [
+                ('pn532_i2c.py', os.path.join(gen4_dir, 'lib', 'pn532_i2c.py'), 'pn532_i2c.py'),
+                ('gavetas.py', os.path.join(base, 'lib', 'gavetas.py'), 'gavetas.py'),
+                ('mcp23017.py', os.path.join(base, 'lib', 'mcp23017.py'), 'mcp23017.py'),
+                ('http_client.py', os.path.join(base, 'http_client.py'), 'http_client.py'),
+                ('backend_config.py', tmp_bc, 'backend_config.py'),
+                ('boot.py', os.path.join(gen4_dir, 'boot.py'), 'boot.py'),
+                ('launcher.py', os.path.join(gen4_dir, 'launcher.py'), 'main.py'),
+                ('app.py', tmp_gen4_app, 'app.py'),
+                ('app_prev.py (copia de seguridad)', tmp_gen4_app, 'app_prev.py'),
+            ]
             for etiqueta, origen, destino in pasos:
                 if not os.path.exists(origen):
                     return jsonify({'success': False, 'message': f'No se encuentra {etiqueta} en el repo'})
 
-            if perfil == 'gen4_pn532':
-                # La interfaz USB nativa del S3 de la gen4 puede devolver
-                # ClearCommError al cerrar y reabrir COM entre dos copias.
-                # Un unico mpremote "resume" conserva el raw REPL que se
-                # recupero arriba y copia todos los ficheros sin reabrir COM.
-                comando = [sys.executable, '-m', 'mpremote', 'connect', puerto, 'resume']
-                for _etiqueta, origen, destino in pasos:
-                    comando += ['cp', origen, ':' + destino, '+']
-                comando += ['exec', "open('boot_fails.txt','w').write('0')"]
-                r = subprocess.run(comando, capture_output=True, text=True, timeout=60)
-                if r.returncode != 0:
-                    err = (r.stderr or r.stdout or '').strip()
-                    if 'No module named' in err:
-                        return jsonify({'success': False,
-                                        'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
+            # La interfaz USB nativa del S3 de la gen4 puede devolver
+            # ClearCommError al cerrar y reabrir COM entre dos copias. Un
+            # unico mpremote "resume" conserva el raw REPL que se recupero
+            # arriba y copia todos los ficheros sin reabrir COM.
+            comando = [sys.executable, '-m', 'mpremote', 'connect', puerto, 'resume']
+            for _etiqueta, origen, destino in pasos:
+                comando += ['cp', origen, ':' + destino, '+']
+            comando += ['exec', "open('boot_fails.txt','w').write('0')"]
+            r = subprocess.run(comando, capture_output=True, text=True, timeout=60)
+            if r.returncode != 0:
+                err = (r.stderr or r.stdout or '').strip()
+                if 'No module named' in err:
                     return jsonify({'success': False,
-                                    'message': _resumen_error('firmware gen4', err) + _consejo_placa_ocupada(err)})
-            else:
-                for etiqueta, origen, destino in pasos:
-                    r = _mpremote_insistiendo(mpremote, 'cp', origen, ':' + destino, puerto=puerto)
-
-                    if r.returncode != 0:
-                        err = (r.stderr or r.stdout or '').strip()
-                        if 'No module named' in err:
-                            return jsonify({'success': False,
-                                            'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
-                        return jsonify({'success': False,
-                                        'message': _resumen_error(etiqueta, err) + _consejo_placa_ocupada(err)})
-
-                    time.sleep(0.3)  # dar tiempo a la placa antes del siguiente cp
-
-                # Dejar el contador de arranques fallidos a cero: si la placa
-                # venia de un firmware que no arrancaba, ese contador puede
-                # estar a punto de disparar un rollback que desharia este
-                # flasheo en el primer arranque.
-                try:
-                    mpremote('exec', "open('boot_fails.txt','w').write('0')", timeout=10)
-                except subprocess.TimeoutExpired:
-                    pass
+                                    'message': 'mpremote no está instalado en este servidor. Ejecuta: pip install mpremote'})
+                return jsonify({'success': False,
+                                'message': _resumen_error('firmware gen4', err) + _consejo_placa_ocupada(err)})
 
             # Al reiniciar, la placa corta el USB antes de que mpremote pueda
             # cerrar limpiamente la sesion. Los ficheros ya se copiaron y el
@@ -2885,7 +2811,7 @@ def api_esp32_rfid_flash_usb():
             except (subprocess.TimeoutExpired, Exception):
                 pass
         finally:
-            for tmp in (tmp_cfg, tmp_bc, tmp_gen4_app):
+            for tmp in (tmp_bc, tmp_gen4_app):
                 try:
                     os.remove(tmp)
                 except OSError:
@@ -2907,11 +2833,8 @@ def api_esp32_rfid_flash_usb():
                     'en Admin → IPs de placas. ')
         return jsonify({'success': True,
                         'message': f'Lector configurado y firmware subido por {puerto}. {red}'
-                                              + ('El perfil gen4+PN532 queda registrado al conectarse al WiFi.'
-                                                  ' Las actualizaciones de su firmware se cargan por USB.'
-                                                  if perfil == 'gen4_pn532' else
-                                                  'A partir de ahora se actualiza solo por WiFi cuando publiques una '
-                                                  'nueva FW_VERSION en esp32/main.py.')})
+                                   'A partir de ahora se actualiza solo por WiFi (sin preguntar) '
+                                   'cuando publiques una nueva FW_VERSION en lector_puesto.py.'})
     except subprocess.TimeoutExpired:
         return jsonify({'success': False,
                         'message': 'Timeout: comprueba que la placa está conectada a ese puerto y que '
@@ -2998,12 +2921,12 @@ _CHIP_ID_IMAGEN = {
     0x000D: 'esp32c6',
 }
 
-# Los dos binarios versionados corresponden a las dos placas que se usan hoy.
-# Los ficheros subidos por Admin siguen admitiendose sin etiqueta para no
+# El binario versionado corresponde a la unica placa S3 que se usa hoy
+# (pantalla del carro y lector RFID gen4-ESP32-24 comparten chip). Los
+# ficheros subidos por Admin siguen admitiendose sin etiqueta para no
 # bloquear una futura ampliacion de hardware.
 _MODELO_FIRMWARE = {
-    'ESP32_GENERIC-20260406-v1.28.0.bin': 'Lector RFID - ESP32 DevKit + RC522',
-    'ESP32_GENERIC_S3-SPIRAM_OCT-20260406-v1.28.0.bin': 'Pantalla gen4-ESP32-24',
+    'ESP32_GENERIC_S3-SPIRAM_OCT-20260406-v1.28.0.bin': 'Pantalla / lector gen4-ESP32-24',
 }
 
 

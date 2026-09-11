@@ -392,7 +392,7 @@ apantalla el campo del lector). Dos opciones:
   gruesa, un soporte de plastico) en vez de pegarla al ras.
 
 Sin uno de los dos, la lectura puede fallar justo delante del lector, y el
-sintoma en planta seria indistinguible de "el RC522 no llega": conviene
+sintoma en planta seria indistinguible de "el PN532 no llega": conviene
 probar el alcance real de la etiqueta ya montada en la gaveta (con el asistente
 "Asignar RFID" de Admin -> Pick-to-Light) antes de darla por buena, no solo en
 la mesa de pruebas.
