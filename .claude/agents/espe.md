@@ -165,6 +165,30 @@ bloqueantes porque solo suenan en puntos muertos.
 - `esp32/HARDWARE_LECTOR_PUESTO_GEN4.md` — lector RFID de puesto.
 - `esp32/HARDWARE_PANTALLA_P4_101.md`, `esp32/HARDWARE_ESQUEMA_PUESTO.md`,
   `esp32/HARDWARE_ESQUEMA_CARRO.md`, `esp32/HARDWARE_EXPANSORES_MCP23017.md`.
+- `esp32/HARDWARE_PLACA_MASTER.md` — placas MASTER/ESCLAVA del pick-to-light
+  (rejilla 20×14, 24 pads laterales, un MCP23017 por placa). Plano imprimible en
+  `esp32/schematics/esquema_master_A4.html`.
+
+## Añadir gavetas no es tocar firmware
+
+`gavetas.py` escanea el bus I2C al arrancar, ordena los expansores de `0x20` a
+`0x27` y calcula `n_gavetas = 16 × nº de expansores`. **Una placa esclava nueva
+no lleva cambio de código ni subida de `FW_VERSION`**: se enchufa, se reinicia
+el lector y la pantalla de reposo pasa de `PTL 1xMCP 16GAV` a `PTL 2xMCP 32GAV`.
+
+Lo que sí gobierna todo es el strap A2/A1/A0: **la dirección I2C ES la
+numeración de gavetas del puesto**. Dos placas con el mismo strap se ven como
+una sola, y ese es el primer sitio donde mirar cuando faltan gavetas.
+
+Al diseñar hardware de gavetas, dos cosas que ya costaron diagnóstico:
+
+- **Los pull-up de 4k7 van UNA sola vez en el bus** (en la MASTER). Repetirlos
+  en cada esclava baja la resistencia equivalente y el I2C deja de leerse.
+- **El WS2813 quiere 3,5 V de nivel alto y el ESP32 da 3,3.** Los puestos
+  montados funcionan, pero por poco: el síntoma de que no llega es siempre el
+  primer LED de la tira haciendo colores aleatorios con el resto bien. Por eso
+  la MASTER lleva hueco para un 74AHCT125 con puente de bypass, no soldado de
+  serie: no se cambia lo que ya funciona en planta, solo se deja la salida.
 - `app/routes/sistema.py` (sección `OTA FIRMWARE ESP32`, línea ~2213 en
   adelante) — manifiesto, versión, descarga, comprobación de versión de
   pantalla/lector.

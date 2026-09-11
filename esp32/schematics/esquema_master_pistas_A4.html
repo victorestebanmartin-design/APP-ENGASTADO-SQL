@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Pistas de la placa MASTER / ESCLAVA - 1 Página A4</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      background-color: #f1f5f9; color: #0f172a;
+      display: flex; justify-content: center; padding: 20px;
+    }
+    .page-a4 {
+      width: 210mm; height: 297mm; background: white; padding: 10mm;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .svg-container { width: 100%; height: 100%; }
+    .svg-container svg { width: 100%; height: 100%; display: block; }
+    @media print {
+      body { background: none; padding: 0; }
+      .page-a4 { box-shadow: none; width: 100%; height: 100vh; padding: 0; }
+      .no-print { display: none !important; }
+    }
+    .print-bar {
+      position: fixed; top: 15px; right: 20px; background: #0f172a; color: white;
+      padding: 10px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: flex; gap: 15px; align-items: center; z-index: 9999;
+    }
+    .print-btn {
+      background: #2563eb; color: white; border: none; padding: 8px 16px;
+      border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px;
+    }
+    .print-btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+
+  <div class="print-bar no-print">
+    <span>🖨️ <strong>Pistas de la placa MASTER / ESCLAVA — 1 página A4</strong></span>
+    <button class="print-btn" onclick="window.print()">Imprimir / Guardar en PDF (Ctrl+P)</button>
+  </div>
+
+  <div class="page-a4">
+    <div class="svg-container">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1414">
+        <defs>
+          <style type="text/css">
+            .t-main { font-size: 20px; font-weight: bold; fill: #0f172a; }
+            .t-sub  { font-size: 11.5px; font-weight: 600; fill: #475569; }
+            .meta   { font-size: 9.5px; fill: #64748b; }
+            .sec    { font-size: 13.5px; font-weight: bold; fill: #1e293b; }
+            .lbl    { font-size: 10.5px; fill: #1e293b; }
+            .lbl-b  { font-size: 10.5px; font-weight: bold; fill: #0f172a; }
+            .lbl-s  { font-size: 9px; fill: #475569; }
+            .lbl-xs { font-size: 8px; fill: #64748b; }
+            .lbl-pin{ font-size: 8.5px; fill: #334155; }
+            .warn-b { font-size: 10.5px; font-weight: bold; fill: #b91c1c; }
+            .warn   { font-size: 9.5px; fill: #7f1d1d; }
+
+            .dot    { fill: #d4d4d8; }
+            .pin    { fill: #ffffff; stroke: #0f172a; stroke-width: 1.4; }
+            .padL   { fill: #fde68a; stroke: #92400e; stroke-width: 1.3; }
+            .padG   { fill: #d4d4d8; stroke: #334155; stroke-width: 1.3; }
+
+            .bare   { stroke-width: 3.4; fill: none; stroke-linecap: round; }
+            .jump   { stroke-width: 1.7; fill: none; stroke-dasharray: 4 3; stroke-linecap: round; }
+            .micro  { stroke: #a8a29e; stroke-width: 1; fill: none; stroke-dasharray: 2 2.5; }
+            .hop    { stroke: #0f172a; stroke-width: 1.2; fill: none; stroke-dasharray: 3 2.5; }
+
+            .n3v3   { stroke: #ea580c; }  .f3v3 { fill: #ea580c; }
+            .ngnd   { stroke: #1e293b; }  .fgnd { fill: #1e293b; }
+            .n5v    { stroke: #dc2626; }  .f5v  { fill: #dc2626; }
+            .nscl   { stroke: #0891b2; }  .fscl { fill: #0891b2; }
+            .nsda   { stroke: #2563eb; }  .fsda { fill: #2563eb; }
+            .ndin   { stroke: #9333ea; }  .fdin { fill: #9333ea; }
+            .nret   { stroke: #16a34a; }  .fret { fill: #16a34a; }
+
+            .comp   { fill: #fef9c3; stroke: #a16207; stroke-width: 1.3; rx: 3px; }
+            .conn   { fill: none; stroke: #0f172a; stroke-width: 1.6; stroke-dasharray: 3 2; rx: 4px; }
+          </style>
+        </defs>
+
+        <!-- CABECERA -->
+        <text x="30" y="46" class="t-main">Trazado de pistas — placa MASTER / ESCLAVA del Pick-To-Light</text>
+        <text x="30" y="65" class="t-sub">Vista por la CARA DE COMPONENTES (los hilos van por debajo, en la cara de cobre) · rejilla 20 × 14 paso 2,54 · 12 pads por lateral</text>
+        <text x="30" y="82" class="meta">APP-ENGASTADO-SQL · esp32/HARDWARE_PLACA_MASTER.md · Las coordenadas son columna C1…C20 y fila F1…F14 · Complementa a esquema_master_A4.html</text>
+        <line x1="30" y1="92" x2="970" y2="92" stroke="#0f172a" stroke-width="1.5"/>
+
+        <!-- REGLAS -->
+        <text x="30" y="116" class="sec">Dos tipos de hilo, y no se mezclan</text>
+        <rect x="30" y="126" width="455" height="86" fill="#f8fafc" stroke="#cbd5e1" rx="5"/>
+        <line x1="46" y1="148" x2="96" y2="148" class="bare ngnd"/>
+        <text x="106" y="152" class="lbl-b">HILO ESTAÑADO DESNUDO</text>
+        <text x="46" y="170" class="lbl-s">Las 6 pistas horizontales de las filas F9…F14. Se tiende recto por la cara</text>
+        <text x="46" y="184" class="lbl-s">de cobre y se suelda agujero a agujero. Es la estructura de la placa: si</text>
+        <text x="46" y="198" class="lbl-s">estas 6 están bien, lo demás son cables sueltos.</text>
+
+        <rect x="505" y="126" width="465" height="86" fill="#f8fafc" stroke="#cbd5e1" rx="5"/>
+        <line x1="521" y1="148" x2="571" y2="148" class="jump ngnd"/>
+        <text x="581" y="152" class="lbl-b">HILO AISLADO (kynar / AWG26)</text>
+        <text x="521" y="170" class="lbl-s">Todo lo demás: los 16 micros, los saltos sobre la columna C13, los straps</text>
+        <text x="521" y="184" class="lbl-s">y las salidas de LED. Pasan por encima de las pistas desnudas sin tocarlas.</text>
+        <text x="521" y="198" class="warn-b">Nunca tiendas desnudo lo que cruce otra pista.</text>
+
+        <!-- LEYENDA DE NETS -->
+        <text x="30" y="238" class="sec">Colores</text>
+        <g>
+          <line x1="100" y1="234" x2="132" y2="234" class="bare n3v3"/><text x="138" y="238" class="lbl">+3V3</text>
+          <line x1="190" y1="234" x2="222" y2="234" class="bare ngnd"/><text x="228" y="238" class="lbl">GND</text>
+          <line x1="275" y1="234" x2="307" y2="234" class="bare n5v"/><text x="313" y="238" class="lbl">+5V</text>
+          <line x1="360" y1="234" x2="392" y2="234" class="bare nscl"/><text x="398" y="238" class="lbl">SCL</text>
+          <line x1="445" y1="234" x2="477" y2="234" class="bare nsda"/><text x="483" y="238" class="lbl">SDA</text>
+          <line x1="530" y1="234" x2="562" y2="234" class="bare ndin"/><text x="568" y="238" class="lbl">DATA_IN (entra)</text>
+          <line x1="690" y1="234" x2="722" y2="234" class="bare nret"/><text x="728" y="238" class="lbl">DATA_RET (sale a la siguiente)</text>
+        </g>
+
+        <text x="30" y="268" class="sec">El plano</text>
+        <text x="130" y="268" class="lbl-s">C1 ← 20 columnas → C20 · F1 ← 14 filas → F14 · El MCP23017 (DIP-28, muesca arriba) ocupa las 14 filas en las columnas C7 y C13</text>
+
+        <!-- ══════════ DIBUJO DE LA PLACA ══════════ -->
+        <!-- contorno -->
+        <rect x="126" y="286" width="748" height="592" fill="#ffffff" stroke="#0f172a" stroke-width="2" rx="4"/>
+
+        <!-- cabecera de columnas -->
+        <g class="lbl-xs" text-anchor="middle">
+          <text x="148.5" y="300">C1</text><text x="185.5" y="300">C2</text><text x="222.5" y="300">C3</text>
+          <text x="259.5" y="300">C4</text><text x="296.5" y="300">C5</text><text x="333.5" y="300">C6</text>
+          <text x="370.5" y="300">C7</text><text x="407.5" y="300">C8</text><text x="444.5" y="300">C9</text>
+          <text x="481.5" y="300">C10</text><text x="518.5" y="300">C11</text><text x="555.5" y="300">C12</text>
+          <text x="592.5" y="300">C13</text><text x="629.5" y="300">C14</text><text x="666.5" y="300">C15</text>
+          <text x="703.5" y="300">C16</text><text x="740.5" y="300">C17</text><text x="777.5" y="300">C18</text>
+          <text x="814.5" y="300">C19</text><text x="851.5" y="300">C20</text>
+        </g>
+
+        <!-- rejilla de puntos -->
+        <g class="dot">
+          <!-- generada a mano: 20 columnas x 14 filas -->
+          <g>
+            <circle cx="148.5" cy="407" r="1.8"/><circle cx="185.5" cy="407" r="1.8"/><circle cx="222.5" cy="407" r="1.8"/><circle cx="259.5" cy="407" r="1.8"/><circle cx="296.5" cy="407" r="1.8"/><circle cx="333.5" cy="407" r="1.8"/><circle cx="407.5" cy="407" r="1.8"/><circle cx="444.5" cy="407" r="1.8"/><circle cx="481.5" cy="407" r="1.8"/><circle cx="518.5" cy="407" r="1.8"/><circle cx="555.5" cy="407" r="1.8"/><circle cx="629.5" cy="407" r="1.8"/><circle cx="666.5" cy="407" r="1.8"/><circle cx="703.5" cy="407" r="1.8"/><circle cx="740.5" cy="407" r="1.8"/><circle cx="777.5" cy="407" r="1.8"/><circle cx="814.5" cy="407" r="1.8"/><circle cx="851.5" cy="407" r="1.8"/>
+            <circle cx="148.5" cy="441" r="1.8"/><circle cx="185.5" cy="441" r="1.8"/><circle cx="222.5" cy="441" r="1.8"/><circle cx="259.5" cy="441" r="1.8"/><circle cx="296.5" cy="441" r="1.8"/><circle cx="333.5" cy="441" r="1.8"/><circle cx="407.5" cy="441" r="1.8"/><circle cx="444.5" cy="441" r="1.8"/><circle cx="481.5" cy="441" r="1.8"/><circle cx="518.5" cy="441" r="1.8"/><circle cx="555.5" cy="441" r="1.8"/><circle cx="629.5" cy="441" r="1.8"/><circle cx="666.5" cy="441" r="1.8"/><circle cx="703.5" cy="441" r="1.8"/><circle cx="740.5" cy="441" r="1.8"/><circle cx="777.5" cy="441" r="1.8"/><circle cx="814.5" cy="441" r="1.8"/><circle cx="851.5" cy="441" r="1.8"/>
+            <circle cx="148.5" cy="475" r="1.8"/><circle cx="185.5" cy="475" r="1.8"/><circle cx="222.5" cy="475" r="1.8"/><circle cx="259.5" cy="475" r="1.8"/><circle cx="296.5" cy="475" r="1.8"/><circle cx="333.5" cy="475" r="1.8"/><circle cx="407.5" cy="475" r="1.8"/><circle cx="444.5" cy="475" r="1.8"/><circle cx="481.5" cy="475" r="1.8"/><circle cx="518.5" cy="475" r="1.8"/><circle cx="555.5" cy="475" r="1.8"/><circle cx="629.5" cy="475" r="1.8"/><circle cx="666.5" cy="475" r="1.8"/><circle cx="703.5" cy="475" r="1.8"/><circle cx="740.5" cy="475" r="1.8"/><circle cx="777.5" cy="475" r="1.8"/><circle cx="814.5" cy="475" r="1.8"/><circle cx="851.5" cy="475" r="1.8"/>
+            <circle cx="148.5" cy="509" r="1.8"/><circle cx="185.5" cy="509" r="1.8"/><circle cx="222.5" cy="509" r="1.8"/><circle cx="259.5" cy="509" r="1.8"/><circle cx="296.5" cy="509" r="1.8"/><circle cx="333.5" cy="509" r="1.8"/><circle cx="407.5" cy="509" r="1.8"/><circle cx="444.5" cy="509" r="1.8"/><circle cx="481.5" cy="509" r="1.8"/><circle cx="518.5" cy="509" r="1.8"/><circle cx="555.5" cy="509" r="1.8"/><circle cx="629.5" cy="509" r="1.8"/><circle cx="666.5" cy="509" r="1.8"/><circle cx="703.5" cy="509" r="1.8"/><circle cx="740.5" cy="509" r="1.8"/><circle cx="777.5" cy="509" r="1.8"/><circle cx="814.5" cy="509" r="1.8"/><circle cx="851.5" cy="509" r="1.8"/>
+            <circle cx="148.5" cy="543" r="1.8"/><circle cx="185.5" cy="543" r="1.8"/><circle cx="222.5" cy="543" r="1.8"/><circle cx="259.5" cy="543" r="1.8"/><circle cx="296.5" cy="543" r="1.8"/><circle cx="333.5" cy="543" r="1.8"/><circle cx="407.5" cy="543" r="1.8"/><circle cx="444.5" cy="543" r="1.8"/><circle cx="481.5" cy="543" r="1.8"/><circle cx="518.5" cy="543" r="1.8"/><circle cx="555.5" cy="543" r="1.8"/><circle cx="629.5" cy="543" r="1.8"/><circle cx="666.5" cy="543" r="1.8"/><circle cx="740.5" cy="543" r="1.8"/><circle cx="777.5" cy="543" r="1.8"/><circle cx="814.5" cy="543" r="1.8"/>
+            <circle cx="148.5" cy="577" r="1.8"/><circle cx="185.5" cy="577" r="1.8"/><circle cx="222.5" cy="577" r="1.8"/><circle cx="259.5" cy="577" r="1.8"/><circle cx="296.5" cy="577" r="1.8"/><circle cx="333.5" cy="577" r="1.8"/><circle cx="407.5" cy="577" r="1.8"/><circle cx="444.5" cy="577" r="1.8"/><circle cx="481.5" cy="577" r="1.8"/><circle cx="518.5" cy="577" r="1.8"/><circle cx="555.5" cy="577" r="1.8"/><circle cx="629.5" cy="577" r="1.8"/><circle cx="666.5" cy="577" r="1.8"/><circle cx="703.5" cy="577" r="1.8"/><circle cx="740.5" cy="577" r="1.8"/><circle cx="777.5" cy="577" r="1.8"/><circle cx="814.5" cy="577" r="1.8"/>
+            <circle cx="148.5" cy="611" r="1.8"/><circle cx="185.5" cy="611" r="1.8"/><circle cx="222.5" cy="611" r="1.8"/><circle cx="259.5" cy="611" r="1.8"/><circle cx="296.5" cy="611" r="1.8"/><circle cx="333.5" cy="611" r="1.8"/><circle cx="407.5" cy="611" r="1.8"/><circle cx="444.5" cy="611" r="1.8"/><circle cx="481.5" cy="611" r="1.8"/><circle cx="518.5" cy="611" r="1.8"/><circle cx="555.5" cy="611" r="1.8"/><circle cx="629.5" cy="611" r="1.8"/><circle cx="666.5" cy="611" r="1.8"/><circle cx="703.5" cy="611" r="1.8"/><circle cx="740.5" cy="611" r="1.8"/><circle cx="777.5" cy="611" r="1.8"/><circle cx="814.5" cy="611" r="1.8"/><circle cx="851.5" cy="611" r="1.8"/>
+            <circle cx="148.5" cy="645" r="1.8"/><circle cx="185.5" cy="645" r="1.8"/><circle cx="222.5" cy="645" r="1.8"/><circle cx="259.5" cy="645" r="1.8"/><circle cx="296.5" cy="645" r="1.8"/><circle cx="333.5" cy="645" r="1.8"/><circle cx="407.5" cy="645" r="1.8"/><circle cx="444.5" cy="645" r="1.8"/><circle cx="481.5" cy="645" r="1.8"/><circle cx="518.5" cy="645" r="1.8"/><circle cx="555.5" cy="645" r="1.8"/><circle cx="629.5" cy="645" r="1.8"/><circle cx="666.5" cy="645" r="1.8"/><circle cx="740.5" cy="645" r="1.8"/><circle cx="777.5" cy="645" r="1.8"/><circle cx="814.5" cy="645" r="1.8"/><circle cx="851.5" cy="645" r="1.8"/>
+          </g>
+        </g>
+
+        <!-- PISTAS HORIZONTALES (hilo desnudo) -->
+        <!-- F9 +3V3 -->
+        <line x1="185.5" y1="679" x2="555.5" y2="679" class="bare n3v3"/>
+        <line x1="629.5" y1="679" x2="851.5" y2="679" class="bare n3v3"/>
+        <path d="M555.5,679 Q592.5,655 629.5,679" class="hop"/>
+        <!-- F10 GND -->
+        <line x1="185.5" y1="713" x2="555.5" y2="713" class="bare ngnd"/>
+        <line x1="629.5" y1="713" x2="851.5" y2="713" class="bare ngnd"/>
+        <path d="M555.5,713 Q592.5,689 629.5,713" class="hop"/>
+        <!-- F11 DATA_IN / DATA_RET -->
+        <line x1="185.5" y1="747" x2="333.5" y2="747" class="bare ndin"/>
+        <line x1="407.5" y1="747" x2="555.5" y2="747" class="bare ndin"/>
+        <line x1="629.5" y1="747" x2="703.5" y2="747" class="bare ndin"/>
+        <path d="M333.5,747 Q370.5,723 407.5,747" class="hop"/>
+        <path d="M555.5,747 Q592.5,723 629.5,747" class="hop"/>
+        <line x1="740.5" y1="747" x2="851.5" y2="747" class="bare nret"/>
+        <!-- F12 SCL -->
+        <line x1="185.5" y1="781" x2="555.5" y2="781" class="bare nscl"/>
+        <line x1="629.5" y1="781" x2="851.5" y2="781" class="bare nscl"/>
+        <path d="M555.5,781 Q592.5,757 629.5,781" class="hop"/>
+        <!-- F13 SDA -->
+        <line x1="185.5" y1="815" x2="555.5" y2="815" class="bare nsda"/>
+        <line x1="629.5" y1="815" x2="851.5" y2="815" class="bare nsda"/>
+        <path d="M555.5,815 Q592.5,791 629.5,815" class="hop"/>
+        <!-- F14 +5V -->
+        <line x1="185.5" y1="849" x2="333.5" y2="849" class="bare n5v"/>
+        <line x1="407.5" y1="849" x2="555.5" y2="849" class="bare n5v"/>
+        <line x1="629.5" y1="849" x2="851.5" y2="849" class="bare n5v"/>
+        <path d="M333.5,849 Q370.5,825 407.5,849" class="hop"/>
+        <path d="M555.5,849 Q592.5,825 629.5,849" class="hop"/>
+
+        <!-- CUERPO DEL MCP -->
+        <rect x="358" y="392" width="247" height="472" fill="#f1f5f9" fill-opacity="0.82" stroke="#0f172a" stroke-width="1.8" rx="4"/>
+        <path d="M471,392 a11,11 0 0,0 22,0" fill="none" stroke="#0f172a" stroke-width="1.8"/>
+        <text x="481" y="330" class="lbl-b" text-anchor="middle">MCP23017 · DIP-28 · zócalo</text>
+        <text x="481" y="344" class="lbl-s" text-anchor="middle">C7 (pines 1-14) y C13 (pines 15-28) · muesca ARRIBA</text>
+        <text x="481" y="358" class="lbl-s" text-anchor="middle">C8…C12 quedan bajo el zócalo: por ahí pasan los saltos</text>
+
+        <!-- pines C7 -->
+        <g>
+          <circle cx="370.5" cy="407" r="4" class="pin"/><circle cx="370.5" cy="441" r="4" class="pin"/>
+          <circle cx="370.5" cy="475" r="4" class="pin"/><circle cx="370.5" cy="509" r="4" class="pin"/>
+          <circle cx="370.5" cy="543" r="4" class="pin"/><circle cx="370.5" cy="577" r="4" class="pin"/>
+          <circle cx="370.5" cy="611" r="4" class="pin"/><circle cx="370.5" cy="645" r="4" class="pin"/>
+          <circle cx="370.5" cy="679" r="5.5" class="f3v3"/><circle cx="370.5" cy="713" r="5.5" class="fgnd"/>
+          <circle cx="370.5" cy="747" r="4" class="pin"/>
+          <circle cx="370.5" cy="781" r="5.5" class="fscl"/><circle cx="370.5" cy="815" r="5.5" class="fsda"/>
+          <circle cx="370.5" cy="849" r="4" class="pin"/>
+        </g>
+        <g class="lbl-pin">
+          <text x="379" y="410">1 GPA0</text><text x="379" y="444">2 GPA1</text><text x="379" y="478">3 GPA2</text>
+          <text x="379" y="512">4 GPA3</text><text x="379" y="546">5 GPA4</text><text x="379" y="580">6 GPA5</text>
+          <text x="379" y="614">7 GPA6</text><text x="379" y="648">8 GPA7</text>
+          <text x="379" y="682" class="f3v3" font-weight="bold">9 VDD ← suelda</text>
+          <text x="379" y="716" font-weight="bold">10 VSS ← suelda</text>
+          <text x="379" y="750">11 NC — NO sueldes</text>
+          <text x="379" y="784" class="fscl" font-weight="bold">12 SCL ← suelda</text>
+          <text x="379" y="818" class="fsda" font-weight="bold">13 SDA ← suelda</text>
+          <text x="379" y="852">14 NC — NO sueldes</text>
+        </g>
+
+        <!-- pines C13 -->
+        <g>
+          <circle cx="592.5" cy="407" r="4" class="pin"/><circle cx="592.5" cy="441" r="4" class="pin"/>
+          <circle cx="592.5" cy="475" r="4" class="pin"/><circle cx="592.5" cy="509" r="4" class="pin"/>
+          <circle cx="592.5" cy="543" r="4" class="pin"/><circle cx="592.5" cy="577" r="4" class="pin"/>
+          <circle cx="592.5" cy="611" r="4" class="pin"/><circle cx="592.5" cy="645" r="4" class="pin"/>
+          <circle cx="592.5" cy="679" r="4" class="pin"/><circle cx="592.5" cy="713" r="4" class="pin"/>
+          <circle cx="592.5" cy="747" r="4" class="pin"/><circle cx="592.5" cy="781" r="4" class="pin"/>
+          <circle cx="592.5" cy="815" r="4" class="pin"/><circle cx="592.5" cy="849" r="4" class="pin"/>
+        </g>
+        <g class="lbl-pin" text-anchor="end">
+          <text x="584" y="410">28 GPB7</text><text x="584" y="444">27 GPB6</text><text x="584" y="478">26 GPB5</text>
+          <text x="584" y="512">25 GPB4</text><text x="584" y="546">24 GPB3</text><text x="584" y="580">23 GPB2</text>
+          <text x="584" y="614">22 GPB1</text><text x="584" y="648">21 GPB0</text>
+          <text x="584" y="682">20 INTA — libre</text><text x="584" y="716">19 INTB — libre</text>
+          <text x="584" y="750" class="warn-b">18 RESET → 3V3</text>
+          <text x="584" y="784" font-weight="bold">17 A2</text><text x="584" y="818" font-weight="bold">16 A1</text>
+          <text x="584" y="852" font-weight="bold">15 A0</text>
+        </g>
+
+        <!-- LA COLUMNA C13 NO SE TOCA: aviso -->
+        <rect x="560" y="866" width="200" height="0.1" fill="none"/>
+
+        <!-- PADS LATERALES + MICROS -->
+        <g>
+          <circle cx="100" cy="407" r="5" class="padL"/><line x1="105" y1="407" x2="366" y2="407" class="micro"/>
+          <circle cx="100" cy="441" r="5" class="padL"/><line x1="105" y1="441" x2="366" y2="441" class="micro"/>
+          <circle cx="100" cy="475" r="5" class="padL"/><line x1="105" y1="475" x2="366" y2="475" class="micro"/>
+          <circle cx="100" cy="509" r="5" class="padL"/><line x1="105" y1="509" x2="366" y2="509" class="micro"/>
+          <circle cx="100" cy="543" r="5" class="padL"/><line x1="105" y1="543" x2="366" y2="543" class="micro"/>
+          <circle cx="100" cy="577" r="5" class="padL"/><line x1="105" y1="577" x2="366" y2="577" class="micro"/>
+          <circle cx="100" cy="611" r="5" class="padL"/><line x1="105" y1="611" x2="366" y2="611" class="micro"/>
+          <circle cx="100" cy="645" r="5" class="padL"/><line x1="105" y1="645" x2="366" y2="645" class="micro"/>
+          <circle cx="100" cy="713" r="5" class="padG"/><circle cx="100" cy="747" r="5" class="padG"/>
+          <circle cx="100" cy="781" r="5" class="padG"/><circle cx="100" cy="815" r="5" class="padG"/>
+          <path d="M100,713 L100,815" class="bare ngnd"/>
+          <path d="M100,713 L222.5,713" class="jump ngnd"/>
+        </g>
+        <g class="lbl-xs" text-anchor="end">
+          <text x="92" y="399">L1</text><text x="92" y="410">g1</text>
+          <text x="92" y="433">L2</text><text x="92" y="444">g2</text>
+          <text x="92" y="467">L3</text><text x="92" y="478">g3</text>
+          <text x="92" y="501">L4</text><text x="92" y="512">g4</text>
+          <text x="92" y="535">L5</text><text x="92" y="546">g5</text>
+          <text x="92" y="569">L6</text><text x="92" y="580">g6</text>
+          <text x="92" y="603">L7</text><text x="92" y="614">g7</text>
+          <text x="92" y="637">L8</text><text x="92" y="648">g8</text>
+          <text x="92" y="716">L9</text><text x="92" y="750">L10</text>
+          <text x="92" y="784">L11</text><text x="92" y="818">L12</text>
+        </g>
+        <text x="60" y="850" class="lbl-xs" text-anchor="middle">GND</text>
+
+        <g>
+          <circle cx="900" cy="407" r="5" class="padL"/><line x1="895" y1="407" x2="597" y2="407" class="micro"/>
+          <circle cx="900" cy="441" r="5" class="padL"/><line x1="895" y1="441" x2="597" y2="441" class="micro"/>
+          <circle cx="900" cy="475" r="5" class="padL"/><line x1="895" y1="475" x2="597" y2="475" class="micro"/>
+          <circle cx="900" cy="509" r="5" class="padL"/><line x1="895" y1="509" x2="597" y2="509" class="micro"/>
+          <circle cx="900" cy="543" r="5" class="padL"/><line x1="895" y1="543" x2="597" y2="543" class="micro"/>
+          <circle cx="900" cy="577" r="5" class="padL"/><line x1="895" y1="577" x2="597" y2="577" class="micro"/>
+          <circle cx="900" cy="611" r="5" class="padL"/><line x1="895" y1="611" x2="597" y2="611" class="micro"/>
+          <circle cx="900" cy="645" r="5" class="padL"/><line x1="895" y1="645" x2="597" y2="645" class="micro"/>
+          <circle cx="900" cy="713" r="5" class="padG"/><circle cx="900" cy="747" r="5" class="padG"/>
+          <circle cx="900" cy="781" r="5" class="padG"/><circle cx="900" cy="815" r="5" class="padG"/>
+          <path d="M900,713 L900,815" class="bare ngnd"/>
+          <path d="M900,713 L814.5,713" class="jump ngnd"/>
+        </g>
+        <g class="lbl-xs">
+          <text x="908" y="399">R1</text><text x="908" y="410">g16</text>
+          <text x="908" y="433">R2</text><text x="908" y="444">g15</text>
+          <text x="908" y="467">R3</text><text x="908" y="478">g14</text>
+          <text x="908" y="501">R4</text><text x="908" y="512">g13</text>
+          <text x="908" y="535">R5</text><text x="908" y="546">g12</text>
+          <text x="908" y="569">R6</text><text x="908" y="580">g11</text>
+          <text x="908" y="603">R7</text><text x="908" y="614">g10</text>
+          <text x="908" y="637">R8</text><text x="908" y="648">g9</text>
+          <text x="908" y="716">R9</text><text x="908" y="750">R10</text>
+          <text x="908" y="784">R11</text><text x="908" y="818">R12</text>
+        </g>
+        <text x="940" y="850" class="lbl-xs" text-anchor="middle">GND</text>
+
+        <!-- COMPONENTES IZQUIERDA -->
+        <!-- J0 -->
+        <rect x="138" y="838" width="21" height="26" class="conn"/>
+        <text x="148" y="880" class="lbl-xs" text-anchor="middle">J0</text>
+        <circle cx="148.5" cy="849" r="4.5" class="f5v"/>
+        <!-- PTC F1: C1/F14 -> C1/F12 -->
+        <rect x="140" y="790" width="17" height="42" class="comp"/>
+        <text x="122" y="815" class="lbl-xs" text-anchor="end">F1</text>
+        <line x1="148.5" y1="849" x2="148.5" y2="832" class="bare n5v"/>
+        <line x1="148.5" y1="790" x2="148.5" y2="781" class="bare n5v"/>
+        <circle cx="148.5" cy="781" r="4" class="f5v"/>
+        <!-- C3 1000uF: C1/F12 -> C1/F10 -->
+        <rect x="140" y="722" width="17" height="50" class="comp"/>
+        <text x="122" y="750" class="lbl-xs" text-anchor="end">C3</text>
+        <line x1="148.5" y1="781" x2="148.5" y2="772" class="bare n5v"/>
+        <line x1="148.5" y1="722" x2="148.5" y2="713" class="bare ngnd"/>
+        <circle cx="148.5" cy="713" r="4" class="fgnd"/>
+        <!-- puentes de C1 a los railes -->
+        <path d="M148.5,781 Q167,800 185.5,849" class="jump n5v"/>
+        <path d="M148.5,713 L185.5,713" class="jump ngnd"/>
+        <!-- R1 4k7 SDA->3V3 en C3 -->
+        <rect x="214" y="690" width="17" height="114" class="comp"/>
+        <text x="222" y="672" class="lbl-xs" text-anchor="middle">R1</text>
+        <line x1="222.5" y1="815" x2="222.5" y2="804" class="bare nsda"/>
+        <line x1="222.5" y1="690" x2="222.5" y2="679" class="bare n3v3"/>
+        <!-- R2 4k7 SCL->3V3 en C5 -->
+        <rect x="288" y="690" width="17" height="80" class="comp"/>
+        <text x="296" y="672" class="lbl-xs" text-anchor="middle">R2</text>
+        <line x1="296.5" y1="781" x2="296.5" y2="770" class="bare nscl"/>
+        <line x1="296.5" y1="690" x2="296.5" y2="679" class="bare n3v3"/>
+        <!-- Cd 100nF entre pin 9 y 10 -->
+        <rect x="333" y="686" width="15" height="34" class="comp"/>
+        <text x="340" y="735" class="lbl-xs" text-anchor="middle">Cd</text>
+        <path d="M340,686 L340,679 L366,679" class="jump n3v3"/>
+        <path d="M340,720 L340,713 L366,713" class="jump ngnd"/>
+        <!-- J1 -->
+        <rect x="175" y="668" width="21" height="192" class="conn"/>
+        <text x="185" y="880" class="lbl-xs" text-anchor="middle">J1</text>
+
+        <!-- COMPONENTES DERECHA -->
+        <!-- JP1 C16/F11 -> C16/F8 -->
+        <path d="M703.5,747 L703.5,645" class="jump ndin"/>
+        <rect x="696" y="680" width="15" height="30" class="comp"/>
+        <text x="718" y="700" class="lbl-xs">JP1</text>
+        <!-- R3 C16/F8 -> C16/F5 -->
+        <rect x="695" y="556" width="17" height="76" class="comp"/>
+        <text x="718" y="596" class="lbl-xs">R3</text>
+        <line x1="703.5" y1="645" x2="703.5" y2="632" class="bare ndin"/>
+        <line x1="703.5" y1="556" x2="703.5" y2="543" class="bare ndin"/>
+        <!-- C16/F5 -> C20/F3 (J2 DATA) -->
+        <path d="M703.5,543 Q790,520 851.5,475" class="jump ndin"/>
+        <!-- +5V a J2: C19/F14 -> C20/F1 -->
+        <path d="M814.5,849 Q880,640 851.5,407" class="jump n5v"/>
+        <!-- GND a J2 y J3: C19/F10 -> C20/F2 y C20/F6 -->
+        <path d="M814.5,713 Q862,580 851.5,441" class="jump ngnd"/>
+        <path d="M814.5,713 Q840,650 851.5,577" class="jump ngnd"/>
+        <!-- J3 DATA_RET: C20/F5 -> C17/F11 -->
+        <path d="M851.5,543 Q770,620 740.5,747" class="jump nret"/>
+        <!-- RESET: C14/F9 -> C13/F11 -->
+        <path d="M629.5,679 Q640,715 597,747" class="jump n3v3"/>
+        <!-- straps A2 A1 A0 -> C14/F10 (GND, MASTER) -->
+        <path d="M597,781 L629.5,713" class="jump ngnd"/>
+        <path d="M597,815 L629.5,713" class="jump ngnd"/>
+        <path d="M597,849 L629.5,713" class="jump ngnd"/>
+        <!-- conectores derecha -->
+        <rect x="841" y="396" width="21" height="90" class="conn"/>
+        <text x="875" y="445" class="lbl-xs">J2</text>
+        <rect x="841" y="532" width="21" height="56" class="conn"/>
+        <text x="875" y="562" class="lbl-xs">J3</text>
+        <rect x="841" y="668" width="21" height="192" class="conn"/>
+        <text x="851" y="880" class="lbl-xs" text-anchor="middle">J4</text>
+
+        <!-- etiquetas de fila a la izquierda del dibujo -->
+        <g class="lbl-xs" text-anchor="end" fill="#94a3b8">
+          <text x="40" y="410">F1</text><text x="40" y="444">F2</text><text x="40" y="478">F3</text>
+          <text x="40" y="512">F4</text><text x="40" y="546">F5</text><text x="40" y="580">F6</text>
+          <text x="40" y="614">F7</text><text x="40" y="648">F8</text>
+          <text x="40" y="682" font-weight="bold" fill="#ea580c">F9</text>
+          <text x="40" y="716" font-weight="bold" fill="#1e293b">F10</text>
+          <text x="40" y="750" font-weight="bold" fill="#9333ea">F11</text>
+          <text x="40" y="784" font-weight="bold" fill="#0891b2">F12</text>
+          <text x="40" y="818" font-weight="bold" fill="#2563eb">F13</text>
+          <text x="40" y="852" font-weight="bold" fill="#dc2626">F14</text>
+        </g>
+
+        <text x="500" y="896" class="lbl-s" text-anchor="middle">Los arcos punteados sobre C7 y C13 son SALTOS: la pista pasa por encima del pin con hilo aislado y NO se suelda ahí.</text>
+
+        <!-- ══════════ TABLAS ══════════ -->
+        <line x1="30" y1="910" x2="970" y2="910" stroke="#cbd5e1"/>
+
+        <text x="30" y="934" class="sec">Las 6 pistas horizontales (hilo desnudo, filas F9…F14)</text>
+        <g>
+          <rect x="30" y="944" width="470" height="20" fill="#0f172a"/>
+          <text x="48"  y="958" class="lbl-b" fill="#fff">FILA</text>
+          <text x="105" y="958" class="lbl-b" fill="#fff">NET</text>
+          <text x="185" y="958" class="lbl-b" fill="#fff">TRAMOS (columnas)</text>
+          <text x="390" y="958" class="lbl-b" fill="#fff">SUELDA EN EL ZÓCALO</text>
+        </g>
+        <g class="lbl">
+          <rect x="30" y="964" width="470" height="19" fill="#fff7ed" stroke="#e2e8f0"/>
+          <text x="48" y="977" font-weight="bold">F9</text><text x="105" y="977" class="f3v3" font-weight="bold">+3V3</text>
+          <text x="185" y="977">C2–C12 · salto · C14–C20</text><text x="390" y="977">C7 = pin 9 VDD</text>
+
+          <rect x="30" y="983" width="470" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="48" y="996" font-weight="bold">F10</text><text x="105" y="996" font-weight="bold">GND</text>
+          <text x="185" y="996">C2–C12 · salto · C14–C20</text><text x="390" y="996">C7 = pin 10 VSS</text>
+
+          <rect x="30" y="1002" width="470" height="19" fill="#faf5ff" stroke="#e2e8f0"/>
+          <text x="48" y="1015" font-weight="bold">F11</text><text x="105" y="1015" class="fdin" font-weight="bold">DATA_IN</text>
+          <text x="185" y="1015">C2–C6 · salto · C8–C12 · salto · C14–C16</text><text x="390" y="1015" class="warn-b">ninguno</text>
+
+          <rect x="30" y="1021" width="470" height="19" fill="#ecfdf5" stroke="#e2e8f0"/>
+          <text x="48" y="1034" font-weight="bold">F11 dcha</text><text x="105" y="1034" class="fret" font-weight="bold">DATA_RET</text>
+          <text x="185" y="1034">C17–C20 (tramo separado, NO toca el anterior)</text><text x="390" y="1034" class="warn-b">ninguno</text>
+
+          <rect x="30" y="1040" width="470" height="19" fill="#ecfeff" stroke="#e2e8f0"/>
+          <text x="48" y="1053" font-weight="bold">F12</text><text x="105" y="1053" class="fscl" font-weight="bold">SCL</text>
+          <text x="185" y="1053">C2–C12 · salto · C14–C20</text><text x="390" y="1053">C7 = pin 12 SCL</text>
+
+          <rect x="30" y="1059" width="470" height="19" fill="#eff6ff" stroke="#e2e8f0"/>
+          <text x="48" y="1072" font-weight="bold">F13</text><text x="105" y="1072" class="fsda" font-weight="bold">SDA</text>
+          <text x="185" y="1072">C2–C12 · salto · C14–C20</text><text x="390" y="1072">C7 = pin 13 SDA</text>
+
+          <rect x="30" y="1078" width="470" height="19" fill="#fef2f2" stroke="#e2e8f0"/>
+          <text x="48" y="1091" font-weight="bold">F14</text><text x="105" y="1091" class="f5v" font-weight="bold">+5V</text>
+          <text x="185" y="1091">C2–C6 · salto · C8–C12 · salto · C14–C20</text><text x="390" y="1091" class="warn-b">ninguno</text>
+        </g>
+        <text x="30" y="1112" class="lbl-s">«Salto» = el hilo pasa por encima de la columna del pin (C7 o C13) con aislante y no se suelda en ese agujero. Los cinco saltos sobre C13 son obligatorios:</text>
+        <text x="30" y="1126" class="lbl-s">ahí están RESET y los tres straps de dirección, y el de F14 pondría +5 V en A0 — fuera de especificación y chip muerto.</text>
+
+        <text x="520" y="934" class="sec">Puentes de hilo aislado</text>
+        <g>
+          <rect x="520" y="944" width="450" height="20" fill="#0f172a"/>
+          <text x="536" y="958" class="lbl-b" fill="#fff">DESDE → HASTA</text>
+          <text x="760" y="958" class="lbl-b" fill="#fff">QUÉ ES</text>
+        </g>
+        <g class="lbl">
+          <rect x="520" y="964" width="450" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="536" y="977">L1…L8 → C7/F1…F8</text><text x="760" y="977">micros gavetas 1–8</text>
+          <rect x="520" y="983" width="450" height="19" fill="#ffffff" stroke="#e2e8f0"/>
+          <text x="536" y="996">R1…R8 → C13/F1…F8</text><text x="760" y="996" class="warn-b">micros gavetas 16…9 (¡al revés!)</text>
+          <rect x="520" y="1002" width="450" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="536" y="1015">L9-L10-L11-L12 encadenados → C3/F10</text><text x="760" y="1015">masa de los micros</text>
+          <rect x="520" y="1021" width="450" height="19" fill="#ffffff" stroke="#e2e8f0"/>
+          <text x="536" y="1034">R9-R10-R11-R12 encadenados → C19/F10</text><text x="760" y="1034">masa de los micros</text>
+          <rect x="520" y="1040" width="450" height="19" fill="#fff7ed" stroke="#e2e8f0"/>
+          <text x="536" y="1053">C14/F9 → C13/F11</text><text x="760" y="1053" class="warn-b">RESET a +3V3 · imprescindible</text>
+          <rect x="520" y="1059" width="450" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="536" y="1072">C13/F12, C13/F13, C13/F14 → C14/F10</text><text x="760" y="1072">straps A2 A1 A0 (MASTER = 0x20)</text>
+          <rect x="520" y="1078" width="450" height="19" fill="#ffffff" stroke="#e2e8f0"/>
+          <text x="536" y="1091">C1/F12 → C2/F14 · C1/F10 → C2/F10</text><text x="760" y="1091">entrada de fuente a los raíles</text>
+          <rect x="520" y="1097" width="450" height="19" fill="#faf5ff" stroke="#e2e8f0"/>
+          <text x="536" y="1110">C16/F5 → C20/F3</text><text x="760" y="1110">datos a la tira (tras R3)</text>
+          <rect x="520" y="1116" width="450" height="19" fill="#fef2f2" stroke="#e2e8f0"/>
+          <text x="536" y="1129">C19/F14 → C20/F1</text><text x="760" y="1129">+5V de la tira</text>
+          <rect x="520" y="1135" width="450" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="536" y="1148">C19/F10 → C20/F2 · C19/F10 → C20/F6</text><text x="760" y="1148">masa de la tira (ida y vuelta)</text>
+          <rect x="520" y="1154" width="450" height="19" fill="#ecfdf5" stroke="#e2e8f0"/>
+          <text x="536" y="1167">C20/F5 → C17/F11</text><text x="760" y="1167">retorno de la tira → J4</text>
+        </g>
+
+        <!-- CONECTORES + AVISOS -->
+        <line x1="30" y1="1186" x2="970" y2="1186" stroke="#cbd5e1"/>
+        <text x="30" y="1208" class="sec">Conectores: cada señal en la fila de su pista</text>
+        <g class="lbl">
+          <text x="30"  y="1230" class="lbl-b">J1 (C2, F9→F14) entrada</text>
+          <text x="30"  y="1246">F9 +3V3 · F10 GND · F11 DATA_IN · F12 SCL · F13 SDA · F14 +5V</text>
+          <text x="30"  y="1262" class="lbl-s">MASTER: al DB9 del lector (3=3V3, 1=GND, 2=DATA, 5=SCL, 6=SDA, 9=5V). ESCLAVA: al J4 anterior.</text>
+
+          <text x="380" y="1230" class="lbl-b">J4 (C20, F9→F14) salida</text>
+          <text x="380" y="1246">F9 +3V3 · F10 GND · F11 DATA_RET · F12 SCL · F13 SDA · F14 +5V</text>
+          <text x="380" y="1262" class="lbl-s">Mismas filas que J1: el cable entre placas es recto pin a pin.</text>
+
+          <text x="720" y="1230" class="lbl-b">J0 · J2 · J3</text>
+          <text x="720" y="1246">J0 (C1/F14 +5V, C1/F10 GND) — solo MASTER</text>
+          <text x="720" y="1262">J2 (C20/F1 +5V, F2 GND, F3 DATA) · J3 (C20/F5 RET, F6 GND)</text>
+        </g>
+
+        <rect x="30" y="1278" width="940" height="66" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5" rx="6"/>
+        <text x="44" y="1297" class="warn-b">Antes de meter el MCP en el zócalo, con el polímetro y la placa sin tensión:</text>
+        <text x="44" y="1315" class="warn">1. Continuidad pin 9 ↔ F9, pin 10 ↔ F10, pin 12 ↔ F12, pin 13 ↔ F13 — deben pitar.   2. Pines 11, 14, 15, 16, 17, 18, 19, 20 contra +5 V y contra GND — TODOS abiertos.</text>
+        <text x="44" y="1332" class="warn">3. Pin 18 (RESET) ↔ +3V3 debe pitar.   4. +5 V ↔ GND abierto (si pita, el C3 está al revés o hay un puente).   5. Solo entonces: tensión, y pin 9 = 3,30 V exactos.</text>
+
+        <line x1="30" y1="1358" x2="970" y2="1358" stroke="#0f172a"/>
+        <text x="30"  y="1374" class="meta">R1, R2, F1, C3 y J0 solo se montan en la MASTER. La ESCLAVA lleva las mismas 6 pistas, el mismo zócalo, Cd, R3, JP1 y los cinco conectores.</text>
+        <text x="970" y="1374" class="meta" text-anchor="end">esp32/HARDWARE_PLACA_MASTER.md</text>
+      </svg>
+    </div>
+  </div>
+
+</body>
+</html>

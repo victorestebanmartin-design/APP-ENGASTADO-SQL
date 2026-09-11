@@ -66,6 +66,10 @@ Fuente Externa PTL (GND)
 - **Bus I2C:** SCL a DB9-5 (GPIO48) y SDA a DB9-6 (GPIO47).
 - **Pull-Ups:** Colocar dos resistencias de **4.7 kΩ** entre SDA y 3.3V, y entre SCL y 3.3V en el primer expansor.
 - **Codificación de Direcciones I2C (Pines A2, A1, A0):** Ver documento completo en [esp32/HARDWARE_EXPANSORES_MCP23017.md](esp32/HARDWARE_EXPANSORES_MCP23017.md).
+- **Placas MASTER / ESCLAVA:** en vez de cablear los MCP23017 a pelo, el montaje
+  normalizado usa una placa **MASTER** (que recibe este DB9 y los 5 V de la
+  fuente) y tantas **ESCLAVAS** como bancos de 16 gavetas haya. Plano completo
+  en [esp32/HARDWARE_PLACA_MASTER.md](esp32/HARDWARE_PLACA_MASTER.md).
 
 | Nº Expansor | Rango Gavetas | Dirección Hex | A2 (Pin 17) | A1 (Pin 16) | A0 (Pin 15) |
 |:---:|:---:|:---:|:---:|:---:|:---:|

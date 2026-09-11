@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Placa MASTER / ESCLAVA Pick-To-Light - 1 Página A4</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .page-a4 {
+      width: 210mm;
+      height: 297mm;
+      background: white;
+      padding: 10mm;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .svg-container { width: 100%; height: 100%; }
+    .svg-container svg { width: 100%; height: 100%; display: block; }
+    @media print {
+      body { background: none; padding: 0; }
+      .page-a4 { box-shadow: none; width: 100%; height: 100vh; padding: 0; }
+      .no-print { display: none !important; }
+    }
+    .print-bar {
+      position: fixed; top: 15px; right: 20px;
+      background: #0f172a; color: white; padding: 10px 20px;
+      border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: flex; gap: 15px; align-items: center; z-index: 9999;
+    }
+    .print-btn {
+      background: #2563eb; color: white; border: none;
+      padding: 8px 16px; border-radius: 6px; font-weight: bold;
+      cursor: pointer; font-size: 14px;
+    }
+    .print-btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+
+  <div class="print-bar no-print">
+    <span>🖨️ <strong>Placa MASTER / ESCLAVA del Pick-To-Light — 1 página A4</strong></span>
+    <button class="print-btn" onclick="window.print()">Imprimir / Guardar en PDF (Ctrl+P)</button>
+  </div>
+
+  <div class="page-a4">
+    <div class="svg-container">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1414">
+        <defs>
+          <style type="text/css">
+            .title-main { font-size: 21px; font-weight: bold; fill: #0f172a; }
+            .title-sub  { font-size: 12px; font-weight: 600; fill: #475569; }
+            .meta-text  { font-size: 10px; fill: #64748b; }
+            .sec-header { font-size: 14px; font-weight: bold; fill: #1e293b; }
+
+            .box-bg     { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; rx: 6px; }
+            .box-chip   { fill: #f1f5f9; stroke: #0f172a; stroke-width: 2; rx: 4px; }
+            .box-module { fill: #ffffff; stroke: #2563eb; stroke-width: 2; rx: 6px; }
+            .box-power  { fill: #fef2f2; stroke: #ef4444; stroke-width: 2; rx: 6px; }
+            .box-led    { fill: #fffbeb; stroke: #d97706; stroke-width: 2; rx: 6px; }
+            .box-slave  { fill: #f0fdf4; stroke: #16a34a; stroke-width: 2; rx: 6px; }
+            .box-warn   { fill: #fef2f2; stroke: #dc2626; stroke-width: 1.5; rx: 6px; }
+            .box-ghost  { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; rx: 6px; }
+
+            .lbl        { font-size: 11px; fill: #1e293b; }
+            .lbl-b      { font-size: 11px; font-weight: bold; fill: #0f172a; }
+            .lbl-s      { font-size: 9.5px; fill: #475569; }
+            .lbl-pin    { font-size: 10px; font-weight: 600; fill: #1e293b; }
+            .lbl-gav    { font-size: 10px; font-weight: bold; fill: #16a34a; }
+            .lbl-pwr    { font-size: 10px; font-weight: bold; fill: #dc2626; }
+            .lbl-bus    { font-size: 10px; font-weight: bold; fill: #2563eb; }
+            .lbl-box    { font-size: 12px; font-weight: bold; fill: #0f172a; }
+            .lbl-warn   { font-size: 10.5px; fill: #7f1d1d; }
+            .lbl-warn-b { font-size: 11px; font-weight: bold; fill: #b91c1c; }
+
+            .wire       { stroke: #64748b; stroke-width: 1.2; fill: none; }
+            .wire-pwr   { stroke: #dc2626; stroke-width: 2; fill: none; }
+            .wire-data  { stroke: #d97706; stroke-width: 2; fill: none; }
+            .wire-bus   { stroke: #2563eb; stroke-width: 2; fill: none; }
+            .pad        { fill: #fde68a; stroke: #92400e; stroke-width: 1.5; }
+            .pad-gnd    { fill: #cbd5e1; stroke: #334155; stroke-width: 1.5; }
+            .grid-dot   { fill: #cbd5e1; }
+          </style>
+          <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#475569"/>
+          </marker>
+          <marker id="arP" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#dc2626"/>
+          </marker>
+          <marker id="arD" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#d97706"/>
+          </marker>
+          <marker id="arB" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 z" fill="#2563eb"/>
+          </marker>
+        </defs>
+
+        <!-- ══ CABECERA ══ -->
+        <text x="30" y="48" class="title-main">Placa MASTER y placa ESCLAVA — Pick-To-Light de gavetas</text>
+        <text x="30" y="68" class="title-sub">Rejilla 20 × 14 paso 2,54 mm · 12 pads de soldadura por lateral · 1 × MCP23017 + 16 microinterruptores por placa</text>
+        <text x="30" y="86" class="meta-text">APP-ENGASTADO-SQL · esp32/HARDWARE_PLACA_MASTER.md · No requiere cambio de firmware ni subir FW_VERSION: gavetas.py detecta los expansores al arrancar</text>
+        <line x1="30" y1="96" x2="970" y2="96" stroke="#0f172a" stroke-width="1.5"/>
+
+        <!-- ══ §1 LA CADENA ══ -->
+        <text x="30" y="122" class="sec-header">1 · Cómo se encadena el puesto</text>
+
+        <rect x="30"  y="145" width="130" height="58" class="box-power"/>
+        <text x="95"  y="168" class="lbl-box" text-anchor="middle">FUENTE 5 V</text>
+        <text x="95"  y="186" class="lbl-s"   text-anchor="middle">2 A mínimo</text>
+
+        <rect x="30"  y="228" width="130" height="58" class="box-module"/>
+        <text x="95"  y="251" class="lbl-box" text-anchor="middle">LECTOR RFID</text>
+        <text x="95"  y="269" class="lbl-s"   text-anchor="middle">gen4 · DB9</text>
+
+        <rect x="255" y="145" width="185" height="141" class="box-module"/>
+        <text x="347" y="170" class="lbl-box" text-anchor="middle">PLACA MASTER</text>
+        <text x="347" y="190" class="lbl-s"   text-anchor="middle">MCP23017 · 0x20</text>
+        <text x="347" y="206" class="lbl-s"   text-anchor="middle">gavetas 1 – 16</text>
+        <text x="347" y="226" class="lbl-s"   text-anchor="middle">pull-ups 4k7 del bus</text>
+        <text x="347" y="242" class="lbl-s"   text-anchor="middle">reparte los 5 V</text>
+        <text x="347" y="262" class="lbl-s"   text-anchor="middle">J0 J1 J2 J3 J4</text>
+
+        <rect x="545" y="145" width="185" height="141" class="box-slave"/>
+        <text x="637" y="170" class="lbl-box" text-anchor="middle">PLACA ESCLAVA</text>
+        <text x="637" y="190" class="lbl-s"   text-anchor="middle">MCP23017 · 0x21</text>
+        <text x="637" y="206" class="lbl-s"   text-anchor="middle">gavetas 17 – 32</text>
+        <text x="637" y="226" class="lbl-s"   text-anchor="middle">sin pull-ups</text>
+        <text x="637" y="242" class="lbl-s"   text-anchor="middle">sin entrada de fuente</text>
+        <text x="637" y="262" class="lbl-s"   text-anchor="middle">J1 J2 J3 J4</text>
+
+        <rect x="835" y="145" width="135" height="141" class="box-ghost"/>
+        <text x="902" y="200" class="lbl-b"  text-anchor="middle">…</text>
+        <text x="902" y="222" class="lbl-s"  text-anchor="middle">hasta 8 placas</text>
+        <text x="902" y="238" class="lbl-s"  text-anchor="middle">0x20 … 0x27</text>
+        <text x="902" y="254" class="lbl-s"  text-anchor="middle">128 gavetas</text>
+
+        <rect x="255" y="312" width="185" height="42" class="box-led"/>
+        <text x="347" y="330" class="lbl-b" text-anchor="middle">Tira WS2813 · LED 1–16</text>
+        <text x="347" y="346" class="lbl-s" text-anchor="middle">sale por J2 · vuelve por J3</text>
+
+        <rect x="545" y="312" width="185" height="42" class="box-led"/>
+        <text x="637" y="330" class="lbl-b" text-anchor="middle">Tira WS2813 · LED 17–32</text>
+        <text x="637" y="346" class="lbl-s" text-anchor="middle">sale por J2 · vuelve por J3</text>
+
+        <path d="M160,174 L250,174" class="wire-pwr" marker-end="url(#arP)"/>
+        <text x="205" y="167" class="lbl-pwr" text-anchor="middle">+5V</text>
+        <path d="M160,257 L205,257 L205,205 L250,205" class="wire-bus" marker-end="url(#arB)"/>
+        <text x="207" y="288" class="lbl-bus" text-anchor="middle">DB9 · J1</text>
+        <text x="207" y="301" class="lbl-s"   text-anchor="middle">3V3 SDA SCL DATA GND</text>
+
+        <path d="M440,205 L540,205" class="wire-bus" marker-end="url(#arB)"/>
+        <text x="490" y="198" class="lbl-bus" text-anchor="middle">J4 → J1</text>
+        <text x="490" y="228" class="lbl-s"   text-anchor="middle">6 hilos</text>
+        <text x="490" y="241" class="lbl-s"   text-anchor="middle">recto</text>
+        <path d="M730,205 L830,205" class="wire-bus" marker-end="url(#arB)"/>
+
+        <path d="M320,286 L320,308" class="wire-data" marker-end="url(#arD)"/>
+        <path d="M375,308 L375,286" class="wire-data" marker-end="url(#arD)"/>
+        <path d="M610,286 L610,308" class="wire-data" marker-end="url(#arD)"/>
+        <path d="M665,308 L665,286" class="wire-data" marker-end="url(#arD)"/>
+
+        <text x="770" y="330" class="lbl-s">Los datos van en cadena: la cola de</text>
+        <text x="770" y="344" class="lbl-s">una tira entra por J3 y sale por J4</text>
+        <text x="770" y="358" class="lbl-s">hacia la placa siguiente, ya a 5 V.</text>
+
+        <!-- ══ §2 PLANO DE LA PLACA ══ -->
+        <line x1="30" y1="378" x2="970" y2="378" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="30" y="404" class="sec-header">2 · Plano de la placa (idéntico en MASTER y ESCLAVA — solo cambia lo que se puebla)</text>
+
+        <!-- contorno -->
+        <rect x="200" y="430" width="600" height="392" fill="#ffffff" stroke="#0f172a" stroke-width="2" rx="4"/>
+        <text x="500" y="424" class="lbl-s" text-anchor="middle">C1 ← 20 columnas (paso 2,54) → C20</text>
+
+        <!-- cuerpo del MCP -->
+        <rect x="378" y="436" width="214" height="380" class="box-chip"/>
+        <path d="M475,436 a10,10 0 0,0 20,0" fill="none" stroke="#0f172a" stroke-width="2"/>
+        <text x="485" y="462" class="lbl-b" text-anchor="middle">MCP23017-E/SP</text>
+        <text x="485" y="476" class="lbl-s" text-anchor="middle">DIP-28 · zócalo</text>
+        <text x="485" y="490" class="lbl-s" text-anchor="middle">C7 y C13 · F1…F14</text>
+        <text x="485" y="504" class="lbl-s" text-anchor="middle">muesca ARRIBA</text>
+
+        <!-- Pines izquierdos F1..F14 (x=395) -->
+        <g class="lbl-pin">
+          <circle cx="395" cy="444" r="3.5" fill="#0f172a"/><text x="404" y="447">1  GPA0</text>
+          <circle cx="395" cy="472" r="3.5" fill="#0f172a"/><text x="404" y="475">2  GPA1</text>
+          <circle cx="395" cy="500" r="3.5" fill="#0f172a"/><text x="404" y="503">3  GPA2</text>
+          <circle cx="395" cy="528" r="3.5" fill="#0f172a"/><text x="404" y="531">4  GPA3</text>
+          <circle cx="395" cy="556" r="3.5" fill="#0f172a"/><text x="404" y="559">5  GPA4</text>
+          <circle cx="395" cy="584" r="3.5" fill="#0f172a"/><text x="404" y="587">6  GPA5</text>
+          <circle cx="395" cy="612" r="3.5" fill="#0f172a"/><text x="404" y="615">7  GPA6</text>
+          <circle cx="395" cy="640" r="3.5" fill="#0f172a"/><text x="404" y="643">8  GPA7</text>
+          <circle cx="395" cy="668" r="3.5" fill="#dc2626"/><text x="404" y="671" class="lbl-pwr">9  VDD → +3V3</text>
+          <circle cx="395" cy="696" r="3.5" fill="#334155"/><text x="404" y="699">10 VSS → GND</text>
+          <circle cx="395" cy="724" r="3.5" fill="#94a3b8"/><text x="404" y="727" class="lbl-s">11 NC</text>
+          <circle cx="395" cy="752" r="3.5" fill="#2563eb"/><text x="404" y="755" class="lbl-bus">12 SCL</text>
+          <circle cx="395" cy="780" r="3.5" fill="#2563eb"/><text x="404" y="783" class="lbl-bus">13 SDA</text>
+          <circle cx="395" cy="808" r="3.5" fill="#94a3b8"/><text x="404" y="811" class="lbl-s">14 NC</text>
+        </g>
+
+        <!-- Pines derechos F1..F14 (x=575) -->
+        <g class="lbl-pin" text-anchor="end">
+          <circle cx="575" cy="444" r="3.5" fill="#0f172a"/><text x="566" y="447">GPB7  28</text>
+          <circle cx="575" cy="472" r="3.5" fill="#0f172a"/><text x="566" y="475">GPB6  27</text>
+          <circle cx="575" cy="500" r="3.5" fill="#0f172a"/><text x="566" y="503">GPB5  26</text>
+          <circle cx="575" cy="528" r="3.5" fill="#0f172a"/><text x="566" y="531">GPB4  25</text>
+          <circle cx="575" cy="556" r="3.5" fill="#0f172a"/><text x="566" y="559">GPB3  24</text>
+          <circle cx="575" cy="584" r="3.5" fill="#0f172a"/><text x="566" y="587">GPB2  23</text>
+          <circle cx="575" cy="612" r="3.5" fill="#0f172a"/><text x="566" y="615">GPB1  22</text>
+          <circle cx="575" cy="640" r="3.5" fill="#0f172a"/><text x="566" y="643">GPB0  21</text>
+          <circle cx="575" cy="668" r="3.5" fill="#94a3b8"/><text x="566" y="671" class="lbl-s">INTA  20</text>
+          <circle cx="575" cy="696" r="3.5" fill="#94a3b8"/><text x="566" y="699" class="lbl-s">INTB  19</text>
+          <circle cx="575" cy="724" r="3.5" fill="#dc2626"/><text x="566" y="727" class="lbl-pwr">RESET→3V3  18</text>
+          <circle cx="575" cy="752" r="3.5" fill="#0f172a"/><text x="566" y="755">A2  17</text>
+          <circle cx="575" cy="780" r="3.5" fill="#0f172a"/><text x="566" y="783">A1  16</text>
+          <circle cx="575" cy="808" r="3.5" fill="#0f172a"/><text x="566" y="811">A0  15</text>
+        </g>
+
+        <!-- Pads laterales izquierdos -->
+        <g>
+          <circle cx="178" cy="444" r="6" class="pad"/><line x1="184" y1="444" x2="391" y2="444" class="wire"/>
+          <circle cx="178" cy="472" r="6" class="pad"/><line x1="184" y1="472" x2="391" y2="472" class="wire"/>
+          <circle cx="178" cy="500" r="6" class="pad"/><line x1="184" y1="500" x2="391" y2="500" class="wire"/>
+          <circle cx="178" cy="528" r="6" class="pad"/><line x1="184" y1="528" x2="391" y2="528" class="wire"/>
+          <circle cx="178" cy="556" r="6" class="pad"/><line x1="184" y1="556" x2="391" y2="556" class="wire"/>
+          <circle cx="178" cy="584" r="6" class="pad"/><line x1="184" y1="584" x2="391" y2="584" class="wire"/>
+          <circle cx="178" cy="612" r="6" class="pad"/><line x1="184" y1="612" x2="391" y2="612" class="wire"/>
+          <circle cx="178" cy="640" r="6" class="pad"/><line x1="184" y1="640" x2="391" y2="640" class="wire"/>
+          <circle cx="178" cy="678" r="6" class="pad-gnd"/>
+          <circle cx="178" cy="708" r="6" class="pad-gnd"/>
+          <circle cx="178" cy="738" r="6" class="pad-gnd"/>
+          <circle cx="178" cy="768" r="6" class="pad-gnd"/>
+          <path d="M178,684 L178,796 L300,796 L300,700 L391,696" class="wire"/>
+        </g>
+        <g class="lbl-gav" text-anchor="end">
+          <text x="166" y="447">L1 · micro gav. 1</text>
+          <text x="166" y="475">L2 · micro gav. 2</text>
+          <text x="166" y="503">L3 · micro gav. 3</text>
+          <text x="166" y="531">L4 · micro gav. 4</text>
+          <text x="166" y="559">L5 · micro gav. 5</text>
+          <text x="166" y="587">L6 · micro gav. 6</text>
+          <text x="166" y="615">L7 · micro gav. 7</text>
+          <text x="166" y="643">L8 · micro gav. 8</text>
+        </g>
+        <g class="lbl-pin" text-anchor="end" fill="#334155">
+          <text x="166" y="681">L9 · GND</text>
+          <text x="166" y="711">L10 · GND</text>
+          <text x="166" y="741">L11 · GND</text>
+          <text x="166" y="771">L12 · GND</text>
+        </g>
+
+        <!-- Pads laterales derechos -->
+        <g>
+          <circle cx="822" cy="444" r="6" class="pad"/><line x1="816" y1="444" x2="579" y2="444" class="wire"/>
+          <circle cx="822" cy="472" r="6" class="pad"/><line x1="816" y1="472" x2="579" y2="472" class="wire"/>
+          <circle cx="822" cy="500" r="6" class="pad"/><line x1="816" y1="500" x2="579" y2="500" class="wire"/>
+          <circle cx="822" cy="528" r="6" class="pad"/><line x1="816" y1="528" x2="579" y2="528" class="wire"/>
+          <circle cx="822" cy="556" r="6" class="pad"/><line x1="816" y1="556" x2="579" y2="556" class="wire"/>
+          <circle cx="822" cy="584" r="6" class="pad"/><line x1="816" y1="584" x2="579" y2="584" class="wire"/>
+          <circle cx="822" cy="612" r="6" class="pad"/><line x1="816" y1="612" x2="579" y2="612" class="wire"/>
+          <circle cx="822" cy="640" r="6" class="pad"/><line x1="816" y1="640" x2="579" y2="640" class="wire"/>
+          <circle cx="822" cy="678" r="6" class="pad-gnd"/>
+          <circle cx="822" cy="708" r="6" class="pad-gnd"/>
+          <circle cx="822" cy="738" r="6" class="pad-gnd"/>
+          <circle cx="822" cy="768" r="6" class="pad-gnd"/>
+        </g>
+        <g class="lbl-gav">
+          <text x="834" y="447">R1 · micro gav. 16</text>
+          <text x="834" y="475">R2 · micro gav. 15</text>
+          <text x="834" y="503">R3 · micro gav. 14</text>
+          <text x="834" y="531">R4 · micro gav. 13</text>
+          <text x="834" y="559">R5 · micro gav. 12</text>
+          <text x="834" y="587">R6 · micro gav. 11</text>
+          <text x="834" y="615">R7 · micro gav. 10</text>
+          <text x="834" y="643">R8 · micro gav. 9</text>
+        </g>
+        <g class="lbl-pin" fill="#334155">
+          <text x="834" y="681">R9 · GND</text>
+          <text x="834" y="711">R10 · GND</text>
+          <text x="834" y="741">R11 · GND</text>
+          <text x="834" y="771">R12 · GND</text>
+        </g>
+
+        <!-- Zona izquierda: alimentación y bus -->
+        <rect x="208" y="530" width="162" height="280" class="box-bg"/>
+        <text x="289" y="550" class="lbl-box" text-anchor="middle">ALIMENTACIÓN</text>
+        <text x="289" y="564" class="lbl-box" text-anchor="middle">Y BUS  (C1…C6)</text>
+        <g class="lbl-s">
+          <text x="218" y="588" class="lbl-pwr">J0 · 2 vías  ← FUENTE</text>
+          <text x="226" y="602">+5V · GND   (solo MASTER)</text>
+          <text x="218" y="624" class="lbl-bus">J1 · 6 vías  ← DB9 / placa ant.</text>
+          <text x="226" y="638">3V3 · GND · DATA · SCL · SDA · 5V</text>
+          <text x="218" y="662">F1  PTC rearmable 2 A  (en +5V)</text>
+          <text x="218" y="680">C3  1000 µF / 10 V  (5V ↔ GND)</text>
+          <text x="218" y="698">C1  100 nF  pegado al pin 9-10</text>
+          <text x="218" y="716">R1  4k7  SDA → 3V3</text>
+          <text x="218" y="734">R2  4k7  SCL → 3V3</text>
+          <text x="218" y="756" class="lbl-warn-b">R1, R2 y F1: SOLO en la MASTER</text>
+          <text x="218" y="772">Son los pull-up de TODO el bus.</text>
+          <text x="218" y="786">Repetirlos en cada esclava baja</text>
+          <text x="218" y="800">la resistencia y mata el I2C.</text>
+        </g>
+
+        <!-- Zona derecha: salidas -->
+        <rect x="690" y="418" width="102" height="96" class="box-bg"/>
+        <text x="741" y="438" class="lbl-box" text-anchor="middle">TRAZADO</text>
+        <text x="700" y="458" class="lbl-s">Las pistas, agujero</text>
+        <text x="700" y="472" class="lbl-s">a agujero, están en</text>
+        <text x="700" y="486" class="lbl-s">la hoja aparte</text>
+        <text x="700" y="500" class="lbl-s">esquema_master_</text>
+        <text x="700" y="510" class="lbl-s">pistas_A4.html</text>
+        <rect x="612" y="530" width="180" height="280" class="box-bg"/>
+        <text x="702" y="550" class="lbl-box" text-anchor="middle">SALIDAS</text>
+        <text x="702" y="564" class="lbl-box" text-anchor="middle">(C14…C20)</text>
+        <g class="lbl-s">
+          <text x="622" y="588" class="lbl-warn-b">J2 · 3 vías  → tira WS2813</text>
+          <text x="630" y="602">+5V · DATA · GND</text>
+          <text x="630" y="616">puentear DIN y BI en la tira</text>
+          <text x="622" y="638" class="lbl-warn-b">J3 · 2 vías  ← cola de la tira</text>
+          <text x="630" y="652">DATA_RET (DO del LED 16) · GND</text>
+          <text x="622" y="674" class="lbl-bus">J4 · 6 vías  → placa siguiente</text>
+          <text x="630" y="688">3V3 · GND · DATA_RET · SCL · SDA · 5V</text>
+          <text x="630" y="702" class="lbl-warn-b">mismo orden que J1: cable recto</text>
+          <text x="622" y="724">R3  330 Ω en serie con DATA de J2</text>
+          <text x="622" y="746">JP1  puente de hilo en el camino</text>
+          <text x="622" y="760">de datos: quitarlo deja intercalar</text>
+          <text x="622" y="778">un 74AHCT125 EXTERNO (no cabe aquí).</text>
+          <text x="622" y="792">El WS2813 quiere 3,5 V y el ESP32 da</text>
+          <text x="622" y="806">3,3: si el 1er LED hace colores raros.</text>
+        </g>
+
+        <text x="500" y="840" class="lbl-s" text-anchor="middle">F1 ← 14 filas → F14 · El DIP-28 ocupa las 14 filas justas: por eso los 16 canales quedan enfrentados a los laterales y los hilos van rectos</text>
+
+        <!-- ══ §3 DIRECCIONES ══ -->
+        <line x1="30" y1="858" x2="970" y2="858" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="30" y="884" class="sec-header">3 · Dirección I2C: los straps A0 / A1 / A2 (pines 15, 16, 17) — a GND o a +3,3 V, nunca al aire</text>
+
+        <g>
+          <rect x="30" y="898" width="940" height="22" fill="#0f172a"/>
+          <text x="95"  y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">PLACA</text>
+          <text x="230" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">GAVETAS</text>
+          <text x="360" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">DIRECCIÓN</text>
+          <text x="490" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A2 (17)</text>
+          <text x="620" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A1 (16)</text>
+          <text x="750" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A0 (15)</text>
+          <text x="880" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">PULL-UPS</text>
+        </g>
+        <g class="lbl">
+          <rect x="30" y="920" width="940" height="22" fill="#eff6ff" stroke="#cbd5e1"/>
+          <text x="95"  y="935" text-anchor="middle" font-weight="bold">MASTER</text>
+          <text x="230" y="935" text-anchor="middle">1 – 16</text>
+          <text x="360" y="935" text-anchor="middle" font-weight="bold">0x20</text>
+          <text x="490" y="935" text-anchor="middle">GND</text>
+          <text x="620" y="935" text-anchor="middle">GND</text>
+          <text x="750" y="935" text-anchor="middle">GND</text>
+          <text x="880" y="935" text-anchor="middle" font-weight="bold" fill="#b91c1c">SÍ (4k7)</text>
+
+          <rect x="30" y="942" width="940" height="20" fill="#ffffff" stroke="#cbd5e1"/>
+          <text x="95"  y="956" text-anchor="middle">ESCLAVA 1</text>
+          <text x="230" y="956" text-anchor="middle">17 – 32</text>
+          <text x="360" y="956" text-anchor="middle" font-weight="bold">0x21</text>
+          <text x="490" y="956" text-anchor="middle">GND</text>
+          <text x="620" y="956" text-anchor="middle">GND</text>
+          <text x="750" y="956" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
+          <text x="880" y="956" text-anchor="middle">no</text>
+
+          <rect x="30" y="962" width="940" height="20" fill="#f8fafc" stroke="#cbd5e1"/>
+          <text x="95"  y="976" text-anchor="middle">ESCLAVA 2</text>
+          <text x="230" y="976" text-anchor="middle">33 – 48</text>
+          <text x="360" y="976" text-anchor="middle" font-weight="bold">0x22</text>
+          <text x="490" y="976" text-anchor="middle">GND</text>
+          <text x="620" y="976" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
+          <text x="750" y="976" text-anchor="middle">GND</text>
+          <text x="880" y="976" text-anchor="middle">no</text>
+
+          <rect x="30" y="982" width="940" height="20" fill="#ffffff" stroke="#cbd5e1"/>
+          <text x="95"  y="996" text-anchor="middle">ESCLAVA 3</text>
+          <text x="230" y="996" text-anchor="middle">49 – 64</text>
+          <text x="360" y="996" text-anchor="middle" font-weight="bold">0x23</text>
+          <text x="490" y="996" text-anchor="middle">GND</text>
+          <text x="620" y="996" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
+          <text x="750" y="996" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
+          <text x="880" y="996" text-anchor="middle">no</text>
+
+          <rect x="30" y="1002" width="940" height="20" fill="#f8fafc" stroke="#cbd5e1"/>
+          <text x="95"  y="1016" text-anchor="middle">ESCLAVA 4 … 7</text>
+          <text x="230" y="1016" text-anchor="middle">65 – 128</text>
+          <text x="360" y="1016" text-anchor="middle" font-weight="bold">0x24 … 0x27</text>
+          <text x="620" y="1016" text-anchor="middle" class="lbl-s">A2 = +3,3 V, y A1/A0 siguiendo el binario (100, 101, 110, 111)</text>
+          <text x="880" y="1016" text-anchor="middle">no</text>
+        </g>
+        <text x="30" y="1040" class="lbl-s">El firmware ordena los expansores de menor a mayor dirección: el strap ES la numeración de las gavetas del puesto. Dos placas con el mismo strap se ven como una sola.</text>
+        <text x="30" y="1056" class="lbl-s">RESET (pin 18) SIEMPRE a +3,3 V. Flotando, el chip se reinicia solo y el puesto pierde gavetas al azar. INTA e INTB se dejan al aire: el firmware sondea, no usa interrupciones.</text>
+
+        <!-- ══ §4 AVISOS ══ -->
+        <line x1="30" y1="1074" x2="970" y2="1074" stroke="#cbd5e1" stroke-width="1"/>
+        <text x="30" y="1100" class="sec-header">4 · Lo que no se puede hacer mal</text>
+
+        <rect x="30" y="1112" width="300" height="150" class="box-warn"/>
+        <text x="44" y="1132" class="lbl-warn-b">⚠ El MCP23017 va a 3,3 V. NUNCA a 5 V.</text>
+        <text x="44" y="1150" class="lbl-warn">A 5 V sus líneas SDA/SCL suben a 5 V y</text>
+        <text x="44" y="1165" class="lbl-warn">se llevan por delante los GPIO del</text>
+        <text x="44" y="1180" class="lbl-warn">ESP32-S3, de forma permanente.</text>
+        <text x="44" y="1203" class="lbl-warn-b">⚠ Nunca USB-C y los 5 V del DB9 a la vez.</text>
+        <text x="44" y="1221" class="lbl-warn">Antes de dar tensión, comprueba en el</text>
+        <text x="44" y="1236" class="lbl-warn">zócalo vacío: pin 9 = 3,30 V, pin 10 = 0 V.</text>
+        <text x="44" y="1251" class="lbl-warn">Si el pin 9 marca 5 V, para ahí.</text>
+
+        <rect x="345" y="1112" width="300" height="150" class="box-warn"/>
+        <text x="359" y="1132" class="lbl-warn-b">⚠ El lateral derecho va INVERTIDO.</text>
+        <text x="359" y="1150" class="lbl-warn">R1 = gaveta 16 … R8 = gaveta 9. No es</text>
+        <text x="359" y="1165" class="lbl-warn">errata: el MCP numera GPB de abajo</text>
+        <text x="359" y="1180" class="lbl-warn">arriba y así los 8 hilos van rectos.</text>
+        <text x="359" y="1203" class="lbl-warn-b">ROTULA LA PLACA.</text>
+        <text x="359" y="1221" class="lbl-warn">A los seis meses nadie se acuerda, y el</text>
+        <text x="359" y="1236" class="lbl-warn">síntoma —enciende la 9 y suena la 16—</text>
+        <text x="359" y="1251" class="lbl-warn">parece un fallo de software.</text>
+
+        <rect x="660" y="1112" width="310" height="150" class="box-warn"/>
+        <text x="674" y="1132" class="lbl-warn-b">⚠ Una sola masa, y está en la MASTER.</text>
+        <text x="674" y="1150" class="lbl-warn">El GND de la fuente, el del DB9 y el</text>
+        <text x="674" y="1165" class="lbl-warn">retorno de los micros se juntan aquí y en</text>
+        <text x="674" y="1180" class="lbl-warn">ningún otro sitio. Sin masa común los</text>
+        <text x="674" y="1195" class="lbl-warn">datos no tienen contra qué medirse.</text>
+        <text x="674" y="1218" class="lbl-warn-b">⚠ Más de 3 placas: 5 V directos a cada J0.</text>
+        <text x="674" y="1236" class="lbl-warn">32 LEDs a tope son ~2 A y hoy pasan todos</text>
+        <text x="674" y="1251" class="lbl-warn">por la MASTER. La cadena de datos sigue igual.</text>
+
+        <rect x="30" y="1275" width="940" height="62" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" rx="6"/>
+        <text x="44" y="1295" class="lbl-b">Comprobación final, en este orden:</text>
+        <text x="44" y="1313" class="lbl">1. Polímetro con el zócalo vacío  →  2. MCP puesto, muesca arriba  →  3. Reiniciar el lector: la pantalla de reposo debe poner <tspan font-weight="bold">PTL 1xMCP 16GAV</tspan> (o 2xMCP 32GAV)</text>
+        <text x="44" y="1330" class="lbl">4. Admin → Lectores RFID → probar cableado, LED a LED y micro a micro  →  5. Coger la gaveta buena: dos toques cortos <tspan font-weight="bold">ascendentes</tspan>. Grave y machacón = otra gaveta.</text>
+
+        <line x1="30" y1="1355" x2="970" y2="1355" stroke="#0f172a" stroke-width="1"/>
+        <text x="30"  y="1372" class="meta-text">APP-ENGASTADO-SQL · Pick-To-Light · esp32/HARDWARE_PLACA_MASTER.md · esp32/HARDWARE_EXPANSORES_MCP23017.md · esp32/HARDWARE_ESQUEMA_PUESTO.md</text>
+        <text x="970" y="1372" class="meta-text" text-anchor="end">El pick-to-light es opcional: sin expansores en el bus, el lector funciona igual</text>
+      </svg>
+    </div>
+  </div>
+
+</body>
+</html>
