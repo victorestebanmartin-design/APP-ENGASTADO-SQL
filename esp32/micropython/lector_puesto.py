@@ -28,13 +28,18 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-11c"
+FW_VERSION = "2026-09-11d"
 
-# 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
-# inyectar este valor segun como se monte la caja.
-DISPLAY_ROTATION = 180
+# Todas las cajas se montan en la misma posicion (ver
+# esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
+# diferencia de SSID/PASSWORD/etc. de abajo.
+DISPLAY_ROTATION = 0
 
 # Estas lineas las inyecta el flasheo USB. No guardar credenciales reales aqui.
+# SSID, PASSWORD, STATIC_IP, PORT y USE_SSL se reinyectan tambien en cada OTA
+# (ver _reinyectar_config_app en hacer_ota): sin eso, cada actualizacion por
+# WiFi los pisaria con estos placeholders y la placa se quedaria sin red, o
+# hablando por el puerto/protocolo de otro entorno.
 SSID = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
 STATIC_IP = ""
@@ -458,6 +463,47 @@ def _ota_fallo(msg):
     actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
 
 
+def _reinyectar_config_app(texto):
+    """Mete el SSID/PASSWORD, la IP fija y el puerto/SSL de ESTA placa en el
+    app.py descargado (mismo patron que main_wifi.py:_reinyectar_wifi, pero
+    ademas de SSID/PASSWORD/STATIC_IP cubre PORT/USE_SSL): sin esto, cada OTA
+    pisaba estos valores con los placeholders del repo y la placa se quedaba
+    sin WiFi, o -- en una placa de laboratorio (PAW) -- volvia a hablar por
+    el puerto/protocolo de produccion. HOST_IP NO se toca aqui: lo inyecta el
+    servidor al servir el fichero, para poder redirigir las placas a otro
+    servidor sin pasar por USB."""
+    lineas = texto.split("\n")
+    for i, ln in enumerate(lineas):
+        st = ln.lstrip()
+        if st.startswith("SSID") and "=" in ln:
+            lineas[i] = "SSID = " + repr(SSID)
+        elif st.startswith("PASSWORD") and "=" in ln:
+            lineas[i] = "PASSWORD = " + repr(PASSWORD)
+        elif st.startswith("STATIC_IP") and "=" in ln:
+            lineas[i] = "STATIC_IP = " + repr(STATIC_IP)
+        elif st.startswith("PORT") and "=" in ln:
+            lineas[i] = "PORT = " + str(PORT)
+        elif st.startswith("USE_SSL") and "=" in ln:
+            lineas[i] = "USE_SSL = " + str(USE_SSL)
+    return "\n".join(lineas)
+
+
+def _reinyectar_config_backend(texto):
+    """Mismo motivo que _reinyectar_config_app, para backend_config.py:
+    conserva el puerto y el SSL de ESTA placa (BACKEND_HOST lo sigue
+    inyectando el servidor)."""
+    if backend_cfg is None:
+        return texto
+    lineas = texto.split("\n")
+    for i, ln in enumerate(lineas):
+        st = ln.lstrip()
+        if st.startswith("BACKEND_PORT") and "=" in ln:
+            lineas[i] = "BACKEND_PORT = " + str(backend_cfg.BACKEND_PORT)
+        elif st.startswith("BACKEND_USE_SSL") and "=" in ln:
+            lineas[i] = "BACKEND_USE_SSL = " + str(backend_cfg.BACKEND_USE_SSL)
+    return "\n".join(lineas)
+
+
 def hacer_ota(info):
     """Aplica una actualizacion: descarga+verifica TODO y solo entonces
     intercambia y reinicia. Ante cualquier fallo, no toca nada (sigue con el
@@ -488,6 +534,16 @@ def hacer_ota(info):
         sha = f.get("sha256")
         if sha and _sha256_hex(data) != sha:
             return _ota_fallo("sha " + nombre)
+        if nombre == "app.py":
+            try:
+                data = _reinyectar_config_app(data.decode("utf-8")).encode("utf-8")
+            except Exception as error:
+                print("OTA reinyeccion app.py:", error)
+        elif nombre == "backend_config.py":
+            try:
+                data = _reinyectar_config_backend(data.decode("utf-8")).encode("utf-8")
+            except Exception as error:
+                print("OTA reinyeccion backend_config.py:", error)
         descargados[nombre] = data
 
     # Escribir a *.new (todavia no se pisa el firmware en uso)

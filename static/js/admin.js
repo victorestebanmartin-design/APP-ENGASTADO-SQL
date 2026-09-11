@@ -1928,7 +1928,6 @@ function actualizarEntornoRfid() {
 
 async function flashUSBRfid() {
     const puerto = document.getElementById('usb-puerto-rfid')?.value;
-    const orientacion = document.getElementById('usb-orientacion-rfid')?.value || '180';
     const entorno = document.getElementById('usb-entorno-rfid')?.value || 'produccion';
     if (!puerto) { _usbMsgRfid('Selecciona un puerto (pulsa 🔄 Buscar puertos con la placa conectada)', true); return; }
     const ssid = document.getElementById('usb-ssid-rfid')?.value || '';
@@ -1970,7 +1969,7 @@ async function flashUSBRfid() {
         const resp = await fetch('/api/esp32/rfid/flash_usb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puerto, orientacion, entorno, ssid, password, ip_estatica,
+            body: JSON.stringify({ puerto, entorno, ssid, password, ip_estatica,
                                    host_servidor: document.getElementById('usb-host-rfid')?.value || '' })
         });
         const d = await resp.json();

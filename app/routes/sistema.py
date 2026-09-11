@@ -2626,7 +2626,9 @@ def api_esp32_rfid_flash_usb():
     """Configura y sube TODOS los ficheros de una placa lectora RFID por USB
     de una vez: pn532_i2c.py, gavetas.py, mcp23017.py, http_client.py,
     backend_config.py, boot.py, launcher.py (como main.py) y lector_puesto.py
-    (como app.py, con el SSID/clave/IP fija/orientación que se rellenen aquí).
+    (como app.py, con el SSID/clave/IP fija que se rellenen aquí; la
+    orientación de la pantalla es fija en el firmware, todas las cajas se
+    montan igual).
 
     Pensado para el primer flasheo de una placa nueva (o para reinstalar todo
     desde cero): a partir de ahi, app.py se actualiza solo por WiFi (la placa
@@ -2644,9 +2646,6 @@ def api_esp32_rfid_flash_usb():
         puerto = str(data.get('puerto', '')).strip()
         if not puerto or not re.fullmatch(r'[A-Za-z0-9/._:-]+', puerto):
             return jsonify({'success': False, 'message': 'Puerto no válido'}), 400
-        orientacion = str(data.get('orientacion', '180')).strip()
-        if orientacion not in ('0', '180'):
-            return jsonify({'success': False, 'message': 'Orientación de pantalla no válida'}), 400
         entorno = str(data.get('entorno', 'produccion')).strip().lower()
         if entorno not in ('laboratorio', 'produccion'):
             return jsonify({'success': False, 'message': 'Entorno de instalación no válido'}), 400
@@ -2705,9 +2704,6 @@ def api_esp32_rfid_flash_usb():
         gen4_contenido = re.sub(r'^PORT\s*=.*$', 'PORT = %d' % puerto_placa,
                                 gen4_contenido, count=1, flags=re.M)
         gen4_contenido = re.sub(r'^USE_SSL\s*=.*$', 'USE_SSL = %s' % usar_ssl,
-                                gen4_contenido, count=1, flags=re.M)
-        gen4_contenido = re.sub(r'^DISPLAY_ROTATION\s*=.*$',
-                                'DISPLAY_ROTATION = %s' % orientacion,
                                 gen4_contenido, count=1, flags=re.M)
         with open(tmp_gen4_app, 'w', encoding='utf-8') as f:
             f.write(gen4_contenido)

@@ -5,11 +5,12 @@ y RC522. Usa la pantalla 4D Systems gen4-ESP32-24, un PN532, un zumbador y un
 DB9 reservado para el multiplexor. El firmware es
 `esp32/micropython/lector_puesto.py`.
 
-La pantalla funciona en horizontal a 320x240. En Admin -> Lectores RFID ->
-Configurar y subir por USB se elige si la caja se monta en posicion `normal` o
-`girada 180 grados`; la eleccion se graba en el firmware de esa placa. Esta
-orientacion es exclusiva del lector de puesto; las pantallas de carro conservan
-su firmware y formato vertical de 240x320.
+La pantalla funciona en horizontal a 320x240, orientacion fija en el firmware
+(`DISPLAY_ROTATION = 0` en `lector_puesto.py`): todas las cajas se montan en la
+misma posicion, asi que no es una opcion por placa ni algo que se elija en
+Admin -> Lectores RFID -> Configurar y subir por USB (a diferencia del
+SSID/clave/IP fija, que si se rellenan ahi). Las pantallas de carro conservan
+su firmware y formato vertical de 240x320, y no comparten este ajuste.
 
 No es una pantalla de carro: no lleva pulsadores ni ejecuta la seleccion,
 recogida o devolucion de paquetes. Lee la tarjeta del operario, manda su UID

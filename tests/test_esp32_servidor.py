@@ -116,12 +116,6 @@ def test_flash_usb_rfid_rechaza_host_invalido(admin_client):
     assert r.status_code == 400
 
 
-def test_flash_usb_rfid_rechaza_orientacion_desconocida(admin_client):
-    r = admin_client.post('/api/esp32/rfid/flash_usb',
-                          json={'puerto': 'COM5', 'orientacion': '90', 'ssid': 'COJO',
-                                'ip_estatica': '192.168.50.21'})
-    assert r.status_code == 400
-    assert 'Orientación' in r.get_json()['message']
 
 
 def test_flash_usb_rfid_laboratorio_no_exige_ip_fija(admin_client):
