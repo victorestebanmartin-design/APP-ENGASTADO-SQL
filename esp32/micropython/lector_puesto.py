@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-11b"
+FW_VERSION = "2026-09-11c"
 
 # 0 = horizontal normal; 180 = horizontal girada. El flasheo USB puede
 # inyectar este valor segun como se monte la caja.
@@ -270,10 +270,15 @@ def draw_idle():
     text_center(105, "PASA TU TARJETA", WHITE, BLACK, 2)
     text_center(151, "NFC " + ("OK" if nfc_estado == "ok" else "NO RESPONDE"),
                 GREEN if nfc_estado == "ok" else RED, BLACK, 1)
-    text_center(171, "ID " + DEVICE_ID[-4:].upper(), GRAY, BLACK, 1)
-    text_center(201, "WiFi " + wifi_ip if wifi_ip else "SIN WIFI",
+    if gav:
+        text_center(169, "PTL %dxMCP %dGAV" % (len(gav.expansores), gav.n_gavetas),
+                    GREEN, BLACK, 1)
+    else:
+        text_center(169, "SIN PTL", GRAY, BLACK, 1)
+    text_center(187, "ID " + DEVICE_ID[-4:].upper(), GRAY, BLACK, 1)
+    text_center(205, "WiFi " + wifi_ip if wifi_ip else "SIN WIFI",
                 GREEN if wifi_ip else RED, BLACK, 1)
-    text_center(220, "FW " + FW_VERSION, GRAY, BLACK, 1)
+    text_center(223, "FW " + FW_VERSION, GRAY, BLACK, 1)
 
 
 def draw_result(title, detail, color):
