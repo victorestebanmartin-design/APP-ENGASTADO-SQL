@@ -48,3 +48,21 @@ def test_logout_cierra_sesion(admin_client):
     assert admin_client.get('/admin').status_code == 200
     admin_client.get('/admin/logout')
     assert admin_client.get('/admin').status_code == 302
+
+
+def test_respuestas_incluyen_cabeceras_de_seguridad(client):
+    r = client.get('/health')
+    assert r.headers['X-Content-Type-Options'] == 'nosniff'
+    assert r.headers['X-Frame-Options'] == 'DENY'
+    assert r.headers['Referrer-Policy'] == 'same-origin'
+    assert r.headers['Permissions-Policy'] == (
+        'camera=(), microphone=(), geolocation=(), payment=()'
+    )
+    assert 'Strict-Transport-Security' not in r.headers
+
+
+def test_cookie_de_sesion_es_httponly_y_samesite(client):
+    r = client.post('/admin/pin', data={'pin': PIN_TEST})
+    cookie = r.headers['Set-Cookie']
+    assert 'HttpOnly' in cookie
+    assert 'SameSite=Lax' in cookie

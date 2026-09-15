@@ -515,6 +515,7 @@ def create_app(config_class=Config):
     routes.init_routes(app)
 
     _versionar_estaticos(app)
+    _instalar_cabeceras_seguridad(app)
 
     # Handler global para excepciones no controladas
     @app.errorhandler(Exception)
@@ -530,6 +531,31 @@ def create_app(config_class=Config):
         }), 500
 
     return app
+
+
+def _instalar_cabeceras_seguridad(app):
+    """Añade defensas HTTP que no interfieren con la operativa en la LAN.
+
+    No se impone HSTS porque muchas instalaciones de planta sirven por HTTP.
+    Tampoco se fija una CSP global: las pantallas heredadas todavía contienen
+    scripts y estilos inline y bloquearlos dejaría puestos sin servicio.
+    """
+    @app.after_request
+    def _cabeceras_seguridad(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('Referrer-Policy', 'same-origin')
+        response.headers.setdefault(
+            'Permissions-Policy',
+            'camera=(), microphone=(), geolocation=(), payment=()'
+        )
+        # Solo anunciar HSTS cuando el administrador ha optado por cookies
+        # HTTPS; enviarlo en la instalación HTTP de planta sería perjudicial.
+        if app.config.get('SESSION_COOKIE_SECURE'):
+            response.headers.setdefault(
+                'Strict-Transport-Security', 'max-age=31536000; includeSubDomains'
+            )
+        return response
 
 
 def _versionar_estaticos(app):

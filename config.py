@@ -45,6 +45,10 @@ def _cargar_o_generar_secret_key():
     ruta = os.path.join(_BASE_DIR, '.secret_key')
     if os.path.exists(ruta):
         try:
+            # La clave firma todas las cookies de sesión. En Unix evitamos que
+            # otros usuarios del equipo puedan leer una clave creada por una
+            # versión anterior (en Windows chmod no amplía permisos).
+            os.chmod(ruta, 0o600)
             with open(ruta, encoding='utf-8') as f:
                 contenido = f.read().strip()
             if contenido:
@@ -54,8 +58,20 @@ def _cargar_o_generar_secret_key():
 
     clave = secrets.token_hex(32)
     try:
-        with open(ruta, 'w', encoding='utf-8') as f:
+        # O_EXCL evita que dos workers que arrancan a la vez sobrescriban el
+        # fichero con claves distintas y se invaliden mutuamente las sesiones.
+        fd = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             f.write(clave)
+    except FileExistsError:
+        # Otro proceso ganó la carrera: usar exactamente la clave que guardó.
+        try:
+            with open(ruta, encoding='utf-8') as f:
+                contenido = f.read().strip()
+            if contenido:
+                return contenido
+        except OSError:
+            pass
     except OSError:
         # Si no se puede escribir, al menos la app arranca con una clave válida
         pass
@@ -72,6 +88,11 @@ class Config:
     # =====================================================
     SECRET_KEY = _cargar_o_generar_secret_key()
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    # Activar en despliegues servidos exclusivamente por HTTPS. Se mantiene
+    # configurable porque los puestos de fábrica acceden por HTTP en la LAN.
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
 
     # =====================================================
     # PROTECCIÓN MÓDULO ADMINISTRACIÓN (PIN)
