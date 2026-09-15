@@ -10,8 +10,24 @@ manguitos y preparación de mangueras.
 
 ```bat
 INSTALAR.bat    :: primera vez: crea el venv e instala dependencias
-run.bat         :: arranca el servidor en http://localhost:5001
+ARRANCAR.vbs    :: el icono del día a día: arranca el servidor y abre la app
+run.bat         :: lo mismo, pero con la consola a la vista (para depurar)
+detener.bat     :: lo apaga a mano, si la web ya no responde
 ```
+
+`ARRANCAR.vbs` no abre ninguna ventana de consola: arranca el servidor en segundo
+plano, espera a que esté listo y abre COJOsw. Si el servidor ya estaba en marcha,
+no arranca otro — solo abre la app, así que se puede pulsar las veces que haga falta.
+
+Para tener un icono de COJOsw en el escritorio (en vez del icono genérico de
+VBScript), ejecuta una vez `crear_icono_escritorio.vbs`: deja ahí un acceso
+directo llamado **"Arrancar COJOsw"** con el icono de la app, apuntando a
+`ARRANCAR.vbs`. (El nombre no puede empezar por "COJOsw" — eso lo reserva
+`abrir_app.bat` para detectar la PWA instalada del navegador.)
+
+El servidor queda en http://localhost:5001. Para apagarlo por las buenas:
+**Admin → Sistema → Apagar servidor** (deja la app inaccesible para toda la nave,
+y hay que volver al PC servidor para encenderla).
 
 Guías detalladas: [INICIO.md](INICIO.md) y [GUIA_RAPIDA_SQLITE.md](GUIA_RAPIDA_SQLITE.md).
 

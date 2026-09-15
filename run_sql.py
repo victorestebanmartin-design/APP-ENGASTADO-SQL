@@ -113,6 +113,35 @@ if __name__ == '__main__':
     # queda dentro de serve()): que el PC no se duerma dejando la nave sin app.
     despierto, detalle_reposo = mantener_despierto()
 
+    # El icono (ARRANCAR.vbs -> run.bat) pide abrir la ventana de la app; un
+    # `python run_sql.py` a mano, en desarrollo, no abre nada.
+    import arranque_local
+    abrir_ventana = os.environ.get('COJOSW_ABRIR_APP') == '1'
+    url_local = f'http://localhost:{port}'
+
+    # Si ya hay un servidor en marcha, no se arranca un segundo: se abre la app
+    # contra el que ya esta sirviendo. Es lo que hace que darle otra vez al
+    # icono sea inofensivo -- y evita que este proceso, que moriria enseguida al
+    # no poder abrir el puerto, pise data/server.pid con un PID equivocado (que
+    # es justo el que detener.bat usaria para parar el servidor bueno).
+    if arranque_local.puerto_ocupado(port):
+        print(f"Ya hay un servidor escuchando en el puerto {port}: no se arranca otro.")
+        if abrir_ventana:
+            arranque_local.abrir_app(url_local, Config.BASE_DIR)
+        # Codigo 44: este arranque sobraba. Lo distingue run.bat para no
+        # apuntarlo en el log como una caida ni dejar la consola en `pause`.
+        sys.exit(44)
+
+    if abrir_ventana:
+        arranque_local.abrir_app_cuando_listo(port, url_local, Config.BASE_DIR)
+
+    # PID en disco para poder pararlo desde fuera (detener.bat) cuando se
+    # arranca sin ventana de consola. Ver servidor_pid.py.
+    import atexit
+    import servidor_pid
+    servidor_pid.escribir(Config.DATA_DIR)
+    atexit.register(servidor_pid.borrar, Config.DATA_DIR)
+
     # Copia de seguridad automatica en un hilo de fondo (solo en el proceso
     # local de planta; nunca en tests ni en wsgi.py).
     try:

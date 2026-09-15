@@ -8,7 +8,12 @@ REM Arranca solo al encender el PC, asi que la ventana no debe estorbar en
 REM medio de la pantalla. Minimizada (no oculta) sigue estando en la barra de
 REM tareas: si algo peta se puede abrir y ver que dice.
 REM El argumento MINIMIZADO evita que se relance en bucle infinito.
-if /i not "%~1"=="MINIMIZADO" (
+REM
+REM SILENCIOSO lo pone ARRANCAR.vbs, que ya ha lanzado esto SIN ventana:
+REM no hay que relanzar nada, y al terminar no se puede dejar la consola
+REM esperando una tecla porque no hay ventana donde pulsarla.
+set MODO=%~1
+if /i not "!MODO!"=="MINIMIZADO" if /i not "!MODO!"=="SILENCIOSO" (
     start /min "" "%~f0" MINIMIZADO
     exit /b
 )
@@ -34,6 +39,13 @@ REM peticion que lo estuviera imprimiendo. Con esto el proceso entero -
 REM incluidos los avisos de arranque y los traceback - habla UTF-8.
 set PYTHONIOENCODING=utf-8
 
+REM La ventana de la app la abre el propio servidor (arranque_local.py), en
+REM cuanto acepta conexiones. Antes se abria aqui a los 2 segundos y a veces
+REM llegaba antes que el servidor: "no se puede acceder a este sitio" nada mas
+REM arrancar. Si ya hay otro servidor en marcha, el que sobra abre la app y se
+REM aparta sin tocar nada.
+set COJOSW_ABRIR_APP=1
+
 REM Activar entorno virtual
 call venv\Scripts\activate.bat
 
@@ -48,64 +60,6 @@ echo  Registro de esta sesion:
 echo    !LOG!
 echo.
 echo  Abriendo COJOsw en http://localhost:5001 ...
-timeout /t 2 /nobreak >nul
-
-REM ── 1) App instalada (PWA), si la hay ──────────────────────────────────
-REM Si la app se instalo desde el navegador ("Instalar este sitio como una
-REM aplicacion"), Windows creo un acceso directo propio. Lanzarlo es lo unico
-REM que da icono COJOsw en la BARRA DE TAREAS: el modo --app= de mas abajo
-REM abre la ventana sin barra de direcciones, pero al no ser una app
-REM registrada Windows la agrupa bajo el navegador y usa su icono.
-set APP_LNK=
-
-if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs" (
-    for /r "%APPDATA%\Microsoft\Windows\Start Menu\Programs" %%F in (COJOsw*.lnk) do (
-        if "!APP_LNK!"=="" set APP_LNK=%%F
-    )
-)
-
-if "!APP_LNK!"=="" if exist "%USERPROFILE%\Desktop" (
-    for /r "%USERPROFILE%\Desktop" %%F in (COJOsw*.lnk) do (
-        if "!APP_LNK!"=="" set APP_LNK=%%F
-    )
-)
-
-if not "!APP_LNK!"=="" (
-    echo  Abriendo la app instalada COJOsw ...
-    start "" "!APP_LNK!"
-    goto :SERVIDOR
-)
-
-REM ── 2) Sin app instalada: modo "app" del navegador ─────────────────────
-REM Si hay Chrome o Edge, se abre en una ventana sin barra de direcciones ni
-REM pestanas (--app=), para que parezca una aplicacion en vez de una pagina
-REM web. Si no se encuentra ninguno, se abre en el navegador normal.
-REM El icono de la barra de tareas sera el del navegador: para tener el de
-REM COJOsw hay que instalar la app una vez (ver arriba).
-set NAVEGADOR_APP=
-
-for %%P in (
-    "%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-    "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-    "%LocalAppData%\Google\Chrome\Application\chrome.exe"
-) do (
-    if exist %%P if "!NAVEGADOR_APP!"=="" set NAVEGADOR_APP=%%~P
-)
-
-if "%NAVEGADOR_APP%"=="" (
-    for %%P in (
-        "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
-        "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
-    ) do (
-        if exist %%P if "!NAVEGADOR_APP!"=="" set NAVEGADOR_APP=%%~P
-    )
-)
-
-if not "%NAVEGADOR_APP%"=="" (
-    start "" "%NAVEGADOR_APP%" --app="http://localhost:5001"
-) else (
-    start "" "http://localhost:5001"
-)
 
 :SERVIDOR
 REM Todo lo que escupa la app (stdout y stderr) va al log de esta sesion, no
@@ -130,6 +84,26 @@ if !EXIT_CODE! == 42 (
     goto INICIO
 )
 
+REM Codigo 44 = ya habia un servidor en marcha y este arranque sobraba (se
+REM ha pulsado el icono con la app ya funcionando). La ventana de la app ya
+REM se ha abierto contra el servidor bueno: aqui no hay nada que hacer.
+if !EXIT_CODE! == 44 (
+    echo. >> "!LOG!" 2>nul
+    echo  -- Ya habia un servidor en marcha: este arranque sobraba -- >> "!LOG!" 2>nul
+    exit /b 0
+)
+
+REM Codigo 43 = apagado pedido por un admin desde la web (Admin -> Sistema).
+REM No es un fallo: ni se relanza ni se queda nadie esperando una tecla.
+if !EXIT_CODE! == 43 (
+    echo. >> "!LOG!" 2>nul
+    echo  -- Apagado solicitado desde el panel de administracion -- >> "!LOG!" 2>nul
+    echo.
+    echo  El servidor se ha apagado desde la web.
+    timeout /t 3 /nobreak >nul
+    exit /b 0
+)
+
 echo. >> "!LOG!" 2>nul
 echo  -- El servidor se ha detenido (codigo: !EXIT_CODE!) -- >> "!LOG!" 2>nul
 
@@ -139,4 +113,9 @@ echo.
 echo Los detalles del fallo estan en:
 echo   !LOG!
 echo.
+
+REM Sin ventana no hay tecla que pulsar: un `pause` aqui dejaria un cmd.exe
+REM invisible colgado para siempre. El motivo del fallo queda en el log.
+if /i "!MODO!"=="SILENCIOSO" exit /b !EXIT_CODE!
+
 pause

@@ -341,6 +341,47 @@ def api_actualizar_sistema():
         return error_interno(e, 'Error al actualizar el sistema')
 
 
+# ==================== APAGADO DEL SERVIDOR ====================
+
+# Codigo de salida que run.bat entiende como "lo ha apagado un admin desde la
+# web": deja constancia en el log y termina sin relanzar y sin `pause`. El 42
+# (reinicio OTA) relanza; cualquier otro codigo es una caida de verdad.
+CODIGO_SALIDA_APAGADO = 43
+
+# Margen para que la respuesta llegue al navegador antes de morir. Si el
+# proceso se fuera de inmediato, el admin veria un error de red en vez de la
+# pantalla de "servidor apagado" y no sabria si se ha apagado o no.
+ESPERA_APAGADO_S = 1.0
+
+
+@bp.route('/api/apagar_servidor', methods=['POST'])
+@requiere_pin_admin
+def apagar_servidor():
+    """Apaga el servidor local. Deja la app inaccesible para TODA la nave."""
+    import glob as _glob
+    if _glob.glob('/var/www/*_wsgi.py'):
+        return jsonify({
+            'success': False,
+            'message': ('Este servidor lo gestiona PythonAnywhere y matar el proceso no lo apaga: '
+                        'se relanza solo. Usa el botón Reload de la pestaña Web.')
+        }), 400
+
+    import servidor_pid
+    servidor_pid.borrar(current_app.config['DATA_DIR'])
+
+    current_app.logger.warning('Apagado del servidor solicitado desde el panel de administración')
+
+    def _apagar():
+        time.sleep(ESPERA_APAGADO_S)
+        os._exit(CODIGO_SALIDA_APAGADO)
+    threading.Thread(target=_apagar, daemon=True).start()
+
+    return jsonify({
+        'success': True,
+        'message': 'Servidor apagándose. Para volver a arrancarlo hay que hacerlo desde el PC servidor.'
+    })
+
+
 @bp.route('/api/stats', methods=['GET'])
 @requiere_pin_admin
 def api_stats():

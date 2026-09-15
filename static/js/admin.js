@@ -1190,6 +1190,67 @@ async function _esperarReinicio(maxSegundos) {
     }, 1000);
 }
 
+/**
+ * Apagar el servidor desde la web.
+ *
+ * Es la unica accion del panel que deja la nave entera sin app y que NO se
+ * puede deshacer desde aqui: para volver a encenderlo hay que ir al PC
+ * servidor. De ahi el aviso explicito y la pantalla final, que sustituye al
+ * panel para que nadie siga pulsando botones contra un servidor muerto.
+ */
+async function apagarServidor() {
+    const confirmar = confirm(
+        '⏻ APAGAR EL SERVIDOR\n\n' +
+        'La app dejará de estar disponible para TODOS los puestos de la nave:\n' +
+        'pantallas de carro, lectores de tarjeta y ordenadores.\n\n' +
+        'Para volver a encenderla habrá que ir al PC servidor.\n\n' +
+        '¿Seguro que quieres apagarlo?'
+    );
+    if (!confirmar) return;
+
+    const statusDiv = document.getElementById('apagado-status');
+    statusDiv.className = 'mensaje info';
+    statusDiv.textContent = '⏻ Apagando el servidor...';
+    statusDiv.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/apagar_servidor', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            _pantallaServidorApagado();
+        } else {
+            statusDiv.className = 'mensaje error';
+            statusDiv.textContent = '❌ ' + data.message;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        statusDiv.className = 'mensaje error';
+        statusDiv.textContent = '❌ No se ha podido contactar con el servidor.';
+    }
+}
+
+function _pantallaServidorApagado() {
+    document.body.innerHTML = `
+        <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+                    background:#0f172a;color:#f1f5f9;text-align:center;padding:24px;
+                    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+            <div style="max-width:520px;">
+                <div style="font-size:4em;line-height:1;">⏻</div>
+                <h1 style="margin:16px 0 8px;font-size:1.8em;">Servidor apagado</h1>
+                <p style="color:#94a3b8;line-height:1.6;">
+                    La aplicación ya no está disponible para ningún puesto de la nave.
+                </p>
+                <p style="color:#94a3b8;line-height:1.6;margin-top:18px;">
+                    Para volver a encenderla, ve al <strong style="color:#f1f5f9;">PC servidor</strong>
+                    y haz doble clic en el icono de <strong style="color:#f1f5f9;">COJOsw</strong>
+                    (<code style="background:#1e293b;padding:2px 6px;border-radius:4px;">ARRANCAR.vbs</code>).
+                </p>
+            </div>
+        </div>
+    `;
+}
+
 
 // ============================================================================
 // ======================== EXPORTAR / IMPORTAR BD ============================
