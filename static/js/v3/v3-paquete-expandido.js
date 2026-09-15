@@ -56,6 +56,16 @@ async function mostrarPaqueteExpandido() {
     const cablesDeTerminal = paquete.cables_de_terminal || [];
     const cablesParaTerminal = paquete.cables_para_terminal || [];
     const cablesAmbos = paquete.cables_doble_terminal || [];
+    const cantidadOrden = paquete.cantidad_orden || 1;
+    // Los cables de arriba son posiciones físicas del arnés (no se duplican por
+    // unidad de orden): si la orden pide varias unidades, cada cable listado hay
+    // que engastarlo cantidadOrden veces. Se avisa con un banner, no repitiendo
+    // las chapas de cable.
+    const avisoCantidadHtml = cantidadOrden > 1 ? `
+        <div style="display:flex;align-items:center;gap:10px;background:#fff3cd;border:1.5px solid #ffc107;border-radius:10px;padding:10px 16px;margin-bottom:14px;">
+            <span style="font-size:1.4em;">✖️</span>
+            <span style="font-size:0.92em;color:#856404;"><strong>Orden de ${cantidadOrden} unidades:</strong> repite cada cable de abajo <strong>${cantidadOrden} veces</strong> (una vez por unidad).</span>
+        </div>` : '';
 
     const areaTrabajoV2 = document.getElementById('area-trabajo');
 
@@ -71,6 +81,12 @@ async function mostrarPaqueteExpandido() {
     // ── Renderizado especial para paquetes de grupo serie SXX ──
     if (paquete.es_grupo) {
         const grupoSerie = paquete.grupo_serie;
+        const cantidadOrdenSerie = paquete.cantidad_orden || 1;
+        const avisoCantidadSerieHtml = cantidadOrdenSerie > 1 ? `
+            <div style="display:flex;align-items:center;gap:10px;background:#fff3cd;border:1.5px solid #ffc107;border-radius:10px;padding:10px 16px;margin-bottom:14px;">
+                <span style="font-size:1.4em;">✖️</span>
+                <span style="font-size:0.92em;color:#856404;"><strong>Orden de ${cantidadOrdenSerie} unidades:</strong> repite cada cable de abajo <strong>${cantidadOrdenSerie} veces</strong> (una vez por unidad).</span>
+            </div>` : '';
         const gruposEtiquetas2 = await cargarGruposEtiquetas();
         const numPadre = (gruposEtiquetas2.find(g => g.es_grupo_padre && g.elemento === grupoSerie))?.numero_etiqueta ?? '';
         const etiquetaPadreHtml = numPadre
@@ -180,6 +196,8 @@ async function mostrarPaqueteExpandido() {
                 </div>` : `<div style="display:inline-block;background:#6c757d;color:white;padding:10px 24px;border-radius:10px;font-weight:bold;font-size:1.3em;">Serie ${grupoSerie}</div>`}
             </div>
 
+            ${avisoCantidadSerieHtml}
+
             <div style="display:grid;gap:10px;">
                 ${subPaquetesHtml}
             </div>
@@ -249,6 +267,8 @@ async function mostrarPaqueteExpandido() {
                     <span style="font-size:0.9em;font-weight:700;margin-top:4px;">${paquete.elemento}</span>
                 </div>` : `<div style="font-size:1.5em;font-weight:700;color:#212529;">${paquete.elemento}</div>`}
             </div>
+
+            ${avisoCantidadHtml}
 
             <div style="display:grid;gap:12px;">
                 

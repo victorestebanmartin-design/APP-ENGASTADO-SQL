@@ -196,6 +196,118 @@ class TestCargaExcel:
         assert em.cargar_excel_directo('no_existe.xlsx') is False
 
 
+class TestCantidadOrden:
+    """La cantidad de la orden multiplica cables/terminales en la vista de
+    trabajo (app/routes/trabajo_v3.py), sin duplicar las listas de cables
+    individuales (cada entrada es una posición física del arnés)."""
+
+    def _subir_excel(self, app, nombre):
+        import os
+        df = pd.DataFrame([
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '1'}),
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '2'}),
+        ])
+        ruta = os.path.join(app.config['UPLOAD_FOLDER'], nombre)
+        df.to_excel(ruta, sheet_name='Format', index=False)
+
+    def _crear_orden(self, client, app, numero, cantidad, archivo_excel):
+        # La ruta /api/ordenes deriva archivo_excel del código de corte
+        # registrado en codigos_cortes (no se puede pasar directo en el POST).
+        from repositories.codigo_corte_repository import CodigoCorteRepository
+        from app.routes.base import db
+        codigo = f'COD_{numero}'
+        with app.app_context():
+            CodigoCorteRepository(db).agregar_codigo(codigo, archivo_excel)
+
+        r = client.post('/api/ordenes', json={
+            'codigo_corte': codigo,
+            'numero': numero,
+            'cantidad': cantidad,
+        })
+        d = r.get_json()
+        assert d['success'], d
+        assert d['orden']['archivo_excel'] == archivo_excel
+        return d['orden']['id']
+
+    def test_sin_orden_id_cantidad_por_defecto_es_1(self, admin_client, app):
+        self._subir_excel(app, 'cant1.xlsx')
+        r = admin_client.get('/api/datos_trabajo_v3?archivo=cant1.xlsx&terminal=640204')
+        d = r.get_json()
+        assert d['success'], d
+        assert d['cantidad_orden'] == 1
+        assert d['total_terminales'] == 2
+        paquete = d['paquetes'][0]
+        assert paquete['num_cables'] == 2
+        assert paquete['num_terminales'] == 2
+        # Las listas de cables individuales no se duplican
+        assert paquete['cables_de_terminal'] == ['1', '2']
+
+    def test_orden_cantidad_1_no_cambia_comportamiento(self, admin_client, app):
+        self._subir_excel(app, 'cant_uno.xlsx')
+        orden_id = self._crear_orden(admin_client, app, 'ORD_CANT1', 1, 'cant_uno.xlsx')
+
+        r = admin_client.get(
+            f'/api/datos_trabajo_v3?archivo=cant_uno.xlsx&terminal=640204&orden_id={orden_id}'
+        )
+        d = r.get_json()
+        assert d['success'], d
+        assert d['cantidad_orden'] == 1
+        paquete = d['paquetes'][0]
+        assert paquete['num_cables'] == 2
+        assert paquete['num_terminales'] == 2
+
+    def test_orden_cantidad_mayor_1_multiplica_cables_y_terminales(self, admin_client, app):
+        self._subir_excel(app, 'cant5.xlsx')
+        orden_id = self._crear_orden(admin_client, app, 'ORD_CANT5', 5, 'cant5.xlsx')
+
+        r = admin_client.get(
+            f'/api/datos_trabajo_v3?archivo=cant5.xlsx&terminal=640204&orden_id={orden_id}'
+        )
+        d = r.get_json()
+        assert d['success'], d
+        assert d['cantidad_orden'] == 5
+        # 2 cables/terminales por unidad x 5 unidades
+        assert d['total_terminales'] == 10
+        paquete = d['paquetes'][0]
+        assert paquete['num_cables'] == 10
+        assert paquete['num_terminales'] == 10
+        assert paquete['cantidad_orden'] == 5
+        # La lista de cables individuales NO se duplica: sigue reflejando
+        # las posiciones físicas del arnés (2), no 2 x 5
+        assert paquete['cables_de_terminal'] == ['1', '2']
+
+    def test_varias_ordenes_mismo_bono_no_mezclan_cantidades(self, admin_client, app):
+        """Dos órdenes con distinta cantidad, cada una con su propio archivo:
+        la cantidad de una no debe filtrarse al calcular la otra."""
+        self._subir_excel(app, 'multi_a.xlsx')
+        self._subir_excel(app, 'multi_b.xlsx')
+        orden_a = self._crear_orden(admin_client, app, 'ORD_MULTI_A', 3, 'multi_a.xlsx')
+        orden_b = self._crear_orden(admin_client, app, 'ORD_MULTI_B', 7, 'multi_b.xlsx')
+
+        r_a = admin_client.get(
+            f'/api/datos_trabajo_v3?archivo=multi_a.xlsx&terminal=640204&orden_id={orden_a}'
+        )
+        r_b = admin_client.get(
+            f'/api/datos_trabajo_v3?archivo=multi_b.xlsx&terminal=640204&orden_id={orden_b}'
+        )
+        d_a, d_b = r_a.get_json(), r_b.get_json()
+
+        assert d_a['cantidad_orden'] == 3
+        assert d_a['paquetes'][0]['num_terminales'] == 6
+        assert d_b['cantidad_orden'] == 7
+        assert d_b['paquetes'][0]['num_terminales'] == 14
+
+    def test_orden_id_inexistente_usa_cantidad_1(self, admin_client, app):
+        self._subir_excel(app, 'cant_ghost.xlsx')
+        r = admin_client.get(
+            '/api/datos_trabajo_v3?archivo=cant_ghost.xlsx&terminal=640204&orden_id=no-existe'
+        )
+        d = r.get_json()
+        assert d['success'], d
+        assert d['cantidad_orden'] == 1
+        assert d['paquetes'][0]['num_terminales'] == 2
+
+
 class TestCacheExcel:
     def test_segunda_lectura_sale_de_cache(self, tmp_path):
         from app.excel_manager import leer_excel_cacheado

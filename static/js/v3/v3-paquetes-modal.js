@@ -20,7 +20,7 @@ async function cargarPaquetesDelCarro() {
     
     try {
         // Obtener datos del archivo Excel e iniciar sesión de trabajo (bloqueo concurrente)
-        const response = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}&iniciar_sesion=true`);
+        const response = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}&orden_id=${encodeURIComponent(carro.orden_id || '')}&iniciar_sesion=true`);
         const data = await response.json();
         
         if (!data.success) {
@@ -241,6 +241,7 @@ async function mostrarModalPaquetes(carro) {
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalCables}</div><div style="font-size:0.78em;opacity:0.9;">Cables</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">${totalTerminales}</div><div style="font-size:0.78em;opacity:0.9;">Terminales</div></div>
                 <div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">Carro ${carro.carro}</div><div style="font-size:0.78em;opacity:0.9;">${carro.proyecto_nombre || ''}</div></div>
+                ${(carro.cantidad || 1) > 1 ? `<div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">×${carro.cantidad}</div><div style="font-size:0.78em;opacity:0.9;">Uds. de la orden</div></div>` : ''}
             </div>
 
             ${total > PAQUETES_POR_PAGINA ? `

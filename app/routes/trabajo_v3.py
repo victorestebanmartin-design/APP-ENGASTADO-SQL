@@ -51,7 +51,8 @@ def datos_trabajo_v3():
         archivo = request.args.get('archivo')
         terminal = request.args.get('terminal')
         maquina = request.args.get('maquina')
-        
+        orden_id = request.args.get('orden_id', '').strip() or None
+
         if not archivo or not terminal:
             return jsonify({
                 'success': False,
@@ -83,7 +84,28 @@ def datos_trabajo_v3():
         
         # Agrupar por cable y elemento
         grupos = manager.agrupar_por_cable_elemento(resultados, terminal)
-        
+
+        # La cantidad de la orden multiplica los cables/terminales por unidad:
+        # el Excel de despiece describe UNA unidad del arnés, pero si la orden
+        # pide N unidades el operario tiene que engastar N veces cada cable.
+        # No se duplican las listas de cables individuales (cada entrada es una
+        # posición física del arnés, no una unidad de la orden): se anota
+        # 'cantidad_orden' para que la UI pueda avisar "x N" junto al total.
+        cantidad_orden = 1
+        if orden_id:
+            orden_repo = OrdenRepository(db)
+            orden = orden_repo.obtener_orden(orden_id)
+            if orden:
+                try:
+                    cantidad_orden = max(1, int(orden.get('cantidad') or 1))
+                except (TypeError, ValueError):
+                    cantidad_orden = 1
+
+        if cantidad_orden > 1:
+            for grupo in grupos.values():
+                grupo['num_cables'] = grupo['num_cables'] * cantidad_orden
+                grupo['num_terminales'] = grupo['num_terminales'] * cantidad_orden
+
         # Convertir a lista de paquetes
         paquetes_raw = []
         total_terminales = 0
@@ -103,6 +125,7 @@ def datos_trabajo_v3():
                 'cables_para_terminal': grupo.get('cables_para_terminal', []),
                 'archivo_excel': archivo,  # para lookup de etiqueta correcto por archivo
                 'serie_col': grupo.get('serie_col', ''),
+                'cantidad_orden': cantidad_orden,
             }
             paquetes_raw.append(paquete)
             total_terminales += grupo['num_terminales']
@@ -150,7 +173,8 @@ def datos_trabajo_v3():
                 'cables_para_terminal':  [c for m in miembros for c in m.get('cables_para_terminal', [])],
                 'es_grupo': True,
                 'grupo_serie': serie_code,
-                'sub_paquetes': miembros
+                'sub_paquetes': miembros,
+                'cantidad_orden': cantidad_orden,
             })
         
         # -------------------------------------------------------
@@ -224,7 +248,8 @@ def datos_trabajo_v3():
             'terminal': terminal,
             'archivo': archivo,
             'paquetes_bloqueados': paquetes_bloqueados_count,
-            'paquetes_libres': len(paquetes) - paquetes_bloqueados_count
+            'paquetes_libres': len(paquetes) - paquetes_bloqueados_count,
+            'cantidad_orden': cantidad_orden,
         }
         if sesion_id_nuevo:
             respuesta['sesion_id'] = sesion_id_nuevo

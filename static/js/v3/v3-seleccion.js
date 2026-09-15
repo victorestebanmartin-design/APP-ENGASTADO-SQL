@@ -26,7 +26,9 @@ async function cargarBono() {
             carrosDelBono = data.bono.ordenes ? data.bono.ordenes.map((orden, idx) => ({
                 carro: idx + 1,
                 proyecto_nombre: `${orden.numero} - ${orden.codigo_corte}`,
-                archivo_excel: orden.archivo_excel || 'No especificado'
+                archivo_excel: orden.archivo_excel || 'No especificado',
+                orden_id: orden.id || '',
+                cantidad: orden.cantidad || 1
             })) : [];
             
             // Limpiar cache de etiquetas para recargar con el nuevo bono
@@ -597,7 +599,7 @@ async function mostrarSeleccionCarro() {
     let fallosServidor = 0;
     for (const carro of carrosPendientes) {
         try {
-            const r = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}`);
+            const r = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}&orden_id=${encodeURIComponent(carro.orden_id || '')}`);
             const d = await r.json();
             if (!d.success) {
                 fallosServidor++;
