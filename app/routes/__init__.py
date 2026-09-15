@@ -5,11 +5,14 @@ Todos los módulos registran sus rutas sobre el blueprint compartido 'main'
 (definido en app/routes/base.py), así que las URLs y los url_for('main.x')
 de las plantillas no cambian respecto al antiguo routes.py monolítico.
 """
-from app.routes.base import bp, set_db
+from app.routes.base import set_db, init_bp
 
 
 def init_routes(app):
-    """Inicializar rutas con la instancia de DB"""
+    """Inicializar rutas con la instancia de DB y crear blueprint para esta app"""
+    # Crear un nuevo blueprint para esta instancia (necesario para tests)
+    bp = init_bp()
+    
     set_db(app.extensions['db'])
 
     # Importar los módulos registra sus rutas en el blueprint compartido
