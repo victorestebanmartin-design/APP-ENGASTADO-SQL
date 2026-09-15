@@ -111,6 +111,23 @@ function limpiarPantallaCarro(carro) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Mostrar mensaje al operario (usa las clases .mensaje/.success/.error/.info/
+ * .warning de static/css/style.css — no pintar el color a mano aquí).
+ */
+function mostrarMensaje(mensaje, tipo = 'info') {
+    const elementoMensaje = document.getElementById('mensaje');
+    if (!elementoMensaje) return;
+    elementoMensaje.textContent = mensaje;
+    elementoMensaje.className = `mensaje ${tipo}`;
+    elementoMensaje.classList.remove('hidden');
+
+    // Auto-ocultar después de 5 segundos
+    setTimeout(() => {
+        elementoMensaje.classList.add('hidden');
+    }, 5000);
+}
+
 // ── Login exclusivo de operario ──────────────────────────────────────────────
 // Latido periódico para que el servidor sepa que este operario sigue dentro.
 // Si el login caducó (p.ej. el PC se quedó dormido), se intenta recuperar;

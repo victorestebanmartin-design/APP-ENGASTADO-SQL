@@ -197,34 +197,5 @@ async function cargarProgresoMaquina() {
 }
 
 /**
- * Mostrar mensaje al usuario
- */
-function mostrarMensaje(mensaje, tipo = 'info') {
-    const mensajeDiv = document.getElementById('mensaje');
-    if (!mensajeDiv) return;
-    
-    mensajeDiv.textContent = mensaje;
-    mensajeDiv.className = 'mensaje';
-    
-    if (tipo === 'error') {
-        mensajeDiv.style.background = '#dc3545';
-    } else if (tipo === 'success') {
-        mensajeDiv.style.background = '#28a745';
-    } else if (tipo === 'warning') {
-        mensajeDiv.style.background = '#ffc107';
-        mensajeDiv.style.color = '#000';
-    } else {
-        mensajeDiv.style.background = '#0d6efd';
-    }
-    
-    mensajeDiv.classList.remove('hidden');
-    
-    // Auto-ocultar después de 5 segundos
-    setTimeout(() => {
-        mensajeDiv.classList.add('hidden');
-    }, 5000);
-}
-
-/**
  * Cargar bono de trabajo V3
  */
