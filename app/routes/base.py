@@ -15,11 +15,14 @@ except Exception:
     _TZ_LOCAL = None
 
 
-# Blueprint compartido: todos los módulos registran sus rutas aquí.
-# El nombre 'main' se mantiene para que los url_for('main.x') no cambien.
-# Se crea dinámicamente en init_routes() para permitir múltiples instancias de app
-# (crítico para los tests).
-bp = None
+# Blueprint compartido: todos los módulos registran sus rutas aquí, una sola
+# vez, en el momento en que Python importa cada módulo por primera vez. Flask
+# permite registrar el mismo objeto Blueprint en varias instancias de Flask
+# (cada test crea su propia app), así que no hace falta recrearlo: si se
+# recreara en cada init_routes(), los módulos de rutas (ya importados y
+# cacheados por Python tras el primer test) seguirían decorando el blueprint
+# viejo, y los tests posteriores al primero se quedarían sin rutas (404).
+bp = Blueprint('main', __name__)
 
 
 class _DBProxy:
@@ -42,17 +45,6 @@ db = _DBProxy()
 def set_db(db_real):
     """Apunta el proxy al objeto DB real (lo llama init_routes)."""
     _DBProxy._real = db_real
-
-
-def init_bp():
-    """Crea un nuevo blueprint para esta instancia de app.
-    
-    Cada llamada a create_app -> init_routes -> init_bp crea un blueprint nuevo,
-    evitando el error "ya ha sido registrado una vez" en los tests.
-    """
-    global bp
-    bp = Blueprint('main', __name__)
-    return bp
 
 
 # ==================== MODULOS DE LA APP (permisos por operario) ====================

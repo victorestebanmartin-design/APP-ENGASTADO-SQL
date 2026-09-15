@@ -71,12 +71,20 @@ def _adquirir_candado_secret_key(candado):
             antiguedad = time.time() - os.path.getmtime(candado)
         except OSError:
             return False
-        if antiguedad > _SECRET_KEY_LOCK_TIMEOUT_S:
-            try:
-                os.rmdir(candado)
-            except OSError:
-                pass
-        return False
+        if antiguedad <= _SECRET_KEY_LOCK_TIMEOUT_S:
+            return False
+        # Candado abandonado: el proceso que lo creó murió antes de liberarlo.
+        # Se libera y se reintenta una sola vez; si otro proceso se nos
+        # adelanta en ese hueco, simplemente pasamos a esperar como perdedores.
+        try:
+            os.rmdir(candado)
+        except OSError:
+            return False
+        try:
+            os.mkdir(candado)
+            return True
+        except OSError:
+            return False
     except OSError:
         return False
 

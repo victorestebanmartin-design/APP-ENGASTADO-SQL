@@ -3,11 +3,12 @@
 ## Alcance
 
 Revisión estática del backend Flask, configuración, acceso SQLite, endpoints de
-administración, subida/restauración de archivos y suite automatizada. Se intentó
-ejecutar la suite completa, pero el entorno no incluía las dependencias de la app y
-el proxy impidió instalarlas. Esta revisión no sustituye un pentest de red,
-una prueba de carga en el hardware de planta ni una restauración ensayada con una
-copia de la base de datos de producción.
+administración, subida/restauración de archivos y suite automatizada. La suite
+completa (`python -m pytest`) se ha ejecutado: 552 tests pasan, 3 se omiten y 4
+fallan por causas ajenas a esta auditoría (firmware/latencia ESP32 y una regla de
+expiración de sesión de operario — ver A-06). Esta revisión no sustituye un pentest
+de red, una prueba de carga en el hardware de planta ni una restauración ensayada
+con una copia de la base de datos de producción.
 
 ## Resumen ejecutivo
 
@@ -93,6 +94,22 @@ ataques casuales, pero no constituye un limitador distribuido.
 
 **Recomendación:** persistir los intentos en SQLite o aplicar limitación en el proxy
 si aumenta la exposición o el número de workers.
+
+### A-06 — El blueprint de rutas no sobrevivía a una segunda app (alta, corregido)
+
+Encontrado al ejecutar la suite completa para validar esta auditoría, no al
+revisarla estáticamente: `app/routes/base.py` creaba el blueprint `main` de nuevo
+en cada `init_routes()` (pensado para dar una app aislada a cada test), pero los
+módulos de rutas (`paginas.py`, `sistema.py`, etc.) importan `bp` una sola vez, la
+primera vez que Python los carga, y quedan cacheados. Solo la primera app creada en
+todo el proceso de `pytest` tenía sus rutas de verdad registradas; cualquier app
+posterior (es decir, casi todos los tests) registraba un blueprint `main` vacío, y
+toda petición devolvía 404 en vez de la respuesta esperada. Se revirtió a un
+blueprint único creado una sola vez a nivel de módulo: Flask permite registrar el
+mismo `Blueprint` en varias instancias de `Flask`, que es justo lo que necesitan los
+tests, sin recrearlo. La ruta de diagnóstico de `app/observabilidad.py`
+(`/api/sistema/carga`) pasa a registrarse directamente en `app` en vez de en el
+blueprint, para no depender de en qué momento del arranque se registra éste.
 
 ## Prioridades recomendadas
 

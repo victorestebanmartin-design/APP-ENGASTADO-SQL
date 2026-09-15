@@ -64,11 +64,12 @@ def instalar(app):
             pass
         return resp
 
-    # Import local para no crear un ciclo con app.routes.
-    from app.routes.base import bp
+    # Registrada directamente en `app` (no en el blueprint 'main'): éste se
+    # crea de nuevo en cada init_routes() y se registra en la app al final,
+    # así que una ruta añadida aquí después no llegaría a tiempo.
     from app.auth import requiere_pin_admin
 
-    @bp.route('/api/sistema/carga', methods=['GET'])
+    @app.route('/api/sistema/carga', methods=['GET'])
     @requiere_pin_admin
     def api_sistema_carga():
         _rota_minuto(int(time.time() // 60))
