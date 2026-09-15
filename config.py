@@ -3,6 +3,7 @@ Configuración de la aplicación Flask con SQL Server
 """
 import os
 import secrets
+import time
 from urllib.parse import quote_plus
 
 _BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -27,55 +28,149 @@ def _cargar_env():
         pass
 
 
+def _leer_secret_key(ruta):
+    """Lee una clave ya publicada sin hacer depender la lectura de ``chmod``."""
+    try:
+        os.chmod(ruta, 0o600)
+    except OSError:
+        # En Windows o en volúmenes compartidos chmod puede no estar disponible,
+        # pero una clave legible sigue siendo preferible a generar otra distinta.
+        pass
+    try:
+        with open(ruta, encoding='utf-8') as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+_SECRET_KEY_LOCK_TIMEOUT_S = 10.0
+_SECRET_KEY_WAIT_TIMEOUT_S = 10.0
+_SECRET_KEY_POLL_S = 0.01
+
+
+def _adquirir_candado_secret_key(candado):
+    """Devuelve True si este proceso gana el candado (crea el directorio).
+
+    ``os.mkdir`` es una operación de creación exclusiva atómica tanto en
+    POSIX como en Windows: si dos procesos la llaman a la vez con el mismo
+    nombre, exactamente uno tiene éxito. Es el mismo principio que ``O_EXCL``
+    pero sin depender de enlaces duros (``os.link``), que en Windows solo
+    funcionan en volúmenes NTFS y no en todos los sistemas de archivos donde
+    puede vivir esta carpeta.
+
+    Si el candado ya existe pero es más viejo que el tiempo máximo que puede
+    tardar en escribirse la clave, se considera abandonado (el proceso que lo
+    creó murió entre el ``mkdir`` y el ``rmdir`` final) y se intenta liberar
+    para no dejar a los demás procesos esperando para siempre.
+    """
+    try:
+        os.mkdir(candado)
+        return True
+    except FileExistsError:
+        try:
+            antiguedad = time.time() - os.path.getmtime(candado)
+        except OSError:
+            return False
+        if antiguedad > _SECRET_KEY_LOCK_TIMEOUT_S:
+            try:
+                os.rmdir(candado)
+            except OSError:
+                pass
+        return False
+    except OSError:
+        return False
+
+
 def _cargar_o_generar_secret_key():
     """Obtiene la SECRET_KEY real de cada instalación.
 
     Orden de prioridad:
       1. Variable de entorno SECRET_KEY.
       2. Fichero .secret_key junto a la app.
-      3. Si no existe, GENERA una clave aleatoria, la guarda en .secret_key y la usa.
+      3. Si no existe (o está vacío, herencia de una versión anterior que se
+         cerró a medio escribir), GENERA una clave aleatoria, la guarda en
+         .secret_key y la usa.
 
     Así cada instalación tiene su propia clave única sin tocar el código
     (importante porque este repositorio es público).
+
+    Varios procesos (workers de Gunicorn, o dos arranques simultáneos) pueden
+    llegar aquí a la vez. Deben terminar todos con la MISMA clave: si cada uno
+    generase la suya, las cookies de sesión firmadas por un worker no
+    validarían en otro y las sesiones fallarían de forma intermitente según
+    qué worker atendiera cada petición.
     """
     clave = os.environ.get('SECRET_KEY')
     if clave:
         return clave
 
     ruta = os.path.join(_BASE_DIR, '.secret_key')
-    if os.path.exists(ruta):
-        try:
-            # La clave firma todas las cookies de sesión. En Unix evitamos que
-            # otros usuarios del equipo puedan leer una clave creada por una
-            # versión anterior (en Windows chmod no amplía permisos).
-            os.chmod(ruta, 0o600)
-            with open(ruta, encoding='utf-8') as f:
-                contenido = f.read().strip()
-            if contenido:
-                return contenido
-        except OSError:
-            pass
 
-    clave = secrets.token_hex(32)
-    try:
-        # O_EXCL evita que dos workers que arrancan a la vez sobrescriban el
-        # fichero con claves distintas y se invaliden mutuamente las sesiones.
-        fd = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(clave)
-    except FileExistsError:
-        # Otro proceso ganó la carrera: usar exactamente la clave que guardó.
+    contenido = _leer_secret_key(ruta) if os.path.exists(ruta) else None
+    if contenido:
+        return contenido
+
+    # No hay clave publicada (o el fichero está vacío/ausente): solo un
+    # proceso debe generarla y escribirla. El candado es un directorio
+    # (``.secret_key.lock``), no el propio fichero, así que nunca hay que
+    # borrar ni sobrescribir a ciegas algo que otro proceso pueda haber
+    # publicado ya.
+    candado = ruta + '.lock'
+    if _adquirir_candado_secret_key(candado):
         try:
-            with open(ruta, encoding='utf-8') as f:
-                contenido = f.read().strip()
+            # Releer con el candado en la mano: otro proceso pudo publicar la
+            # clave entre nuestra primera lectura (sin candado) y ahora.
+            contenido = _leer_secret_key(ruta) if os.path.exists(ruta) else None
             if contenido:
                 return contenido
-        except OSError:
-            pass
-    except OSError:
-        # Si no se puede escribir, al menos la app arranca con una clave válida
-        pass
-    return clave
+
+            clave = secrets.token_hex(32)
+            temporal = f'{ruta}.{os.getpid()}.{secrets.token_hex(8)}.tmp'
+            try:
+                fd = os.open(temporal, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                try:
+                    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                        f.write(clave)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    # os.replace es atómico tanto en POSIX como en Windows (a
+                    # diferencia de os.rename, que en Windows falla si el
+                    # destino ya existe): ningún proceso puede observar un
+                    # .secret_key a medio escribir, y no hace falta borrar el
+                    # fichero anterior (vacío o no) antes de publicar el nuevo.
+                    os.replace(temporal, ruta)
+                except BaseException:
+                    try:
+                        os.unlink(temporal)
+                    except FileNotFoundError:
+                        pass
+                    raise
+                return clave
+            except OSError as exc:
+                raise RuntimeError(
+                    'No se puede persistir una SECRET_KEY compartida en '
+                    f'{ruta!r}'
+                ) from exc
+        finally:
+            try:
+                os.rmdir(candado)
+            except OSError:
+                pass
+
+    # Otro proceso tiene el candado: esperar a que publique la clave en vez
+    # de arrancar con una clave transitoria propia que dejaría las sesiones
+    # incoherentes entre procesos.
+    limite = time.time() + _SECRET_KEY_WAIT_TIMEOUT_S
+    while time.time() < limite:
+        contenido = _leer_secret_key(ruta) if os.path.exists(ruta) else None
+        if contenido:
+            return contenido
+        time.sleep(_SECRET_KEY_POLL_S)
+
+    raise RuntimeError(
+        'No se pudo obtener la SECRET_KEY compartida: otro proceso tiene el '
+        'candado de generación y no ha publicado la clave a tiempo'
+    )
 
 
 # Cargar .env antes de leer cualquier variable de entorno en la clase Config

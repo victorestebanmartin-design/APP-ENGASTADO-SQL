@@ -23,6 +23,19 @@ Se corrigieron dos riesgos de severidad media:
 2. La creación de `.secret_key` no era atómica y heredaba permisos dependientes del
    `umask`; dos workers simultáneos podían usar claves distintas durante el arranque.
 
+La revisión automática posterior detectó que crear el archivo con `O_EXCL` antes de
+escribir todavía dejaba una ventana en la que otro worker podía leerlo vacío. Una
+primera corrección publicaba la clave mediante un enlace duro (`os.link`), pero un
+segundo repaso (Codex Review, severidad P2) encontró una carrera distinta: los
+workers que reparaban un `.secret_key` vacío heredado podían borrar la clave que otro
+worker acababa de publicar. Se sustituyó todo el mecanismo por un candado explícito
+(un directorio `.secret_key.lock`, creado con `os.mkdir`, atómico en POSIX y en
+Windows) que serializa por completo la generación/reparación, y por `os.replace`
+para publicar el fichero final de forma atómica sin depender de enlaces duros
+(no soportados en todos los sistemas de archivos de Windows). También se reparan
+archivos vacíos heredados y el arranque falla explícitamente si no puede
+persistirse, o leerse, una clave compartida.
+
 ## Hallazgos
 
 ### A-01 — Cabeceras defensivas ausentes (media, corregido)
@@ -38,9 +51,18 @@ probarse todas las pantallas operativas.
 
 ### A-02 — Persistencia de la clave de sesión (media, corregido)
 
-La clave se crea ahora en exclusiva con permisos `0600`. Si dos procesos arrancan a
-la vez, solo uno crea el fichero y el otro lee la clave ganadora. Los ficheros ya
-existentes también se restringen a `0600` en sistemas compatibles.
+`config._cargar_o_generar_secret_key` serializa la generación con un candado
+(directorio `.secret_key.lock`, creación atómica vía `os.mkdir`) para que, si varios
+procesos arrancan a la vez, solo uno genere y publique la clave; los demás esperan
+(con un tope de tiempo) y leen la misma clave publicada, en vez de generar cada uno
+la suya. La publicación usa `os.replace` sobre un temporal ya escrito, sincronizado
+(`flush` + `fsync`) y con permisos `0600`, que es atómico tanto en POSIX como en
+Windows: ningún proceso puede leer un fichero a medio escribir, y no hace falta
+borrar el fichero anterior (vacío o con contenido) antes de publicar el nuevo. Un
+candado más viejo que el tiempo máximo de escritura se considera abandonado (proceso
+muerto a medio camino) y se libera para no bloquear el arranque indefinidamente.
+Si no se puede persistir ni leer una clave compartida, el arranque falla con un
+`RuntimeError` en vez de continuar con una clave transitoria distinta por proceso.
 
 ### A-03 — Administración sin PIN permitida (alta, riesgo aceptado pendiente)
 
