@@ -95,6 +95,7 @@ bool          pide_ok      = false;   // el carro pide confirmar el puesto en de
 unsigned long ultimo_rx    = 0;
 unsigned long ultimo_hb    = 0;
 bool          tiene_datos   = false;
+bool          backlight_on  = true;   // refleja gfx.BacklightOn(); ver backlight_set()
 unsigned long rx_bytes     = 0;
 char          diag[48]      = "sin tramas";
 char          lastline[900] = "";
@@ -843,10 +844,26 @@ static void ui_detalle(int idx) {
     lv_anim_start(&an);
 }
 
+// Ahorro de bateria: la P4 y el carro comparten power bank, y el panel es lo
+// que mas consume. El "cerebro" (LVGL, UART, WiFi del carro) sigue despierto
+// siempre -- la retro solo se enciende con paquetes de verdad en pantalla, es
+// decir en vista Detalle (sel_id no vacio: se ha pasado tarjeta o pulsado un
+// puesto del carro). Con la vista Lista (sel_id vacio, aunque nops > 0) o sin
+// datos se queda apagada. LVGL sigue refrescando el framebuffer con
+// normalidad aunque la retro este apagada: al reencender no hay que esperar
+// ningun repintado, sale ya dibujado.
+static void backlight_set(bool on) {
+    if (on == backlight_on) return;
+    gfx.BacklightOn(on);
+    backlight_on = on;
+}
+
 static void ui_actualizar(bool forzar) {
     uint32_t h = huellaActual();
     if (!forzar && h == huella_prev) return;
     huella_prev = h;
+
+    backlight_set(tiene_datos && sel_id[0] != '\0');
 
     lv_label_set_text_fmt(lbl_carro, "CARRO %s", carro_id);
     lv_label_set_text(lbl_wifi, wifi_ok ? "WiFi" : "SIN WiFi");

@@ -65,6 +65,15 @@ recibidos por la UART y último error de parseo).
 No confirma acciones: es un espejo. La confirmación sigue en los botones del
 carro. El táctil de momento solo imprime coordenadas por el monitor serie.
 
+**Ahorro de batería**: la P4 y el ESP32 del carro comparten power bank, y el
+panel es lo que más consume. La retro (`gfx.BacklightOn(false)`) solo se
+enciende en vista Detalle (`sel_id` no vacío: se ha pasado tarjeta o pulsado
+un puesto del carro), donde hay paquetes de verdad que mostrar. En vista
+Lista (`sel_id` vacío, aunque `ops` no esté vacío) o sin datos se queda
+apagada. LVGL sigue pintando el framebuffer como siempre, así que en cuanto
+vuelve a entrar en Detalle la retro se reenciende con la pantalla ya
+dibujada, sin esperar ningún repintado.
+
 ## Hardware confirmado
 
 - Placa: 4D Systems ESP32-P4 MIPI / ESP32-P4-101CT-CLB.
