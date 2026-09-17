@@ -293,7 +293,13 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': [], 'rfid_modo': None}
 
 
-def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
+def test_pythonanywhere_sin_confirmacion_de_la_placa_no_da_activo(
+        app, client, admin_client, sin_placa, monkeypatch):
+    """Sin poder empujar la orden, PAW no puede asumir 'activo:true' a ciegas:
+    tiene que esperar a que la propia placa confirme por su sondeo, y si no
+    llega en el plazo, responder que no hay luz de verdad."""
+    monkeypatch.setattr(pick_to_light, 'ESPERA_CONFIRMACION_PAW_S', 0.05)
+    monkeypatch.setattr(pick_to_light, 'PAUSA_CONFIRMACION_PAW_S', 0.01)
     _registrar_lector(app)
     _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
@@ -301,8 +307,35 @@ def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, s
                             json={'puesto_id': 'puesto_001', 'terminal': '640204'},
                             headers={'Host': 'viktor85.pythonanywhere.com'})
     datos = respuesta.get_json()
+    assert datos['activo'] is False
+    assert 'no confirmó' in datos['motivo']
+
+
+def test_pythonanywhere_confirma_la_luz_por_sondeo_dentro_del_plazo(
+        app, client, admin_client, sin_placa, monkeypatch):
+    """Si la placa confirma por su sondeo (GET .../orden?led=...) antes de
+    agotar el plazo, la espera se corta ahí y 'activo' pasa a True."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    monkeypatch.setattr(pick_to_light, 'ESPERA_CONFIRMACION_PAW_S', 1.0)
+    monkeypatch.setattr(pick_to_light, 'PAUSA_CONFIRMACION_PAW_S', 0.05)
+
+    llamadas = []
+
+    def _dormir_y_confirmar(segundos):
+        llamadas.append(segundos)
+        if len(llamadas) == 1:
+            # Simula que la placa llega con su sondeo mientras se esperaba.
+            client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7' % device_id)
+
+    monkeypatch.setattr(pick_to_light.time, 'sleep', _dormir_y_confirmar)
+
+    respuesta = client.post('/api/pick-to-light/encender',
+                            json={'puesto_id': 'puesto_001', 'terminal': '640204'},
+                            headers={'Host': 'viktor85.pythonanywhere.com'})
+    datos = respuesta.get_json()
     assert datos['activo'] is True
-    assert datos['motivo'] == 'La placa recibirá la orden por sondeo.'
+    assert llamadas
 
 
 def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client, sin_placa, monkeypatch):

@@ -186,6 +186,11 @@ class Gavetas:
         if not 1 <= gaveta <= self.n_gavetas:
             return False, "La gaveta %d no existe (esta placa tiene %d)" % (
                 gaveta, self.n_gavetas)
+        if self.tira is None:
+            # Los expansores responden pero no hay tira WS2813 (o falta el
+            # modulo neopixel): sin luz fisica no se puede decir "ok". Nada
+            # de estado se toca, para no dejar el objeto a medias.
+            return False, "Tira de LEDs no conectada"
         self.apagar()
         self.objetivo = gaveta
         self.terminal = terminal or ""

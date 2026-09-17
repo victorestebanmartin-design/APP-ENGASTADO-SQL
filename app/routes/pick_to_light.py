@@ -22,6 +22,7 @@ Dos decisiones que explican la forma de este fichero:
 import http.client
 import json
 import os
+import time
 import uuid
 from datetime import datetime
 
@@ -39,6 +40,15 @@ TIMEOUT_PLACA_PROBAR = 4.0 # 'probar' es una accion de admin sin prisa: la
                            # y eso a veces tarda mas que el timeout normal
 RUTA_PLACA = '/gaveta'
 MAX_EVENTOS_PUESTO = 20    # historial corto por puesto, para no crecer sin fin
+
+# Desde PythonAnywhere no se puede empujar la orden a la placa (ver
+# _backend_pythonanywhere): la unica confirmacion de que la luz se ha
+# encendido DE VERDAD llega por el sondeo periodico de la placa (cada 750 ms,
+# ver lector_puesto.py), que solo manda 'led=' cuando gavetas.encender() tuvo
+# exito real (con tira WS2813 conectada). En vez de asumir 'activo:true' a
+# ciegas, se espera un tiempo prudencial a esa confirmacion antes de responder.
+ESPERA_CONFIRMACION_PAW_S = 2.5
+PAUSA_CONFIRMACION_PAW_S = 0.25
 
 
 # ==================== ESTADO COMPARTIDO ====================
@@ -730,6 +740,26 @@ def _parsear_intrusas(crudo):
     return sorted(set(numeros))
 
 
+def _esperar_confirmacion_luz(puesto_id, led):
+    """Espera acotada a que la placa confirme por sondeo que ENCENDIÓ 'led'.
+
+    Solo tiene sentido en el camino PAW (ver _backend_pythonanywhere): ahí no
+    hay forma de saber si la luz se encendió de verdad salvo esperando a que
+    la propia placa lo diga en su próximo GET a /api/esp32/rfid/gaveta/orden
+    (cada 750 ms). No bloquea de más: TIMEOUT_PLACA_PROBAR ya deja precedente
+    de esperas bloqueantes similares en este mismo fichero.
+    """
+    transcurrido = 0.0
+    while transcurrido < ESPERA_CONFIRMACION_PAW_S:
+        actual = _estado_cargar().get(puesto_id) or {}
+        if actual.get('led') == led and actual.get('placa_confirmo_luz'):
+            return True
+        time.sleep(PAUSA_CONFIRMACION_PAW_S)
+        transcurrido += PAUSA_CONFIRMACION_PAW_S
+    actual = _estado_cargar().get(puesto_id) or {}
+    return actual.get('led') == led and bool(actual.get('placa_confirmo_luz'))
+
+
 # ==================== API PARA LA APP ====================
 
 @bp.route('/api/pick-to-light/encender', methods=['POST'])
@@ -776,14 +806,24 @@ def api_pick_to_light_encender():
                                  'recogida': False, 'devuelta': False, 'validas': validas,
                                  'error_led': None, 'intrusas': [], 'eventos': [],
                                  'orden_id': orden_id, 'uid_esperado': uid_rfid,
-                                 'rfid_confirmado': False, 'uid_incorrecto': None}
+                                 'rfid_confirmado': False, 'uid_incorrecto': None,
+                                 'placa_confirmo_luz': False}
             return estado
         _estado_actualizar(_set)
 
         remoto = not ok and _backend_pythonanywhere()
-        return jsonify({'success': True, 'activo': ok or remoto, 'led': led, 'gaveta': gaveta,
-                'rfid': bool(uid_rfid),
-                'motivo': ('La placa recibirá la orden por sondeo.' if remoto else motivo)})
+        activo = ok
+        motivo_final = motivo
+        if remoto:
+            # No se puede asumir que la luz se encendio solo porque no se
+            # pudo empujar la orden: hay que esperar a que la propia placa lo
+            # confirme por su sondeo (ver api_pick_to_light_orden).
+            confirmado = _esperar_confirmacion_luz(puesto_id, led)
+            activo = confirmado
+            motivo_final = ('' if confirmado else
+                            'La placa no confirmó la luz a tiempo (PAW)')
+        return jsonify({'success': True, 'activo': activo, 'led': led, 'gaveta': gaveta,
+                'rfid': bool(uid_rfid), 'motivo': motivo_final})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
 
@@ -896,6 +936,11 @@ def api_pick_to_light_orden():
         def _falta_reconfirmar(actual):
             if not actual or led_reportado != actual.get('led'):
                 return False
+            # La sola presencia de 'led=' coincidiendo con el objetivo ya es
+            # la confirmacion de que gavetas.encender() tuvo exito de verdad
+            # (con tira conectada): ver ESPERA_CONFIRMACION_PAW_S.
+            if not actual.get('placa_confirmo_luz'):
+                return True
             if arg_recogida and not actual.get('recogida'):
                 return True
             if bool(actual.get('devuelta')) != arg_puesta:
@@ -910,6 +955,7 @@ def api_pick_to_light_orden():
             actual = estado_todo.get(puesto_id) or {}
             if led_reportado != actual.get('led'):
                 return estado_todo
+            actual['placa_confirmo_luz'] = True
             if arg_recogida and not actual.get('recogida'):
                 actual['recogida'] = True
                 actual['error_led'] = None
