@@ -111,6 +111,14 @@ class Gavetas:
         # no son "gaveta fuera", son un fallo de lectura (cable/expansor).
         self.canales_error = set()
 
+        # Lectura de los micros: por defecto, lo de siempre (ver _leer_micros).
+        # El servidor puede cambiarlo por placa (Admin -> Pick-to-Light) y llega
+        # por el sondeo de /api/esp32/rfid/gaveta/orden o empujado al puerto 80.
+        # Con los dos valores por defecto el comportamiento es EXACTAMENTE el de
+        # antes de que esto existiera: volver atras es dejarlos como estan aqui.
+        self.invertir = False       # True = micro normalmente abierto (NA)
+        self.ignorar = set()        # canales sin cablear: ni fuera, ni alarma
+
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
         self._cambio_pendiente = {}        # gaveta -> ticks del primer cambio
@@ -138,6 +146,16 @@ class Gavetas:
     def _leer_micros(self):
         """Conjunto de gavetas (1..N) que estan FUERA ahora mismo.
 
+        Con el pull-up interno del MCP23017, un contacto cerrado a masa lee 0 y
+        uno abierto lee 1: por defecto 1 = gaveta fuera (micro normalmente
+        cerrado, que es como esta montada la planta). Con self.invertir el
+        criterio es el contrario, para micros normalmente abiertos.
+
+        Los canales de self.ignorar no se miran: un canal sin microinterruptor
+        cableado flota en alto por el pull-up y se leeria como "gaveta fuera"
+        todo el rato. Ignorarlos es lo que permite probar en banco con solo
+        unos pocos micros conectados.
+
         De paso deja en self.canales_error los canales de un expansor que no
         respondio esta vez: sin esto, Admin no puede distinguir "todas
         puestas" de "no se puede leer este trozo del bus I2C".
@@ -154,11 +172,61 @@ class Gavetas:
                 print("Gavetas: expansor 0x%02X no responde:" % exp.direccion, e)
                 errores.update(range(base + 1, base + mcp23017.CANALES + 1))
                 continue
+            if self.invertir:
+                bits = ~bits & 0xFFFF
             for canal in range(mcp23017.CANALES):
+                gaveta = base + canal + 1
+                if gaveta in self.ignorar:
+                    continue
                 if bits & (1 << canal):     # 1 = contacto abierto = gaveta fuera
-                    fuera.add(base + canal + 1)
+                    fuera.add(gaveta)
+        if self.ignorar:
+            errores = set(g for g in errores if g not in self.ignorar)
         self.canales_error = errores
         return fuera
+
+    def configurar_micros(self, cfg):
+        """Aplica la configuracion de lectura de micros que manda el servidor.
+
+        Devuelve True si algo ha cambiado. Al cambiar hay que volver a hacer la
+        foto de lo que esta fuera: si no, el primer sondeo despues del cambio
+        veria las 16 gavetas "cambiando de estado" a la vez y soltaria la
+        alarma de gaveta robada por cada una.
+
+        Nunca lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba.
+        """
+        try:
+            invertir = bool(cfg.get("invertir"))
+            ignorar = set()
+            for crudo in (cfg.get("ignorar") or ()):
+                try:
+                    ignorar.add(int(crudo))
+                except (TypeError, ValueError):
+                    continue
+        except Exception as e:
+            print("Gavetas: configuracion de micros no valida:", e)
+            return False
+
+        if invertir == self.invertir and ignorar == self.ignorar:
+            return False
+
+        self.invertir = invertir
+        self.ignorar = ignorar
+        print("Gavetas: micros invertir=%s ignorar=%s" % (
+            invertir, sorted(ignorar)))
+
+        # Rebase: foto nueva y a empezar de cero con los cambios pendientes.
+        self._cambio_pendiente = {}
+        self.fuera = self._leer_micros()
+        self.recogida = bool(self.objetivo and self.objetivo in self.fuera)
+        for gaveta in list(self.equivocadas):
+            if gaveta not in self.fuera or not self._es_gaveta_real(gaveta):
+                self.equivocadas.discard(gaveta)
+                self._pintar(gaveta, COLOR_APAGADO)
+        if not self.equivocadas:
+            self._parar_zumbido()
+        return True
 
     def _pintar(self, gaveta, color):
         if self.tira is None or not 1 <= gaveta <= self.n_gavetas:
@@ -243,6 +311,10 @@ class Gavetas:
             "fuera": sorted(self.fuera),
             "validas": sorted(self.validas) if self.validas is not None else None,
             "canales_error": sorted(self.canales_error),
+            # Lo que la placa tiene aplicado DE VERDAD ahora mismo: Admin lo
+            # enseña para no tener que fiarse de lo guardado en el servidor.
+            "invertir": self.invertir,
+            "ignorar": sorted(self.ignorar),
             "http": self._servidor is not None,
         }
 
@@ -362,9 +434,11 @@ class Gavetas:
                 self._prueba_desde_ms = time.ticks_ms()
             leidas = self._leer_micros()
             puestas = sorted(g for g in range(1, self.n_gavetas + 1)
-                            if g not in leidas and g not in self.canales_error)
+                            if g not in leidas and g not in self.canales_error
+                            and g not in self.ignorar)
             return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
                     "canales_error": sorted(self.canales_error),
+                    "ignorados": sorted(self.ignorar), "invertir": self.invertir,
                     "total": self.n_gavetas, "estado": self.estado()}
 
         if datos.get("test_fin"):
@@ -597,6 +671,15 @@ class Gavetas:
     def _responder(self, cuerpo):
         datos = _json_carga(cuerpo)
 
+        # La configuracion de los micros puede venir sola (Admin acaba de
+        # guardarla y el servidor la empuja al puerto 80) o acompañando a
+        # cualquier otra orden: se aplica antes que nada y se sigue.
+        micros_cfg = datos.get("micros_config")
+        if isinstance(micros_cfg, dict):
+            self.configurar_micros(micros_cfg)
+            if not _trae_orden(datos):
+                return {"ok": True, "estado": self.estado()}
+
         if datos.get("apagar"):
             self.apagar()
             return {"ok": True, "estado": self.estado()}
@@ -641,6 +724,17 @@ class Gavetas:
         self._atender_zumbador(ahora)
         self._atender_parpadeo(ahora)
         self._atender_timeout_prueba(ahora)
+
+
+_CLAVES_ORDEN = ("apagar", "led", "test_led", "test_todos", "test_micros", "test_fin")
+
+
+def _trae_orden(datos):
+    """True si el JSON pide algo mas que cambiar la configuracion de micros."""
+    for clave in _CLAVES_ORDEN:
+        if datos.get(clave) is not None:
+            return True
+    return False
 
 
 def _color(crudo, por_defecto):

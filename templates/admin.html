@@ -551,6 +551,34 @@
                         <div id="ptl-micro-grid" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
                     </div>
 
+                    <!-- Logica de los micro-interruptores (NC/NA + canales sin cablear) -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>⚙️ Lógica de los micro-interruptores</h2>
+                        <p class="instruccion">
+                            De fábrica la placa espera micros <strong>normalmente cerrados</strong>: la gaveta
+                            puesta cierra el contacto a masa y el canal lee 0. Si los micros de este puesto son
+                            del tipo contrario, marca "invertida".<br>
+                            Un canal <strong>sin micro cableado</strong> queda flotando en alto por el pull-up del
+                            MCP23017, así que la placa lo ve como "gaveta fuera" para siempre y puede disparar la
+                            alarma de gaveta robada. Apunta aquí esos canales (por ejemplo <code>3,5,9-16</code>)
+                            y la placa dejará de mirarlos hasta que los cablees.<br>
+                            Se guarda por placa y llega a ella al instante (o en su próximo sondeo, unos segundos).
+                            Dejarlo vacío y sin invertir es el comportamiento de siempre.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="display:flex;gap:6px;align-items:center;font-size:0.9em;color:#cbd5e1;">
+                                <input type="checkbox" id="ptl-micros-invertir"
+                                    style="width:auto;margin:0;">
+                                Lógica invertida (micros normalmente abiertos)
+                            </label>
+                            <input type="text" id="ptl-micros-ignorar" placeholder="Canales sin cablear: 3,5,9-16"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
+                            <button class="btn-primary" onclick="ptlGuardarMicrosConfig()">💾 Guardar y aplicar</button>
+                            <button class="btn-secondary" onclick="ptlResetMicrosConfig()">↩ Volver a lo de siempre</button>
+                        </div>
+                        <div id="ptl-micros-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
+                    </div>
+
                     <!-- Registro de acciones -->
                     <div class="card" style="margin-top:16px;">
                         <h2>📋 Registro de prueba</h2>
@@ -1876,6 +1904,8 @@
                 if (mapaMsg) mapaMsg.textContent = '';
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = _ptlLectorId ? 'Lector seleccionado: ' + _ptlLectorId : '';
+                _ptlMensaje('ptl-micros-cfg-msg', '', null);
+                ptlCargarMicrosConfig();
                 if (_ptlLectorId) ptlCargarMapa();
             }
         });
@@ -1981,13 +2011,95 @@
                     _ptlRenderMicroGrid(total, d.fuera || []);
                     if (_ptlMapaTotal) _ptlRenderMapa(d.fuera || [], d.canales_error || []);
                     var fuera = (d.fuera || []).length;
-                    _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' + (total - fuera) + ' puestas', true);
+                    var ignorados = (d.ignorados || []).length;
+                    _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' +
+                        ((d.puestas || []).length) + ' puestas' +
+                        (ignorados ? ', ' + ignorados + ' ignorados (sin cablear)' : '') +
+                        (d.invertir ? ' · lógica invertida' : ''), true);
                     _ptlLog('Micros: total=' + total + ', fuera=[' + (d.fuera || []).join(',') + '], puestas=[' + (d.puestas || []).join(',') + ']');
                 } else {
                     _ptlMensaje('ptl-micro-msg', d.message || 'Error', false);
                     _ptlLog('Error micros: ' + (d.message || '?'));
                 }
             } catch (e) { _ptlMensaje('ptl-micro-msg', 'Error de red', false); }
+        };
+
+        // ── Lógica de los micros (NC/NA + canales sin cablear) ───────────────
+
+        /** '3,5,9-16' -> [3,5,9,10,...,16]. Tolerante con espacios y basura. */
+        function _ptlParsearCanales(texto) {
+            var fuera = [];
+            (texto || '').split(',').forEach(function (trozo) {
+                trozo = trozo.trim();
+                if (!trozo) return;
+                var rango = trozo.split('-');
+                if (rango.length === 2) {
+                    var a = parseInt(rango[0], 10), b = parseInt(rango[1], 10);
+                    if (a > 0 && b >= a && b <= 128) {
+                        for (var i = a; i <= b; i++) fuera.push(i);
+                    }
+                    return;
+                }
+                var n = parseInt(trozo, 10);
+                if (n > 0 && n <= 128) fuera.push(n);
+            });
+            return Array.from(new Set(fuera)).sort(function (x, y) { return x - y; });
+        }
+
+        window.ptlCargarMicrosConfig = async function () {
+            var chk = document.getElementById('ptl-micros-invertir');
+            var txt = document.getElementById('ptl-micros-ignorar');
+            if (!chk || !txt) return;
+            if (!_ptlLectorId) { chk.checked = false; txt.value = ''; return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/micros/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Error', false); return; }
+                chk.checked = !!d.invertir;
+                txt.value = (d.ignorar || []).join(',');
+                _ptlMensaje('ptl-micros-cfg-msg', (d.invertir || (d.ignorar || []).length)
+                    ? 'Esta placa tiene una lógica de micros personalizada.'
+                    : 'Esta placa usa la lógica de siempre.', null);
+            } catch (e) {
+                _ptlMensaje('ptl-micros-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        async function _ptlEnviarMicrosConfig(invertir, ignorar) {
+            _ptlMensaje('ptl-micros-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/micros/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, invertir: invertir, ignorar: ignorar })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('Micros: invertir=' + invertir + ', ignorar=[' + ignorar.join(',') + ']' +
+                        (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-micros-cfg-msg', 'Error de red', false);
+            }
+        }
+
+        window.ptlGuardarMicrosConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var invertir = document.getElementById('ptl-micros-invertir').checked;
+            var ignorar = _ptlParsearCanales(document.getElementById('ptl-micros-ignorar').value);
+            document.getElementById('ptl-micros-ignorar').value = ignorar.join(',');
+            await _ptlEnviarMicrosConfig(invertir, ignorar);
+        };
+
+        window.ptlResetMicrosConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            document.getElementById('ptl-micros-invertir').checked = false;
+            document.getElementById('ptl-micros-ignorar').value = '';
+            await _ptlEnviarMicrosConfig(false, []);
         };
 
         /**
@@ -2943,6 +3055,7 @@
                 _ptlLectorId = dev.id;
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = 'Lector seleccionado: ' + dev.id;
+                ptlCargarMicrosConfig();
                 await ptlCargarMapa();
                 if (gav.led) ptlAbrirCanal(gav.led);
             } catch (e) {

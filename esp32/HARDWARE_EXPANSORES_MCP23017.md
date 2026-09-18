@@ -79,3 +79,24 @@ Cada canal (GPA0..GPA7, GPB0..GPB7) lee un micro-interruptor de gaveta:
 - **Contacto Abierto (Gaveta fuera):** Lee nivel Alto `1`.
 - **Contacto Cerrado a GND (Gaveta dentro):** Lee nivel Bajo `0`.
 - El firmware activa automáticamente las resistencias Pull-Up internas de 100 kΩ del MCP23017, por lo que los micro-interruptores van conectados **directamente entre el pin del canal y GND**.
+
+### Canales sin cablear y micros del tipo contrario
+
+Un canal **sin micro conectado** flota en alto por el pull-up interno, así que
+la placa lo lee como "gaveta fuera" para siempre: en un armario a medio cablear
+(o en banco) eso hace que el firmware crea que se han llevado todas las
+gavetas y dispare la alarma.
+
+Se ajusta sin tocar el firmware, desde **Admin → Pick-to-Light → Lógica de los
+micro-interruptores**, y se guarda por placa:
+
+| Ajuste | Qué hace | Por defecto |
+|---|---|---|
+| Lógica invertida | Interpreta `0` = gaveta fuera (micros normalmente abiertos) | desactivada |
+| Canales sin cablear | Esos canales no se leen: ni fuera, ni puestos, ni alarma | vacío |
+
+La configuración viaja a la placa en la respuesta del sondeo
+`/api/esp32/rfid/gaveta/orden` (y se empuja al puerto 80 al guardarla, si el
+servidor alcanza su IP). No se guarda en el sistema de ficheros de la placa: al
+reiniciarse la recupera sola del servidor en el primer sondeo. Dejar los dos
+ajustes en su valor por defecto es exactamente el comportamiento de siempre.

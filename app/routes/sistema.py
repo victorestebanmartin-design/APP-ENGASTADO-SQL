@@ -19,6 +19,7 @@ import time
 import hmac
 import hashlib
 import traceback
+import unicodedata
 from datetime import datetime
 import pandas as pd
 
@@ -2439,6 +2440,28 @@ def _rfid_firmware_manifest():
     return manifest
 
 
+def _rfid_puesto_para_pantalla(dev_id):
+    """Nombre del puesto asignado al lector, listo para pintar en su display.
+
+    Se reutiliza 'puesto_nombre' del registro de Admin -> Lectores RFID (lo
+    escribe la asignacion de puesto, y para los lectores de modulo lleva la
+    etiqueta del modulo): no hay campo nuevo que mantener al dia.
+
+    La fuente de la placa es un 8x8 ASCII de framebuf: una vocal acentuada
+    saldria como un garabato. Por eso se pliega a ASCII AQUI, que es donde hay
+    unicodedata, y no en MicroPython. Cadena vacia = sin asignar; la placa
+    decide entonces que enseñar (ver TITULO_DEF en lector_puesto.py).
+    """
+    if not dev_id:
+        return ''
+    dev = (_rfid_load_devices() or {}).get(dev_id) or {}
+    nombre = (dev.get('puesto_nombre') or '').strip()
+    if not nombre:
+        return ''
+    plano = unicodedata.normalize('NFKD', nombre).encode('ascii', 'ignore').decode('ascii')
+    return ' '.join(plano.upper().split())[:40]
+
+
 @bp.route('/api/esp32/rfid/firmware/version', methods=['GET'])
 def api_esp32_rfid_firmware_version():
     """Version y manifiesto del firmware disponible para la placa lectora RFID.
@@ -2466,6 +2489,7 @@ def api_esp32_rfid_firmware_version():
                 return devs
             _rfid_devices_actualizar(_cerrar_ota)
         return jsonify({'version': _rfid_firmware_version(),
+                        'puesto': _rfid_puesto_para_pantalla(dev_id),
                         'files': _rfid_firmware_manifest()})
     except Exception as e:
         return error_interno(e)

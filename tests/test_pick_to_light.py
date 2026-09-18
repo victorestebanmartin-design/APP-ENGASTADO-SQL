@@ -286,11 +286,15 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204', 'validas': [7], 'rfid_modo': None}
+    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
+                     'validas': [7], 'rfid_modo': None,
+                     'micros': {'invertir': False, 'ignorar': []}}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': [], 'rfid_modo': None}
+    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
+                     'validas': [], 'rfid_modo': None,
+                     'micros': {'invertir': False, 'ignorar': []}}
 
 
 def test_pythonanywhere_sin_confirmacion_de_la_placa_no_da_activo(
@@ -346,7 +350,59 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '', 'validas': [], 'rfid_modo': None}
+    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
+                     'validas': [], 'rfid_modo': None,
+                     'micros': {'invertir': False, 'ignorar': []}}
+
+
+def test_logica_de_micros_por_defecto_es_la_de_siempre(app, admin_client, con_placa):
+    """Sin configurar nada: normalmente cerrado y ningun canal ignorado."""
+    device_id = _registrar_lector(app)
+    datos = admin_client.get('/api/pick-to-light/micros/config?device_id=' + device_id).get_json()
+    assert datos['invertir'] is False
+    assert datos['ignorar'] == []
+
+
+def test_guardar_logica_de_micros_llega_a_la_placa_y_al_sondeo(app, client, admin_client, con_placa):
+    """Se empuja al puerto 80 y ademas viaja en el sondeo, que es lo que
+    recupera una placa que se acaba de reiniciar."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/micros/config',
+                                 json={'device_id': device_id, 'invertir': True,
+                                       'ignorar': [5, 3, 3, 'x', 0, 999]})
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is True
+    assert datos['ignorar'] == [3, 5]      # ordenado, sin repetidos ni basura
+    assert con_placa[-1][1] == {'micros_config': {'invertir': True, 'ignorar': [3, 5]}}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros'] == {'invertir': True, 'ignorar': [3, 5]}
+
+
+def test_guardar_logica_de_micros_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
+    """La placa desenchufada no puede impedir guardar: lo cogera al sondear."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/micros/config',
+                                 json={'device_id': device_id, 'invertir': True, 'ignorar': []})
+    assert respuesta.status_code == 200
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is False
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertir'] is True
+
+
+def test_volver_a_la_logica_de_micros_de_siempre(app, client, admin_client, con_placa):
+    """Reversible sin tocar la placa: guardar los valores por defecto basta."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/micros/config',
+                     json={'device_id': device_id, 'invertir': True, 'ignorar': [1, 2]})
+    admin_client.put('/api/pick-to-light/micros/config',
+                     json={'device_id': device_id, 'invertir': False, 'ignorar': []})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros'] == {'invertir': False, 'ignorar': []}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):

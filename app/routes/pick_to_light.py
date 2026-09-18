@@ -144,6 +144,53 @@ def _puesto_de_la_placa(device_id):
     return dev.get('puesto_id') or ''
 
 
+# ==================== LOGICA DE LOS MICRO-INTERRUPTORES ====================
+#
+# Un MCP23017 trae 16 canales con pull-up interno: el que no tiene micro
+# cableado flota en alto y la placa lo lee como "gaveta fuera" para siempre.
+# En un puesto montado entero da igual (todos los canales llevan su micro),
+# pero en banco -- o en un armario a medio cablear -- eso deja la placa
+# creyendo que le han robado todas las gavetas.
+#
+# Por eso se puede ajustar por placa, desde Admin:
+#   - 'invertir': el micro es normalmente abierto (NA) en vez de normalmente
+#     cerrado (NC). Cambia la interpretacion del nivel de TODOS los canales.
+#   - 'ignorar': canales sin cablear todavia. No cuentan como fuera, ni como
+#     puestos, ni pueden disparar la alarma de gaveta robada.
+#
+# Se guarda en el MISMO registro de Admin -> Lectores RFID que ya lleva ip,
+# fw y numero de gavetas, y viaja a la placa por el sondeo que ya existe
+# (/api/esp32/rfid/gaveta/orden): ni tabla nueva ni canal nuevo. Los valores
+# por defecto (False / lista vacia) son exactamente el comportamiento de
+# siempre, asi que quitar la configuracion es volver atras del todo.
+
+MICROS_CANAL_MAX = 128       # mismo tope que /test/led
+MICROS_DEFECTO = {'invertir': False, 'ignorar': []}
+
+
+def _micros_cfg_normalizar(crudo):
+    """Configuracion de micros saneada a partir de lo que venga (JSON o disco)."""
+    crudo = crudo if isinstance(crudo, dict) else {}
+    canales = []
+    for valor in (crudo.get('ignorar') or [])[:MICROS_CANAL_MAX]:
+        try:
+            canal = int(valor)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= canal <= MICROS_CANAL_MAX:
+            canales.append(canal)
+    return {'invertir': bool(crudo.get('invertir')), 'ignorar': sorted(set(canales))}
+
+
+def _micros_cfg_device(device_id):
+    """Configuracion de micros guardada para esa placa (la de siempre si no hay)."""
+    if not device_id:
+        return dict(MICROS_DEFECTO)
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _micros_cfg_normalizar(dev.get('ptl_micros'))
+
+
 def _enviar_a_placa_con_datos(ip, payload, timeout=TIMEOUT_PLACA_PROBAR):
     """Como _enviar_a_placa pero devuelve también el JSON de la respuesta.
 
@@ -917,10 +964,17 @@ def api_pick_to_light_orden():
 
         # Un comando de prueba manda sobre la gaveta de trabajo: quien lo ha
         # pedido esta delante del armario mirando que LED se enciende.
+        # La logica de los micros va en TODAS las respuestas de este sondeo,
+        # tambien en la del comando de prueba: si solo fuera en la normal, una
+        # placa que se reinicia mientras alguien prueba el cableado leeria los
+        # micros con el criterio equivocado justo durante la prueba.
+        micros = _micros_cfg_device(device_id)
+
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
             return jsonify({'success': True,
                             'test': pendiente['cmd'],
+                            'micros': micros,
                             'test_seq': pendiente.get('seq')})
 
         puesto_id = _puesto_de_la_placa(device_id)
@@ -982,6 +1036,7 @@ def api_pick_to_light_orden():
                         'led': led,
                         'terminal': (estado or {}).get('terminal') or '',
                         'validas': (estado or {}).get('validas') or [],
+                        'micros': micros,
                         'rfid_modo': _rfid_modo_de(estado or {})})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
@@ -1180,6 +1235,55 @@ def api_ptl_test_micros():
                             extra=('fuera', 'puestas', 'total', 'canales_error'))
     except Exception as e:
         return error_interno(e, 'Error al leer micro-interruptores')
+
+
+@bp.route('/api/pick-to-light/micros/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_micros_config_leer():
+    """Logica de micros guardada para una placa (NC/NA + canales ignorados)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        cfg = _micros_cfg_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'canal_max': MICROS_CANAL_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer la configuración de micros')
+
+
+@bp.route('/api/pick-to-light/micros/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_micros_config_guardar():
+    """Guarda la logica de micros de una placa y se la empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se la lleva igual en
+    unos segundos, y un 502 aqui haria pensar que no se ha guardado nada.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        cfg = _micros_cfg_normalizar(datos)
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_micros'] = cfg
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'micros_config': cfg})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar la configuración de micros')
 
 
 @bp.route('/api/pick-to-light/test/fin', methods=['POST'])

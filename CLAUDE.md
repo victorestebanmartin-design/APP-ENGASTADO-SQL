@@ -46,7 +46,7 @@ que ya no existe.
 esa carpeta está excluida del test de arriba).
 
 Las placas se actualizan por OTA, y el servidor anuncia la versión leyendo
-`FW_VERSION` de `esp32/main.py` **del código desplegado**
+`FW_VERSION` de `esp32/micropython/lector_puesto.py` **del código desplegado**
 (`app/routes/sistema.py:_rfid_firmware_version`). Así que al tocar el firmware:
 
 1. Sube `FW_VERSION` (formato `AAAA-MM-DDx`), o las placas no verán nada nuevo.
@@ -64,7 +64,8 @@ La mayoría de los puestos no lo tienen, y los que lo tienen se quedan sin él e
 cuanto se va la luz de la fuente de 5 V. Por eso:
 
 - `gavetas.crear()` devuelve `None` si no encuentra expansores en el bus I2C, y
-  `main.py` se salta todo lo demás. Un mismo firmware para todas las placas.
+  `lector_puesto.py` se salta todo lo demás. Un mismo firmware para todas las
+  placas.
 - Los endpoints de `pick_to_light.py` responden **200 con `activo: False` y un
   motivo legible**, nunca 500: sin gaveta configurada, sin lector asignado o con
   la placa desenchufada, engastado tiene que llegar a los paquetes igual.
@@ -72,7 +73,8 @@ cuanto se va la luz de la fuente de 5 V. Por eso:
   siempre trae el botón «Continuar sin confirmar». Un microinterruptor roto no
   puede dejar a un operario sin trabajar.
 
-Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en `esp32/main.py`:
+Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en
+`esp32/micropython/lector_puesto.py`:
 esa carpeta entra entera en el manifiesto OTA, pero la placa solo se actualiza
 si la versión cambia.
 

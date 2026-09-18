@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-16a"
+FW_VERSION = "2026-09-18b"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -100,6 +100,19 @@ except ImportError:
 
 DEVICE_ID = binascii.hexlify(machine.unique_id()).decode()
 wifi_ip = ""
+
+# Nombre del puesto al que Admin ha asignado ESTE lector (PUNTERAS,
+# MECATRACTION...). Lo manda el servidor en el latido/OTA y se pinta como
+# titulo de la pantalla. Vacio = sin asignar todavia, o sin haber hablado
+# nunca con el servidor: entonces se pinta TITULO_DEF, que es lo que ponia
+# antes de que esto existiera.
+TITULO_DEF = "LECTOR PUESTO"
+PUESTO_FICHERO = "puesto.txt"     # ultimo nombre conocido, para arrancar sin red
+# La fuente es de 8 px con 1 px de separacion (ver text_center): a escala 2
+# son 18 px por caracter, asi que en 320 px caben 17; a escala 1, 35.
+TITULO_MAX_ESC2 = 17
+TITULO_MAX_ESC1 = 35
+puesto_nombre = ""
 DISPLAY_WIDTH = 320
 DISPLAY_HEIGHT = 240
 
@@ -342,10 +355,58 @@ class _BuzzerGavetas:
         _bz_on(frecuencia)
 
 
+def _envolver(texto, ancho, max_lineas):
+    """Parte 'texto' por palabras en como mucho 'max_lineas' de 'ancho'."""
+    lineas = []
+    actual = ""
+    for palabra in texto.split():
+        if not actual:
+            actual = palabra[:ancho]
+        elif len(actual) + 1 + len(palabra) <= ancho:
+            actual += " " + palabra
+        else:
+            lineas.append(actual)
+            actual = palabra[:ancho]
+            if len(lineas) >= max_lineas:
+                break
+    if actual and len(lineas) < max_lineas:
+        lineas.append(actual)
+    return lineas[:max_lineas]
+
+
+def titulo_lineas():
+    """(lineas, escala) del titulo de la pantalla: el nombre del puesto.
+
+    Un nombre corto va a escala 2 en una linea, como el "LECTOR PUESTO" de
+    siempre. Si no cabe, se parte en dos lineas por palabras; y si aun asi se
+    pierde texto (una sola palabra larguisima), se baja a escala 1, donde
+    caben 35 caracteres por linea. Lo que no quepa ni asi se recorta: mas vale
+    un nombre a medias que un titulo que se sale de la pantalla y se come el
+    "PASA TU TARJETA" de debajo.
+    """
+    texto = (puesto_nombre or "").strip() or TITULO_DEF
+    lineas = _envolver(texto, TITULO_MAX_ESC2, 2)
+    if " ".join(lineas) == " ".join(texto.split()):
+        return lineas, 2
+    return _envolver(texto, TITULO_MAX_ESC1, 2), 1
+
+
+def _pintar_titulo(y, color):
+    """Pinta el titulo desde 'y' y devuelve la altura ocupada en pixeles."""
+    lineas, escala = titulo_lineas()
+    alto = 8 * escala + 2
+    for indice, linea in enumerate(lineas):
+        text_center(y + indice * alto, linea, color, BLACK, escala)
+    return len(lineas) * alto
+
+
 def draw_idle():
     rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
     text_center(14, "COJOsw", WHITE, BLACK, 4)
-    text_center(57, "LECTOR PUESTO", ORANGE, BLACK, 2)
+    # El titulo puede ocupar una linea o dos (nombre de puesto largo), pero
+    # arranca siempre en la misma y, y lo de abajo esta lo bastante separado
+    # (105) para que la segunda linea no lo pise.
+    _pintar_titulo(57, ORANGE)
     text_center(105, "PASA TU TARJETA", WHITE, BLACK, 2)
     text_center(151, "NFC " + ("OK" if nfc_estado == "ok" else "NO RESPONDE"),
                 GREEN if nfc_estado == "ok" else RED, BLACK, 1)
@@ -362,7 +423,7 @@ def draw_idle():
 
 def draw_result(title, detail, color):
     rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
-    text_center(25, "LECTOR PUESTO", ORANGE, BLACK, 2)
+    _pintar_titulo(25, ORANGE)
     text_center(83, title, color, BLACK, 2)
     # Limitar longitud evita salirse de los 320 px con la fuente fija.
     text_center(128, (detail or "")[:35].upper(), WHITE, BLACK, 1)
@@ -493,6 +554,49 @@ def enviar_entrada(tag_uid):
             pass
 
 
+def _puesto_cargar():
+    """Ultimo nombre de puesto conocido, o "" si no hay o esta ilegible.
+
+    Sirve para que una placa que arranca sin red (o con el servidor caido) ya
+    enseñe el nombre de su puesto en vez del generico. Nunca lanza: un fichero
+    corrupto o a medio escribir vale lo mismo que no tenerlo.
+
+    Nada de encoding= en este open(): esto es MicroPython, no CPython.
+    """
+    try:
+        with open(PUESTO_FICHERO) as fichero:
+            return " ".join(fichero.read().strip().split())[:40]
+    except Exception:
+        return ""
+
+
+def _puesto_guardar(nombre):
+    try:
+        with open(PUESTO_FICHERO, "w") as fichero:
+            fichero.write(nombre)
+    except Exception as error:
+        # El nombre ya esta en RAM y en el servidor: no poder guardarlo solo
+        # significa que el proximo arranque sin red saldra con el generico.
+        print("Puesto: no se pudo guardar el nombre:", error)
+
+
+def aplicar_puesto(nombre):
+    """Guarda el nombre que manda el servidor y repinta si ha cambiado.
+
+    Un nombre vacio se ignora a proposito: significa "sin asignar todavia" o
+    "esta respuesta no lo trae" (servidor viejo), y en los dos casos es mejor
+    seguir enseñando el ultimo nombre bueno que borrarlo de la pantalla.
+    """
+    global puesto_nombre
+    nombre = " ".join((nombre or "").split())[:40]
+    if not nombre or nombre == puesto_nombre:
+        return
+    puesto_nombre = nombre
+    print("Puesto asignado:", nombre)
+    _puesto_guardar(nombre)
+    actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+
+
 def registrar_dispositivo():
     """Latido de presencia (aparece en Admin -> Lectores RFID) y comprueba OTA.
 
@@ -512,6 +616,9 @@ def registrar_dispositivo():
         port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=8)
     if not info:
         return
+    # El nombre del puesto viaja en el MISMO latido: llega al arrancar y se
+    # refresca cada ~60 s, asi que cambiarlo en Admin se ve solo en un minuto.
+    aplicar_puesto(info.get("puesto"))
     version_srv = info.get("version") or ""
     ocupado = gav is not None and gav.objetivo is not None
     if version_srv and version_srv != FW_VERSION and not ocupado:
@@ -772,6 +879,10 @@ ultima_orden_gavetas = 0
 gaveta_fallos = 0
 
 beep_arranque()
+# El nombre del puesto se recupera del disco ANTES de la primera pantalla: si
+# el servidor no contesta (sin red, PC apagado), la placa sigue enseñando el
+# puesto que tenia en vez del generico. El latido lo refresca en cuanto puede.
+puesto_nombre = _puesto_cargar()
 conectar_wifi()
 # gavetas.crear() va aqui, despues de conectar_wifi(), para que _abrir_servidor()
 # pueda hacer el bind en el socket cuando la red ya esta activa.  Si se mueve
@@ -847,6 +958,17 @@ while True:
                 timeout=2)
             gaveta_fallos = 0 if orden is not None else min(gaveta_fallos + 1, 8)
             if orden and orden.get("success"):
+                # Logica de los micros (normalmente cerrado/abierto y canales
+                # sin cablear que hay que ignorar). Va en CADA respuesta del
+                # sondeo, no en un comando suelto: asi una placa que se
+                # reinicia la recupera sola, y no hace falta acordarse de
+                # reenviarla ni guardarla en el sistema de ficheros. Se aplica
+                # antes que la orden, para que un encendido de la misma
+                # respuesta ya lea los micros con el criterio bueno.
+                micros_cfg = orden.get("micros")
+                if isinstance(micros_cfg, dict):
+                    gav.configurar_micros(micros_cfg)
+
                 test = orden.get("test")
                 if test and "ptl_rfid_modo" in test:
                     # Arma o desarma la lectura RFID de gaveta (la clave
