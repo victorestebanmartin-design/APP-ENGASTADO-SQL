@@ -8,11 +8,18 @@
 // de confirmacion ademas siempre trae un boton para saltarsela: un cajon con el
 // microinterruptor roto no puede dejar a nadie sin trabajar.
 
-// Resultado del ultimo /encender: {activo, led, gaveta, motivo}
+// Resultado del ultimo /encender: {activo, pendiente, led, gaveta, motivo}
 let gavetaLuzActual = null;
 
 const GAVETA_SONDEO_MS = 500;
 const GAVETA_VIGILANCIA_MS = 1500;
+
+// Cuanto se espera a que una gaveta 'pendiente' se encienda de verdad. La
+// placa sondea cada 4 s en reposo y necesita dos vueltas (recoger la orden y
+// confirmar la luz), asi que el caso malo ronda los 8 s; pasado este margen se
+// sigue sin gaveta, que es justo lo que hay que hacer cuando no hay luz: un
+// cajon que no se enciende no puede dejar a un operario mirando la pantalla.
+const GAVETA_ESPERA_LUZ_MS = 12000;
 
 let _gavetaVigilanciaTimer = null;
 let _gavetaUltimoErrorAvisado = null;
@@ -55,9 +62,16 @@ async function apagarGavetas() {
  * Devuelve una promesa que se resuelve cuando la placa confirma la recogida o
  * cuando el operario pulsa "Continuar sin confirmar". Si no hay luz encendida,
  * vuelve al instante: sin hardware esta funcion no existe.
+ *
+ * Con 'pendiente' el panel se abre antes de que haya luz (la placa esta viva
+ * pero todavia no ha sondeado) y espera aqui a que la confirme. Antes se
+ * miraba solo 'activo', que se decide en el instante del POST: con la placa en
+ * reposo la confirmacion llegaba despues y la gaveta se encendia sola con el
+ * operario ya en los paquetes.
  */
 async function esperarRecogidaGaveta() {
-    if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
+    if (!gavetaLuzActual) return;
+    if (!gavetaLuzActual.activo && !gavetaLuzActual.pendiente) return;
 
     const overlay = _crearPanelGaveta(gavetaLuzActual);
     document.body.appendChild(overlay);
@@ -65,6 +79,9 @@ async function esperarRecogidaGaveta() {
     const avisoError = overlay.querySelector('#gaveta-aviso-error');
     const avisoRfid = overlay.querySelector('#gaveta-aviso-rfid');
     let ultimoEstado = null;
+    let luzConfirmada = !!gavetaLuzActual.activo;
+    const limiteLuz = Date.now() + GAVETA_ESPERA_LUZ_MS;
+    _pintarEsperaLuz(overlay, luzConfirmada);
 
     try {
         await new Promise(resolve => {
@@ -92,6 +109,23 @@ async function esperarRecogidaGaveta() {
                     const d = await r.json();
                     if (!d || !d.success) return;
                     ultimoEstado = d;
+
+                    // Mientras la luz no este confirmada no hay puerta que
+                    // guardar: ni micro que vigilar, ni gaveta equivocada que
+                    // reprochar. O se enciende dentro del margen, o se sigue.
+                    if (!luzConfirmada) {
+                        if (d.placa_confirmo_luz && d.led === gavetaLuzActual.led) {
+                            luzConfirmada = true;
+                            // El resto del flujo (vigilancia de intrusas y
+                            // devolucion al acabar) mira 'activo': ahora que
+                            // hay luz de verdad, ya es verdad.
+                            gavetaLuzActual.activo = true;
+                            _pintarEsperaLuz(overlay, true);
+                        } else if (Date.now() > limiteLuz) {
+                            acabar();
+                        }
+                        return;
+                    }
 
                     if (d.error_led) {
                         avisoError.textContent = '⚠️ Esa no es: has abierto la gaveta '
@@ -256,6 +290,20 @@ function detenerVigilanciaGaveta() {
 }
 
 
+/** Cambia el panel entre "encendiendo" y "saca la gaveta" (ver 'pendiente'). */
+function _pintarEsperaLuz(overlay, confirmada) {
+    const icono = overlay.querySelector('#gaveta-icono');
+    const titulo = overlay.querySelector('#gaveta-titulo');
+    const sub = overlay.querySelector('#gaveta-sub');
+    if (!icono || !titulo || !sub) return;
+    icono.textContent = confirmada ? '💡' : '⏳';
+    titulo.textContent = confirmada ? 'Saca la gaveta iluminada' : 'Encendiendo la gaveta…';
+    titulo.style.color = confirmada ? '#198754' : '#6c757d';
+    sub.textContent = confirmada ? sub.dataset.normal
+                                 : 'Un momento: la placa está recogiendo la orden.';
+}
+
+
 /** Panel a pantalla completa mientras se espera la recogida. */
 function _crearPanelGaveta(luz) {
     const overlay = document.createElement('div');
@@ -265,18 +313,19 @@ function _crearPanelGaveta(luz) {
         background: rgba(0,0,0,0.75);
         display: flex; align-items: center; justify-content: center;
     `;
+    const textoNormal = 'Está en verde. Al sacarla se pondrá en azul'
+                      + (luz.rfid ? ' y tendrás que acercar su etiqueta RFID al lector' : '')
+                      + '.';
     overlay.innerHTML = `
         <div style="background:#fff; border-radius:14px; padding:32px 40px; max-width:520px;
                     text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
-            <div style="font-size:3em; line-height:1;">💡</div>
-            <h2 style="margin:12px 0 4px; color:#198754;">Saca la gaveta iluminada</h2>
+            <div id="gaveta-icono" style="font-size:3em; line-height:1;">💡</div>
+            <h2 id="gaveta-titulo" style="margin:12px 0 4px; color:#198754;">Saca la gaveta iluminada</h2>
             <div style="font-size:2.2em; font-weight:bold; color:#212529; margin:10px 0;">
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
-            <div style="color:#6c757d; margin-bottom:18px;">
-                Está en verde. Al sacarla se pondrá en azul${luz.rfid
-                    ? ' y tendrás que acercar su etiqueta RFID al lector' : ''}.
-            </div>
+            <div id="gaveta-sub" style="color:#6c757d; margin-bottom:18px;"
+                 data-normal="${textoNormal}">${textoNormal}</div>
             <div id="gaveta-aviso-rfid" style="display:none; border-radius:8px; padding:10px;
                  margin-bottom:16px; font-weight:bold;"></div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;

@@ -43,12 +43,27 @@ MAX_EVENTOS_PUESTO = 20    # historial corto por puesto, para no crecer sin fin
 
 # Desde PythonAnywhere no se puede empujar la orden a la placa (ver
 # _backend_pythonanywhere): la unica confirmacion de que la luz se ha
-# encendido DE VERDAD llega por el sondeo periodico de la placa (cada 750 ms,
-# ver lector_puesto.py), que solo manda 'led=' cuando gavetas.encender() tuvo
-# exito real (con tira WS2813 conectada). En vez de asumir 'activo:true' a
-# ciegas, se espera un tiempo prudencial a esa confirmacion antes de responder.
+# encendido DE VERDAD llega por el sondeo periodico de la placa, que solo
+# manda 'led=' cuando gavetas.encender() tuvo exito real (con tira WS2813
+# conectada). En vez de asumir 'activo:true' a ciegas, se espera un tiempo
+# prudencial a esa confirmacion antes de responder.
+#
+# OJO con este numero: NO es "lo que tarda la placa". El sondeo de la placa es
+# adaptativo (lector_puesto.py: 750 ms con gaveta encendida, GAVETA_POLL_IDLE_MS
+# = 4 s en reposo, y backoff hasta 15 s si falla), y al elegir terminal la placa
+# esta justo en reposo. Ademas hacen falta DOS vueltas: una para que recoja la
+# orden y otra para que avise con 'led='. O sea que esta espera se queda corta a
+# proposito: esperar aqui los ~8 s del caso malo seria dejar al operario mirando
+# una pantalla parada. Lo que cubre el resto es 'pendiente' (ver /encender): la
+# respuesta sale ya, y el modal espera la confirmacion con el sondeo que el
+# navegador hace igualmente cada 500 ms. Subir este numero no arregla nada que
+# no arregle ya 'pendiente'; solo bloquea mas rato.
 ESPERA_CONFIRMACION_PAW_S = 2.5
 PAUSA_CONFIRMACION_PAW_S = 0.25
+
+# Margen de 'last_seen' para dar una placa por viva. El mismo 90 s que usan
+# Admin -> Lectores RFID y _terminales_del_puesto: el latido va cada 60 s.
+MARGEN_PLACA_VIVA_S = 90
 
 
 # ==================== ESTADO COMPARTIDO ====================
@@ -787,6 +802,24 @@ def _parsear_intrusas(crudo):
     return sorted(set(numeros))
 
 
+def _placa_en_contacto(device_id):
+    """True si esa placa ha dado señales de vida hace poco (ver last_seen).
+
+    Sirve para distinguir "la placa aún no ha contestado" de "aquí no hay
+    placa": lo primero merece esperar la luz unos segundos, lo segundo no, y
+    confundirlos saca un modal de gaveta en un puesto con el lector desenchufado.
+    """
+    if not device_id:
+        return False
+    try:
+        from app.routes.sistema import _rfid_load_devices
+        dev = (_rfid_load_devices() or {}).get(device_id) or {}
+        visto = datetime.fromisoformat(dev.get('last_seen', ''))
+        return (datetime.now() - visto).total_seconds() < MARGEN_PLACA_VIVA_S
+    except Exception:
+        return False
+
+
 def _esperar_confirmacion_luz(puesto_id, led):
     """Espera acotada a que la placa confirme por sondeo que ENCENDIÓ 'led'.
 
@@ -869,7 +902,18 @@ def api_pick_to_light_encender():
             activo = confirmado
             motivo_final = ('' if confirmado else
                             'La placa no confirmó la luz a tiempo (PAW)')
-        return jsonify({'success': True, 'activo': activo, 'led': led, 'gaveta': gaveta,
+
+        # 'pendiente': no hay confirmación TODAVÍA, pero la placa está viva y la
+        # orden ya está apuntada, así que lo normal es que la luz se encienda en
+        # cuanto la placa sondee. Sin esto, una placa en reposo (4 s entre
+        # sondeos) llegaba siempre tarde a la espera de arriba y el navegador se
+        # saltaba la puerta de confirmación: la gaveta se encendía sola con el
+        # operario ya en la lista de paquetes.
+        pendiente = (not activo) and _placa_en_contacto(device_id)
+        if pendiente:
+            motivo_final = ''
+        return jsonify({'success': True, 'activo': activo, 'pendiente': pendiente,
+                'led': led, 'gaveta': gaveta,
                 'rfid': bool(uid_rfid), 'motivo': motivo_final})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
@@ -935,6 +979,9 @@ def api_pick_to_light_estado():
             'uid_esperado': bool(actual.get('uid_esperado')),
             'rfid_confirmado': bool(actual.get('rfid_confirmado')),
             'uid_incorrecto': bool(actual.get('uid_incorrecto')),
+            # Lo que le falta al modal cuando entra en 'pendiente': hasta que
+            # esto sea True la luz no está encendida de verdad (ver /encender).
+            'placa_confirmo_luz': bool(actual.get('placa_confirmo_luz')),
             'estado': _calcular_estado_orden(actual),
         })
     except Exception as e:

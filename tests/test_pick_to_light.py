@@ -342,6 +342,71 @@ def test_pythonanywhere_confirma_la_luz_por_sondeo_dentro_del_plazo(
     assert llamadas
 
 
+def _marcar_latido(app, device_id, hace_segundos=0):
+    """Deja el last_seen que escribiría el latido de la placa hace un rato."""
+    from datetime import datetime, timedelta
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    with open(ruta, encoding='utf-8') as f:
+        devs = json.load(f)
+    devs[device_id]['last_seen'] = (
+        datetime.now() - timedelta(seconds=hace_segundos)).isoformat()
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump(devs, f)
+
+
+def test_placa_viva_pero_lenta_deja_la_puerta_pendiente(
+        app, client, admin_client, sin_placa):
+    """La placa está viva pero todavía no ha sondeado (en reposo tarda hasta 4 s
+    por vuelta, y hacen falta dos). No hay luz que confirmar aún, pero rendirse
+    aquí es peor: el navegador se salta la puerta y el operario acaba en los
+    paquetes con la gaveta encendiéndose sola detrás."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    datos = client.post('/api/pick-to-light/encender',
+                        json={'puesto_id': 'puesto_001', 'terminal': '640204'}).get_json()
+    assert datos['activo'] is False
+    assert datos['pendiente'] is True
+    assert datos['motivo'] == ''
+
+
+def test_placa_sin_dar_señales_no_deja_la_puerta_pendiente(
+        app, client, admin_client, sin_placa):
+    """Lo contrario: un lector asignado en Admin pero desenchufado desde hace
+    rato. Aquí no hay nada que esperar, y un modal de gaveta que nunca se va a
+    encender es justo lo que no puede aparecer en un puesto sin hardware."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id, hace_segundos=600)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    datos = client.post('/api/pick-to-light/encender',
+                        json={'puesto_id': 'puesto_001', 'terminal': '640204'}).get_json()
+    assert datos['activo'] is False
+    assert datos['pendiente'] is False
+    assert 'no responde' in datos['motivo']
+
+
+def test_el_estado_dice_cuando_la_placa_confirmo_la_luz(
+        app, client, admin_client, sin_placa):
+    """El modal 'pendiente' espera con este campo: hasta que la placa confirma
+    el led por su sondeo, no hay luz de verdad que guardar."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    antes = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert antes['placa_confirmo_luz'] is False
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7' % device_id)
+
+    despues = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert despues['placa_confirmo_luz'] is True
+    assert despues['led'] == 7
+
+
 def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client, sin_placa, monkeypatch):
     device_id = _registrar_lector(app)
     monkeypatch.setattr(pick_to_light, '_backend_pythonanywhere', lambda: True)

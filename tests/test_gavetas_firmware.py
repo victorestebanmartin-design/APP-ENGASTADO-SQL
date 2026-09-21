@@ -251,6 +251,11 @@ class PlacaConTira:
         obj.recogida = False
         obj.equivocadas = set()
         obj.validas = None
+        # Los mismos valores por defecto que pone __init__: esta instancia se
+        # monta a mano, asi que cada atributo nuevo del firmware hay que
+        # repetirlo aqui o el banco de pruebas deja de parecerse a la placa.
+        obj.invertir = False
+        obj.ignorar = set()
         obj.fuera = set()
         obj._ultima_lectura_ms = 0
         obj._cambio_pendiente = {}
@@ -307,6 +312,10 @@ def placa_con_tira(gavetas):
     obj.equivocadas = set()
     obj.validas = None
     obj.canales_error = set()
+    # Igual que en el otro banco de arriba: los defectos de __init__ para la
+    # lectura de micros (normalmente cerrado y ningun canal ignorado).
+    obj.invertir = False
+    obj.ignorar = set()
     obj.fuera = set()
     obj._ultima_lectura_ms = 0
     obj._cambio_pendiente = {}
