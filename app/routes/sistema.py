@@ -99,12 +99,17 @@ def _encontrar_git():
         r'C:\Program Files (x86)\Git\cmd\git.exe',
         r'C:\Program Files (x86)\Git\bin\git.exe',
     ]
+    appdata_local = os.environ.get('LOCALAPPDATA', '')
+    if appdata_local:
+        rutas_fijas.extend([
+            os.path.join(appdata_local, 'Programs', 'Git', 'cmd', 'git.exe'),
+            os.path.join(appdata_local, 'Programs', 'Git', 'bin', 'git.exe'),
+        ])
     for ruta in rutas_fijas:
         if os.path.isfile(ruta):
             return ruta
 
     # 3. Git empaquetado con GitHub Desktop (versión varía)
-    appdata_local = os.environ.get('LOCALAPPDATA', '')
     if appdata_local:
         patrones = [
             os.path.join(appdata_local, 'GitHubDesktop', 'app-*', 'resources', 'app', 'git', 'cmd', 'git.exe'),
