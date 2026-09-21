@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-18b"
+FW_VERSION = "2026-09-21a"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -877,6 +877,10 @@ ultimo_wifi = 0
 ultimo_latido = 0
 ultima_orden_gavetas = 0
 gaveta_fallos = 0
+# Lo ultimo que dijo el servidor sobre si hay un operario atendiendo el puesto
+# (ver 'prisa' en pick_to_light.py). Arranca en False: una placa recien
+# encendida sondea al ritmo lento hasta que alguien se pone delante.
+_gaveta_prisa = False
 
 beep_arranque()
 # El nombre del puesto se recupera del disco ANTES de la primera pantalla: si
@@ -936,7 +940,8 @@ while True:
         # repite solo cada 750 ms, asi que mandar el estado tambien aqui lo
         # autocorrige sin depender de que un unico intento llegue.
         _pausa_gaveta = GAVETA_POLL_MS
-        if gav is not None and gav.objetivo is None and _ptl_rfid_modo is None:
+        if (gav is not None and gav.objetivo is None and _ptl_rfid_modo is None
+                and not _gaveta_prisa):
             _pausa_gaveta = GAVETA_POLL_IDLE_MS
         if gaveta_fallos:
             _pausa_gaveta = min(GAVETA_POLL_MAX_MS, _pausa_gaveta * (1 + gaveta_fallos))
@@ -968,6 +973,15 @@ while True:
                 micros_cfg = orden.get("micros")
                 if isinstance(micros_cfg, dict):
                     gav.configurar_micros(micros_cfg)
+
+                # 'prisa': hay un operario delante de ese puesto a punto de
+                # elegir terminal, asi que no bajamos al sondeo de reposo (ver
+                # GAVETA_POLL_IDLE_MS). Caduca en el servidor, que deja de
+                # mandarla sola; un servidor viejo no la manda y todo se queda
+                # como estaba. Solo se toca cuando la respuesta la trae: la
+                # rama de los comandos de prueba sale antes y no la incluye.
+                if "prisa" in orden:
+                    _gaveta_prisa = bool(orden.get("prisa"))
 
                 test = orden.get("test")
                 if test and "ptl_rfid_modo" in test:

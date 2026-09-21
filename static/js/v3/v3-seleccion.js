@@ -308,7 +308,11 @@ async function seleccionarMaquina(maquina) {
  */
 function mostrarTerminalesAsignados() {
     const container = document.getElementById('terminales-asignados');
-    
+
+    // El operario ya esta delante de la lista: que la placa se ponga a punto
+    // antes de que elija, para que la gaveta encienda sin esperas.
+    avisarAtencionGaveta();
+
     if (terminalesAsignados.length === 0) {
         container.innerHTML = '<p class="no-data">⚠️ Esta máquina no tiene terminales asignados. Ve al panel de administración para asignar terminales.</p>';
         return;

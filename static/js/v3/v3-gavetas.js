@@ -41,6 +41,25 @@ async function encenderGavetaTerminal(terminal) {
 }
 
 
+/**
+ * Avisa al servidor de que hay alguien a punto de elegir terminal aqui.
+ *
+ * Se llama al enseñar la lista de terminales, unos segundos antes de la
+ * eleccion: con eso la placa ya sondea rapido cuando llega la orden y la
+ * gaveta enciende casi al instante, en vez de esperar a su sondeo lento de
+ * reposo. No enciende nada y no bloquea: si falla, todo sigue igual, solo
+ * mas lento.
+ */
+function avisarAtencionGaveta() {
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    fetch('/api/pick-to-light/atencion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+    }).catch(() => { /* sin aviso se trabaja igual */ });
+}
+
+
 /** Apaga todas las gavetas del puesto (terminal terminado o cambiado). */
 async function apagarGavetas() {
     detenerVigilanciaGaveta();

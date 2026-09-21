@@ -65,6 +65,14 @@ PAUSA_CONFIRMACION_PAW_S = 0.25
 # Admin -> Lectores RFID y _terminales_del_puesto: el latido va cada 60 s.
 MARGEN_PLACA_VIVA_S = 90
 
+# Cuanto se considera que un puesto esta "atendido" desde el ultimo aviso del
+# navegador. Mientras lo este, el sondeo de la placa va rapido (ver 'prisa' en
+# api_pick_to_light_orden y GAVETA_POLL_IDLE_MS en lector_puesto.py): en reposo
+# la placa sondea cada 4 s, y esa espera es la que hacia que la gaveta tardara
+# en encenderse despues de elegir terminal. Con nadie delante no cambia nada:
+# sin avisos recientes la placa se queda en su sondeo lento de siempre.
+ATENCION_S = 120
+
 
 # ==================== ESTADO COMPARTIDO ====================
 
@@ -802,6 +810,28 @@ def _parsear_intrusas(crudo):
     return sorted(set(numeros))
 
 
+def _atencion_marcar(puesto_id):
+    """Apunta que hay un operario atendiendo ese puesto ahora mismo."""
+    if not puesto_id:
+        return
+
+    def _set(estado):
+        estado.setdefault(puesto_id, {})['atencion_hasta'] = time.time() + ATENCION_S
+        return estado
+    _estado_actualizar(_set)
+
+
+def _atencion_viva(puesto_id):
+    """True si el puesto tuvo un aviso de atencion hace menos de ATENCION_S."""
+    if not puesto_id:
+        return False
+    try:
+        actual = _estado_cargar().get(puesto_id) or {}
+        return float(actual.get('atencion_hasta') or 0) > time.time()
+    except (TypeError, ValueError):
+        return False
+
+
 def _placa_en_contacto(device_id):
     """True si esa placa ha dado señales de vida hace poco (ver last_seen).
 
@@ -882,7 +912,12 @@ def api_pick_to_light_encender():
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
         def _set(estado):
-            estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
+            # La marca de atencion sobrevive al encendido: si no, al terminar
+            # este terminal el puesto volveria al sondeo lento con el operario
+            # todavia delante, eligiendo el siguiente.
+            atencion = (estado.get(puesto_id) or {}).get('atencion_hasta')
+            estado[puesto_id] = {'atencion_hasta': atencion,
+                                 'led': led, 'terminal': terminal, 'gaveta': gaveta,
                                  'recogida': False, 'devuelta': False, 'validas': validas,
                                  'error_led': None, 'intrusas': [], 'eventos': [],
                                  'orden_id': orden_id, 'uid_esperado': uid_rfid,
@@ -934,7 +969,12 @@ def api_pick_to_light_apagar():
             ok, _ = _enviar_a_placa(ip, {'apagar': True})
 
         def _borrar(estado):
-            estado.pop(puesto_id, None)
+            # Se va la orden, pero NO la atencion: el operario que acaba de
+            # terminar un terminal sigue delante eligiendo el siguiente, y la
+            # placa tiene que seguir rapida para que esa gaveta encienda ya.
+            # Para todo lo demas un puesto con solo esta marca se lee igual
+            # que uno que no esta: el resto de campos se consultan con .get.
+            estado[puesto_id] = {'atencion_hasta': time.time() + ATENCION_S}
             return estado
         _estado_actualizar(_borrar)
 
@@ -958,6 +998,28 @@ def _calcular_estado_orden(actual):
     if actual.get('uid_esperado') and not actual.get('rfid_confirmado'):
         return 'esperando_rfid'
     return 'confirmada'
+
+
+@bp.route('/api/pick-to-light/atencion', methods=['POST'])
+def api_pick_to_light_atencion():
+    """Avisa de que hay un operario a punto de elegir terminal en ese puesto.
+
+    Lo manda la pantalla de engastado al enseñar la lista de terminales, unos
+    segundos antes de que el operario elija. Con eso la placa ya esta sondeando
+    rapido cuando llega la orden, en vez de tardar hasta 4 s en recogerla.
+
+    No enciende nada ni habla con la placa: solo deja una marca con caducidad,
+    asi que responde 200 siempre y nunca puede parar el flujo de trabajo.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        if not puesto_id:
+            return jsonify({'success': True, 'atendido': False})
+        _atencion_marcar(puesto_id)
+        return jsonify({'success': True, 'atendido': True, 'segundos': ATENCION_S})
+    except Exception as e:
+        return error_interno(e, 'Error al avisar de la atención al puesto')
 
 
 @bp.route('/api/pick-to-light/estado', methods=['GET'])
@@ -1084,6 +1146,10 @@ def api_pick_to_light_orden():
                         'terminal': (estado or {}).get('terminal') or '',
                         'validas': (estado or {}).get('validas') or [],
                         'micros': micros,
+                        # Con un operario delante la placa sondea rapido; sin
+                        # nadie, vuelve sola a su ritmo lento en cuanto caduca
+                        # la marca (ver ATENCION_S y _atencion_marcar).
+                        'prisa': _atencion_viva(puesto_id),
                         'rfid_modo': _rfid_modo_de(estado or {})})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')

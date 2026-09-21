@@ -287,13 +287,15 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
-                     'validas': [7], 'rfid_modo': None,
+                     'validas': [7], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': []}}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    # 'prisa' sigue a True a proposito: apagar es terminal terminado, no
+    # operario que se va (ver test_terminar_un_terminal_mantiene_la_placa_a_punto).
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
-                     'validas': [], 'rfid_modo': None,
+                     'validas': [], 'rfid_modo': None, 'prisa': True,
                      'micros': {'invertir': False, 'ignorar': []}}
 
 
@@ -340,6 +342,80 @@ def test_pythonanywhere_confirma_la_luz_por_sondeo_dentro_del_plazo(
     datos = respuesta.get_json()
     assert datos['activo'] is True
     assert llamadas
+
+
+def test_sin_nadie_delante_la_placa_sondea_a_su_ritmo(app, client, admin_client, con_placa):
+    """Sin aviso de atención no hay prisa: un armario sin operario no tiene por
+    qué sondear rápido, que es justo lo que buscaba el commit de rendimiento."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is False
+
+
+def test_avisar_atencion_pone_la_placa_a_punto(app, client, admin_client, con_placa):
+    """Con el operario delante de la lista de terminales, el sondeo de la placa
+    tiene que ir rápido ANTES de que elija: si no, la orden se queda esperando
+    hasta 4 s a que la recoja y la gaveta enciende tarde."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    r = client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['atendido'] is True
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is True
+
+
+def test_la_atencion_caduca_sola(app, client, admin_client, con_placa, monkeypatch):
+    """La prisa no se queda pegada: si el operario se va, nadie avisa de nada y
+    la placa tiene que volver sola a su sondeo lento."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    monkeypatch.setattr(pick_to_light, 'ATENCION_S', -1)   # ya caducada al nacer
+
+    client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is False
+
+
+def test_terminar_un_terminal_mantiene_la_placa_a_punto(app, client, admin_client, con_placa):
+    """Apagar es 'terminal terminado', no 'se acabó el trabajo': el operario
+    sigue delante eligiendo el siguiente, y esa gaveta también tiene que
+    encender sin esperas."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['apagar'] is True      # la orden sí se va
+    assert orden['prisa'] is True       # la atención no
+
+
+def test_encender_no_pierde_la_atencion(app, client, admin_client, con_placa):
+    """El encendido reescribe el estado del puesto entero: la marca de atención
+    tiene que sobrevivir a eso."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is True
+
+
+def test_avisar_atencion_sin_puesto_no_es_un_error(client):
+    """Nunca puede tumbar la pantalla de engastado: es solo un aviso."""
+    r = client.post('/api/pick-to-light/atencion', json={})
+    assert r.status_code == 200
+    assert r.get_json() == {'success': True, 'atendido': False}
 
 
 def _marcar_latido(app, device_id, hace_segundos=0):
@@ -416,7 +492,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
-                     'validas': [], 'rfid_modo': None,
+                     'validas': [], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': []}}
 
 
