@@ -2420,7 +2420,11 @@
     .puestos-grid, .maquinas-grid {
         grid-template-columns: 1fr;
     }
-    
+
+    .modal-bono-opciones, .info-paquete {
+        grid-template-columns: 1fr;
+    }
+
     .trabajo-header {
         flex-direction: column;
         gap: 10px;

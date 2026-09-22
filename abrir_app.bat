@@ -57,8 +57,11 @@ if "!NAVEGADOR_APP!"=="" (
     )
 )
 
+REM Los puestos se dejan con el monitor girado a vertical: se abre ya en
+REM pantalla completa (--start-fullscreen, no --kiosk, para poder salir con
+REM F11 o Alt+F4 si hace falta).
 if not "!NAVEGADOR_APP!"=="" (
-    start "" "!NAVEGADOR_APP!" --app="!URL!"
+    start "" "!NAVEGADOR_APP!" --app="!URL!" --start-fullscreen
 ) else (
     start "" "!URL!"
 )
