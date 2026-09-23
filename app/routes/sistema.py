@@ -218,8 +218,6 @@ def api_comprobar_actualizaciones():
         r_remoto = git(['rev-parse', '--short', 'origin/main'])
         commit_remoto = r_remoto.stdout.strip() if r_remoto.returncode == 0 else None
 
-        hay_actualizaciones = (commit_remoto and commit_remoto != commit_local)
-
         # Mensaje del último commit remoto
         r_msg = git(['log', 'origin/main', '-1', '--format=%s (%cr)'])
         mensaje_ultimo = r_msg.stdout.strip() if r_msg.returncode == 0 else ''
@@ -227,6 +225,7 @@ def api_comprobar_actualizaciones():
         # Listar commits pendientes de bajar
         r_pendientes = git(['log', f'HEAD..origin/main', '--oneline'])
         commits_pendientes = [l.strip() for l in r_pendientes.stdout.strip().splitlines() if l.strip()]
+        hay_actualizaciones = bool(commits_pendientes)
 
         return jsonify({
             'success': True,
