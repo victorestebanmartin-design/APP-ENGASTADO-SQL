@@ -579,6 +579,26 @@
                         <div id="ptl-micros-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
                     </div>
 
+                    <!-- LEDs físicos por gaveta -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>💡 LEDs por gaveta</h2>
+                        <p class="instruccion">
+                            Cuántos LEDs físicos de la tira iluminan cada gaveta en este puesto. De fábrica
+                            es 1 LED por gaveta; algunos puestos recableados usan 3 para que se vean mejor.
+                            Se guarda por placa y llega a ella al instante (o en su próximo sondeo).
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;">LEDs por gaveta:</label>
+                            <select id="ptl-leds-por-gaveta"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;">
+                                <option value="1">1 LED (de fábrica)</option>
+                                <option value="3">3 LEDs</option>
+                            </select>
+                            <button class="btn-primary" onclick="ptlGuardarLedsConfig()">💾 Guardar y aplicar</button>
+                        </div>
+                        <div id="ptl-leds-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
+                    </div>
+
                     <!-- Registro de acciones -->
                     <div class="card" style="margin-top:16px;">
                         <h2>📋 Registro de prueba</h2>
@@ -1906,6 +1926,8 @@
                 if (info) info.textContent = _ptlLectorId ? 'Lector seleccionado: ' + _ptlLectorId : '';
                 _ptlMensaje('ptl-micros-cfg-msg', '', null);
                 ptlCargarMicrosConfig();
+                _ptlMensaje('ptl-leds-cfg-msg', '', null);
+                ptlCargarLedsConfig();
                 if (_ptlLectorId) ptlCargarMapa();
             }
         });
@@ -2100,6 +2122,49 @@
             document.getElementById('ptl-micros-invertir').checked = false;
             document.getElementById('ptl-micros-ignorar').value = '';
             await _ptlEnviarMicrosConfig(false, []);
+        };
+
+        // ── LEDs físicos por gaveta ────────────────────────────────────────
+
+        window.ptlCargarLedsConfig = async function () {
+            var sel = document.getElementById('ptl-leds-por-gaveta');
+            if (!sel) return;
+            if (!_ptlLectorId) { sel.value = '1'; return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/leds/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Error', false); return; }
+                sel.value = String(d.leds_por_gaveta || 1);
+                _ptlMensaje('ptl-leds-cfg-msg', d.leds_por_gaveta && d.leds_por_gaveta !== 1
+                    ? 'Esta placa usa ' + d.leds_por_gaveta + ' LEDs por gaveta.'
+                    : 'Esta placa usa 1 LED por gaveta (de fábrica).', null);
+            } catch (e) {
+                _ptlMensaje('ptl-leds-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlGuardarLedsConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var sel = document.getElementById('ptl-leds-por-gaveta');
+            var leds = parseInt(sel.value, 10);
+            _ptlMensaje('ptl-leds-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/leds/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, leds_por_gaveta: leds })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('LEDs por gaveta: ' + leds + (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-leds-cfg-msg', 'Error de red', false);
+            }
         };
 
         /**
@@ -3056,6 +3121,7 @@
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = 'Lector seleccionado: ' + dev.id;
                 ptlCargarMicrosConfig();
+                ptlCargarLedsConfig();
                 await ptlCargarMapa();
                 if (gav.led) ptlAbrirCanal(gav.led);
             } catch (e) {

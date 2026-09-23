@@ -100,3 +100,36 @@ La configuración viaja a la placa en la respuesta del sondeo
 servidor alcanza su IP). No se guarda en el sistema de ficheros de la placa: al
 reiniciarse la recupera sola del servidor en el primer sondeo. Dejar los dos
 ajustes en su valor por defecto es exactamente el comportamiento de siempre.
+
+---
+
+## 💡 Varios LEDs físicos por gaveta
+
+Por defecto cada gaveta usa **un solo pixel** de la tira WS2813 (canal del
+MCP23017 → LED 1:1). Algunos puestos recablean la tira para que cada gaveta
+tenga **varios LEDs seguidos** (por ejemplo 3), y verse mejor desde lejos.
+
+Esto se ajusta por placa, igual que la lógica de los micro-interruptores,
+desde **Admin → Pick-to-Light → LEDs por gaveta** (o el endpoint
+`/api/pick-to-light/leds/config`):
+
+| Ajuste | Qué hace | Por defecto |
+|---|---|---|
+| LEDs por gaveta | Nº de pixels consecutivos de la tira que representan una gaveta | `1` |
+
+Es **puramente de pixels**: no cambia el número de gavetas/canales del puesto
+(`n_gavetas`, el que valida contra `LED_GAVETA_MAX` y aparece en Admin). Una
+placa con 16 gavetas y `leds_por_gaveta=3` sigue teniendo 16 gavetas, pero la
+tira física necesita 48 pixels; el firmware (`esp32/lib/gavetas.py`) recrea el
+objeto `NeoPixel` con esa longitud al recibir el valor nuevo del servidor.
+
+Igual que con los micros, viaja en la respuesta del sondeo
+(`leds_por_gaveta`), no se guarda en la placa y una placa recién arrancada la
+recupera sola. El valor por defecto (`1`) es exactamente el comportamiento de
+siempre: el resto de puestos, que no lo tocan, no notan ningún cambio.
+
+Al recablear un puesto a más de un LED por gaveta, comprueba también la tabla
+de consumo: la fuente de 5V/10A de cada puesto sobra de margen incluso con
+varios pixels por gaveta, así que no hace falta bajar el brillo por seguridad
+eléctrica (solo por comodidad visual, ver `COLOR_OBJETIVO` etc. en
+`gavetas.py`).

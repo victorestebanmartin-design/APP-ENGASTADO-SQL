@@ -214,6 +214,42 @@ def _micros_cfg_device(device_id):
     return _micros_cfg_normalizar(dev.get('ptl_micros'))
 
 
+# ==================== LEDs FISICOS POR GAVETA ====================
+#
+# La mayoria de los puestos llevan 1 LED por gaveta (una tira WS2813, un pixel
+# = un canal del MCP23017). El primer puesto piloto recablea a 3 LEDs por
+# gaveta para que se vea mejor desde lejos; el resto se queda como esta. Es
+# configurable por placa, igual que la logica de los micros: se guarda en el
+# mismo registro de Admin -> Lectores RFID (ptl_leds_por_gaveta) y viaja en
+# CADA sondeo (/api/esp32/rfid/gaveta/orden), no como un comando suelto, para
+# que una placa que se reinicia lo recupere sola. El valor por defecto (1) es
+# exactamente el comportamiento de siempre: multiplica los pixels de la tira,
+# nunca el numero de gavetas/canales (eso sigue siendo n_gavetas / LED_GAVETA_MAX).
+
+LEDS_POR_GAVETA_DEFECTO = 1
+LEDS_POR_GAVETA_MAX = 16   # mismo tope que esp32/lib/gavetas.py:LEDS_POR_GAVETA_MAX
+
+
+def _leds_por_gaveta_normalizar(crudo):
+    """Numero de LEDs por gaveta saneado a partir de lo que venga (JSON o disco)."""
+    try:
+        n = int(crudo)
+    except (TypeError, ValueError):
+        return LEDS_POR_GAVETA_DEFECTO
+    if not 1 <= n <= LEDS_POR_GAVETA_MAX:
+        return LEDS_POR_GAVETA_DEFECTO
+    return n
+
+
+def _leds_por_gaveta_device(device_id):
+    """LEDs por gaveta guardados para esa placa (1 si no hay nada configurado)."""
+    if not device_id:
+        return LEDS_POR_GAVETA_DEFECTO
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _leds_por_gaveta_normalizar(dev.get('ptl_leds_por_gaveta'))
+
+
 def _enviar_a_placa_con_datos(ip, payload, timeout=TIMEOUT_PLACA_PROBAR):
     """Como _enviar_a_placa pero devuelve también el JSON de la respuesta.
 
@@ -1078,12 +1114,14 @@ def api_pick_to_light_orden():
         # placa que se reinicia mientras alguien prueba el cableado leeria los
         # micros con el criterio equivocado justo durante la prueba.
         micros = _micros_cfg_device(device_id)
+        leds_por_gaveta = _leds_por_gaveta_device(device_id)
 
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
             return jsonify({'success': True,
                             'test': pendiente['cmd'],
                             'micros': micros,
+                            'leds_por_gaveta': leds_por_gaveta,
                             'test_seq': pendiente.get('seq')})
 
         puesto_id = _puesto_de_la_placa(device_id)
@@ -1146,6 +1184,7 @@ def api_pick_to_light_orden():
                         'terminal': (estado or {}).get('terminal') or '',
                         'validas': (estado or {}).get('validas') or [],
                         'micros': micros,
+                        'leds_por_gaveta': leds_por_gaveta,
                         # Con un operario delante la placa sondea rapido; sin
                         # nadie, vuelve sola a su ritmo lento en cuanto caduca
                         # la marca (ver ATENCION_S y _atencion_marcar).
@@ -1397,6 +1436,55 @@ def api_ptl_micros_config_guardar():
                                     'sondeo (%s).' % motivo)})
     except Exception as e:
         return error_interno(e, 'Error al guardar la configuración de micros')
+
+
+@bp.route('/api/pick-to-light/leds/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_leds_config_leer():
+    """LEDs fisicos por gaveta guardados para una placa (1 si no hay nada configurado)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        leds_por_gaveta = _leds_por_gaveta_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'leds_por_gaveta': leds_por_gaveta,
+                        'leds_por_gaveta_max': LEDS_POR_GAVETA_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer los LEDs por gaveta')
+
+
+@bp.route('/api/pick-to-light/leds/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_leds_config_guardar():
+    """Guarda los LEDs fisicos por gaveta de una placa y se los empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se lo lleva igual en
+    unos segundos, como con la configuracion de micros.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        leds_por_gaveta = _leds_por_gaveta_normalizar(datos.get('leds_por_gaveta'))
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_leds_por_gaveta'] = leds_por_gaveta
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'leds_config': leds_por_gaveta})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'leds_por_gaveta': leds_por_gaveta,
+                        'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar los LEDs por gaveta')
 
 
 @bp.route('/api/pick-to-light/test/fin', methods=['POST'])

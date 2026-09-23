@@ -46,7 +46,10 @@ SDA_PIN_DEF = 21
 SCL_PIN_DEF = 26
 
 # Colores ya atenuados: un WS2813 a tope deslumbra a medio metro y se come
-# 60 mA por pixel. Con estos valores un puesto entero encendido no llega a 1 A.
+# 60 mA por pixel. Con estos valores un puesto entero encendido no llega a 1 A
+# por LED fisico. Con varios LEDs por gaveta (ver LEDS_POR_GAVETA_MAX /
+# configurar_leds) el consumo sube en proporcion, pero la fuente de cada
+# puesto es de 5V/10A: sigue sobrando margen, esto es solo para no deslumbrar.
 COLOR_OBJETIVO = (0, 70, 0)     # verde: la gaveta a la que hay que ir
 COLOR_EN_USO   = (0, 0, 90)     # azul: sacada y en uso
 COLOR_ERROR    = (110, 0, 0)    # rojo: esta no era
@@ -90,14 +93,27 @@ TIMEOUT_AVISO_S = 2         # avisar al servidor no puede frenar el bucle
 # placa se quedaria con un LED encendido para siempre sin esto.
 TEST_TIMEOUT_MS = 5 * 60 * 1000
 
+# Cuantos pixels fisicos de la tira representan una sola gaveta. La mayoria
+# de los puestos llevan 1 (un LED = una gaveta); el primer puesto piloto
+# recablea a 3 para verse mejor desde lejos. Es configurable por placa desde
+# Admin (ver configurar_leds), con 1 como valor por defecto seguro: una placa
+# recien montada o un servidor viejo que no manda nada se comporta igual que
+# siempre.
+LEDS_POR_GAVETA_DEFECTO = 1
+LEDS_POR_GAVETA_MAX = 16
+
 
 class Gavetas:
-    def __init__(self, expansores, tira, buzzer, device_id):
+    def __init__(self, expansores, tira, buzzer, device_id, led_pin=None):
         self.expansores = expansores
         self.tira = tira
         self.buzzer = buzzer
         self.device_id = device_id
         self.n_gavetas = mcp23017.CANALES * len(expansores)
+        # Objeto Pin de la tira, guardado para poder recrear el NeoPixel con
+        # otra longitud cuando cambia leds_por_gaveta (ver configurar_leds).
+        self._led_pin = led_pin
+        self.leds_por_gaveta = LEDS_POR_GAVETA_DEFECTO
 
         self.objetivo = None        # numero de gaveta que hay que abrir
         self.terminal = ""          # terminal en curso, solo para el display
@@ -228,18 +244,81 @@ class Gavetas:
             self._parar_zumbido()
         return True
 
+    def _indices(self, gaveta):
+        """Rango de indices de pixel de la tira que representan esa gaveta.
+
+        Con leds_por_gaveta=1 es exactamente gaveta-1 de siempre; con mas de
+        1 son varios pixels seguidos. Toda la logica de arriba (que gaveta es
+        el objetivo, cual esta equivocada...) sigue hablando en gavetas, no
+        en pixels: esto es lo unico que traduce de un lenguaje al otro.
+        """
+        base = (gaveta - 1) * self.leds_por_gaveta
+        return range(base, base + self.leds_por_gaveta)
+
     def _pintar(self, gaveta, color):
         if self.tira is None or not 1 <= gaveta <= self.n_gavetas:
             return
-        self.tira[gaveta - 1] = color
+        for i in self._indices(gaveta):
+            self.tira[i] = color
         self.tira.write()
 
     def _apagar_tira(self):
         if self.tira is None:
             return
-        for i in range(self.n_gavetas):
+        for i in range(self.n_gavetas * self.leds_por_gaveta):
             self.tira[i] = COLOR_APAGADO
         self.tira.write()
+
+    def _repintar(self):
+        """Vuelve a pintar el estado actual tras recrear la tira (configurar_leds).
+
+        No hace mas que releer lo que ya sabia el objeto: no cambia ni
+        objetivo, ni equivocadas, ni nada de logica, solo la salida fisica.
+        """
+        self._apagar_tira()
+        if self.objetivo:
+            color = COLOR_EN_USO if self.objetivo in self.fuera else COLOR_OBJETIVO
+            self._pintar(self.objetivo, color)
+        for gaveta in self.equivocadas:
+            self._pintar(gaveta, COLOR_ERROR)
+
+    def configurar_leds(self, n):
+        """Aplica los LEDs fisicos por gaveta que manda el servidor.
+
+        Recrea el objeto NeoPixel con la longitud nueva (n_gavetas * n),
+        reutilizando el mismo pin, y repinta el estado actual encima. Nunca
+        lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba. Devuelve True si algo ha
+        cambiado.
+        """
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            print("Gavetas: leds_por_gaveta no valido:", n)
+            return False
+        if not 1 <= n <= LEDS_POR_GAVETA_MAX:
+            print("Gavetas: leds_por_gaveta fuera de rango:", n)
+            return False
+        if n == self.leds_por_gaveta:
+            return False
+
+        if self.tira is None or self._led_pin is None or neopixel is None:
+            # Sin tira fisica no hay nada que recrear, pero el valor se
+            # guarda igual para que estado() refleje lo que Admin ha pedido.
+            self.leds_por_gaveta = n
+            return True
+
+        try:
+            nueva_tira = neopixel.NeoPixel(self._led_pin, self.n_gavetas * n)
+        except Exception as e:
+            print("Gavetas: no se pudo recrear la tira con leds_por_gaveta=%d:" % n, e)
+            return False
+
+        self.leds_por_gaveta = n
+        self.tira = nueva_tira
+        print("Gavetas: leds_por_gaveta=%d (%d pixels)" % (n, self.n_gavetas * n))
+        self._repintar()
+        return True
 
     # ── Ordenes que llegan del servidor ─────────────────────────────────────
 
@@ -315,6 +394,7 @@ class Gavetas:
             # enseña para no tener que fiarse de lo guardado en el servidor.
             "invertir": self.invertir,
             "ignorar": sorted(self.ignorar),
+            "leds_por_gaveta": self.leds_por_gaveta,
             "http": self._servidor is not None,
         }
 
@@ -410,9 +490,10 @@ class Gavetas:
                 return {"ok": False,
                         "error": "LED %d fuera de rango (1-%d)" % (test_led, self.n_gavetas),
                         "estado": self.estado()}
-            for i in range(self.n_gavetas):
+            for i in range(self.n_gavetas * self.leds_por_gaveta):
                 self.tira[i] = COLOR_APAGADO
-            self.tira[test_led - 1] = color
+            for i in self._indices(test_led):
+                self.tira[i] = color
             self.tira.write()
             return {"ok": True, "test_led": test_led, "color": list(color),
                     "estado": self.estado()}
@@ -421,7 +502,7 @@ class Gavetas:
             color = _color(datos.get("color"), (60, 60, 60))
             self._iniciar_prueba()
             if self.tira:
-                for i in range(self.n_gavetas):
+                for i in range(self.n_gavetas * self.leds_por_gaveta):
                     self.tira[i] = color
                 self.tira.write()
             return {"ok": True, "gavetas": self.n_gavetas, "color": list(color),
@@ -483,7 +564,8 @@ class Gavetas:
         color = COLOR_ERROR if self._parpadeo_encendido else COLOR_APAGADO
         for gaveta in self.equivocadas:
             if 1 <= gaveta <= self.n_gavetas:
-                self.tira[gaveta - 1] = color
+                for i in self._indices(gaveta):
+                    self.tira[i] = color
         self.tira.write()
 
     def _atender_micros(self, ahora):
@@ -671,14 +753,20 @@ class Gavetas:
     def _responder(self, cuerpo):
         datos = _json_carga(cuerpo)
 
-        # La configuracion de los micros puede venir sola (Admin acaba de
-        # guardarla y el servidor la empuja al puerto 80) o acompañando a
-        # cualquier otra orden: se aplica antes que nada y se sigue.
+        # La configuracion de micros y de leds_por_gaveta puede venir sola
+        # (Admin acaba de guardarla y el servidor la empuja al puerto 80) o
+        # acompañando a cualquier otra orden: se aplica antes que nada y se
+        # sigue.
         micros_cfg = datos.get("micros_config")
         if isinstance(micros_cfg, dict):
             self.configurar_micros(micros_cfg)
-            if not _trae_orden(datos):
-                return {"ok": True, "estado": self.estado()}
+
+        leds_cfg = datos.get("leds_config")
+        if leds_cfg is not None:
+            self.configurar_leds(leds_cfg)
+
+        if (isinstance(micros_cfg, dict) or leds_cfg is not None) and not _trae_orden(datos):
+            return {"ok": True, "estado": self.estado()}
 
         if datos.get("apagar"):
             self.apagar()
@@ -776,13 +864,15 @@ def crear(cfg, buzzer, device_id):
             return None
 
         tira = None
+        led_pin = None
         if neopixel is not None:
             n = mcp23017.CANALES * len(expansores)
-            tira = neopixel.NeoPixel(Pin(getattr(cfg, "GAVETAS_LED_PIN", LED_PIN_DEF)), n)
+            led_pin = Pin(getattr(cfg, "GAVETAS_LED_PIN", LED_PIN_DEF))
+            tira = neopixel.NeoPixel(led_pin, n)
         else:
             print("Gavetas: sin modulo neopixel, se vigilan los micros sin luces")
 
-        gav = Gavetas(expansores, tira, buzzer, device_id)
+        gav = Gavetas(expansores, tira, buzzer, device_id, led_pin=led_pin)
         print("Gavetas: %d expansor(es), %d gavetas" % (len(expansores), gav.n_gavetas))
         return gav
     except Exception as e:

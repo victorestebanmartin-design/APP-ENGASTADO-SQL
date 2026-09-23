@@ -288,7 +288,8 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
                      'validas': [7], 'rfid_modo': None, 'prisa': False,
-                     'micros': {'invertir': False, 'ignorar': []}}
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
@@ -296,7 +297,8 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     # operario que se va (ver test_terminar_un_terminal_mantiene_la_placa_a_punto).
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': True,
-                     'micros': {'invertir': False, 'ignorar': []}}
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1}
 
 
 def test_pythonanywhere_sin_confirmacion_de_la_placa_no_da_activo(
@@ -493,7 +495,8 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': False,
-                     'micros': {'invertir': False, 'ignorar': []}}
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1}
 
 
 def test_logica_de_micros_por_defecto_es_la_de_siempre(app, admin_client, con_placa):
