@@ -2478,7 +2478,13 @@ def api_esp32_rfid_firmware_version():
     try:
         dev_id = _esp32_device_id(request.args.get('id'))
         if dev_id:
-            _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'))
+            exp_raw = request.args.get('expansores')
+            try:
+                expansores = int(exp_raw) if exp_raw is not None else None
+            except (TypeError, ValueError):
+                expansores = None
+            _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'),
+                                         expansores=expansores)
 
             # Si Admin pidió OTA manual para este lector, se marca como
             # resuelta cuando ya reporta la versión publicada en servidor.
@@ -2549,8 +2555,14 @@ def _rfid_devices_actualizar(fn):
     return _json_actualizar(_rfid_devices_file(), {}, fn)
 
 
-def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
-    """Actualiza last_seen/ip/fw de un lector (lo crea si es la primera vez)."""
+def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None, expansores=None):
+    """Actualiza last_seen/ip/fw/expansores de un lector (lo crea si es la primera vez).
+
+    'expansores' es None si el latido no lo trae (compatibilidad con firmware
+    viejo); si lo trae, se guarda tal cual, incluido el 0 explicito -- eso es
+    lo que permite ver en Admin que una placa esclava se ha quedado sin
+    alimentacion aunque no llegue ningun evento de gaveta.
+    """
     def _touch(devs):
         dev = devs.setdefault(dev_id, {})
         dev['last_seen'] = datetime.now().isoformat()
@@ -2558,6 +2570,8 @@ def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
             dev['ip'] = ip
         if fw:
             dev['fw'] = fw
+        if expansores is not None:
+            dev['expansores'] = expansores
         return devs
     _rfid_devices_actualizar(_touch)
 

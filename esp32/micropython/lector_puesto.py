@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-23a"
+FW_VERSION = "2026-09-23b"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -607,12 +607,18 @@ def registrar_dispositivo():
     a arrancar unas pocas veces seguidas, restaura el anterior solo. Se evita
     interrumpir un trabajo en curso (gaveta encendida): se reintenta en el
     siguiente latido, un minuto despues.
+
+    Manda tambien 'expansores' (0 si no hay pick-to-light o si la placa
+    esclava se ha quedado sin 5V): asi Admin ve el numero real aunque no
+    llegue ningun evento de gaveta desde el ultimo corte de tension.
     """
     if http_client is None or backend_cfg is None or not wifi_ip:
         return
+    n_expansores = len(gav.expansores) if gav else 0
     info = http_client.get_json(
         backend_cfg.BACKEND_HOST,
-        "/api/esp32/rfid/firmware/version?id=%s&ip=%s&fw=%s" % (DEVICE_ID, wifi_ip, FW_VERSION),
+        "/api/esp32/rfid/firmware/version?id=%s&ip=%s&fw=%s&expansores=%d" % (
+            DEVICE_ID, wifi_ip, FW_VERSION, n_expansores),
         port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=8)
     if not info:
         return
