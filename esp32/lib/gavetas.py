@@ -2,7 +2,8 @@
 #
 # Enciende el LED de la gaveta que el operario acaba de elegir en engastado y
 # vigila los micro-interruptores que dicen si cada gaveta esta puesta o fuera.
-# El esquema electrico esta en esp32/HARDWARE_PICK_TO_LIGHT.md.
+# El esquema electrico esta en esp32/HARDWARE_PLACA_MASTER.md (placa expansora)
+# y esp32/HARDWARE_EXPANSORES_MCP23017.md (direcciones I2C).
 #
 # Dos ideas gobiernan este fichero:
 #
@@ -856,7 +857,9 @@ def crear(cfg, buzzer, device_id):
         sda = Pin(getattr(cfg, "GAVETAS_SDA_PIN", SDA_PIN_DEF), Pin.OPEN_DRAIN, Pin.PULL_UP)
         scl = Pin(getattr(cfg, "GAVETAS_SCL_PIN", SCL_PIN_DEF), Pin.OPEN_DRAIN, Pin.PULL_UP)
         # Los pull-up internos (~45k) se piden aqui a proposito: con un solo
-        # expansor y cables cortos evitan tener que soldar los de 4,7k.
+        # expansor y cables cortos evitan tener que soldar los externos de
+        # 2,2k (que van en el propio lector, justo antes del DB9 -- ver
+        # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md).
         i2c = SoftI2C(scl=scl, sda=sda, freq=100000)
         expansores = mcp23017.detectar(i2c)
         if not expansores:

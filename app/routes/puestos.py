@@ -1301,8 +1301,9 @@ def api_eliminar_imagen_terminal(codigo):
 # ==================== GAVETAS DE TERMINALES ====================
 
 # El campo 'led' es el numero de gaveta en el pick-to-light del puesto (ver
-# esp32/HARDWARE_PICK_TO_LIGHT.md). Es OPCIONAL a proposito: una instalacion
-# sin tira de LEDs deja el campo vacio y todo sigue igual que antes.
+# esp32/HARDWARE_PLACA_MASTER.md y esp32/HARDWARE_EXPANSORES_MCP23017.md). Es
+# OPCIONAL a proposito: una instalacion sin tira de LEDs deja el campo vacio y
+# todo sigue igual que antes.
 LED_GAVETA_MAX = 128   # 8 expansores MCP23017 de 16 canales
 
 

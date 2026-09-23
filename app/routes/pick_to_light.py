@@ -4,7 +4,7 @@ Pick-to-light de gavetas: enciende la luz del cajon del terminal elegido.
 El operario elige un terminal en engastado y se le enciende en verde el LED de
 su gaveta; al sacarla, la placa lo confirma y la app le muestra los paquetes.
 El hardware cuelga de la MISMA ESP32 del lector RFID del puesto (esquema en
-esp32/HARDWARE_PICK_TO_LIGHT.md), asi que aqui no hay ningun tipo de
+esp32/HARDWARE_PLACA_MASTER.md), asi que aqui no hay ningun tipo de
 dispositivo nuevo: se reaprovecha el registro de Admin -> Lectores RFID.
 
 Dos decisiones que explican la forma de este fichero:

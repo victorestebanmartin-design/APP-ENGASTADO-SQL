@@ -69,7 +69,7 @@ Si se realiza el montaje sobre placa de topos o diseño propio con el integrado 
 ### 2. Bus I2C y Resistencias Pull-Up
 - **`SCL` (Pin 12):** Conectar al hilo **DB9-5** (Azul, GPIO48).
 - **`SDA` (Pin 13):** Conectar al hilo **DB9-6** (Violeta, GPIO47).
-- **Resistencias Pull-Up:** Se requiere **un solo par de resistencias de 4.7 kΩ** entre `SDA` e `+3.3V`, y entre `SCL` e `+3.3V` en todo el bus I2C (colocadas en el primer multiplexor MUX 1). **NO añadir pull-ups en cada expansor**, ya que la resistencia equivalente en paralelo caería demasiado.
+- **Resistencias Pull-Up:** Se requiere **un solo par de resistencias de 2.2 kΩ** entre `SDA` e `+3.3V`, y entre `SCL` e `+3.3V` en todo el bus I2C. **Van en el propio lector RFID, justo antes de salir por el DB9** (no en la placa expansora MUX 1 ni en ninguna otra). **NO añadir pull-ups en los expansores**, ya que la resistencia equivalente en paralelo caería demasiado. La placa expansora (ver [HARDWARE_PLACA_MASTER.md](HARDWARE_PLACA_MASTER.md)) ya no lleva footprint de pull-ups: es la misma placa en las 8 posiciones.
 
 ---
 
