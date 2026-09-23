@@ -33,6 +33,7 @@ data/esp32_tags.json
 data/esp32_ip.txt
 data/pcs_vistos.json
 data/rfid_entrada_estado.json
+data/operario_gate.json
 data/pick_to_light_estado.json
 data/pick_to_light_test.json
 data/pick_to_light_rfid_armado.json
@@ -55,6 +56,7 @@ data/drivers/
 *.code-workspace
 
 # Basura del sistema operativo
+/*OB
 .DS_Store
 Thumbs.db
 desktop.ini
