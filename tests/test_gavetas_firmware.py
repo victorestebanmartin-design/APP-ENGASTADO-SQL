@@ -266,6 +266,8 @@ class PlacaConTira:
         obj._parpadeo_encendido = True
         obj._en_prueba = False
         obj._servidor = None
+        obj.leds_por_gaveta = 1
+        obj._led_pin = None
         self.obj = obj
         self.tira = tira
         self.expansores = expansores
@@ -327,6 +329,8 @@ def placa_con_tira(gavetas):
     obj._en_prueba = False
     obj._prueba_desde_ms = 0
     obj._servidor = None
+    obj.leds_por_gaveta = 1
+    obj._led_pin = None
 
     return obj, tira, expansores
 

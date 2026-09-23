@@ -1,7 +1,7 @@
 // v3-gavetas.js — Pick-to-light: enciende la gaveta del terminal elegido y
 // espera a que el operario la saque antes de enseñarle los paquetes.
 //
-// El hardware es opcional (ver esp32/HARDWARE_PICK_TO_LIGHT.md), asi que TODO
+// El hardware es opcional (ver esp32/HARDWARE_PLACA_MASTER.md), asi que TODO
 // lo de aqui esta escrito para desaparecer sin dejar rastro: si el terminal no
 // tiene gaveta con luz, si el puesto no tiene lector asignado o si la placa no
 // contesta, el flujo de engastado sigue exactamente igual que antes. La puerta

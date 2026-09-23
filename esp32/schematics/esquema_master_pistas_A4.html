@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Pistas de la placa MASTER / ESCLAVA - 1 Página A4</title>
+  <title>Pistas de la placa expansora Pick-To-Light - 1 Página A4</title>
   <style>
     @page { size: A4 portrait; margin: 8mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,7 +38,7 @@
 <body>
 
   <div class="print-bar no-print">
-    <span>🖨️ <strong>Pistas de la placa MASTER / ESCLAVA — 1 página A4</strong></span>
+    <span>🖨️ <strong>Pistas de la placa expansora Pick-To-Light — 1 página A4</strong></span>
     <button class="print-btn" onclick="window.print()">Imprimir / Guardar en PDF (Ctrl+P)</button>
   </div>
 
@@ -83,7 +83,7 @@
         </defs>
 
         <!-- CABECERA -->
-        <text x="30" y="46" class="t-main">Trazado de pistas — placa MASTER / ESCLAVA del Pick-To-Light</text>
+        <text x="30" y="46" class="t-main">Trazado de pistas — placa expansora del Pick-To-Light (idéntica en las 8 posiciones)</text>
         <text x="30" y="65" class="t-sub">Vista por la CARA DE COMPONENTES (los hilos van por debajo, en la cara de cobre) · rejilla 20 × 14 paso 2,54 · 12 pads por lateral</text>
         <text x="30" y="82" class="meta">APP-ENGASTADO-SQL · esp32/HARDWARE_PLACA_MASTER.md · Las coordenadas son columna C1…C20 y fila F1…F14 · Complementa a esquema_master_A4.html</text>
         <line x1="30" y1="92" x2="970" y2="92" stroke="#0f172a" stroke-width="1.5"/>
@@ -310,16 +310,9 @@
         <!-- puentes de C1 a los railes -->
         <path d="M148.5,781 Q167,800 185.5,849" class="jump n5v"/>
         <path d="M148.5,713 L185.5,713" class="jump ngnd"/>
-        <!-- R1 4k7 SDA->3V3 en C3 -->
-        <rect x="214" y="690" width="17" height="114" class="comp"/>
-        <text x="222" y="672" class="lbl-xs" text-anchor="middle">R1</text>
-        <line x1="222.5" y1="815" x2="222.5" y2="804" class="bare nsda"/>
-        <line x1="222.5" y1="690" x2="222.5" y2="679" class="bare n3v3"/>
-        <!-- R2 4k7 SCL->3V3 en C5 -->
-        <rect x="288" y="690" width="17" height="80" class="comp"/>
-        <text x="296" y="672" class="lbl-xs" text-anchor="middle">R2</text>
-        <line x1="296.5" y1="781" x2="296.5" y2="770" class="bare nscl"/>
-        <line x1="296.5" y1="690" x2="296.5" y2="679" class="bare n3v3"/>
+        <!-- Sin R1/R2 en esta placa: las pull-ups I2C van en el lector, antes del DB9 -->
+        <text x="222" y="672" class="lbl-xs" text-anchor="middle" fill="#94a3b8">(sin R1/R2)</text>
+        <text x="296" y="672" class="lbl-xs" text-anchor="middle" fill="#94a3b8">(sin R1/R2)</text>
         <!-- Cd 100nF entre pin 9 y 10 -->
         <rect x="333" y="686" width="15" height="34" class="comp"/>
         <text x="340" y="735" class="lbl-xs" text-anchor="middle">Cd</text>
@@ -350,7 +343,7 @@
         <path d="M851.5,543 Q770,620 740.5,747" class="jump nret"/>
         <!-- RESET: C14/F9 -> C13/F11 -->
         <path d="M629.5,679 Q640,715 597,747" class="jump n3v3"/>
-        <!-- straps A2 A1 A0 -> C14/F10 (GND, MASTER) -->
+        <!-- straps A2 A1 A0 -> C14/F10 (GND, dirección 0x20) -->
         <path d="M597,781 L629.5,713" class="jump ngnd"/>
         <path d="M597,815 L629.5,713" class="jump ngnd"/>
         <path d="M597,849 L629.5,713" class="jump ngnd"/>
@@ -438,7 +431,7 @@
           <rect x="520" y="1040" width="450" height="19" fill="#fff7ed" stroke="#e2e8f0"/>
           <text x="536" y="1053">C14/F9 → C13/F11</text><text x="760" y="1053" class="warn-b">RESET a +3V3 · imprescindible</text>
           <rect x="520" y="1059" width="450" height="19" fill="#f8fafc" stroke="#e2e8f0"/>
-          <text x="536" y="1072">C13/F12, C13/F13, C13/F14 → C14/F10</text><text x="760" y="1072">straps A2 A1 A0 (MASTER = 0x20)</text>
+          <text x="536" y="1072">C13/F12, C13/F13, C13/F14 → C14/F10</text><text x="760" y="1072">straps A2 A1 A0 (0x20 = todos a GND)</text>
           <rect x="520" y="1078" width="450" height="19" fill="#ffffff" stroke="#e2e8f0"/>
           <text x="536" y="1091">C1/F12 → C2/F14 · C1/F10 → C2/F10</text><text x="760" y="1091">entrada de fuente a los raíles</text>
           <rect x="520" y="1097" width="450" height="19" fill="#faf5ff" stroke="#e2e8f0"/>
@@ -457,14 +450,14 @@
         <g class="lbl">
           <text x="30"  y="1230" class="lbl-b">J1 (C2, F9→F14) entrada</text>
           <text x="30"  y="1246">F9 +3V3 · F10 GND · F11 DATA_IN · F12 SCL · F13 SDA · F14 +5V</text>
-          <text x="30"  y="1262" class="lbl-s">MASTER: al DB9 del lector (3=3V3, 1=GND, 2=DATA, 5=SCL, 6=SDA, 9=5V). ESCLAVA: al J4 anterior.</text>
+          <text x="30"  y="1262" class="lbl-s">Placa "MASTER" (por posición): al DB9 del lector (3=3V3, 1=GND, 2=DATA, 5=SCL, 6=SDA, 9=5V). Resto: al J4 anterior.</text>
 
           <text x="380" y="1230" class="lbl-b">J4 (C20, F9→F14) salida</text>
           <text x="380" y="1246">F9 +3V3 · F10 GND · F11 DATA_RET · F12 SCL · F13 SDA · F14 +5V</text>
           <text x="380" y="1262" class="lbl-s">Mismas filas que J1: el cable entre placas es recto pin a pin.</text>
 
           <text x="720" y="1230" class="lbl-b">J0 · J2 · J3</text>
-          <text x="720" y="1246">J0 (C1/F14 +5V, C1/F10 GND) — solo MASTER</text>
+          <text x="720" y="1246">J0 (C1/F14 +5V, C1/F10 GND) — en TODAS las placas, en paralelo</text>
           <text x="720" y="1262">J2 (C20/F1 +5V, F2 GND, F3 DATA) · J3 (C20/F5 RET, F6 GND)</text>
         </g>
 
@@ -474,7 +467,7 @@
         <text x="44" y="1332" class="warn">3. Pin 18 (RESET) ↔ +3V3 debe pitar.   4. +5 V ↔ GND abierto (si pita, el C3 está al revés o hay un puente).   5. Solo entonces: tensión, y pin 9 = 3,30 V exactos.</text>
 
         <line x1="30" y1="1358" x2="970" y2="1358" stroke="#0f172a"/>
-        <text x="30"  y="1374" class="meta">R1, R2, F1, C3 y J0 solo se montan en la MASTER. La ESCLAVA lleva las mismas 6 pistas, el mismo zócalo, Cd, R3, JP1 y los cinco conectores.</text>
+        <text x="30"  y="1374" class="meta">F1, C3 y J0 se montan en TODAS las placas (misma BOM). Sin R1/R2: las pull-ups I2C van en el lector, no en la placa expansora.</text>
         <text x="970" y="1374" class="meta" text-anchor="end">esp32/HARDWARE_PLACA_MASTER.md</text>
       </svg>
     </div>

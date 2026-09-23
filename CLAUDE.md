@@ -58,7 +58,7 @@ Las placas se actualizan por OTA, y el servidor anuncia la versión leyendo
 
 La placa del lector RFID puede llevar además una tira WS2813 y expansores
 MCP23017 que encienden la gaveta del terminal elegido (`esp32/lib/gavetas.py`,
-`app/routes/pick_to_light.py`, esquema en `esp32/HARDWARE_PICK_TO_LIGHT.md`).
+`app/routes/pick_to_light.py`, esquema en `esp32/HARDWARE_PLACA_MASTER.md`).
 
 La mayoría de los puestos no lo tienen, y los que lo tienen se quedan sin él en
 cuanto se va la luz de la fuente de 5 V. Por eso:

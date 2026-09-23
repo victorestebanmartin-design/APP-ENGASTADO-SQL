@@ -69,7 +69,7 @@ Si se realiza el montaje sobre placa de topos o diseño propio con el integrado 
 ### 2. Bus I2C y Resistencias Pull-Up
 - **`SCL` (Pin 12):** Conectar al hilo **DB9-5** (Azul, GPIO48).
 - **`SDA` (Pin 13):** Conectar al hilo **DB9-6** (Violeta, GPIO47).
-- **Resistencias Pull-Up:** Se requiere **un solo par de resistencias de 4.7 kΩ** entre `SDA` e `+3.3V`, y entre `SCL` e `+3.3V` en todo el bus I2C (colocadas en el primer multiplexor MUX 1). **NO añadir pull-ups en cada expansor**, ya que la resistencia equivalente en paralelo caería demasiado.
+- **Resistencias Pull-Up:** Se requiere **un solo par de resistencias de 2.2 kΩ** entre `SDA` e `+3.3V`, y entre `SCL` e `+3.3V` en todo el bus I2C. **Van en el propio lector RFID, justo antes de salir por el DB9** (no en la placa expansora MUX 1 ni en ninguna otra). **NO añadir pull-ups en los expansores**, ya que la resistencia equivalente en paralelo caería demasiado. La placa expansora (ver [HARDWARE_PLACA_MASTER.md](HARDWARE_PLACA_MASTER.md)) ya no lleva footprint de pull-ups: es la misma placa en las 8 posiciones.
 
 ---
 
@@ -100,3 +100,36 @@ La configuración viaja a la placa en la respuesta del sondeo
 servidor alcanza su IP). No se guarda en el sistema de ficheros de la placa: al
 reiniciarse la recupera sola del servidor en el primer sondeo. Dejar los dos
 ajustes en su valor por defecto es exactamente el comportamiento de siempre.
+
+---
+
+## 💡 Varios LEDs físicos por gaveta
+
+Por defecto cada gaveta usa **un solo pixel** de la tira WS2813 (canal del
+MCP23017 → LED 1:1). Algunos puestos recablean la tira para que cada gaveta
+tenga **varios LEDs seguidos** (por ejemplo 3), y verse mejor desde lejos.
+
+Esto se ajusta por placa, igual que la lógica de los micro-interruptores,
+desde **Admin → Pick-to-Light → LEDs por gaveta** (o el endpoint
+`/api/pick-to-light/leds/config`):
+
+| Ajuste | Qué hace | Por defecto |
+|---|---|---|
+| LEDs por gaveta | Nº de pixels consecutivos de la tira que representan una gaveta | `1` |
+
+Es **puramente de pixels**: no cambia el número de gavetas/canales del puesto
+(`n_gavetas`, el que valida contra `LED_GAVETA_MAX` y aparece en Admin). Una
+placa con 16 gavetas y `leds_por_gaveta=3` sigue teniendo 16 gavetas, pero la
+tira física necesita 48 pixels; el firmware (`esp32/lib/gavetas.py`) recrea el
+objeto `NeoPixel` con esa longitud al recibir el valor nuevo del servidor.
+
+Igual que con los micros, viaja en la respuesta del sondeo
+(`leds_por_gaveta`), no se guarda en la placa y una placa recién arrancada la
+recupera sola. El valor por defecto (`1`) es exactamente el comportamiento de
+siempre: el resto de puestos, que no lo tocan, no notan ningún cambio.
+
+Al recablear un puesto a más de un LED por gaveta, comprueba también la tabla
+de consumo: la fuente de 5V/10A de cada puesto sobra de margen incluso con
+varios pixels por gaveta, así que no hace falta bajar el brillo por seguridad
+eléctrica (solo por comodidad visual, ver `COLOR_OBJETIVO` etc. en
+`gavetas.py`).
