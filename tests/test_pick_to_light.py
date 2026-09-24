@@ -289,7 +289,8 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
                      'validas': [7], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': []},
-                     'leds_por_gaveta': 1}
+                     'leds_por_gaveta': 1,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
@@ -298,7 +299,8 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': True,
                      'micros': {'invertir': False, 'ignorar': []},
-                     'leds_por_gaveta': 1}
+                     'leds_por_gaveta': 1,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
 
 def test_pythonanywhere_sin_confirmacion_de_la_placa_no_da_activo(
@@ -496,7 +498,8 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': []},
-                     'leds_por_gaveta': 1}
+                     'leds_por_gaveta': 1,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
 
 def test_logica_de_micros_por_defecto_es_la_de_siempre(app, admin_client, con_placa):
@@ -547,6 +550,69 @@ def test_volver_a_la_logica_de_micros_de_siempre(app, client, admin_client, con_
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden['micros'] == {'invertir': False, 'ignorar': []}
+
+
+def test_brillo_por_defecto_es_el_de_siempre(app, admin_client, con_placa):
+    """Sin configurar nada, los valores coinciden con los COLOR_* de gavetas.py."""
+    device_id = _registrar_lector(app)
+    datos = admin_client.get('/api/pick-to-light/brillo/config?device_id=' + device_id).get_json()
+    assert datos['objetivo'] == 70
+    assert datos['en_uso'] == 90
+    assert datos['error'] == 110
+    assert datos['max'] == 200
+
+
+def test_guardar_brillo_llega_a_la_placa_y_al_sondeo(app, client, admin_client, con_placa):
+    """Se empuja al puerto 80 y ademas viaja en el sondeo, como micros y leds_por_gaveta."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': 40,
+                                       'en_uso': 60, 'error': 80})
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is True
+    assert (datos['objetivo'], datos['en_uso'], datos['error']) == (40, 60, 80)
+    assert con_placa[-1][1] == {'brillo_config': {'objetivo': 40, 'en_uso': 60, 'error': 80}}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 40, 'en_uso': 60, 'error': 80}
+
+
+def test_guardar_brillo_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
+    """La placa desenchufada no puede impedir guardar: lo cogera al sondear."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': 30,
+                                       'en_uso': 30, 'error': 30})
+    assert respuesta.status_code == 200
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is False
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 30, 'en_uso': 30, 'error': 30}
+
+
+def test_brillo_fuera_de_rango_se_sanea_al_valor_por_defecto(app, admin_client, con_placa):
+    """Ni negativos ni por encima de BRILLO_MAX (tope de seguridad, no 255)."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': -5,
+                                       'en_uso': 255, 'error': 'no numero'})
+    datos = respuesta.get_json()
+    assert datos['success'] is True
+    assert (datos['objetivo'], datos['en_uso'], datos['error']) == (70, 90, 110)
+
+
+def test_volver_al_brillo_de_siempre(app, client, admin_client, con_placa):
+    """Reversible sin tocar la placa: guardar los valores por defecto basta."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/brillo/config',
+                     json={'device_id': device_id, 'objetivo': 10, 'en_uso': 10, 'error': 10})
+    admin_client.put('/api/pick-to-light/brillo/config',
+                     json={'device_id': device_id, 'objetivo': 70, 'en_uso': 90, 'error': 110})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 70, 'en_uso': 90, 'error': 110}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):

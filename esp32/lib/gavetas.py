@@ -56,6 +56,17 @@ COLOR_EN_USO   = (0, 0, 90)     # azul: sacada y en uso
 COLOR_ERROR    = (110, 0, 0)    # rojo: esta no era
 COLOR_APAGADO  = (0, 0, 0)
 
+# Brillo por color, configurable por placa desde Admin (ver configurar_brillo).
+# Cada valor es la intensidad del UNICO canal no nulo de ese color (verde para
+# objetivo, azul para en_uso, rojo para error): siguen siendo monocromaticos,
+# no RGB libre. BRILLO_MAX es el mismo tope de seguridad de siempre, bien por
+# debajo de 255, para que nadie pueda subir el brillo hasta deslumbrar.
+# BRILLO_DEFECTO coincide EXACTAMENTE con los COLOR_* de arriba: una placa o
+# un servidor sin esta configuracion se comporta igual que antes de que
+# existiera.
+BRILLO_MAX = 200
+BRILLO_DEFECTO = {'objetivo': 70, 'en_uso': 90, 'error': 110}
+
 PUERTO_HTTP = 80
 REINTENTO_SERVIDOR_MS = 5000  # cada cuanto se reintenta abrir el puerto 80
 TIMEOUT_PETICION_S = 1      # leer la peticion ya recibida es cosa de ms
@@ -115,6 +126,7 @@ class Gavetas:
         # otra longitud cuando cambia leds_por_gaveta (ver configurar_leds).
         self._led_pin = led_pin
         self.leds_por_gaveta = LEDS_POR_GAVETA_DEFECTO
+        self.brillo = dict(BRILLO_DEFECTO)
 
         self.objetivo = None        # numero de gaveta que hay que abrir
         self.terminal = ""          # terminal en curso, solo para el display
@@ -245,6 +257,45 @@ class Gavetas:
             self._parar_zumbido()
         return True
 
+    def configurar_brillo(self, cfg):
+        """Aplica el brillo por color que manda el servidor (Admin -> Pick-to-Light).
+
+        Cada clave que falte o venga invalida se deja como ya estuviera en
+        self.brillo, no al valor de BRILLO_DEFECTO: una placa que ya tenia
+        ajustado el rojo no lo pierde porque el servidor solo mande el verde.
+
+        Nunca lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba. Devuelve True si algo ha
+        cambiado; si cambia y hay tira fisica, repinta al instante para que el
+        objetivo o las gavetas equivocadas en curso se vean con el brillo
+        nuevo sin esperar al siguiente evento.
+        """
+        try:
+            nuevo = dict(self.brillo)
+            for clave in ("objetivo", "en_uso", "error"):
+                if clave not in cfg:
+                    continue
+                try:
+                    valor = int(cfg.get(clave))
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= valor <= BRILLO_MAX:
+                    nuevo[clave] = valor
+        except Exception as e:
+            print("Gavetas: configuracion de brillo no valida:", e)
+            return False
+
+        if nuevo == self.brillo:
+            return False
+
+        self.brillo = nuevo
+        print("Gavetas: brillo objetivo=%d en_uso=%d error=%d" % (
+            self.brillo["objetivo"], self.brillo["en_uso"], self.brillo["error"]))
+
+        if self.tira is not None:
+            self._repintar()
+        return True
+
     def _indices(self, gaveta):
         """Rango de indices de pixel de la tira que representan esa gaveta.
 
@@ -255,6 +306,15 @@ class Gavetas:
         """
         base = (gaveta - 1) * self.leds_por_gaveta
         return range(base, base + self.leds_por_gaveta)
+
+    def _color_objetivo(self):
+        return (0, self.brillo['objetivo'], 0)
+
+    def _color_en_uso(self):
+        return (0, 0, self.brillo['en_uso'])
+
+    def _color_error(self):
+        return (self.brillo['error'], 0, 0)
 
     def _pintar(self, gaveta, color):
         if self.tira is None or not 1 <= gaveta <= self.n_gavetas:
@@ -278,10 +338,10 @@ class Gavetas:
         """
         self._apagar_tira()
         if self.objetivo:
-            color = COLOR_EN_USO if self.objetivo in self.fuera else COLOR_OBJETIVO
+            color = self._color_en_uso() if self.objetivo in self.fuera else self._color_objetivo()
             self._pintar(self.objetivo, color)
         for gaveta in self.equivocadas:
-            self._pintar(gaveta, COLOR_ERROR)
+            self._pintar(gaveta, self._color_error())
 
     def configurar_leds(self, n):
         """Aplica los LEDs fisicos por gaveta que manda el servidor.
@@ -357,7 +417,7 @@ class Gavetas:
             if otra != gaveta and self._es_gaveta_real(otra):
                 self.equivocadas.add(otra)
                 self._avisar(otra, True, "equivocada")
-        self._pintar(gaveta, COLOR_EN_USO if gaveta in self.fuera else COLOR_OBJETIVO)
+        self._pintar(gaveta, self._color_en_uso() if gaveta in self.fuera else self._color_objetivo())
         if gaveta in self.fuera:
             self.recogida = True
         return True, ""
@@ -396,6 +456,7 @@ class Gavetas:
             "invertir": self.invertir,
             "ignorar": sorted(self.ignorar),
             "leds_por_gaveta": self.leds_por_gaveta,
+            "brillo": self.brillo,
             "http": self._servidor is not None,
         }
 
@@ -562,7 +623,7 @@ class Gavetas:
             return
         self._parpadeo_hasta_ms = time.ticks_add(ahora, PARPADEO_MS)
         self._parpadeo_encendido = not self._parpadeo_encendido
-        color = COLOR_ERROR if self._parpadeo_encendido else COLOR_APAGADO
+        color = self._color_error() if self._parpadeo_encendido else COLOR_APAGADO
         for gaveta in self.equivocadas:
             if 1 <= gaveta <= self.n_gavetas:
                 for i in self._indices(gaveta):
@@ -602,7 +663,7 @@ class Gavetas:
         if gaveta == self.objetivo:
             if ahora_fuera:
                 self.recogida = True
-                self._pintar(gaveta, COLOR_EN_USO)
+                self._pintar(gaveta, self._color_en_uso())
                 self._lanzar(PATRON_COGIDA)
                 self._avisar(gaveta, True, "ok")
             else:
@@ -626,7 +687,7 @@ class Gavetas:
 
         if ahora_fuera:
             self.equivocadas.add(gaveta)
-            self._pintar(gaveta, COLOR_ERROR)
+            self._pintar(gaveta, self._color_error())
             self._avisar(gaveta, True, "equivocada")
         else:
             self.equivocadas.discard(gaveta)
@@ -754,10 +815,10 @@ class Gavetas:
     def _responder(self, cuerpo):
         datos = _json_carga(cuerpo)
 
-        # La configuracion de micros y de leds_por_gaveta puede venir sola
-        # (Admin acaba de guardarla y el servidor la empuja al puerto 80) o
-        # acompañando a cualquier otra orden: se aplica antes que nada y se
-        # sigue.
+        # La configuracion de micros, de leds_por_gaveta y de brillo puede
+        # venir sola (Admin acaba de guardarla y el servidor la empuja al
+        # puerto 80) o acompañando a cualquier otra orden: se aplica antes que
+        # nada y se sigue.
         micros_cfg = datos.get("micros_config")
         if isinstance(micros_cfg, dict):
             self.configurar_micros(micros_cfg)
@@ -766,7 +827,12 @@ class Gavetas:
         if leds_cfg is not None:
             self.configurar_leds(leds_cfg)
 
-        if (isinstance(micros_cfg, dict) or leds_cfg is not None) and not _trae_orden(datos):
+        brillo_cfg = datos.get("brillo_config")
+        if isinstance(brillo_cfg, dict):
+            self.configurar_brillo(brillo_cfg)
+
+        if ((isinstance(micros_cfg, dict) or leds_cfg is not None
+                or isinstance(brillo_cfg, dict)) and not _trae_orden(datos)):
             return {"ok": True, "estado": self.estado()}
 
         if datos.get("apagar"):

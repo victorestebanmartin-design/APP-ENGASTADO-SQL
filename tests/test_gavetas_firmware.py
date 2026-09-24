@@ -268,6 +268,7 @@ class PlacaConTira:
         obj._servidor = None
         obj.leds_por_gaveta = 1
         obj._led_pin = None
+        obj.brillo = dict(gmod.BRILLO_DEFECTO)
         self.obj = obj
         self.tira = tira
         self.expansores = expansores
@@ -331,6 +332,7 @@ def placa_con_tira(gavetas):
     obj._servidor = None
     obj.leds_por_gaveta = 1
     obj._led_pin = None
+    obj.brillo = dict(gavetas.BRILLO_DEFECTO)
 
     return obj, tira, expansores
 
@@ -566,6 +568,46 @@ def test_en_modo_prueba_cambio_micro_no_toca_los_leds(gavetas, placa_con_tira):
     assert tira[4] == (0, 0, 100)
     # Y el buzzer tampoco debe haber sonado (obj.equivocadas vacio porque _iniciar_prueba lo limpia)
     assert not obj.equivocadas
+
+
+# ── Brillo por color ─────────────────────────────────────────────────────
+
+def test_brillo_por_defecto_coincide_con_los_colores_de_siempre(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert obj.brillo == {'objetivo': 70, 'en_uso': 90, 'error': 110}
+    assert obj.brillo == gavetas.BRILLO_DEFECTO
+
+
+def test_configurar_brillo_cambia_solo_lo_que_llega(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    cambio = gavetas.Gavetas.configurar_brillo(obj, {'objetivo': 20})
+    assert cambio is True
+    assert obj.brillo == {'objetivo': 20, 'en_uso': 90, 'error': 110}
+
+
+def test_configurar_brillo_fuera_de_rango_se_ignora(gavetas, placa_con_tira):
+    """No hay forma de subir a 255: BRILLO_MAX es el tope de seguridad."""
+    obj, _, _ = placa_con_tira
+    cambio = gavetas.Gavetas.configurar_brillo(
+        obj, {'objetivo': 255, 'en_uso': -1, 'error': 'no numero'})
+    assert cambio is False
+    assert obj.brillo == gavetas.BRILLO_DEFECTO
+
+
+def test_configurar_brillo_sin_cambios_devuelve_false(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert gavetas.Gavetas.configurar_brillo(obj, dict(gavetas.BRILLO_DEFECTO)) is False
+
+
+def test_configurar_brillo_repinta_el_objetivo_en_curso(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = set()
+    tira[2] = (0, 70, 0)   # como lo dejaria encender() con el brillo por defecto
+
+    gavetas.Gavetas.configurar_brillo(obj, {'objetivo': 25})
+
+    assert tira[2] == (0, 25, 0)
 
 
 # ── Apertura del puerto 80 ────────────────────────────────────────────────

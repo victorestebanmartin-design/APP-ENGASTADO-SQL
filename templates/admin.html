@@ -599,6 +599,43 @@
                         <div id="ptl-leds-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
                     </div>
 
+                    <!-- Brillo de los LEDs -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔆 Brillo de los LEDs</h2>
+                        <p class="instruccion">
+                            El brillo de cada color viene atenuado de fábrica para no deslumbrar de cerca:
+                            <strong>verde</strong> = gaveta objetivo, <strong>azul</strong> = gaveta en uso,
+                            <strong>rojo</strong> = error. Se puede subir o bajar por placa, con un tope de
+                            seguridad para no volver la tira a plena potencia.<br>
+                            <strong>Probar</strong> enciende toda la tira con ese valor, para juzgar el
+                            deslumbramiento desde lejos antes de guardar. <strong>Guardar y aplicar</strong>
+                            lo deja fijo para esta placa.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🟢 Objetivo:</label>
+                            <input type="range" id="ptl-brillo-objetivo" min="0" max="200" value="70"
+                                style="width:220px;">
+                            <span id="ptl-brillo-objetivo-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">70</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('objetivo')">🧪 Probar</button>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🔵 En uso:</label>
+                            <input type="range" id="ptl-brillo-en-uso" min="0" max="200" value="90"
+                                style="width:220px;">
+                            <span id="ptl-brillo-en-uso-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">90</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('en_uso')">🧪 Probar</button>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🔴 Error:</label>
+                            <input type="range" id="ptl-brillo-error" min="0" max="200" value="110"
+                                style="width:220px;">
+                            <span id="ptl-brillo-error-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">110</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('error')">🧪 Probar</button>
+                        </div>
+                        <button class="btn-primary" onclick="ptlGuardarBrilloConfig()">💾 Guardar y aplicar</button>
+                        <div id="ptl-brillo-cfg-msg" style="font-size:0.88em;color:#94a3b8;margin-top:8px;"></div>
+                    </div>
+
                     <!-- Registro de acciones -->
                     <div class="card" style="margin-top:16px;">
                         <h2>📋 Registro de prueba</h2>
@@ -1928,6 +1965,8 @@
                 ptlCargarMicrosConfig();
                 _ptlMensaje('ptl-leds-cfg-msg', '', null);
                 ptlCargarLedsConfig();
+                _ptlMensaje('ptl-brillo-cfg-msg', '', null);
+                ptlCargarBrilloConfig();
                 if (_ptlLectorId) ptlCargarMapa();
             }
         });
@@ -2164,6 +2203,105 @@
                 _ptlLog('LEDs por gaveta: ' + leds + (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
             } catch (e) {
                 _ptlMensaje('ptl-leds-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        // ── Brillo de los LEDs ─────────────────────────────────────────────
+
+        var PTL_BRILLO_FABRICA = { objetivo: 70, en_uso: 90, error: 110 };
+
+        ['objetivo', 'en_uso', 'error'].forEach(function (color) {
+            var input = document.getElementById('ptl-brillo-' + color.replace('_', '-'));
+            var val = document.getElementById('ptl-brillo-' + color.replace('_', '-') + '-val');
+            if (input && val) {
+                input.addEventListener('input', function () { val.textContent = input.value; });
+            }
+        });
+
+        function _ptlBrilloInput(color) {
+            return document.getElementById('ptl-brillo-' + color.replace('_', '-'));
+        }
+
+        function _ptlBrilloVal(color) {
+            return document.getElementById('ptl-brillo-' + color.replace('_', '-') + '-val');
+        }
+
+        window.ptlCargarBrilloConfig = async function () {
+            var colores = ['objetivo', 'en_uso', 'error'];
+            if (!_ptlLectorId) {
+                colores.forEach(function (color) {
+                    var input = _ptlBrilloInput(color), val = _ptlBrilloVal(color);
+                    if (input) input.value = PTL_BRILLO_FABRICA[color];
+                    if (val) val.textContent = PTL_BRILLO_FABRICA[color];
+                });
+                return;
+            }
+            try {
+                var resp = await fetch('/api/pick-to-light/brillo/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-brillo-cfg-msg', d.message || d.error || 'Error', false); return; }
+                var esFabrica = true;
+                colores.forEach(function (color) {
+                    var v = d[color];
+                    if (typeof v !== 'number') v = PTL_BRILLO_FABRICA[color];
+                    if (v !== PTL_BRILLO_FABRICA[color]) esFabrica = false;
+                    var input = _ptlBrilloInput(color), val = _ptlBrilloVal(color);
+                    if (input) input.value = v;
+                    if (val) val.textContent = v;
+                });
+                _ptlMensaje('ptl-brillo-cfg-msg', esFabrica
+                    ? 'Esta placa usa el brillo de fábrica.'
+                    : 'Esta placa usa un brillo personalizado.', null);
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlProbarBrillo = async function (color) {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var input = _ptlBrilloInput(color);
+            if (!input) return;
+            var v = parseInt(input.value, 10) || 0;
+            var rgb = color === 'objetivo' ? [0, v, 0] : (color === 'en_uso' ? [0, 0, v] : [v, 0, 0]);
+            _ptlMensaje('ptl-brillo-cfg-msg', 'Probando...', null);
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/todos', _ptlPayload({ color: rgb }));
+                if (d.success) {
+                    var total = d.gavetas || (d.estado && d.estado.gavetas) || _ptlTotalGavetas || 16;
+                    _ptlMensaje('ptl-brillo-cfg-msg', 'Probando ' + color + ' a ' + v + ' en los ' + total + ' LEDs.', true);
+                    _ptlLog('Prueba de brillo (' + color + '): ' + v + ' (' + rgb.join(',') + ')');
+                } else {
+                    _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Error', false);
+                    _ptlLog('Error al probar brillo (' + color + '): ' + (d.message || '?'));
+                }
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlGuardarBrilloConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var objetivo = parseInt(_ptlBrilloInput('objetivo').value, 10) || 0;
+            var enUso = parseInt(_ptlBrilloInput('en_uso').value, 10) || 0;
+            var error = parseInt(_ptlBrilloInput('error').value, 10) || 0;
+            _ptlMensaje('ptl-brillo-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/brillo/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, objetivo: objetivo, en_uso: enUso, error: error })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('Brillo: objetivo=' + objetivo + ', en_uso=' + enUso + ', error=' + error +
+                        (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
             }
         };
 

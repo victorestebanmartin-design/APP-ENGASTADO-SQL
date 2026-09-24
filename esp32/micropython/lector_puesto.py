@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-23b"
+FW_VERSION = "2026-09-24a"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -987,6 +987,13 @@ while True:
                 leds_cfg = orden.get("leds_por_gaveta")
                 if leds_cfg is not None:
                     gav.configurar_leds(leds_cfg)
+
+                # Brillo por color (objetivo/en_uso/error). Mismo sitio y mismo
+                # motivo que micros_cfg y leds_cfg: va en cada sondeo para que
+                # una placa recien reiniciada lo recupere sola.
+                brillo_cfg = orden.get("brillo")
+                if isinstance(brillo_cfg, dict):
+                    gav.configurar_brillo(brillo_cfg)
 
                 # 'prisa': hay un operario delante de ese puesto a punto de
                 # elegir terminal, asi que no bajamos al sondeo de reposo (ver

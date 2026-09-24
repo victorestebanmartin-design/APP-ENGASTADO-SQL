@@ -250,6 +250,46 @@ def _leds_por_gaveta_device(device_id):
     return _leds_por_gaveta_normalizar(dev.get('ptl_leds_por_gaveta'))
 
 
+# ==================== BRILLO DE LOS LEDs (por color) ====================
+#
+# Los tres colores de la tira (objetivo, en_uso, error) van atenuados a
+# proposito: un WS2813 a tope deslumbra a medio metro. El brillo de cada uno
+# es ajustable por placa, igual que los micros y los LEDs por gaveta: se
+# guarda en el MISMO registro de Admin -> Lectores RFID (ptl_brillo) y viaja
+# en CADA sondeo (/api/esp32/rfid/gaveta/orden). BRILLO_MAX es un tope de
+# seguridad bien por debajo de 255 para que nadie pueda subir el brillo hasta
+# deslumbrar, y los valores por defecto coinciden EXACTAMENTE con los que ya
+# llevaba el firmware: una placa o un servidor sin esta configuracion se
+# comporta igual que siempre.
+
+BRILLO_MAX = 200   # mismo tope que esp32/lib/gavetas.py:BRILLO_MAX
+BRILLO_DEFECTO = {'objetivo': 70, 'en_uso': 90, 'error': 110}
+
+
+def _brillo_cfg_normalizar(crudo):
+    """Configuracion de brillo saneada a partir de lo que venga (JSON o disco)."""
+    crudo = crudo if isinstance(crudo, dict) else {}
+    cfg = {}
+    for clave, defecto in BRILLO_DEFECTO.items():
+        try:
+            valor = int(crudo.get(clave))
+        except (TypeError, ValueError):
+            valor = defecto
+        if not 0 <= valor <= BRILLO_MAX:
+            valor = defecto
+        cfg[clave] = valor
+    return cfg
+
+
+def _brillo_cfg_device(device_id):
+    """Configuracion de brillo guardada para esa placa (la de siempre si no hay)."""
+    if not device_id:
+        return dict(BRILLO_DEFECTO)
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _brillo_cfg_normalizar(dev.get('ptl_brillo'))
+
+
 def _enviar_a_placa_con_datos(ip, payload, timeout=TIMEOUT_PLACA_PROBAR):
     """Como _enviar_a_placa pero devuelve también el JSON de la respuesta.
 
@@ -1115,6 +1155,7 @@ def api_pick_to_light_orden():
         # micros con el criterio equivocado justo durante la prueba.
         micros = _micros_cfg_device(device_id)
         leds_por_gaveta = _leds_por_gaveta_device(device_id)
+        brillo = _brillo_cfg_device(device_id)
 
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
@@ -1122,6 +1163,7 @@ def api_pick_to_light_orden():
                             'test': pendiente['cmd'],
                             'micros': micros,
                             'leds_por_gaveta': leds_por_gaveta,
+                            'brillo': brillo,
                             'test_seq': pendiente.get('seq')})
 
         puesto_id = _puesto_de_la_placa(device_id)
@@ -1185,6 +1227,7 @@ def api_pick_to_light_orden():
                         'validas': (estado or {}).get('validas') or [],
                         'micros': micros,
                         'leds_por_gaveta': leds_por_gaveta,
+                        'brillo': brillo,
                         # Con un operario delante la placa sondea rapido; sin
                         # nadie, vuelve sola a su ritmo lento en cuanto caduca
                         # la marca (ver ATENCION_S y _atencion_marcar).
@@ -1485,6 +1528,55 @@ def api_ptl_leds_config_guardar():
                                     'sondeo (%s).' % motivo)})
     except Exception as e:
         return error_interno(e, 'Error al guardar los LEDs por gaveta')
+
+
+@bp.route('/api/pick-to-light/brillo/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_brillo_config_leer():
+    """Brillo por color guardado para una placa (los valores de siempre si no hay nada)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        cfg = _brillo_cfg_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'objetivo': cfg['objetivo'], 'en_uso': cfg['en_uso'],
+                        'error': cfg['error'], 'max': BRILLO_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer el brillo de los LEDs')
+
+
+@bp.route('/api/pick-to-light/brillo/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_brillo_config_guardar():
+    """Guarda el brillo por color de una placa y se lo empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se lo lleva igual en
+    unos segundos, como con la configuracion de micros y de LEDs por gaveta.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        cfg = _brillo_cfg_normalizar(datos)
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_brillo'] = cfg
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'brillo_config': cfg})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'objetivo': cfg['objetivo'], 'en_uso': cfg['en_uso'],
+                        'error': cfg['error'], 'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar el brillo de los LEDs')
 
 
 @bp.route('/api/pick-to-light/test/fin', methods=['POST'])
