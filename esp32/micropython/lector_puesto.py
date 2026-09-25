@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-25a"
+FW_VERSION = "2026-09-25b"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a

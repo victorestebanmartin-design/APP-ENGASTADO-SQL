@@ -712,24 +712,33 @@ class Gavetas:
         if gaveta == self.objetivo:
             if ahora_fuera:
                 self.recogida = True
+                # Si se habia marcado como "devuelta antes de tiempo" (rojo +
+                # zumbador), sacarla de nuevo es corregir el error: se quita
+                # de las equivocadas y, si no queda ninguna otra, se calla.
+                self.equivocadas.discard(gaveta)
+                if not self.equivocadas:
+                    self._parar_zumbido()
                 self._pintar(gaveta, self._color_en_uso())
                 self._lanzar(PATRON_COGIDA)
                 self._avisar(gaveta, True, "ok")
-            else:
-                # La han devuelto. Si la pantalla ya estaba pidiendo la
-                # devolucion (parpadeo azul en curso), el verde fijo es la
-                # confirmacion. Si la han devuelto ANTES de que nadie lo
-                # pidiera (a media faena), tambien se pinta en verde: dejar el
-                # azul de "en uso" mentiria sobre que sigue fuera. En ese
-                # segundo caso 'recogida' vuelve a False para que si la sacan
-                # otra vez cuente como una recogida de verdad, con su sonido
-                # y su aviso.
-                if not self.esperando_devolucion:
-                    self.recogida = False
+            elif self.esperando_devolucion:
+                # La pantalla ya estaba pidiendo la devolucion (parpadeo azul
+                # en curso): el verde fijo es la confirmacion.
                 self.esperando_devolucion = False
                 self._pintar(gaveta, self._color_objetivo())
                 self._lanzar(PATRON_DEVUELTA)
                 self._avisar(gaveta, False, "devuelta")
+            else:
+                # La han devuelto ANTES de que nadie lo pidiera, a media
+                # faena: eso no es una devolucion valida, es un error como
+                # cualquier otra gaveta equivocada -- rojo parpadeando y
+                # zumbador (hay engaste en curso: self.objetivo es esta misma
+                # gaveta). 'recogida' vuelve a False para que, si la sacan de
+                # nuevo, cuente como una recogida de verdad con su sonido.
+                self.recogida = False
+                self.equivocadas.add(gaveta)
+                self._pintar(gaveta, self._color_error())
+                self._avisar(gaveta, False, "devuelta_temprana")
             return
 
         if not self._es_gaveta_real(gaveta):

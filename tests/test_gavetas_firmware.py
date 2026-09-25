@@ -795,9 +795,10 @@ def test_devolver_la_gaveta_esperada_confirma_en_verde(gavetas, placa_con_tira):
     assert obj.recogida is True   # no se toca: la pantalla ya sabe que se recogio
 
 
-def test_devolver_antes_de_que_lo_pidan_tambien_confirma_en_verde(gavetas, placa_con_tira):
-    """Devolverla a media faena, sin que nadie lo haya pedido, no puede dejar
-    el LED en azul mintiendo sobre que sigue fuera."""
+def test_devolver_antes_de_que_lo_pidan_es_error_rojo_y_zumbido(gavetas, placa_con_tira):
+    """Devolverla a media faena, sin que nadie lo haya pedido, es un error
+    como cualquier gaveta equivocada: rojo parpadeando y zumbador, no una
+    vuelta silenciosa a verde."""
     obj, tira, _ = placa_con_tira
     obj._avisar = lambda *a: None
     obj.objetivo = 3
@@ -807,9 +808,28 @@ def test_devolver_antes_de_que_lo_pidan_tambien_confirma_en_verde(gavetas, placa
 
     gavetas.Gavetas._aplicar_cambio(obj, 3, False)
 
-    assert tira[2] == gavetas.COLOR_OBJETIVO
+    assert tira[2] == gavetas.COLOR_ERROR
+    assert obj.equivocadas == {3}
     # Se resetea para que si la vuelven a sacar cuente como una recogida real.
     assert obj.recogida is False
+
+
+def test_sacarla_de_nuevo_corrige_el_error_de_devolucion_temprana(gavetas, placa_con_tira):
+    """Si la habian devuelto antes de tiempo (rojo + zumbador) y el operario
+    la saca de nuevo, el error se corrige: deja de estar en equivocadas y,
+    si no queda ninguna otra, el zumbador se calla."""
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.equivocadas = {3}
+    obj.recogida = False
+
+    gavetas.Gavetas._aplicar_cambio(obj, 3, True)
+
+    assert obj.recogida is True
+    assert obj.equivocadas == set()
+    assert tira[2] == gavetas.COLOR_EN_USO
 
 
 def test_estado_incluye_esperando_devolucion(gavetas, placa_con_tira):
