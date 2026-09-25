@@ -218,6 +218,17 @@ def api_comprobar_actualizaciones():
         r_remoto = git(['rev-parse', '--short', 'origin/main'])
         commit_remoto = r_remoto.stdout.strip() if r_remoto.returncode == 0 else None
 
+        # Version semantica (X.Y.Z): local desde disco, remota leyendo el
+        # fichero VERSION del commit de origin/main sin tocar el working
+        # tree. Es informativa (a quien la sube se le olvida a veces): la
+        # deteccion de "hay actualizaciones" de mas abajo se basa en commits,
+        # no en este numero.
+        from app.version import actual as _version_actual
+        version_local = _version_actual()
+        r_version_remota = git(['show', 'origin/main:VERSION'])
+        version_remota = (r_version_remota.stdout.strip()
+                           if r_version_remota.returncode == 0 else version_local)
+
         # Mensaje del último commit remoto
         r_msg = git(['log', 'origin/main', '-1', '--format=%s (%cr)'])
         mensaje_ultimo = r_msg.stdout.strip() if r_msg.returncode == 0 else ''
@@ -232,6 +243,8 @@ def api_comprobar_actualizaciones():
             'hay_actualizaciones': hay_actualizaciones,
             'commit_local': commit_local,
             'commit_remoto': commit_remoto or commit_local,
+            'version_local': version_local,
+            'version_remota': version_remota,
             'mensaje_ultimo_commit': mensaje_ultimo,
             'commits_pendientes': commits_pendientes,
             'num_commits_pendientes': len(commits_pendientes)
@@ -305,9 +318,12 @@ def api_actualizar_sistema():
             except Exception:
                 pip_output = ' | ⚠️ Dependencias NO actualizadas (ejecuta a mano: pip install -r requirements.txt).'
 
-        # Commit nuevo tras el pull
+        # Commit y version nuevos tras el pull (VERSION ya esta actualizado
+        # en el working tree, asi que basta con releer el fichero).
         r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
         commit_nuevo = r_new.stdout.strip()
+        from app.version import actual as _version_actual
+        version_nueva = _version_actual()
 
         # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero.
         # En PythonAnywhere el reinicio se hace tocando el fichero WSGI de
@@ -333,7 +349,8 @@ def api_actualizar_sistema():
         return jsonify({
             'success': True,
             'actualizado': True,
-            'message': f'Sistema actualizado.{pip_output} Versión: {commit_nuevo} — Reiniciando servidor...',
+            'message': f'Sistema actualizado a v{version_nueva}.{pip_output} {commit_nuevo} — Reiniciando servidor...',
+            'version_nueva': version_nueva,
             'ficheros_actualizados': ficheros_cambian,
             'reiniciando': True
         })

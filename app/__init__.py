@@ -535,6 +535,14 @@ def create_app(config_class=Config):
     _versionar_estaticos(app)
     _instalar_cabeceras_seguridad(app)
 
+    # Version semantica (X.Y.Z) disponible en toda plantilla como
+    # {{ version_app }}, para la insignia de _version_badge.html.
+    from app.version import actual as _version_actual
+
+    @app.context_processor
+    def _inyectar_version():
+        return {'version_app': _version_actual()}
+
     # Handler global para excepciones no controladas
     @app.errorhandler(Exception)
     def _manejar_excepcion_no_controlada(e):

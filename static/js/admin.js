@@ -981,16 +981,16 @@ async function comprobarActualizaciones() {
                     ? `<ul style="margin:6px 0 0 18px;font-size:0.88em;">${data.commits_pendientes.map(c => `<li>${c}</li>`).join('')}</ul>`
                     : '';
                 statusDiv.innerHTML = `
-                    <strong>✨ ¡Actualización disponible! (${data.num_commits_pendientes} cambio${data.num_commits_pendientes>1?'s':''})</strong><br>
-                    Versión actual: <code>${data.commit_local}</code> → Nueva: <code>${data.commit_remoto}</code><br>
+                    <strong>✨ ¡Actualización disponible! v${data.version_local} → v${data.version_remota} (${data.num_commits_pendientes} cambio${data.num_commits_pendientes>1?'s':''})</strong><br>
+                    <span style="font-size:0.85em;color:#666;">${data.commit_local} → ${data.commit_remoto}</span><br>
                     ${listaCommits}
                     <br><button onclick="actualizarSistema()" style="margin-top:8px;padding:8px 20px;background:#0d6efd;color:white;border:none;border-radius:6px;cursor:pointer;font-size:1em;">⬇️ Actualizar ahora</button>
                 `;
             } else {
                 statusDiv.className = 'mensaje success';
                 statusDiv.innerHTML = `
-                    <strong>✓ Sistema actualizado</strong><br>
-                    Estás usando la última versión (<code>${data.commit_local}</code>)
+                    <strong>✓ Sistema actualizado — v${data.version_local}</strong><br>
+                    <span style="font-size:0.85em;color:#666;">Estás en la última versión (${data.commit_local})</span>
                 `;
             }
         } else {

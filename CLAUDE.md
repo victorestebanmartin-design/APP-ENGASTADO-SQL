@@ -78,6 +78,31 @@ Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en
 esa carpeta entra entera en el manifiesto OTA, pero la placa solo se actualiza
 si la versión cambia.
 
+## Version de la app: `VERSION`, semver, la sube el asistente
+
+El fichero `VERSION` en la raíz (`X.Y.Z`) es la versión que se ve en la
+insignia discreta de cada pantalla (`templates/_version_badge.html`, via
+`{{ version_app }}` — `app/version.py` lo lee y lo inyecta en toda plantilla
+por `app/__init__.py`) y en Admin → Sistema al comprobar actualizaciones
+(`app/routes/sistema.py:api_comprobar_actualizaciones`).
+
+El usuario no la toca a mano: **si eres el asistente (Claude Code, GitHub
+Copilot, o cualquier otro) y vas a hacer commit de un cambio que se suba a
+`main`, sube tú `VERSION` como parte de ese commit**, sin preguntar. El
+tamaño del salto es criterio tuyo, según lo que pese el cambio:
+
+- Patch (`1.5.3` → `1.5.4`): un cambio normal, un fix.
+- Minor (`1.5.4` → `1.6.0`): algo gordo — una función nueva, un flujo que
+  cambia.
+- Major (`1.6.0` → `2.0.0`): algo gordísimo — cambia cómo se usa la app o
+  rompe compatibilidad con lo anterior.
+
+No la bajes ni la dejes igual "por si acaso": cada commit a `main` que
+cambie código de la app sube el número, aunque sea un patch. La insignia de
+las pantallas solo sirve si sube: es lo que le permite a cualquiera, con un
+vistazo, confirmar que ese puesto está en lo último (y notar si no lo está).
+No apliques esto a cambios que no vayan a `main` (ramas de prueba, WIP local).
+
 ## Rechazos de tarjeta: el mensaje es parte del arreglo
 
 El operario que pasa la tarjeta no puede hacer nada con un "error interno". Cada

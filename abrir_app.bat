@@ -7,6 +7,15 @@ REM igual se haya arrancado el servidor como se haya arrancado.
 
 if "%~1"=="" (set URL=http://localhost:5001) else (set URL=%~1)
 
+REM ── 0) Si ya hay una ventana de COJOsw abierta, enfocarla ──────────────
+REM Este script se llama cada vez que el servidor arranca (icono, y tambien
+REM cada reinicio OTA tras pulsar "Actualizar" en Admin), y hasta ahora
+REM siempre abria una ventana nueva sin cerrar la anterior: cada actualizacion
+REM dejaba una ventana COJOsw mas por medio. Se busca primero una ya abierta
+REM por su titulo y se enfoca esa en vez de abrir otra.
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0enfocar_app.ps1" >nul 2>&1
+if !errorlevel! == 0 exit /b 0
+
 REM ── 1) App instalada (PWA), si la hay ──────────────────────────────────
 REM Si la app se instalo desde el navegador ("Instalar este sitio como una
 REM aplicacion"), Windows creo un acceso directo propio. Lanzarlo es lo unico

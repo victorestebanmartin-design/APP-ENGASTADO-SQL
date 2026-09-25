@@ -1,0 +1,7 @@
+{# Insignia discreta con la version de la app (X.Y.Z, ver VERSION en la raiz
+   y app/version.py). Se incluye justo tras <body> en cada plantilla para que
+   de un vistazo a cualquier pantalla se pueda confirmar que esta en la
+   ultima version, sin tener que entrar en Admin. #}
+<div style="position:fixed;right:6px;bottom:4px;font-size:11px;line-height:1;
+            color:#9ca3af;opacity:.55;pointer-events:none;z-index:9999;
+            font-family:monospace;user-select:none;">v{{ version_app }}</div>
