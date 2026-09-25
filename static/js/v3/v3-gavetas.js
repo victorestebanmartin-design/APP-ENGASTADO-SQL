@@ -23,6 +23,7 @@ const GAVETA_ESPERA_LUZ_MS = 12000;
 
 let _gavetaVigilanciaTimer = null;
 let _gavetaUltimoErrorAvisado = null;
+let _gavetaUltimoRecogidaAvisada = null;
 
 
 /** Enciende en verde la gaveta del terminal (no hace nada si no hay luz). */
@@ -212,6 +213,14 @@ async function esperarDevolucionGaveta() {
     detenerVigilanciaGaveta();
     if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
 
+    try {
+        await fetch('/api/pick-to-light/devolucion/iniciar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+        });
+    } catch (e) { /* sin esto la gaveta se queda en azul fijo, pero el flujo sigue igual */ }
+
     const overlay = _crearPanelDevolucion(gavetaLuzActual);
     document.body.appendChild(overlay);
 
@@ -276,6 +285,7 @@ function iniciarVigilanciaGaveta() {
     detenerVigilanciaGaveta();
     if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
     _gavetaUltimoErrorAvisado = null;
+    _gavetaUltimoRecogidaAvisada = null;
     _gavetaVigilanciaTimer = setInterval(async () => {
         if (!puestoSeleccionado || !puestoSeleccionado.id) return;
         try {
@@ -295,6 +305,20 @@ function iniciarVigilanciaGaveta() {
             } else {
                 _gavetaUltimoErrorAvisado = null;
             }
+
+            // La propia gaveta del terminal tiene que seguir fuera todo el
+            // engaste: si vuelve a estar puesta sin que nadie haya pedido
+            // devolverla, no esta sobre la mesa y hay que avisar.
+            if (d.recogida === false) {
+                if (!_gavetaUltimoRecogidaAvisada) {
+                    _gavetaUltimoRecogidaAvisada = gavetaLuzActual.led;
+                    mostrarMensaje('⚠️ La gaveta ' + gavetaLuzActual.led
+                                 + ' ha vuelto a estar dentro: sácala para seguir '
+                                 + 'con este terminal.', 'error');
+                }
+            } else {
+                _gavetaUltimoRecogidaAvisada = null;
+            }
         } catch (e) { /* un sondeo perdido no rompe nada */ }
     }, GAVETA_VIGILANCIA_MS);
 }
@@ -306,6 +330,7 @@ function detenerVigilanciaGaveta() {
         _gavetaVigilanciaTimer = null;
     }
     _gavetaUltimoErrorAvisado = null;
+    _gavetaUltimoRecogidaAvisada = null;
 }
 
 
@@ -379,7 +404,8 @@ function _crearPanelDevolucion(luz) {
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
             <div style="color:#6c757d; margin-bottom:18px;">
-                Terminal terminado. Mete el cajón y ciérralo antes de seguir.
+                Terminal terminado. La luz de la gaveta parpadeará en azul hasta que la
+                metas, y se pondrá en verde al confirmarlo. Ciérrala antes de seguir.
             </div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;
                  border:1px solid #f5c2c7; border-radius:8px; padding:10px; margin-bottom:16px;

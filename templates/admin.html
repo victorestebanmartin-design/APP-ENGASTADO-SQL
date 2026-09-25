@@ -2502,6 +2502,25 @@
             _ptlCanalPanel.rfidPoll = null;
         }
 
+        // Kanban de doble caja: el mapa solo dice si el canal tiene AL MENOS una
+        // etiqueta (booleano combinado), no cual de las dos. Para saber que boton
+        // pintar en cada caja (Asignar / Sustituir + Desvincular) nos apoyamos en
+        // lo que se ha confirmado o desvinculado en esta misma sesion de Admin,
+        // igual que ya hacia el panel de una sola etiqueta con el mapa completo.
+        var _ptlCanalRfidCajas = {};  // clave puesto|canal|caja -> true/false
+
+        function _ptlCanalRfidClave(canal, caja) {
+            return _ptlPuestoId + '|' + canal + '|' + caja;
+        }
+
+        function _ptlCanalRfidTiene(canal, caja) {
+            return !!_ptlCanalRfidCajas[_ptlCanalRfidClave(canal, caja)];
+        }
+
+        function _ptlCanalRfidMarcar(canal, caja, tiene) {
+            _ptlCanalRfidCajas[_ptlCanalRfidClave(canal, caja)] = tiene;
+        }
+
         window.ptlAbrirCanal = function (canal) {
             if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             if (_ptlCanalPanel) _ptlCanalDetener();
@@ -2572,14 +2591,30 @@
                             '<button class="btn-secondary" onclick="ptlCanalIrEtiqueta()">✏️ Editar etiqueta</button>' +
                             '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
                             'onclick="ptlCanalDesasignar()">🗑️ Desasignar</button>' +
-                            '<button class="btn-secondary" onclick="ptlCanalEncenderLed()">💡 Encender LED</button>' +
-                            (info.rfid
-                                ? '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🔁 Sustituir RFID</button>' +
-                                  '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
-                                  'onclick="ptlCanalRfidDesvincular()">🔓 Desvincular RFID</button>'
-                                : '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🏷️ Asignar RFID</button>');
+                            '<button class="btn-secondary" onclick="ptlCanalEncenderLed()">💡 Encender LED</button>';
                 }
                 html += '</div>';
+                if (info.terminal) {
+                    // Kanban de doble caja: dos etiquetas RFID independientes por
+                    // canal, cualquiera de las dos vale para dar el terminal por
+                    // valido. Cada caja lleva su propio ciclo armar/sondear/confirmar.
+                    [1, 2].forEach(function (nCaja) {
+                        var tiene = _ptlCanalRfidTiene(_ptlCanalPanel.canal, nCaja);
+                        html += '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #334155;">' +
+                                '<div style="font-weight:600;margin-bottom:6px;">🏷️ Caja ' + nCaja + '</div>' +
+                                '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:6px;">' +
+                                (tiene ? '🏷️ con etiqueta' : '⭘ sin etiqueta') + '</div>' +
+                                '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                                (tiene
+                                    ? '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + nCaja + ')">' +
+                                      '🔁 Sustituir RFID</button>' +
+                                      '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                                      'onclick="ptlCanalRfidDesvincular(' + nCaja + ')">🔓 Desvincular RFID</button>'
+                                    : '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + nCaja +
+                                      ')">🏷️ Asignar RFID</button>') +
+                                '</div></div>';
+                    });
+                }
             } else if (_ptlCanalPanel.fase === 'asignar') {
                 var q = (_ptlCanalPanel.busqueda || '').toLowerCase();
                 var candidatos = _ptlMapaTerminalesDisponibles.filter(function (t) {
@@ -2612,14 +2647,16 @@
                         '<button class="btn-primary" onclick="ptlCanalGuardarEtiqueta()">Guardar</button> ' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             } else if (_ptlCanalPanel.fase === 'rfid_armando') {
-                html += '<p style="margin:0 0 10px;">📡 Acerca la etiqueta RFID de la gaveta al lector de este ' +
-                        'puesto (quedan <span id="ptl-canal-rfid-cuenta">' + _ptlCanalPanel.segundos + '</span> s)...</p>' +
+                html += '<p style="margin:0 0 10px;">📡 Caja ' + _ptlCanalPanel.caja + ': acerca la etiqueta RFID ' +
+                        'de la gaveta al lector de este puesto (quedan ' +
+                        '<span id="ptl-canal-rfid-cuenta">' + _ptlCanalPanel.segundos + '</span> s)...</p>' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             } else if (_ptlCanalPanel.fase === 'rfid_confirmar') {
-                html += '<p style="margin:0 0 10px;">Etiqueta leída: <strong>' + _dispEsc(_ptlCanalPanel.uid) +
-                        '</strong></p>' +
+                html += '<p style="margin:0 0 10px;">Caja ' + _ptlCanalPanel.caja + ' — etiqueta leída: <strong>' +
+                        _dispEsc(_ptlCanalPanel.uid) + '</strong></p>' +
                         '<button class="btn-primary" onclick="ptlCanalRfidConfirmar()">Confirmar</button> ' +
-                        '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">↻ Volver a leer</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + _ptlCanalPanel.caja +
+                        ')">↻ Volver a leer</button> ' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             }
             html += '<div id="ptl-canal-msg" style="margin-top:10px;font-size:0.85em;"></div></div>';
@@ -2690,15 +2727,16 @@
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
         };
 
-        window.ptlCanalRfidArmar = async function () {
+        window.ptlCanalRfidArmar = async function (caja) {
             _ptlCanalDetener();
+            _ptlCanalPanel.caja = caja;
             _ptlCanalPanel.fase = 'rfid_armando';
             _ptlCanalPanel.segundos = 30;
             _ptlRenderCanalPanel();
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid/armar', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal })
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal, caja: caja })
                 });
                 var data = await resp.json();
                 if (!_ptlCanalPanel) return;   // se cerró el panel mientras se esperaba
@@ -2753,28 +2791,31 @@
         }
 
         window.ptlCanalRfidConfirmar = async function () {
+            var caja = _ptlCanalPanel.caja;
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
-                                          uid: _ptlCanalPanel.uid })
+                                          uid: _ptlCanalPanel.uid, caja: caja })
                 });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
-                _ptlLog('RFID asignado al canal ' + _ptlCanalPanel.canal + ': ' + data.uid);
+                _ptlLog('RFID asignado al canal ' + _ptlCanalPanel.canal + ' (caja ' + caja + '): ' + data.uid);
+                _ptlCanalRfidMarcar(_ptlCanalPanel.canal, caja, true);
                 await ptlCargarMapa();
                 _ptlCanalPanel.fase = 'ver';
                 _ptlRenderCanalPanel();
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
         };
 
-        window.ptlCanalRfidDesvincular = async function () {
-            if (!confirm('¿Quitar el RFID de este canal?')) return;
+        window.ptlCanalRfidDesvincular = async function (caja) {
+            if (!confirm('¿Quitar el RFID de la Caja ' + caja + ' de este canal?')) return;
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid?puesto_id=' + encodeURIComponent(_ptlPuestoId) +
-                                       '&canal=' + _ptlCanalPanel.canal, { method: 'DELETE' });
+                                       '&canal=' + _ptlCanalPanel.canal + '&caja=' + caja, { method: 'DELETE' });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                _ptlCanalRfidMarcar(_ptlCanalPanel.canal, caja, false);
                 await ptlCargarMapa();
                 _ptlRenderCanalPanel();
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }

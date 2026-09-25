@@ -132,6 +132,10 @@ class Gavetas:
         self.terminal = ""          # terminal en curso, solo para el display
         self.recogida = False       # ya se abrio la correcta
         self.equivocadas = set()    # gavetas mal abiertas y aun sin devolver
+        # Fase de "toca devolver la gaveta": la marca la pantalla del carro
+        # cuando el operario termina el terminal (ver marcar_espera_devolucion).
+        # Con esto activo el objetivo parpadea en azul hasta que lo devuelven.
+        self.esperando_devolucion = False
         # Numeros de LED con un terminal de verdad detras, segun el servidor.
         # None = sin lista todavia (firmware recien arrancado o servidor
         # viejo): no se restringe nada, que es como se comportaba siempre.
@@ -296,6 +300,27 @@ class Gavetas:
             self._repintar()
         return True
 
+    def marcar_espera_devolucion(self, activo):
+        """Aplica el aviso de "toca devolver la gaveta" que manda el servidor.
+
+        Lo pone la pantalla del carro cuando el operario termina el terminal
+        en curso (ver /api/pick-to-light/devolucion/iniciar en
+        pick_to_light.py); mientras este activo y el objetivo siga fuera,
+        _atender_parpadeo lo hace parpadear en azul en vez de dejarlo fijo.
+
+        Nunca lanza. Devuelve True si el valor ha cambiado respecto al que ya
+        habia; no repinta aqui -- _atender_parpadeo corre en cada vuelta del
+        bucle principal y ya se encarga de la luz.
+        """
+        try:
+            activo = bool(activo)
+        except Exception:
+            return False
+        if activo == self.esperando_devolucion:
+            return False
+        self.esperando_devolucion = activo
+        return True
+
     def _indices(self, gaveta):
         """Rango de indices de pixel de la tira que representan esa gaveta.
 
@@ -447,6 +472,7 @@ class Gavetas:
             "objetivo": self.objetivo,
             "terminal": self.terminal,
             "recogida": self.recogida,
+            "esperando_devolucion": self.esperando_devolucion,
             "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
             "validas": sorted(self.validas) if self.validas is not None else None,
@@ -597,7 +623,11 @@ class Gavetas:
         if self._atender_patron(ahora):
             return
 
-        if not self.equivocadas:
+        # En reposo (sin objetivo) las gavetas equivocadas siguen parpadeando
+        # en rojo (ver _atender_parpadeo), pero el zumbador se queda callado:
+        # alguien reponiendo el armario no tiene por que oir la alarma de
+        # gaveta robada, que es para cuando hay un engaste en curso de verdad.
+        if not self.equivocadas or self.objetivo is None:
             if self._zumbido_encendido:
                 self._zumbido_encendido = False
                 self._callar()
@@ -616,18 +646,37 @@ class Gavetas:
     # ── Micro-interruptores ─────────────────────────────────────────────────
 
     def _atender_parpadeo(self, ahora):
-        """El rojo de una gaveta robada parpadea: un fijo se deja de mirar."""
-        if not self.equivocadas or self.tira is None:
+        """Dos parpadeos independientes, sincronizados por el mismo reloj:
+
+        - El rojo de las gavetas robadas (self.equivocadas): un fijo se deja
+          de mirar.
+        - El azul del objetivo mientras se espera que lo devuelvan
+          (self.esperando_devolucion) y siga fuera: avisa de "toca devolver
+          esto ya" sin necesidad de que nadie mire la pantalla.
+
+        Los dos pueden coexistir. Se agrupan los cambios de pixel y se llama a
+        self.tira.write() UNA sola vez por vuelta, no una por cada aviso.
+        """
+        espera_objetivo = (self.esperando_devolucion and self.objetivo is not None
+                            and self.objetivo in self.fuera)
+        if self.tira is None or (not self.equivocadas and not espera_objetivo):
             return
         if time.ticks_diff(ahora, self._parpadeo_hasta_ms) < 0:
             return
         self._parpadeo_hasta_ms = time.ticks_add(ahora, PARPADEO_MS)
         self._parpadeo_encendido = not self._parpadeo_encendido
-        color = self._color_error() if self._parpadeo_encendido else COLOR_APAGADO
+
+        color_error = self._color_error() if self._parpadeo_encendido else COLOR_APAGADO
         for gaveta in self.equivocadas:
             if 1 <= gaveta <= self.n_gavetas:
                 for i in self._indices(gaveta):
-                    self.tira[i] = color
+                    self.tira[i] = color_error
+
+        if espera_objetivo:
+            color_objetivo = self._color_en_uso() if self._parpadeo_encendido else COLOR_APAGADO
+            for i in self._indices(self.objetivo):
+                self.tira[i] = color_objetivo
+
         self.tira.write()
 
     def _atender_micros(self, ahora):
@@ -667,8 +716,18 @@ class Gavetas:
                 self._lanzar(PATRON_COGIDA)
                 self._avisar(gaveta, True, "ok")
             else:
-                # Devolver la gaveta buena no apaga la luz: sigue siendo la del
-                # trabajo en curso hasta que el servidor diga que se acabo.
+                # La han devuelto. Si la pantalla ya estaba pidiendo la
+                # devolucion (parpadeo azul en curso), el verde fijo es la
+                # confirmacion. Si la han devuelto ANTES de que nadie lo
+                # pidiera (a media faena), tambien se pinta en verde: dejar el
+                # azul de "en uso" mentiria sobre que sigue fuera. En ese
+                # segundo caso 'recogida' vuelve a False para que si la sacan
+                # otra vez cuente como una recogida de verdad, con su sonido
+                # y su aviso.
+                if not self.esperando_devolucion:
+                    self.recogida = False
+                self.esperando_devolucion = False
+                self._pintar(gaveta, self._color_objetivo())
                 self._lanzar(PATRON_DEVUELTA)
                 self._avisar(gaveta, False, "devuelta")
             return
@@ -679,22 +738,24 @@ class Gavetas:
             # una gaveta robada, y no debe avisar ni sonar por ella.
             return
 
-        # Sin objetivo no hay ni acierto ni error: alguien esta reponiendo o
-        # dejo un cajon abierto. Se avisa al servidor y no suena nada.
-        if self.objetivo is None:
-            self._avisar(gaveta, ahora_fuera, "sin_objetivo")
-            return
-
+        # Cualquier gaveta que no sea el objetivo se vigila SIEMPRE, haya o no
+        # un engaste en curso en este puesto: en reposo se avisa igual al
+        # servidor y parpadea en rojo (ver _atender_parpadeo), solo que sin
+        # objetivo no hay "acierto/error" que distinguir y el zumbador se
+        # queda callado (ver _atender_zumbador) -- alguien reponiendo o un
+        # cajon abierto no tiene por que oir la alarma de robo.
+        resultado = "equivocada" if self.objetivo is not None else "sin_objetivo"
         if ahora_fuera:
             self.equivocadas.add(gaveta)
             self._pintar(gaveta, self._color_error())
-            self._avisar(gaveta, True, "equivocada")
+            self._avisar(gaveta, True, resultado)
         else:
             self.equivocadas.discard(gaveta)
             self._pintar(gaveta, COLOR_APAGADO)
             if not self.equivocadas:
                 self._parar_zumbido()
-            self._avisar(gaveta, False, "corregida")
+            resultado = "corregida" if self.objetivo is not None else "sin_objetivo"
+            self._avisar(gaveta, False, resultado)
 
     def _avisar(self, gaveta, fuera, resultado):
         """Cuenta al servidor lo que ha pasado. Si no llega, da igual: las

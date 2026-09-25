@@ -299,6 +299,23 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: columna uid_rfid_2 en pick_to_light_canales (kanban de doble
+    # caja). Cada canal admite ahora DOS etiquetas RFID -- una por caja fisica
+    # del sistema de doble caja -- y cualquiera de las dos vale como valida
+    # para ese canal/terminal. Mismo indice unico parcial que uid_rfid, para
+    # que un UID no pueda repetirse ni entre canales ni entre la caja 1 y la
+    # caja 2 de canales distintos.
+    cur.execute("PRAGMA table_info(pick_to_light_canales)")
+    ptl_cols = {row[1] for row in cur.fetchall()}
+    if ptl_cols and 'uid_rfid_2' not in ptl_cols:
+        cur.execute("ALTER TABLE pick_to_light_canales ADD COLUMN uid_rfid_2 TEXT")
+        conn.commit()
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_ptl_uid2_activo
+        ON pick_to_light_canales(uid_rfid_2) WHERE activo = 1 AND uid_rfid_2 IS NOT NULL
+    """)
+    conn.commit()
+
     # Migra lo que ya hubiera en terminales_gavetas.led, resolviendo el puesto
     # via la maquina a la que este asignado el terminal. INSERT OR IGNORE hace
     # esto idempotente entre reinicios y no pisa una asignacion que el admin

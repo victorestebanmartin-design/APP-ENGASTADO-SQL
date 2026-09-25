@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-24a"
+FW_VERSION = "2026-09-25a"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -994,6 +994,12 @@ while True:
                 brillo_cfg = orden.get("brillo")
                 if isinstance(brillo_cfg, dict):
                     gav.configurar_brillo(brillo_cfg)
+
+                # Fase de "toca devolver la gaveta": la pantalla del carro la
+                # marca al terminar el terminal en curso. Mismo sitio y mismo
+                # motivo que micros_cfg/leds_cfg/brillo_cfg: va en cada
+                # sondeo, asi que una placa recien reiniciada la recupera sola.
+                gav.marcar_espera_devolucion(bool(orden.get("esperando_devolucion")))
 
                 # 'prisa': hay un operario delante de ese puesto a punto de
                 # elegir terminal, asi que no bajamos al sondeo de reposo (ver

@@ -1038,13 +1038,15 @@ def api_terminales_disponibles():
         # (app/routes/pick_to_light.py). Un terminal solo tiene una asignacion
         # activa a la vez, en el puesto de su propia maquina.
         rows_gav = db.session.execute(text("""
-            SELECT terminal_codigo, etiqueta_gaveta, canal, puesto_id, uid_rfid
+            SELECT terminal_codigo, etiqueta_gaveta, canal, puesto_id, uid_rfid, uid_rfid_2
             FROM pick_to_light_canales WHERE activo = 1
         """)).fetchall()
         gavetas_map = {r[0]: r[1] for r in rows_gav}
         leds_map = {r[0]: r[2] for r in rows_gav}
         ptl_puesto_map = {r[0]: r[3] for r in rows_gav}
-        ptl_rfid_map = {r[0]: bool(r[4]) for r in rows_gav}
+        # Cualquiera de las dos etiquetas (kanban de doble caja) cuenta como
+        # "este terminal tiene RFID".
+        ptl_rfid_map = {r[0]: bool(r[4] or r[5]) for r in rows_gav}
 
         # Cargar terminales ignorados
         rows_ign = db.session.execute(
@@ -1335,14 +1337,15 @@ def api_obtener_gaveta_terminal(codigo):
     """
     try:
         row = db.session.execute(text("""
-            SELECT etiqueta_gaveta, canal, puesto_id, uid_rfid
+            SELECT etiqueta_gaveta, canal, puesto_id, uid_rfid, uid_rfid_2
             FROM pick_to_light_canales WHERE terminal_codigo = :codigo AND activo = 1
         """), {'codigo': codigo}).fetchone()
         if not row:
             return jsonify({'success': True, 'gaveta': None, 'led': None,
                             'puesto_id': None, 'rfid': False})
+        # Cualquiera de las dos etiquetas (kanban de doble caja) cuenta.
         return jsonify({'success': True, 'gaveta': row[0], 'led': row[1],
-                        'puesto_id': row[2], 'rfid': bool(row[3])})
+                        'puesto_id': row[2], 'rfid': bool(row[3] or row[4])})
     except Exception as e:
         return error_interno(e, 'Error al obtener gaveta de terminal')
 
