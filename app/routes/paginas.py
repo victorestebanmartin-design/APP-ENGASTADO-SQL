@@ -13,8 +13,6 @@ import re
 import subprocess
 import sys
 import time
-import hmac
-import hashlib
 import traceback
 from datetime import datetime
 import pandas as pd
@@ -35,6 +33,9 @@ from app.auth import (
     sesion_admin_valida,
     marcar_sesion_admin,
     cerrar_sesion_admin,
+    guardar_pin_admin,
+    hash_pin,
+    pin_es_correcto,
 )
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
@@ -221,6 +222,31 @@ def admin():
     return render_template('admin.html', pin_activo=proteccion_activa())
 
 
+@bp.route('/admin/pin/configurar', methods=['GET', 'POST'])
+def admin_pin_configurar():
+    """Alta obligatoria del PIN de administración la primera vez que se usa
+    este PC (ver app/auth.py:requiere_pin_admin). Si ya hay uno fijado no se
+    puede volver a pasar por aquí -- se iría a /admin/pin normal, que sí
+    exige saber el PIN actual (o el maestro) para entrar."""
+    if proteccion_activa():
+        return redirect(url_for('main.admin_pin'))
+
+    error = None
+    if request.method == 'POST':
+        pin = (request.form.get('pin') or '').strip()
+        pin2 = (request.form.get('pin2') or '').strip()
+        if len(pin) < 4:
+            error = 'El PIN debe tener al menos 4 caracteres.'
+        elif pin != pin2:
+            error = 'Los dos PIN no coinciden.'
+        else:
+            guardar_pin_admin(hash_pin(pin))
+            marcar_sesion_admin()
+            return redirect(url_for('main.admin'))
+
+    return render_template('admin-pin-configurar.html', error=error)
+
+
 # Anti fuerza bruta del PIN: intentos fallidos por IP (en memoria, por proceso)
 _PIN_INTENTOS = {}  # ip -> (num_fallos, bloqueado_hasta_timestamp)
 _PIN_MAX_INTENTOS = 5
@@ -268,10 +294,7 @@ def admin_pin():
             return render_template('admin-pin.html', error=error, next=destino, force=forzar)
 
         pin = (request.form.get('pin') or '').strip()
-        hash_introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
-        hash_correcto = current_app.config.get('ADMIN_PIN_HASH', '')
-        # Comparación en tiempo constante para no filtrar info por timing
-        if pin and hmac.compare_digest(hash_introducido, hash_correcto):
+        if pin_es_correcto(pin):
             _PIN_INTENTOS.pop(ip, None)
             marcar_sesion_admin()
             return redirect(destino)

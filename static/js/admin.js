@@ -39,6 +39,53 @@ async function cambiarGateOperario() {
     }
 }
 
+async function cambiarAdminPin() {
+    const actual = document.getElementById('admin-pin-actual');
+    const nuevo = document.getElementById('admin-pin-nuevo');
+    const confirmar = document.getElementById('admin-pin-nuevo-confirmar');
+    const msg = document.getElementById('admin-pin-msg');
+    if (!msg) return;
+
+    if (nuevo.value.length < 4) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'El PIN nuevo debe tener al menos 4 caracteres.';
+        return;
+    }
+    if (nuevo.value !== confirmar.value) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'Los dos PIN nuevos no coinciden.';
+        return;
+    }
+
+    msg.style.color = '#94a3b8';
+    msg.textContent = 'Guardando…';
+    try {
+        const r = await fetch('/api/sistema/admin_pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pin_actual: actual.value,
+                pin_nuevo: nuevo.value,
+                pin_nuevo_confirmar: confirmar.value
+            })
+        });
+        const d = await r.json();
+        if (d.success) {
+            msg.style.color = '#4ade80';
+            msg.textContent = 'PIN cambiado.';
+            actual.value = '';
+            nuevo.value = '';
+            confirmar.value = '';
+        } else {
+            msg.style.color = '#f87171';
+            msg.textContent = d.message || 'No se pudo cambiar el PIN';
+        }
+    } catch (e) {
+        msg.style.color = '#f87171';
+        msg.textContent = 'No se pudo cambiar el PIN';
+    }
+}
+
 async function liberarCachePuestoPC() {
     const msg = document.getElementById('puesto-pc-cache-msg');
     if (!msg) return;

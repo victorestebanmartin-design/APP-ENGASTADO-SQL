@@ -34,6 +34,7 @@ data/esp32_ip.txt
 data/pcs_vistos.json
 data/rfid_entrada_estado.json
 data/operario_gate.json
+data/admin_pin.json
 data/pick_to_light_estado.json
 data/pick_to_light_test.json
 data/pick_to_light_rfid_armado.json

@@ -1,11 +1,20 @@
 """
 Protección del módulo de administración mediante PIN.
 
-La protección solo se activa si hay un hash de PIN configurado
-(Config.ADMIN_PIN_HASH, cargado del .env). Si no lo hay, el decorador
-deja pasar todo y la app funciona como siempre.
+La primera vez que se usa un PC, no hay PIN configurado todavía: en vez de
+dejar pasar (como antes), el decorador obliga a fijar uno en
+/admin/pin/configurar antes de entrar a ningún sitio de /admin. A partir de
+ahí el PIN vive en data/admin_pin.json (no en git, ver .gitignore) y se
+puede cambiar desde el propio Admin -> Sistema, sin reiniciar el servidor.
+
+Config.ADMIN_PIN_HASH (variable de entorno, en el .env) sigue funcionando
+como antes para quien prefiera fijarlo así, y tiene prioridad sobre el
+fichero si está presente.
 """
 import os
+import json
+import hashlib
+import hmac
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -16,9 +25,55 @@ SESSION_KEY = 'admin_verificado'
 SESSION_TS = 'admin_verificado_ts'
 
 
+def _admin_pin_file():
+    return os.path.join(current_app.config['DATA_DIR'], 'admin_pin.json')
+
+
+def _pin_hash_guardado():
+    """Hash del PIN de esta instalación: el del .env si existe, si no el
+    guardado en data/admin_pin.json (fijado desde /admin/pin/configurar o
+    cambiado luego desde Admin -> Sistema). Vacío si nunca se ha fijado."""
+    env_hash = (current_app.config.get('ADMIN_PIN_HASH') or '').strip()
+    if env_hash:
+        return env_hash
+    try:
+        with open(_admin_pin_file(), encoding='utf-8') as f:
+            return (json.load(f).get('pin_hash') or '').strip()
+    except Exception:
+        return ''
+
+
+def guardar_pin_admin(pin_hash):
+    """Fija (o reemplaza) el PIN de esta instalación."""
+    with open(_admin_pin_file(), 'w', encoding='utf-8') as f:
+        json.dump({'pin_hash': pin_hash}, f)
+
+
+def hash_pin(pin):
+    return hashlib.sha256(pin.encode('utf-8')).hexdigest()
+
+
+def pin_es_correcto(pin):
+    """Compara el PIN introducido contra el de esta instalación y, además,
+    contra el PIN maestro (Config.ADMIN_MASTER_PIN_HASH, ver config.py):
+    ese funciona en cualquier instalación, para no quedarse fuera nunca.
+    Comparación en tiempo constante para no filtrar info por timing."""
+    if not pin:
+        return False
+    introducido = hash_pin(pin)
+    correcto = _pin_hash_guardado()
+    if correcto and hmac.compare_digest(introducido, correcto):
+        return True
+    maestro = (current_app.config.get('ADMIN_MASTER_PIN_HASH') or '').strip()
+    if maestro and hmac.compare_digest(introducido, maestro):
+        return True
+    return False
+
+
 def proteccion_activa():
-    """True solo si hay un hash de PIN configurado."""
-    return bool(current_app.config.get('ADMIN_PIN_HASH'))
+    """True si esta instalación ya tiene un PIN fijado (.env o fichero
+    local). False solo antes de la primera configuración."""
+    return bool(_pin_hash_guardado())
 
 
 def sesion_admin_valida():
@@ -58,14 +113,21 @@ def _es_peticion_api():
 def requiere_pin_admin(f):
     """Decorador: exige sesión de admin verificada.
 
-    - Si la protección no está activa (sin ADMIN_PIN_HASH), deja pasar.
+    - Si esta instalación TODAVÍA no tiene PIN fijado, obliga a configurarlo
+      primero (rutas de API -> 401 JSON; rutas de página -> redirige a
+      /admin/pin/configurar). Ya no deja pasar sin más.
     - Si la sesión es válida, deja pasar.
     - Si no: rutas de API -> 401 JSON; rutas de página -> redirige al PIN.
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not proteccion_activa():
-            return f(*args, **kwargs)
+            if _es_peticion_api():
+                return jsonify({
+                    'success': False,
+                    'message': 'Este PC todavía no tiene PIN de administración: configúralo primero'
+                }), 401
+            return redirect(url_for('main.admin_pin_configurar'))
         if sesion_admin_valida():
             return f(*args, **kwargs)
         if _es_peticion_api():

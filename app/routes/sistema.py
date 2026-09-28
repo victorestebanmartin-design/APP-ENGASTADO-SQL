@@ -39,6 +39,9 @@ from app.auth import (
     cerrar_sesion_admin,
     gate_operario_activo,
     fijar_gate_operario,
+    guardar_pin_admin,
+    hash_pin,
+    pin_es_correcto,
 )
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
@@ -149,6 +152,39 @@ def api_gate_operario_set():
         data = request.get_json(silent=True) or {}
         fijar_gate_operario(bool(data.get('activo')))
         return jsonify({'success': True, 'activo': gate_operario_activo()})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/sistema/admin_pin', methods=['POST'])
+@requiere_pin_admin
+def api_admin_pin_cambiar():
+    """Cambia el PIN de administración de ESTE PC desde Admin -> Sistema,
+    en caliente (sin tocar el .env ni reiniciar). Exige el PIN actual (o el
+    maestro, ver Config.ADMIN_MASTER_PIN_HASH) como confirmación, igual que
+    cualquier cambio de contraseña."""
+    try:
+        if (current_app.config.get('ADMIN_PIN_HASH') or '').strip():
+            return jsonify({
+                'success': False,
+                'message': 'El PIN de este PC está fijado por ADMIN_PIN_HASH en el .env: '
+                            'cámbialo ahí (con _scripts_utiles/generar_pin_hash.py) y reinicia.'
+            }), 400
+
+        data = request.get_json(silent=True) or {}
+        pin_actual = str(data.get('pin_actual', '')).strip()
+        pin_nuevo = str(data.get('pin_nuevo', '')).strip()
+        pin_nuevo_confirmar = str(data.get('pin_nuevo_confirmar', '')).strip()
+
+        if not pin_es_correcto(pin_actual):
+            return jsonify({'success': False, 'message': 'El PIN actual no es correcto'}), 400
+        if len(pin_nuevo) < 4:
+            return jsonify({'success': False, 'message': 'El PIN nuevo debe tener al menos 4 caracteres'}), 400
+        if pin_nuevo != pin_nuevo_confirmar:
+            return jsonify({'success': False, 'message': 'Los dos PIN nuevos no coinciden'}), 400
+
+        guardar_pin_admin(hash_pin(pin_nuevo))
+        return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
 

@@ -1,6 +1,11 @@
 """
 Genera el hash SHA-256 de un PIN de administración.
 
+Ya no hace falta para el uso normal: si el PC no tiene PIN fijado, la app lo
+pide sola la primera vez que se entra en /admin. Este script sigue sirviendo
+para fijarlo de antemano (despliegues automatizados) o para forzar uno fijo
+que ignore lo que se configure luego desde Admin -> Sistema.
+
 Uso:
     python _scripts_utiles/generar_pin_hash.py
 

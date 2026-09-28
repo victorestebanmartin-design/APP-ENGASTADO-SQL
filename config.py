@@ -200,13 +200,25 @@ class Config:
     # =====================================================
     # PROTECCIÓN MÓDULO ADMINISTRACIÓN (PIN)
     # =====================================================
-    # Hash SHA-256 del PIN de administración. Se configura en el .env
-    # (ADMIN_PIN_HASH=...). Si está vacío, la protección queda DESACTIVADA
-    # y la app funciona como siempre (con un aviso en consola al arrancar).
-    # Generar el hash con: python _scripts_utiles/generar_pin_hash.py
+    # Hash SHA-256 del PIN de administración de ESTA instalación. Opcional:
+    # si se deja vacío aquí, la app pide fijar uno la primera vez que se
+    # visita /admin (app/auth.py:requiere_pin_admin) y lo guarda en
+    # data/admin_pin.json (gitignored), administrable luego desde el propio
+    # Admin -> Sistema. Fijarlo aquí (o generar el hash con
+    # python _scripts_utiles/generar_pin_hash.py) lo salta y usa ese PIN fijo.
     ADMIN_PIN_HASH = os.environ.get('ADMIN_PIN_HASH', '').strip()
     # Duración de la sesión de administración (horas) antes de pedir el PIN otra vez.
     ADMIN_SESSION_HOURS = int(os.environ.get('ADMIN_SESSION_HOURS', '8'))
+
+    # PIN maestro: entra en Admin de CUALQUIER instalación (además del PIN
+    # propio de cada una), para que Víctor nunca se quede fuera aunque se
+    # pierda u olvide el PIN de un PC concreto. A propósito NO se lee de un
+    # .env por instalación (como el resto de secretos de este fichero) sino
+    # que va fijo aquí: decisión consciente de Víctor sabiendo que, al ser
+    # este repositorio público en GitHub, este hash es visible para
+    # cualquiera. Por eso el PIN detrás del hash es largo y aleatorio, no un
+    # PIN corto adivinable ni reutilizado en ningún otro sitio.
+    ADMIN_MASTER_PIN_HASH = '295f656c8a101caa360ad9154d13bcd78180c50eba6c8687ed82906a178e9897'
 
     # =====================================================
     # GATE DE LOGIN GLOBAL (tarjeta RFID + permisos por operario)
