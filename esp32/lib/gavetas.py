@@ -2,7 +2,8 @@
 #
 # Enciende el LED de la gaveta que el operario acaba de elegir en engastado y
 # vigila los micro-interruptores que dicen si cada gaveta esta puesta o fuera.
-# El esquema electrico esta en esp32/HARDWARE_PICK_TO_LIGHT.md.
+# El esquema electrico esta en esp32/HARDWARE_PLACA_MASTER.md (placa expansora)
+# y esp32/HARDWARE_EXPANSORES_MCP23017.md (direcciones I2C).
 #
 # Dos ideas gobiernan este fichero:
 #
@@ -46,11 +47,25 @@ SDA_PIN_DEF = 21
 SCL_PIN_DEF = 26
 
 # Colores ya atenuados: un WS2813 a tope deslumbra a medio metro y se come
-# 60 mA por pixel. Con estos valores un puesto entero encendido no llega a 1 A.
+# 60 mA por pixel. Con estos valores un puesto entero encendido no llega a 1 A
+# por LED fisico. Con varios LEDs por gaveta (ver LEDS_POR_GAVETA_MAX /
+# configurar_leds) el consumo sube en proporcion, pero la fuente de cada
+# puesto es de 5V/10A: sigue sobrando margen, esto es solo para no deslumbrar.
 COLOR_OBJETIVO = (0, 70, 0)     # verde: la gaveta a la que hay que ir
 COLOR_EN_USO   = (0, 0, 90)     # azul: sacada y en uso
 COLOR_ERROR    = (110, 0, 0)    # rojo: esta no era
 COLOR_APAGADO  = (0, 0, 0)
+
+# Brillo por color, configurable por placa desde Admin (ver configurar_brillo).
+# Cada valor es la intensidad del UNICO canal no nulo de ese color (verde para
+# objetivo, azul para en_uso, rojo para error): siguen siendo monocromaticos,
+# no RGB libre. BRILLO_MAX es el mismo tope de seguridad de siempre, bien por
+# debajo de 255, para que nadie pueda subir el brillo hasta deslumbrar.
+# BRILLO_DEFECTO coincide EXACTAMENTE con los COLOR_* de arriba: una placa o
+# un servidor sin esta configuracion se comporta igual que antes de que
+# existiera.
+BRILLO_MAX = 200
+BRILLO_DEFECTO = {'objetivo': 70, 'en_uso': 90, 'error': 110}
 
 PUERTO_HTTP = 80
 REINTENTO_SERVIDOR_MS = 5000  # cada cuanto se reintenta abrir el puerto 80
@@ -90,19 +105,37 @@ TIMEOUT_AVISO_S = 2         # avisar al servidor no puede frenar el bucle
 # placa se quedaria con un LED encendido para siempre sin esto.
 TEST_TIMEOUT_MS = 5 * 60 * 1000
 
+# Cuantos pixels fisicos de la tira representan una sola gaveta. La mayoria
+# de los puestos llevan 1 (un LED = una gaveta); el primer puesto piloto
+# recablea a 3 para verse mejor desde lejos. Es configurable por placa desde
+# Admin (ver configurar_leds), con 1 como valor por defecto seguro: una placa
+# recien montada o un servidor viejo que no manda nada se comporta igual que
+# siempre.
+LEDS_POR_GAVETA_DEFECTO = 1
+LEDS_POR_GAVETA_MAX = 16
+
 
 class Gavetas:
-    def __init__(self, expansores, tira, buzzer, device_id):
+    def __init__(self, expansores, tira, buzzer, device_id, led_pin=None):
         self.expansores = expansores
         self.tira = tira
         self.buzzer = buzzer
         self.device_id = device_id
         self.n_gavetas = mcp23017.CANALES * len(expansores)
+        # Objeto Pin de la tira, guardado para poder recrear el NeoPixel con
+        # otra longitud cuando cambia leds_por_gaveta (ver configurar_leds).
+        self._led_pin = led_pin
+        self.leds_por_gaveta = LEDS_POR_GAVETA_DEFECTO
+        self.brillo = dict(BRILLO_DEFECTO)
 
         self.objetivo = None        # numero de gaveta que hay que abrir
         self.terminal = ""          # terminal en curso, solo para el display
         self.recogida = False       # ya se abrio la correcta
         self.equivocadas = set()    # gavetas mal abiertas y aun sin devolver
+        # Fase de "toca devolver la gaveta": la marca la pantalla del carro
+        # cuando el operario termina el terminal (ver marcar_espera_devolucion).
+        # Con esto activo el objetivo parpadea en azul hasta que lo devuelven.
+        self.esperando_devolucion = False
         # Numeros de LED con un terminal de verdad detras, segun el servidor.
         # None = sin lista todavia (firmware recien arrancado o servidor
         # viejo): no se restringe nada, que es como se comportaba siempre.
@@ -110,6 +143,14 @@ class Gavetas:
         # Canales de un expansor que no respondio en la ultima lectura I2C:
         # no son "gaveta fuera", son un fallo de lectura (cable/expansor).
         self.canales_error = set()
+
+        # Lectura de los micros: por defecto, lo de siempre (ver _leer_micros).
+        # El servidor puede cambiarlo por placa (Admin -> Pick-to-Light) y llega
+        # por el sondeo de /api/esp32/rfid/gaveta/orden o empujado al puerto 80.
+        # Con los dos valores por defecto el comportamiento es EXACTAMENTE el de
+        # antes de que esto existiera: volver atras es dejarlos como estan aqui.
+        self.invertir = False       # True = micro normalmente abierto (NA)
+        self.ignorar = set()        # canales sin cablear: ni fuera, ni alarma
 
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
@@ -138,6 +179,16 @@ class Gavetas:
     def _leer_micros(self):
         """Conjunto de gavetas (1..N) que estan FUERA ahora mismo.
 
+        Con el pull-up interno del MCP23017, un contacto cerrado a masa lee 0 y
+        uno abierto lee 1: por defecto 1 = gaveta fuera (micro normalmente
+        cerrado, que es como esta montada la planta). Con self.invertir el
+        criterio es el contrario, para micros normalmente abiertos.
+
+        Los canales de self.ignorar no se miran: un canal sin microinterruptor
+        cableado flota en alto por el pull-up y se leeria como "gaveta fuera"
+        todo el rato. Ignorarlos es lo que permite probar en banco con solo
+        unos pocos micros conectados.
+
         De paso deja en self.canales_error los canales de un expansor que no
         respondio esta vez: sin esto, Admin no puede distinguir "todas
         puestas" de "no se puede leer este trozo del bus I2C".
@@ -154,24 +205,206 @@ class Gavetas:
                 print("Gavetas: expansor 0x%02X no responde:" % exp.direccion, e)
                 errores.update(range(base + 1, base + mcp23017.CANALES + 1))
                 continue
+            if self.invertir:
+                bits = ~bits & 0xFFFF
             for canal in range(mcp23017.CANALES):
+                gaveta = base + canal + 1
+                if gaveta in self.ignorar:
+                    continue
                 if bits & (1 << canal):     # 1 = contacto abierto = gaveta fuera
-                    fuera.add(base + canal + 1)
+                    fuera.add(gaveta)
+        if self.ignorar:
+            errores = set(g for g in errores if g not in self.ignorar)
         self.canales_error = errores
         return fuera
+
+    def configurar_micros(self, cfg):
+        """Aplica la configuracion de lectura de micros que manda el servidor.
+
+        Devuelve True si algo ha cambiado. Al cambiar hay que volver a hacer la
+        foto de lo que esta fuera: si no, el primer sondeo despues del cambio
+        veria las 16 gavetas "cambiando de estado" a la vez y soltaria la
+        alarma de gaveta robada por cada una.
+
+        Nunca lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba.
+        """
+        try:
+            invertir = bool(cfg.get("invertir"))
+            ignorar = set()
+            for crudo in (cfg.get("ignorar") or ()):
+                try:
+                    ignorar.add(int(crudo))
+                except (TypeError, ValueError):
+                    continue
+        except Exception as e:
+            print("Gavetas: configuracion de micros no valida:", e)
+            return False
+
+        if invertir == self.invertir and ignorar == self.ignorar:
+            return False
+
+        self.invertir = invertir
+        self.ignorar = ignorar
+        print("Gavetas: micros invertir=%s ignorar=%s" % (
+            invertir, sorted(ignorar)))
+
+        # Rebase: foto nueva y a empezar de cero con los cambios pendientes.
+        self._cambio_pendiente = {}
+        self.fuera = self._leer_micros()
+        self.recogida = bool(self.objetivo and self.objetivo in self.fuera)
+        for gaveta in list(self.equivocadas):
+            if gaveta not in self.fuera or not self._es_gaveta_real(gaveta):
+                self.equivocadas.discard(gaveta)
+                self._pintar(gaveta, COLOR_APAGADO)
+        if not self.equivocadas:
+            self._parar_zumbido()
+        return True
+
+    def configurar_brillo(self, cfg):
+        """Aplica el brillo por color que manda el servidor (Admin -> Pick-to-Light).
+
+        Cada clave que falte o venga invalida se deja como ya estuviera en
+        self.brillo, no al valor de BRILLO_DEFECTO: una placa que ya tenia
+        ajustado el rojo no lo pierde porque el servidor solo mande el verde.
+
+        Nunca lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba. Devuelve True si algo ha
+        cambiado; si cambia y hay tira fisica, repinta al instante para que el
+        objetivo o las gavetas equivocadas en curso se vean con el brillo
+        nuevo sin esperar al siguiente evento.
+        """
+        try:
+            nuevo = dict(self.brillo)
+            for clave in ("objetivo", "en_uso", "error"):
+                if clave not in cfg:
+                    continue
+                try:
+                    valor = int(cfg.get(clave))
+                except (TypeError, ValueError):
+                    continue
+                if 0 <= valor <= BRILLO_MAX:
+                    nuevo[clave] = valor
+        except Exception as e:
+            print("Gavetas: configuracion de brillo no valida:", e)
+            return False
+
+        if nuevo == self.brillo:
+            return False
+
+        self.brillo = nuevo
+        print("Gavetas: brillo objetivo=%d en_uso=%d error=%d" % (
+            self.brillo["objetivo"], self.brillo["en_uso"], self.brillo["error"]))
+
+        if self.tira is not None:
+            self._repintar()
+        return True
+
+    def marcar_espera_devolucion(self, activo):
+        """Aplica el aviso de "toca devolver la gaveta" que manda el servidor.
+
+        Lo pone la pantalla del carro cuando el operario termina el terminal
+        en curso (ver /api/pick-to-light/devolucion/iniciar en
+        pick_to_light.py); mientras este activo y el objetivo siga fuera,
+        _atender_parpadeo lo hace parpadear en azul en vez de dejarlo fijo.
+
+        Nunca lanza. Devuelve True si el valor ha cambiado respecto al que ya
+        habia; no repinta aqui -- _atender_parpadeo corre en cada vuelta del
+        bucle principal y ya se encarga de la luz.
+        """
+        try:
+            activo = bool(activo)
+        except Exception:
+            return False
+        if activo == self.esperando_devolucion:
+            return False
+        self.esperando_devolucion = activo
+        return True
+
+    def _indices(self, gaveta):
+        """Rango de indices de pixel de la tira que representan esa gaveta.
+
+        Con leds_por_gaveta=1 es exactamente gaveta-1 de siempre; con mas de
+        1 son varios pixels seguidos. Toda la logica de arriba (que gaveta es
+        el objetivo, cual esta equivocada...) sigue hablando en gavetas, no
+        en pixels: esto es lo unico que traduce de un lenguaje al otro.
+        """
+        base = (gaveta - 1) * self.leds_por_gaveta
+        return range(base, base + self.leds_por_gaveta)
+
+    def _color_objetivo(self):
+        return (0, self.brillo['objetivo'], 0)
+
+    def _color_en_uso(self):
+        return (0, 0, self.brillo['en_uso'])
+
+    def _color_error(self):
+        return (self.brillo['error'], 0, 0)
 
     def _pintar(self, gaveta, color):
         if self.tira is None or not 1 <= gaveta <= self.n_gavetas:
             return
-        self.tira[gaveta - 1] = color
+        for i in self._indices(gaveta):
+            self.tira[i] = color
         self.tira.write()
 
     def _apagar_tira(self):
         if self.tira is None:
             return
-        for i in range(self.n_gavetas):
+        for i in range(self.n_gavetas * self.leds_por_gaveta):
             self.tira[i] = COLOR_APAGADO
         self.tira.write()
+
+    def _repintar(self):
+        """Vuelve a pintar el estado actual tras recrear la tira (configurar_leds).
+
+        No hace mas que releer lo que ya sabia el objeto: no cambia ni
+        objetivo, ni equivocadas, ni nada de logica, solo la salida fisica.
+        """
+        self._apagar_tira()
+        if self.objetivo:
+            color = self._color_en_uso() if self.objetivo in self.fuera else self._color_objetivo()
+            self._pintar(self.objetivo, color)
+        for gaveta in self.equivocadas:
+            self._pintar(gaveta, self._color_error())
+
+    def configurar_leds(self, n):
+        """Aplica los LEDs fisicos por gaveta que manda el servidor.
+
+        Recrea el objeto NeoPixel con la longitud nueva (n_gavetas * n),
+        reutilizando el mismo pin, y repinta el estado actual encima. Nunca
+        lanza: una configuracion rara del servidor no puede dejar sin
+        pick-to-light a un puesto que funcionaba. Devuelve True si algo ha
+        cambiado.
+        """
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            print("Gavetas: leds_por_gaveta no valido:", n)
+            return False
+        if not 1 <= n <= LEDS_POR_GAVETA_MAX:
+            print("Gavetas: leds_por_gaveta fuera de rango:", n)
+            return False
+        if n == self.leds_por_gaveta:
+            return False
+
+        if self.tira is None or self._led_pin is None or neopixel is None:
+            # Sin tira fisica no hay nada que recrear, pero el valor se
+            # guarda igual para que estado() refleje lo que Admin ha pedido.
+            self.leds_por_gaveta = n
+            return True
+
+        try:
+            nueva_tira = neopixel.NeoPixel(self._led_pin, self.n_gavetas * n)
+        except Exception as e:
+            print("Gavetas: no se pudo recrear la tira con leds_por_gaveta=%d:" % n, e)
+            return False
+
+        self.leds_por_gaveta = n
+        self.tira = nueva_tira
+        print("Gavetas: leds_por_gaveta=%d (%d pixels)" % (n, self.n_gavetas * n))
+        self._repintar()
+        return True
 
     # ── Ordenes que llegan del servidor ─────────────────────────────────────
 
@@ -186,6 +419,11 @@ class Gavetas:
         if not 1 <= gaveta <= self.n_gavetas:
             return False, "La gaveta %d no existe (esta placa tiene %d)" % (
                 gaveta, self.n_gavetas)
+        if self.tira is None:
+            # Los expansores responden pero no hay tira WS2813 (o falta el
+            # modulo neopixel): sin luz fisica no se puede decir "ok". Nada
+            # de estado se toca, para no dejar el objeto a medias.
+            return False, "Tira de LEDs no conectada"
         self.apagar()
         self.objetivo = gaveta
         self.terminal = terminal or ""
@@ -204,7 +442,7 @@ class Gavetas:
             if otra != gaveta and self._es_gaveta_real(otra):
                 self.equivocadas.add(otra)
                 self._avisar(otra, True, "equivocada")
-        self._pintar(gaveta, COLOR_EN_USO if gaveta in self.fuera else COLOR_OBJETIVO)
+        self._pintar(gaveta, self._color_en_uso() if gaveta in self.fuera else self._color_objetivo())
         if gaveta in self.fuera:
             self.recogida = True
         return True, ""
@@ -234,10 +472,17 @@ class Gavetas:
             "objetivo": self.objetivo,
             "terminal": self.terminal,
             "recogida": self.recogida,
+            "esperando_devolucion": self.esperando_devolucion,
             "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
             "validas": sorted(self.validas) if self.validas is not None else None,
             "canales_error": sorted(self.canales_error),
+            # Lo que la placa tiene aplicado DE VERDAD ahora mismo: Admin lo
+            # enseña para no tener que fiarse de lo guardado en el servidor.
+            "invertir": self.invertir,
+            "ignorar": sorted(self.ignorar),
+            "leds_por_gaveta": self.leds_por_gaveta,
+            "brillo": self.brillo,
             "http": self._servidor is not None,
         }
 
@@ -333,9 +578,10 @@ class Gavetas:
                 return {"ok": False,
                         "error": "LED %d fuera de rango (1-%d)" % (test_led, self.n_gavetas),
                         "estado": self.estado()}
-            for i in range(self.n_gavetas):
+            for i in range(self.n_gavetas * self.leds_por_gaveta):
                 self.tira[i] = COLOR_APAGADO
-            self.tira[test_led - 1] = color
+            for i in self._indices(test_led):
+                self.tira[i] = color
             self.tira.write()
             return {"ok": True, "test_led": test_led, "color": list(color),
                     "estado": self.estado()}
@@ -344,7 +590,7 @@ class Gavetas:
             color = _color(datos.get("color"), (60, 60, 60))
             self._iniciar_prueba()
             if self.tira:
-                for i in range(self.n_gavetas):
+                for i in range(self.n_gavetas * self.leds_por_gaveta):
                     self.tira[i] = color
                 self.tira.write()
             return {"ok": True, "gavetas": self.n_gavetas, "color": list(color),
@@ -357,9 +603,11 @@ class Gavetas:
                 self._prueba_desde_ms = time.ticks_ms()
             leidas = self._leer_micros()
             puestas = sorted(g for g in range(1, self.n_gavetas + 1)
-                            if g not in leidas and g not in self.canales_error)
+                            if g not in leidas and g not in self.canales_error
+                            and g not in self.ignorar)
             return {"ok": True, "fuera": sorted(leidas), "puestas": puestas,
                     "canales_error": sorted(self.canales_error),
+                    "ignorados": sorted(self.ignorar), "invertir": self.invertir,
                     "total": self.n_gavetas, "estado": self.estado()}
 
         if datos.get("test_fin"):
@@ -375,7 +623,11 @@ class Gavetas:
         if self._atender_patron(ahora):
             return
 
-        if not self.equivocadas:
+        # En reposo (sin objetivo) las gavetas equivocadas siguen parpadeando
+        # en rojo (ver _atender_parpadeo), pero el zumbador se queda callado:
+        # alguien reponiendo el armario no tiene por que oir la alarma de
+        # gaveta robada, que es para cuando hay un engaste en curso de verdad.
+        if not self.equivocadas or self.objetivo is None:
             if self._zumbido_encendido:
                 self._zumbido_encendido = False
                 self._callar()
@@ -394,17 +646,37 @@ class Gavetas:
     # ── Micro-interruptores ─────────────────────────────────────────────────
 
     def _atender_parpadeo(self, ahora):
-        """El rojo de una gaveta robada parpadea: un fijo se deja de mirar."""
-        if not self.equivocadas or self.tira is None:
+        """Dos parpadeos independientes, sincronizados por el mismo reloj:
+
+        - El rojo de las gavetas robadas (self.equivocadas): un fijo se deja
+          de mirar.
+        - El azul del objetivo mientras se espera que lo devuelvan
+          (self.esperando_devolucion) y siga fuera: avisa de "toca devolver
+          esto ya" sin necesidad de que nadie mire la pantalla.
+
+        Los dos pueden coexistir. Se agrupan los cambios de pixel y se llama a
+        self.tira.write() UNA sola vez por vuelta, no una por cada aviso.
+        """
+        espera_objetivo = (self.esperando_devolucion and self.objetivo is not None
+                            and self.objetivo in self.fuera)
+        if self.tira is None or (not self.equivocadas and not espera_objetivo):
             return
         if time.ticks_diff(ahora, self._parpadeo_hasta_ms) < 0:
             return
         self._parpadeo_hasta_ms = time.ticks_add(ahora, PARPADEO_MS)
         self._parpadeo_encendido = not self._parpadeo_encendido
-        color = COLOR_ERROR if self._parpadeo_encendido else COLOR_APAGADO
+
+        color_error = self._color_error() if self._parpadeo_encendido else COLOR_APAGADO
         for gaveta in self.equivocadas:
             if 1 <= gaveta <= self.n_gavetas:
-                self.tira[gaveta - 1] = color
+                for i in self._indices(gaveta):
+                    self.tira[i] = color_error
+
+        if espera_objetivo:
+            color_objetivo = self._color_en_uso() if self._parpadeo_encendido else COLOR_APAGADO
+            for i in self._indices(self.objetivo):
+                self.tira[i] = color_objetivo
+
         self.tira.write()
 
     def _atender_micros(self, ahora):
@@ -440,14 +712,33 @@ class Gavetas:
         if gaveta == self.objetivo:
             if ahora_fuera:
                 self.recogida = True
-                self._pintar(gaveta, COLOR_EN_USO)
+                # Si se habia marcado como "devuelta antes de tiempo" (rojo +
+                # zumbador), sacarla de nuevo es corregir el error: se quita
+                # de las equivocadas y, si no queda ninguna otra, se calla.
+                self.equivocadas.discard(gaveta)
+                if not self.equivocadas:
+                    self._parar_zumbido()
+                self._pintar(gaveta, self._color_en_uso())
                 self._lanzar(PATRON_COGIDA)
                 self._avisar(gaveta, True, "ok")
-            else:
-                # Devolver la gaveta buena no apaga la luz: sigue siendo la del
-                # trabajo en curso hasta que el servidor diga que se acabo.
+            elif self.esperando_devolucion:
+                # La pantalla ya estaba pidiendo la devolucion (parpadeo azul
+                # en curso): el verde fijo es la confirmacion.
+                self.esperando_devolucion = False
+                self._pintar(gaveta, self._color_objetivo())
                 self._lanzar(PATRON_DEVUELTA)
                 self._avisar(gaveta, False, "devuelta")
+            else:
+                # La han devuelto ANTES de que nadie lo pidiera, a media
+                # faena: eso no es una devolucion valida, es un error como
+                # cualquier otra gaveta equivocada -- rojo parpadeando y
+                # zumbador (hay engaste en curso: self.objetivo es esta misma
+                # gaveta). 'recogida' vuelve a False para que, si la sacan de
+                # nuevo, cuente como una recogida de verdad con su sonido.
+                self.recogida = False
+                self.equivocadas.add(gaveta)
+                self._pintar(gaveta, self._color_error())
+                self._avisar(gaveta, False, "devuelta_temprana")
             return
 
         if not self._es_gaveta_real(gaveta):
@@ -456,22 +747,24 @@ class Gavetas:
             # una gaveta robada, y no debe avisar ni sonar por ella.
             return
 
-        # Sin objetivo no hay ni acierto ni error: alguien esta reponiendo o
-        # dejo un cajon abierto. Se avisa al servidor y no suena nada.
-        if self.objetivo is None:
-            self._avisar(gaveta, ahora_fuera, "sin_objetivo")
-            return
-
+        # Cualquier gaveta que no sea el objetivo se vigila SIEMPRE, haya o no
+        # un engaste en curso en este puesto: en reposo se avisa igual al
+        # servidor y parpadea en rojo (ver _atender_parpadeo), solo que sin
+        # objetivo no hay "acierto/error" que distinguir y el zumbador se
+        # queda callado (ver _atender_zumbador) -- alguien reponiendo o un
+        # cajon abierto no tiene por que oir la alarma de robo.
+        resultado = "equivocada" if self.objetivo is not None else "sin_objetivo"
         if ahora_fuera:
             self.equivocadas.add(gaveta)
-            self._pintar(gaveta, COLOR_ERROR)
-            self._avisar(gaveta, True, "equivocada")
+            self._pintar(gaveta, self._color_error())
+            self._avisar(gaveta, True, resultado)
         else:
             self.equivocadas.discard(gaveta)
             self._pintar(gaveta, COLOR_APAGADO)
             if not self.equivocadas:
                 self._parar_zumbido()
-            self._avisar(gaveta, False, "corregida")
+            resultado = "corregida" if self.objetivo is not None else "sin_objetivo"
+            self._avisar(gaveta, False, resultado)
 
     def _avisar(self, gaveta, fuera, resultado):
         """Cuenta al servidor lo que ha pasado. Si no llega, da igual: las
@@ -592,6 +885,26 @@ class Gavetas:
     def _responder(self, cuerpo):
         datos = _json_carga(cuerpo)
 
+        # La configuracion de micros, de leds_por_gaveta y de brillo puede
+        # venir sola (Admin acaba de guardarla y el servidor la empuja al
+        # puerto 80) o acompañando a cualquier otra orden: se aplica antes que
+        # nada y se sigue.
+        micros_cfg = datos.get("micros_config")
+        if isinstance(micros_cfg, dict):
+            self.configurar_micros(micros_cfg)
+
+        leds_cfg = datos.get("leds_config")
+        if leds_cfg is not None:
+            self.configurar_leds(leds_cfg)
+
+        brillo_cfg = datos.get("brillo_config")
+        if isinstance(brillo_cfg, dict):
+            self.configurar_brillo(brillo_cfg)
+
+        if ((isinstance(micros_cfg, dict) or leds_cfg is not None
+                or isinstance(brillo_cfg, dict)) and not _trae_orden(datos)):
+            return {"ok": True, "estado": self.estado()}
+
         if datos.get("apagar"):
             self.apagar()
             return {"ok": True, "estado": self.estado()}
@@ -638,6 +951,17 @@ class Gavetas:
         self._atender_timeout_prueba(ahora)
 
 
+_CLAVES_ORDEN = ("apagar", "led", "test_led", "test_todos", "test_micros", "test_fin")
+
+
+def _trae_orden(datos):
+    """True si el JSON pide algo mas que cambiar la configuracion de micros."""
+    for clave in _CLAVES_ORDEN:
+        if datos.get(clave) is not None:
+            return True
+    return False
+
+
 def _color(crudo, por_defecto):
     """Terna RGB de lo que venga en el JSON, o el color por defecto."""
     try:
@@ -669,7 +993,9 @@ def crear(cfg, buzzer, device_id):
         sda = Pin(getattr(cfg, "GAVETAS_SDA_PIN", SDA_PIN_DEF), Pin.OPEN_DRAIN, Pin.PULL_UP)
         scl = Pin(getattr(cfg, "GAVETAS_SCL_PIN", SCL_PIN_DEF), Pin.OPEN_DRAIN, Pin.PULL_UP)
         # Los pull-up internos (~45k) se piden aqui a proposito: con un solo
-        # expansor y cables cortos evitan tener que soldar los de 4,7k.
+        # expansor y cables cortos evitan tener que soldar los externos de
+        # 2,2k (que van en el propio lector, justo antes del DB9 -- ver
+        # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md).
         i2c = SoftI2C(scl=scl, sda=sda, freq=100000)
         expansores = mcp23017.detectar(i2c)
         if not expansores:
@@ -677,13 +1003,15 @@ def crear(cfg, buzzer, device_id):
             return None
 
         tira = None
+        led_pin = None
         if neopixel is not None:
             n = mcp23017.CANALES * len(expansores)
-            tira = neopixel.NeoPixel(Pin(getattr(cfg, "GAVETAS_LED_PIN", LED_PIN_DEF)), n)
+            led_pin = Pin(getattr(cfg, "GAVETAS_LED_PIN", LED_PIN_DEF))
+            tira = neopixel.NeoPixel(led_pin, n)
         else:
             print("Gavetas: sin modulo neopixel, se vigilan los micros sin luces")
 
-        gav = Gavetas(expansores, tira, buzzer, device_id)
+        gav = Gavetas(expansores, tira, buzzer, device_id, led_pin=led_pin)
         print("Gavetas: %d expansor(es), %d gavetas" % (len(expansores), gav.n_gavetas))
         return gav
     except Exception as e:

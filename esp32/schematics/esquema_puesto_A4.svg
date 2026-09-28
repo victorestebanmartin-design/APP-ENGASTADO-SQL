@@ -356,7 +356,7 @@
 
           <!-- Pull Up resistor note -->
           <rect x="0" y="100" width="390" height="35" fill="#f0fdf4" stroke="#86efac" stroke-width="1" rx="4"/>
-          <text x="10" y="118" class="text-small" fill="#166534"><tspan class="text-bold">Pull-Ups I2C Obligatorias:</tspan> 4.7kΩ entre SDA/3.3V y entre SCL/3.3V.</text>
+          <text x="10" y="118" class="text-small" fill="#166534"><tspan class="text-bold">Pull-Ups I2C Obligatorias:</tspan> 2.2kΩ entre SDA/3.3V y entre SCL/3.3V, montadas en el LECTOR (no en este expansor).</text>
         </g>
 
         <!-- TIRA WS2813 Connection -->

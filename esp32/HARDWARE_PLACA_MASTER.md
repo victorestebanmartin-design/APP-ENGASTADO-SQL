@@ -1,8 +1,18 @@
-# Placa MASTER y placa ESCLAVA del Pick-To-Light
+# Placa expansora del Pick-To-Light (MCP23017)
 
-Plano de montaje de las dos placas que reparten el pick-to-light de un puesto:
-una **MASTER**, que es la que habla con el lector RFID y con la fuente, y tantas
-**ESCLAVAS** como bancos de 16 gavetas haya detrás.
+Plano de montaje de la placa expansora que reparte el pick-to-light de un
+puesto: **una sola placa, mismo montaje y mismo BOM**, tantas como bancos de 16
+gavetas haga falta. No hay una placa "MASTER" distinta: **"MASTER" es solo un
+alias de posición** — la placa que, por cableado, tiene su J1 conectado al DB9
+del lector en vez de al J4 de otra placa expansora. Cuál dirección I2C ocupa
+cada una (`0x20`…`0x27`) lo decide únicamente el jumper de A2/A1/A0 (§4); no
+hay ningún componente que distinga una posición de otra.
+
+Las resistencias pull-up del bus I2C **ya no van en esta placa**: van en el
+propio lector RFID, justo antes de salir por el DB9 (ver
+[HARDWARE_LECTOR_PUESTO_GEN4.md](HARDWARE_LECTOR_PUESTO_GEN4.md) y
+[HARDWARE_EXPANSORES_MCP23017.md](HARDWARE_EXPANSORES_MCP23017.md)). Por eso la
+placa expansora ya no lleva footprint R1/R2.
 
 Dos planos imprimibles, cada uno en 1 página A4:
 
@@ -36,22 +46,27 @@ Dos consecuencias prácticas:
 
 ## 1. Reparto: qué hace cada placa
 
-| | MASTER | ESCLAVA |
-|:--|:--|:--|
-| MCP23017 | 1 (`0x20`) | 1 (`0x21`…`0x27`) |
-| Micros de gaveta | 16 | 16 |
-| Pull-ups I2C 4k7 | **Sí** (únicas del bus) | **No** |
-| Entrada 5 V de la fuente | **Sí** (J0) | No — le llega por J1 |
-| Entrada 3V3 / I2C / datos | Del DB9 del lector (J1) | De la placa anterior (J1) |
-| Salida a la placa siguiente | J4 | J4 |
-| Tira LED | 16 LEDs (J2 sale, J3 vuelve) | 16 LEDs (J2 sale, J3 vuelve) |
-| Fusible PTC y C3 de la fuente | **Sí** (F1 + C3 en J0) | No |
-| C3 en la cabeza de su tira | Sí (J2) | **Sí** (J2) |
-| Adaptador de nivel 74AHCT125 | Opcional, **fuera de la placa** (punto JP1) | No hace falta |
+Todas las placas expansoras son **idénticas en montaje y en BOM**. Lo único
+que cambia entre posiciones es el strap de dirección A2/A1/A0 (§4) y, en la
+placa que hace de "MASTER" por posición, el destino de J1:
 
-> La ESCLAVA es **la misma placa con menos componentes**. Mismo taladrado, misma
-> serigrafía, misma tabla de pads. Solo cambia la lista de montaje y los straps
-> de dirección. Monta todas iguales y decide al final cuál es la master.
+| | Cualquier placa expansora |
+|:--|:--|
+| MCP23017 | 1, dirección `0x20`…`0x27` según el strap |
+| Micros de gaveta | 16 |
+| Pull-ups I2C | **No van en esta placa** — van en el lector, antes del DB9 |
+| Entrada 5 V de la fuente | **Sí, en todas** (J0), en paralelo directo desde la fuente |
+| Entrada 3V3 / I2C / datos (J1) | Del DB9 del lector, **si** es la placa "MASTER" por posición; si no, del J4 de la placa anterior en la cadena de datos |
+| Salida a la placa siguiente (J4) | Sí, en todas — sigue llevando el bus I2C y los datos de la tira encadenados |
+| Tira LED | 16 LEDs (J2 sale, J3 vuelve) |
+| Fusible PTC y C3 de la fuente | **Sí, en todas** (F1 + C3 en J0) |
+| C3 en la cabeza de su tira | Sí, en todas (J2) |
+| Adaptador de nivel 74AHCT125 | Opcional, **fuera de la placa** (punto JP1) |
+
+> Monta todas las placas exactamente iguales, con el mismo BOM. Al final solo
+> decides dos cosas por placa: el strap de dirección (§4) y, para la que vaya
+> pegada al lector, que su J1 vaya al DB9 en vez de al J4 de la anterior. Nada
+> de eso cambia un componente.
 
 ---
 
@@ -79,7 +94,7 @@ lateral, y los hilos de los micros van rectos y cortos.
  L7 ●───┤                   [ 7 GPA6] zócalo [GPB1 22]                     ├───● R7
  L8 ●───┤                   [ 8 GPA7]        [GPB0 21]       JP1           ├───● R8  (gav 9)
         ├───────────────────────────────────────────────────────────────── │
- L9 ●───┤  ·  R1 ·  R2  ·  ═[ 9 VDD ]════════ INTA 20 ══════════════════ · ├───● R9
+ L9 ●───┤  ·  ·  ·  ·   ·  ═[ 9 VDD ]════════ INTA 20 ══════════════════ · ├───● R9
 L10 ●───┤ C3  ·  ·  ·  ·  ═[10 VSS ]════════ INTB 19 ══════════════════ · ├───● R10
 L11 ●───┤  ·  ·  ·  ·  ·  ══ 11 NC  ═════════ RESET 18 ═════ DATA_IN ══╗   ├───● R11
 L12 ●───┤ F1  ·  ·  ·  ·  ═[12 SCL ]════════ A2   17 ═══════════════════ · ├───● R12
@@ -128,8 +143,8 @@ cables salen por los laterales y el centro queda libre.
 
 | Ref | Agujeros | Señales | Va a |
 |:---|:---|:---|:---|
-| **J0** | C1/F14, C1/F10 | `+5V`, `GND` | Bornes de la **fuente de 5 V**. Solo en la MASTER. |
-| **J1** | C2, F9→F14 | `+3V3`, `GND`, `DATA_IN`, `SCL`, `SDA`, `+5V` | **MASTER:** el DB9 del lector. **ESCLAVA:** el J4 de la placa anterior. |
+| **J0** | C1/F14, C1/F10 | `+5V`, `GND` | Bornes de la **fuente de 5 V**, en paralelo. En **todas** las placas: cada una recibe su propio ramal de la fuente, no encadenado por J4. |
+| **J1** | C2, F9→F14 | `+3V3`, `GND`, `DATA_IN`, `SCL`, `SDA`, `+5V` | La placa pegada al lector ("MASTER" por posición): el DB9. El resto: el J4 de la placa anterior en la cadena de I2C y datos. |
 | **J2** | C20, F1→F3 | `+5V`, `GND`, `DATA_OUT` | Cabeza de la tira WS2813 de **esta** placa (16 LEDs). |
 | **J3** | C20, F5→F6 | `DATA_RET`, `GND` | Cola de la tira de esta placa (el `DO` del último LED). |
 | **J4** | C20, F9→F14 | `+3V3`, `GND`, `DATA_RET`, `SCL`, `SDA`, `+5V` | El **J1 de la placa siguiente**. |
@@ -193,7 +208,7 @@ ahí pasan los saltos, sin estorbar a nada.
 | L9-L10-L11-L12 encadenados → C3/F10 | Masa de los micros del lado izquierdo |
 | R9-R10-R11-R12 encadenados → C19/F10 | Masa de los micros del lado derecho |
 | **C14/F9 → C13/F11** | **RESET a +3,3 V. Imprescindible.** |
-| C13/F12, C13/F13, C13/F14 → C14/F10 | Straps A2, A1, A0. MASTER = todos a GND (`0x20`). Para una esclava, los que toquen van a **C14/F9** (+3V3). |
+| C13/F12, C13/F13, C13/F14 → C14/F10 | Straps A2, A1, A0. Para `0x20` van todos a GND. Para el resto de direcciones, los que toquen según la tabla del §4 van a **C14/F9** (+3V3) en vez de a GND. |
 | C1/F12 → C2/F14 · C1/F10 → C2/F10 | Entrada de la fuente a los raíles |
 | C16/F5 → C20/F3 | Datos a la tira, después de R3 |
 | C19/F14 → C20/F1 | +5 V de la tira |
@@ -205,68 +220,66 @@ ahí pasan los saltos, sin estorbar a nada.
 | Ref | Agujeros | Nota |
 |:---|:---|:---|
 | **Zócalo DIP-28** | C7 y C13, F1…F14 | Muesca **arriba**. |
-| **F1** PTC 2 A | C1/F14 → C1/F12 | Radial, 5,08 mm = 2 agujeros. Solo MASTER. |
-| **C3** 1000 µF / 10 V | C1/F12 (+) → C1/F10 (−) | Detrás del PTC. Solo MASTER. |
-| **R1** 4k7 | C3/F13 (SDA) → C3/F9 (3V3) | Solo MASTER. |
-| **R2** 4k7 | C5/F12 (SCL) → C5/F9 (3V3) | Solo MASTER. |
+| **F1** PTC 2 A | C1/F14 → C1/F12 | Radial, 5,08 mm = 2 agujeros. En **todas** las placas: cada una recibe su propio ramal de la fuente por J0. |
+| **C3** 1000 µF / 10 V | C1/F12 (+) → C1/F10 (−) | Detrás del PTC. En **todas** las placas. |
 | **Cd** 100 nF | C7/F9 → C7/F10 | Justo entre los pines 9 y 10 del zócalo: 2,54 mm, clavado. En **todas** las placas. |
 | **JP1** | C16/F11 → C16/F8 | Puente de hilo. Quítalo para intercalar un buffer externo. |
 | **R3** 330 Ω | C16/F8 → C16/F5 | En todas las placas. |
+
+> Esta placa **ya no lleva footprint de pull-ups I2C** (los R1/R2 de 4,7 kΩ del
+> diseño anterior). Las pull-ups del bus van ahora en el lector, en 2,2 kΩ —
+> ver [HARDWARE_LECTOR_PUESTO_GEN4.md](HARDWARE_LECTOR_PUESTO_GEN4.md).
 
 > El 74AHCT125 **no cabe** en esta placa junto con todo lo demás. Si hace falta
 > (ver §5), va en una plaquita aparte intercalada en JP1: quitas el puente y
 > sacas esos dos puntos al buffer. Con eso la placa sigue siendo la misma.
 
 > Ojo al sentido de los 5 V: el **+3,3 V entra** en la placa (lo genera el
-> regulador del lector) y los **+5 V salen** de la placa hacia el lector. La
-> MASTER es la que reparte la fuente, el lector no.
+> regulador del lector) y los **+5 V salen** hacia el lector, pero solo en la
+> placa cuyo J1 va al DB9 — el resto de placas reciben su 5 V directo de la
+> fuente por su propio J0, no del lector.
 
 ---
 
 ## 3. Lista de montaje
 
-### MASTER
+Una sola lista, válida para cualquier posición (`0x20`…`0x27`):
 
 | Ref | Componente | Dónde | Por qué |
 |:---|:---|:---|:---|
 | **U1** | MCP23017-E/SP (DIP-28) + zócalo | C7/C13, F1…F14, muesca arriba | Los 16 canales. **Zócalo siempre**: un MCP muerto se cambia sin desoldar 24 hilos. |
-| **R1, R2** | 4,7 kΩ | SDA→3V3 y SCL→3V3 | Pull-ups **del bus entero**. Van solo aquí. |
 | **R3** | 330 Ω | C16/F8 → C16/F5 | Protege la primera entrada de la tira y redondea el flanco. |
 | **Cd** | 100 nF cerámico | C7/F9 → C7/F10 | Desacoplo, clavado entre los pines 9 y 10. Sin él, el I2C da lecturas fantasma. |
-| **C3** | 1000 µF / 10 V electrolítico | C1/F12 (+) → C1/F10 (−) | Golpe de corriente al encender la tira. Es el condensador que se salta todo el mundo y luego el primer LED sale de color raro. |
+| **C3** | 1000 µF / 10 V electrolítico | C1/F12 (+) → C1/F10 (−) | Golpe de corriente al encender la tira desde el ramal de J0. Es el condensador que se salta todo el mundo y luego el primer LED sale de color raro. |
 | **F1** | PTC rearmable 2 A | C1/F14 → C1/F12 | Un pelo de la tira tocando masa no puede fundir la fuente ni recocer la pista. |
 | **JP1** | Puente de hilo | C16/F11 → C16/F8 | Punto de corte para intercalar un buffer, ver §5. |
 
-### ESCLAVA
-
-Lo mismo **quitando** R1, R2, F1 y J0. Se queda en: U1 + zócalo, Cd, R3, JP1,
-las 6 pistas horizontales y los cuatro conectores (J1, J2, J3, J4). Los straps
-A0/A1/A2 según la tabla de §4.
-
-**La esclava sí lleva su propio C3.** Cada placa inyecta los 5 V de su tramo de
-tira y necesita su depósito. Va soldado **entre C20/F1 (+5V) y C20/F2 (GND)**,
-que son los dos pines de J2: 2,54 mm, justo en el punto de inyección, que es
-además el mejor sitio eléctrico. En la MASTER puedes ponerlo ahí también, además
-del de J0.
+Además, **la misma placa lleva su propio C3 en la cabeza de su tira** (entre
+C20/F1 y C20/F2, los dos pines de J2), aparte del de J0: cada placa inyecta los
+5 V de su propio tramo de tira y necesita su depósito ahí, en el punto de
+inyección.
 
 ---
 
 ## 4. Dirección I2C: los straps A0 / A1 / A2
 
 Pines 15 (A0), 16 (A1) y 17 (A2), cada uno a **GND** o a **+3,3 V** — nunca al
-aire. En la MASTER van los tres a GND (`0x20`). En las esclavas, según el banco
-de gavetas que lleven:
+aire. La única placa que va a los tres a GND (`0x20`) es la que hace de
+"MASTER" por posición: la que tiene su J1 pegado al DB9 del lector. El resto se
+strapea según el banco de gavetas que lleven, con la misma tabla que ya
+gobierna el resto del pick-to-light
+([HARDWARE_EXPANSORES_MCP23017.md](HARDWARE_EXPANSORES_MCP23017.md)):
 
-| Placa | Gavetas | Dirección | A2 (17) | A1 (16) | A0 (15) |
+| Posición en la cadena | Gavetas | Dirección | A2 (17) | A1 (16) | A0 (15) |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| **MASTER** | 1 – 16 | `0x20` | GND | GND | GND |
-| ESCLAVA 1 | 17 – 32 | `0x21` | GND | GND | **3V3** |
-| ESCLAVA 2 | 33 – 48 | `0x22` | GND | **3V3** | GND |
-| ESCLAVA 3 | 49 – 64 | `0x23` | GND | **3V3** | **3V3** |
-| ESCLAVA 4 | 65 – 80 | `0x24` | **3V3** | GND | GND |
-| ESCLAVA 5 | 81 – 96 | `0x25` | **3V3** | GND | **3V3** |
-| ESCLAVA 6 | 97 – 112 | `0x26` | **3V3** | **3V3** | GND |
-| ESCLAVA 7 | 113 – 128 | `0x27` | **3V3** | **3V3** | **3V3** |
+| Pegada al DB9 ("MASTER") | 1 – 16 | `0x20` | GND | GND | GND |
+| 2ª placa | 17 – 32 | `0x21` | GND | GND | **3V3** |
+| 3ª placa | 33 – 48 | `0x22` | GND | **3V3** | GND |
+| 4ª placa | 49 – 64 | `0x23` | GND | **3V3** | **3V3** |
+| 5ª placa | 65 – 80 | `0x24` | **3V3** | GND | GND |
+| 6ª placa | 81 – 96 | `0x25` | **3V3** | GND | **3V3** |
+| 7ª placa | 97 – 112 | `0x26` | **3V3** | **3V3** | GND |
+| 8ª placa | 113 – 128 | `0x27` | **3V3** | **3V3** | **3V3** |
 
 **`RESET` (pin 18) va SIEMPRE a +3,3 V.** Si queda flotando, el chip se
 reinicia solo y el puesto pierde gavetas al azar. `INTA` (20) e `INTB` (19) se
@@ -297,38 +310,53 @@ si la tira queda a más de un metro o si ves el primer LED tonteando. El
 74AHCT125 tiene cuatro buffers: usa uno, aliméntalo a 5 V y **ata las entradas
 de los otros tres a GND**, que si no oscilan y calientan.
 
-**La esclava nunca necesita adaptador.** Los datos que le llegan por J1 vienen
-del `DO` del último LED de la tira anterior, que ya son 5 V regenerados.
+**Ninguna placa aguas abajo de la primera necesita adaptador.** Los datos que
+le llegan por J1 vienen del `DO` del último LED de la tira de la placa
+anterior, que ya son 5 V regenerados.
 
 ---
 
 ## 6. Alimentación: dónde va la corriente gorda
 
-```
-  FUENTE 5 V ──► J0 (C1/F14) ──► F1 PTC 2A ──► C1/F12 ──► PISTA F14 (+5V)
-                                                                │
-                                      ┌─────────────────────────┼──────────────┐
-                                      ▼                         ▼              ▼
-                              J1/F14 ──► DB9-9          C19/F14 ──► J2      J4/F14
-                              (lector)                   (tira 16 LED)     (ESCLAVA)
+**Todas las placas reciben sus 5 V en paralelo, directos de la fuente, cada
+una por su propio J0** — no encadenados por J4. Esto vale desde la primera
+placa, no solo "a partir de tres": cada placa lleva su propio J0 poblado
+(F1 + C3) y su propio ramal de cable hasta los bornes de la fuente. Es lo que
+hace que el BOM sea idéntico en todas las posiciones.
 
-  FUENTE GND ──► J0 (C1/F10) ──► PISTA F10 (GND) ──► MASA COMÚN de la placa
-                                 (fuente + lector + micros + tira)
+```
+  FUENTE 5 V  ──┬──► J0 placa 1 (0x20) ──► F1 PTC 2A ──► C1/F12 ──► PISTA F14 (+5V) de esta placa ──► J2 (su propia tira)
+                ├──► J0 placa 2 (0x21) ──► F1 PTC 2A ──► C1/F12 ──► PISTA F14 (+5V) de esta placa ──► J2 (su propia tira)
+                ├──► J0 placa 3 (0x22) ──► ... (igual, un ramal por placa)
+                └──► ... hasta 8 placas
+
+  FUENTE GND  ──┬──► J0 placa 1 ──► PISTA F10 (GND)
+                ├──► J0 placa 2 ──► PISTA F10 (GND)
+                └──► ... (mismo reparto en paralelo, en estrella desde la fuente)
+
+  Solo la placa pegada al lector:
+  J1/F14 ──► DB9-9 (lector)      ← su propio +5V, tomado de su F1/C3 local
 ```
 
-- **La masa tiene que ser una sola.** El `GND` de la fuente, el `GND` que viene
-  del lector por el DB9 y el retorno de los micros se juntan **en la MASTER y
-  en ningún otro sitio**. Sin masa común, la señal de datos no tiene contra qué
+- **La cadena J1→J4 deja de llevar la corriente de la tira.** Sigue llevando
+  `+3V3`, `SCL`, `SDA` y los datos de la tira (`DATA_IN`/`DATA_RET`) de una
+  placa a la siguiente — eso no cambia —, pero el `+5V` de esa cadena ya no es
+  el camino real de la potencia: cada placa se autoalimenta por su J0. El pin
+  sigue ahí en el conector (no cambia el trazado de F14 del §2.3), simplemente
+  no hace falta confiar en él para la corriente.
+- **La masa sigue siendo una sola red, repartida en estrella desde la
+  fuente.** El `GND` llega a cada placa por su propio J0, y el `GND` que viene
+  del lector por el DB9 se junta con esa misma red en la placa que tiene el
+  J1 conectado al DB9. Sin masa común, la señal de datos no tiene contra qué
   medirse y la tira hace cosas que parecen un fallo de firmware.
 - **El +3,3 V lo da el regulador del lector.** Solo alimenta los MCP23017 (un
-  par de mA cada uno). No cuelgues nada más de ahí.
+  par de mA cada uno) a través de la cadena J1→J4. No cuelgues nada más de ahí.
 - ⚠️ **NUNCA alimentes el MCP23017 a 5 V.** Sus líneas SDA/SCL subirían a 5 V y
   se llevan por delante los GPIO del ESP32-S3, permanentemente.
 - ⚠️ **NUNCA conectes el USB-C del lector y los 5 V del DB9 a la vez.**
-- **A partir de tres placas, lleva los 5 V de la tira directos de la fuente a
-  cada J0**, no encadenados por J4. Treinta y dos LEDs a tope son ~2 A y todo
-  eso pasa hoy por la MASTER. La cadena de datos sigue igual; solo se reparte la
-  corriente.
+- Con el reparto en paralelo, la corriente de cada tramo de 16 LEDs (hasta
+  ~1 A a tope) pasa solo por el PTC de su propia placa, no por la de las
+  demás: es más seguro que encadenar y no depende de cuántas placas haya.
 
 ---
 
@@ -352,9 +380,9 @@ de enchufar nada.
 4. **Desenchufa, pon el MCP en el zócalo** (muesca arriba) y vuelve a dar
    tensión.
 5. **Reinicia el lector RFID.** La pantalla de reposo tiene que poner
-   `PTL 1xMCP 16GAV` (o `2xMCP 32GAV` con la esclava). Si sigue poniendo
-   `SIN PTL`, el bus I2C no ve nada: revisa SDA/SCL, los pull-ups de 4k7 y el
-   RESET.
+   `PTL 1xMCP 16GAV` (o `2xMCP 32GAV` con la segunda placa). Si sigue poniendo
+   `SIN PTL`, el bus I2C no ve nada: revisa SDA/SCL, las pull-ups de 2,2 kΩ del
+   lector y el RESET.
 6. **Admin → Lectores RFID → probar cableado.** Enciende LED a LED y ve
    cerrando micros: la prueba te dice qué canal lee cada uno. Aquí es donde
    salta el lateral derecho invertido si te lo has saltado.
@@ -369,7 +397,7 @@ de enchufar nada.
 
 | Síntoma | Causa casi segura |
 |:---|:---|
-| La pantalla pone `SIN PTL` | Sin pull-ups 4k7, RESET al aire, o SDA/SCL cambiados. |
+| La pantalla pone `SIN PTL` | Sin pull-ups 2,2 kΩ en el lector, RESET al aire, o SDA/SCL cambiados. |
 | Dice `1xMCP` habiendo dos placas | Las dos con el mismo strap de dirección. Los `0x20` duplicados se ven como uno. |
 | La gaveta 9 enciende y suena la 16 | Lateral derecho cableado ascendente. Ver §2.1. |
 | Gavetas que aparecen y desaparecen solas | `RESET` flotando, o falta C1 junto al MCP. |

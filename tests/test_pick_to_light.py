@@ -286,14 +286,32 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204', 'validas': [7], 'rfid_modo': None}
+    assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
+                     'validas': [7], 'rfid_modo': None, 'prisa': False,
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1,
+                     'esperando_devolucion': False,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '', 'validas': [], 'rfid_modo': None}
+    # 'prisa' sigue a True a proposito: apagar es terminal terminado, no
+    # operario que se va (ver test_terminar_un_terminal_mantiene_la_placa_a_punto).
+    assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
+                     'validas': [], 'rfid_modo': None, 'prisa': True,
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1,
+                     'esperando_devolucion': False,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
 
-def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, sin_placa):
+def test_pythonanywhere_sin_confirmacion_de_la_placa_no_da_activo(
+        app, client, admin_client, sin_placa, monkeypatch):
+    """Sin poder empujar la orden, PAW no puede asumir 'activo:true' a ciegas:
+    tiene que esperar a que la propia placa confirme por su sondeo, y si no
+    llega en el plazo, responder que no hay luz de verdad."""
+    monkeypatch.setattr(pick_to_light, 'ESPERA_CONFIRMACION_PAW_S', 0.05)
+    monkeypatch.setattr(pick_to_light, 'PAUSA_CONFIRMACION_PAW_S', 0.01)
     _registrar_lector(app)
     _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
 
@@ -301,8 +319,174 @@ def test_pythonanywhere_espera_la_gaveta_por_sondeo(app, client, admin_client, s
                             json={'puesto_id': 'puesto_001', 'terminal': '640204'},
                             headers={'Host': 'viktor85.pythonanywhere.com'})
     datos = respuesta.get_json()
+    assert datos['activo'] is False
+    assert 'no confirmó' in datos['motivo']
+
+
+def test_pythonanywhere_confirma_la_luz_por_sondeo_dentro_del_plazo(
+        app, client, admin_client, sin_placa, monkeypatch):
+    """Si la placa confirma por su sondeo (GET .../orden?led=...) antes de
+    agotar el plazo, la espera se corta ahí y 'activo' pasa a True."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    monkeypatch.setattr(pick_to_light, 'ESPERA_CONFIRMACION_PAW_S', 1.0)
+    monkeypatch.setattr(pick_to_light, 'PAUSA_CONFIRMACION_PAW_S', 0.05)
+
+    llamadas = []
+
+    def _dormir_y_confirmar(segundos):
+        llamadas.append(segundos)
+        if len(llamadas) == 1:
+            # Simula que la placa llega con su sondeo mientras se esperaba.
+            client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7' % device_id)
+
+    monkeypatch.setattr(pick_to_light.time, 'sleep', _dormir_y_confirmar)
+
+    respuesta = client.post('/api/pick-to-light/encender',
+                            json={'puesto_id': 'puesto_001', 'terminal': '640204'},
+                            headers={'Host': 'viktor85.pythonanywhere.com'})
+    datos = respuesta.get_json()
     assert datos['activo'] is True
-    assert datos['motivo'] == 'La placa recibirá la orden por sondeo.'
+    assert llamadas
+
+
+def test_sin_nadie_delante_la_placa_sondea_a_su_ritmo(app, client, admin_client, con_placa):
+    """Sin aviso de atención no hay prisa: un armario sin operario no tiene por
+    qué sondear rápido, que es justo lo que buscaba el commit de rendimiento."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is False
+
+
+def test_avisar_atencion_pone_la_placa_a_punto(app, client, admin_client, con_placa):
+    """Con el operario delante de la lista de terminales, el sondeo de la placa
+    tiene que ir rápido ANTES de que elija: si no, la orden se queda esperando
+    hasta 4 s a que la recoja y la gaveta enciende tarde."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    r = client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['atendido'] is True
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is True
+
+
+def test_la_atencion_caduca_sola(app, client, admin_client, con_placa, monkeypatch):
+    """La prisa no se queda pegada: si el operario se va, nadie avisa de nada y
+    la placa tiene que volver sola a su sondeo lento."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    monkeypatch.setattr(pick_to_light, 'ATENCION_S', -1)   # ya caducada al nacer
+
+    client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is False
+
+
+def test_terminar_un_terminal_mantiene_la_placa_a_punto(app, client, admin_client, con_placa):
+    """Apagar es 'terminal terminado', no 'se acabó el trabajo': el operario
+    sigue delante eligiendo el siguiente, y esa gaveta también tiene que
+    encender sin esperas."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['apagar'] is True      # la orden sí se va
+    assert orden['prisa'] is True       # la atención no
+
+
+def test_encender_no_pierde_la_atencion(app, client, admin_client, con_placa):
+    """El encendido reescribe el estado del puesto entero: la marca de atención
+    tiene que sobrevivir a eso."""
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    client.post('/api/pick-to-light/atencion', json={'puesto_id': 'puesto_001'})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['prisa'] is True
+
+
+def test_avisar_atencion_sin_puesto_no_es_un_error(client):
+    """Nunca puede tumbar la pantalla de engastado: es solo un aviso."""
+    r = client.post('/api/pick-to-light/atencion', json={})
+    assert r.status_code == 200
+    assert r.get_json() == {'success': True, 'atendido': False}
+
+
+def _marcar_latido(app, device_id, hace_segundos=0):
+    """Deja el last_seen que escribiría el latido de la placa hace un rato."""
+    from datetime import datetime, timedelta
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    with open(ruta, encoding='utf-8') as f:
+        devs = json.load(f)
+    devs[device_id]['last_seen'] = (
+        datetime.now() - timedelta(seconds=hace_segundos)).isoformat()
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump(devs, f)
+
+
+def test_placa_viva_pero_lenta_deja_la_puerta_pendiente(
+        app, client, admin_client, sin_placa):
+    """La placa está viva pero todavía no ha sondeado (en reposo tarda hasta 4 s
+    por vuelta, y hacen falta dos). No hay luz que confirmar aún, pero rendirse
+    aquí es peor: el navegador se salta la puerta y el operario acaba en los
+    paquetes con la gaveta encendiéndose sola detrás."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    datos = client.post('/api/pick-to-light/encender',
+                        json={'puesto_id': 'puesto_001', 'terminal': '640204'}).get_json()
+    assert datos['activo'] is False
+    assert datos['pendiente'] is True
+    assert datos['motivo'] == ''
+
+
+def test_placa_sin_dar_señales_no_deja_la_puerta_pendiente(
+        app, client, admin_client, sin_placa):
+    """Lo contrario: un lector asignado en Admin pero desenchufado desde hace
+    rato. Aquí no hay nada que esperar, y un modal de gaveta que nunca se va a
+    encender es justo lo que no puede aparecer en un puesto sin hardware."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id, hace_segundos=600)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    datos = client.post('/api/pick-to-light/encender',
+                        json={'puesto_id': 'puesto_001', 'terminal': '640204'}).get_json()
+    assert datos['activo'] is False
+    assert datos['pendiente'] is False
+    assert 'no responde' in datos['motivo']
+
+
+def test_el_estado_dice_cuando_la_placa_confirmo_la_luz(
+        app, client, admin_client, sin_placa):
+    """El modal 'pendiente' espera con este campo: hasta que la placa confirma
+    el led por su sondeo, no hay luz de verdad que guardar."""
+    device_id = _registrar_lector(app)
+    _marcar_latido(app, device_id)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    antes = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert antes['placa_confirmo_luz'] is False
+
+    client.get('/api/esp32/rfid/gaveta/orden?device_id=%s&led=7' % device_id)
+
+    despues = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert despues['placa_confirmo_luz'] is True
+    assert despues['led'] == 7
 
 
 def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client, sin_placa, monkeypatch):
@@ -313,7 +497,125 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     assert respuesta.get_json() == {'success': True, 'message': 'La placa recibirá la orden por sondeo.'}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '', 'validas': [], 'rfid_modo': None}
+    assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
+                     'validas': [], 'rfid_modo': None, 'prisa': False,
+                     'micros': {'invertir': False, 'ignorar': []},
+                     'leds_por_gaveta': 1,
+                     'esperando_devolucion': False,
+                     'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
+
+
+def test_logica_de_micros_por_defecto_es_la_de_siempre(app, admin_client, con_placa):
+    """Sin configurar nada: normalmente cerrado y ningun canal ignorado."""
+    device_id = _registrar_lector(app)
+    datos = admin_client.get('/api/pick-to-light/micros/config?device_id=' + device_id).get_json()
+    assert datos['invertir'] is False
+    assert datos['ignorar'] == []
+
+
+def test_guardar_logica_de_micros_llega_a_la_placa_y_al_sondeo(app, client, admin_client, con_placa):
+    """Se empuja al puerto 80 y ademas viaja en el sondeo, que es lo que
+    recupera una placa que se acaba de reiniciar."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/micros/config',
+                                 json={'device_id': device_id, 'invertir': True,
+                                       'ignorar': [5, 3, 3, 'x', 0, 999]})
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is True
+    assert datos['ignorar'] == [3, 5]      # ordenado, sin repetidos ni basura
+    assert con_placa[-1][1] == {'micros_config': {'invertir': True, 'ignorar': [3, 5]}}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros'] == {'invertir': True, 'ignorar': [3, 5]}
+
+
+def test_guardar_logica_de_micros_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
+    """La placa desenchufada no puede impedir guardar: lo cogera al sondear."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/micros/config',
+                                 json={'device_id': device_id, 'invertir': True, 'ignorar': []})
+    assert respuesta.status_code == 200
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is False
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertir'] is True
+
+
+def test_volver_a_la_logica_de_micros_de_siempre(app, client, admin_client, con_placa):
+    """Reversible sin tocar la placa: guardar los valores por defecto basta."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/micros/config',
+                     json={'device_id': device_id, 'invertir': True, 'ignorar': [1, 2]})
+    admin_client.put('/api/pick-to-light/micros/config',
+                     json={'device_id': device_id, 'invertir': False, 'ignorar': []})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros'] == {'invertir': False, 'ignorar': []}
+
+
+def test_brillo_por_defecto_es_el_de_siempre(app, admin_client, con_placa):
+    """Sin configurar nada, los valores coinciden con los COLOR_* de gavetas.py."""
+    device_id = _registrar_lector(app)
+    datos = admin_client.get('/api/pick-to-light/brillo/config?device_id=' + device_id).get_json()
+    assert datos['objetivo'] == 70
+    assert datos['en_uso'] == 90
+    assert datos['error'] == 110
+    assert datos['max'] == 200
+
+
+def test_guardar_brillo_llega_a_la_placa_y_al_sondeo(app, client, admin_client, con_placa):
+    """Se empuja al puerto 80 y ademas viaja en el sondeo, como micros y leds_por_gaveta."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': 40,
+                                       'en_uso': 60, 'error': 80})
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is True
+    assert (datos['objetivo'], datos['en_uso'], datos['error']) == (40, 60, 80)
+    assert con_placa[-1][1] == {'brillo_config': {'objetivo': 40, 'en_uso': 60, 'error': 80}}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 40, 'en_uso': 60, 'error': 80}
+
+
+def test_guardar_brillo_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
+    """La placa desenchufada no puede impedir guardar: lo cogera al sondear."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': 30,
+                                       'en_uso': 30, 'error': 30})
+    assert respuesta.status_code == 200
+    datos = respuesta.get_json()
+    assert datos['success'] is True and datos['aplicado'] is False
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 30, 'en_uso': 30, 'error': 30}
+
+
+def test_brillo_fuera_de_rango_se_sanea_al_valor_por_defecto(app, admin_client, con_placa):
+    """Ni negativos ni por encima de BRILLO_MAX (tope de seguridad, no 255)."""
+    device_id = _registrar_lector(app)
+    respuesta = admin_client.put('/api/pick-to-light/brillo/config',
+                                 json={'device_id': device_id, 'objetivo': -5,
+                                       'en_uso': 255, 'error': 'no numero'})
+    datos = respuesta.get_json()
+    assert datos['success'] is True
+    assert (datos['objetivo'], datos['en_uso'], datos['error']) == (70, 90, 110)
+
+
+def test_volver_al_brillo_de_siempre(app, client, admin_client, con_placa):
+    """Reversible sin tocar la placa: guardar los valores por defecto basta."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/brillo/config',
+                     json={'device_id': device_id, 'objetivo': 10, 'en_uso': 10, 'error': 10})
+    admin_client.put('/api/pick-to-light/brillo/config',
+                     json={'device_id': device_id, 'objetivo': 70, 'en_uso': 90, 'error': 110})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['brillo'] == {'objetivo': 70, 'en_uso': 90, 'error': 110}
 
 
 def test_sondeo_reconfirma_recogida_si_se_pierde_el_aviso_post(app, client, admin_client, con_placa):
@@ -367,6 +669,36 @@ def test_encender_otro_terminal_borra_la_recogida_anterior(app, client, admin_cl
     client.post('/api/pick-to-light/encender',
                 json={'puesto_id': 'puesto_001', 'terminal': '640205'})
     assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['recogida'] is False
+
+
+# ── Fase de "esperando devolucion" ───────────────────────────────────────────
+
+def test_devolucion_iniciar_marca_esperando_devolucion_en_el_sondeo(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=%s' % device_id).get_json()
+    assert orden['esperando_devolucion'] is False
+
+    r = client.post('/api/pick-to-light/devolucion/iniciar', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=%s' % device_id).get_json()
+    assert orden['esperando_devolucion'] is True
+
+
+def test_devolucion_iniciar_sin_orden_activa_no_hace_nada(app, client, admin_client):
+    """Sin @requiere_pin_admin: lo llama la pantalla de engastado, no Admin.
+    Responde 200 siempre, y sin orden activa en el puesto no marca nada."""
+    r = client.post('/api/pick-to-light/devolucion/iniciar', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+
+def test_devolucion_iniciar_sin_puesto_no_es_un_error(client):
+    r = client.post('/api/pick-to-light/devolucion/iniciar', json={})
+    assert r.status_code == 200 and r.get_json()['success'] is True
 
 
 # ── Lo que manda la placa ────────────────────────────────────────────────────
@@ -1036,6 +1368,97 @@ def test_rfid_desvincular_libera_el_uid(admin_client):
     r2 = admin_client.put('/api/pick-to-light/canal/rfid',
                           json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'AABBCC'})
     assert r2.status_code == 200
+
+
+# ── RFID de doble etiqueta por canal (kanban de doble caja) ─────────────────
+
+def test_confirmar_caja_2_no_choca_con_caja_1_del_mismo_canal(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC', 'caja': 1})
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'DDEEFF', 'caja': 2})
+    assert r.status_code == 200 and r.get_json()['uid'] == 'DDEEFF'
+
+    datos = admin_client.get('/api/terminal-gaveta/640204').get_json()
+    assert datos['rfid'] is True   # cualquiera de las dos cuenta
+
+
+def test_caja_por_defecto_es_1(admin_client):
+    """Sin 'caja' en el body, el comportamiento es exactamente el de siempre."""
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC'})
+    assert r.status_code == 200 and r.get_json()['caja'] == 1
+
+
+def test_la_misma_etiqueta_no_puede_repetirse_entre_caja_1_y_caja_2(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC', 'caja': 1})
+
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'AABBCC', 'caja': 2})
+    assert r.status_code == 409
+
+
+def test_desvincular_una_caja_no_toca_la_otra(admin_client):
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC', 'caja': 1})
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'DDEEFF', 'caja': 2})
+
+    r = admin_client.delete('/api/pick-to-light/canal/rfid?puesto_id=puesto_001&canal=7&caja=1')
+    assert r.status_code == 200
+    # La caja 1 se libera para otro canal...
+    _asignar_canal(admin_client, 'puesto_001', 8, '640205', 'A-13')
+    r2 = admin_client.put('/api/pick-to-light/canal/rfid',
+                          json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'AABBCC', 'caja': 1})
+    assert r2.status_code == 200
+    # ...pero la caja 2 del canal 7 sigue activa: no se puede reutilizar.
+    r3 = admin_client.put('/api/pick-to-light/canal/rfid',
+                          json={'puesto_id': 'puesto_001', 'canal': 8, 'uid': 'DDEEFF', 'caja': 2})
+    assert r3.status_code == 409
+    assert admin_client.get('/api/terminal-gaveta/640204').get_json()['rfid'] is True
+
+
+def test_rfid_armar_guarda_la_caja_pedida(app, admin_client):
+    _registrar_lector(app)
+    r = admin_client.post('/api/pick-to-light/canal/rfid/armar',
+                          json={'puesto_id': 'puesto_001', 'canal': 7, 'caja': 2})
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+    from app.routes import pick_to_light as ptl
+    with app.app_context():
+        armado = ptl._rfid_armado_cargar()
+    entrada = list(armado.values())[0]
+    assert entrada['caja'] == 2
+
+
+def test_verificacion_rfid_acepta_cualquiera_de_las_dos_cajas(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCC', 'caja': 1})
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'DDEEFF', 'caja': 2})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': True, 'resultado': 'ok'})
+
+    orden_id = client.get(
+        '/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['orden_id']
+
+    r = client.post('/api/esp32/rfid/gaveta/lectura',
+                    json={'device_id': device_id, 'tipo': 'verificar',
+                          'orden_id': orden_id, 'uid': 'DDEEFF'})
+    assert r.get_json()['ok'] is True
+
+    datos = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert datos['rfid_confirmado'] is True
 
 
 def test_mapa_marca_rfid_true_cuando_esta_configurado(app, admin_client):

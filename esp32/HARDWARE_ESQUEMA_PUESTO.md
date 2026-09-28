@@ -64,12 +64,15 @@ Fuente Externa PTL (GND)
 ### C. Expansores I2C Multiplexor (MCP23017)
 - **Alimentación Lógica:** **SIEMPRE a 3.3V** desde DB9-3 (Pad 20) y GND desde DB9-1 (Pad 25).
 - **Bus I2C:** SCL a DB9-5 (GPIO48) y SDA a DB9-6 (GPIO47).
-- **Pull-Ups:** Colocar dos resistencias de **4.7 kΩ** entre SDA y 3.3V, y entre SCL y 3.3V en el primer expansor.
+- **Pull-Ups:** Colocar dos resistencias de **2.2 kΩ** entre SDA y 3.3V, y entre SCL y 3.3V, **en el propio lector**, justo antes de salir por el DB9 — no en ningún expansor.
 - **Codificación de Direcciones I2C (Pines A2, A1, A0):** Ver documento completo en [esp32/HARDWARE_EXPANSORES_MCP23017.md](esp32/HARDWARE_EXPANSORES_MCP23017.md).
-- **Placas MASTER / ESCLAVA:** en vez de cablear los MCP23017 a pelo, el montaje
-  normalizado usa una placa **MASTER** (que recibe este DB9 y los 5 V de la
-  fuente) y tantas **ESCLAVAS** como bancos de 16 gavetas haya. Plano completo
-  en [esp32/HARDWARE_PLACA_MASTER.md](esp32/HARDWARE_PLACA_MASTER.md).
+- **Placa expansora:** en vez de cablear los MCP23017 a pelo, el montaje
+  normalizado usa una única placa expansora (mismo montaje, mismo BOM en las
+  8 posiciones), repetida tantas veces como bancos de 16 gavetas haga falta.
+  Solo el jumper de dirección A0/A1/A2 distingue una placa de otra; la que
+  queda pegada al DB9 del lector se llama "MASTER" por posición, no porque
+  sea una placa distinta. Plano completo en
+  [esp32/HARDWARE_PLACA_MASTER.md](esp32/HARDWARE_PLACA_MASTER.md).
 
 | Nº Expansor | Rango Gavetas | Dirección Hex | A2 (Pin 17) | A1 (Pin 16) | A0 (Pin 15) |
 |:---:|:---:|:---:|:---:|:---:|:---:|

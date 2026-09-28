@@ -250,7 +250,13 @@ class PlacaConTira:
         obj.terminal = ''
         obj.recogida = False
         obj.equivocadas = set()
+        obj.esperando_devolucion = False
         obj.validas = None
+        # Los mismos valores por defecto que pone __init__: esta instancia se
+        # monta a mano, asi que cada atributo nuevo del firmware hay que
+        # repetirlo aqui o el banco de pruebas deja de parecerse a la placa.
+        obj.invertir = False
+        obj.ignorar = set()
         obj.fuera = set()
         obj._ultima_lectura_ms = 0
         obj._cambio_pendiente = {}
@@ -261,6 +267,9 @@ class PlacaConTira:
         obj._parpadeo_encendido = True
         obj._en_prueba = False
         obj._servidor = None
+        obj.leds_por_gaveta = 1
+        obj._led_pin = None
+        obj.brillo = dict(gmod.BRILLO_DEFECTO)
         self.obj = obj
         self.tira = tira
         self.expansores = expansores
@@ -305,8 +314,13 @@ def placa_con_tira(gavetas):
     obj.terminal = ''
     obj.recogida = False
     obj.equivocadas = set()
+    obj.esperando_devolucion = False
     obj.validas = None
     obj.canales_error = set()
+    # Igual que en el otro banco de arriba: los defectos de __init__ para la
+    # lectura de micros (normalmente cerrado y ningun canal ignorado).
+    obj.invertir = False
+    obj.ignorar = set()
     obj.fuera = set()
     obj._ultima_lectura_ms = 0
     obj._cambio_pendiente = {}
@@ -318,6 +332,9 @@ def placa_con_tira(gavetas):
     obj._en_prueba = False
     obj._prueba_desde_ms = 0
     obj._servidor = None
+    obj.leds_por_gaveta = 1
+    obj._led_pin = None
+    obj.brillo = dict(gavetas.BRILLO_DEFECTO)
 
     return obj, tira, expansores
 
@@ -555,6 +572,46 @@ def test_en_modo_prueba_cambio_micro_no_toca_los_leds(gavetas, placa_con_tira):
     assert not obj.equivocadas
 
 
+# ── Brillo por color ─────────────────────────────────────────────────────
+
+def test_brillo_por_defecto_coincide_con_los_colores_de_siempre(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert obj.brillo == {'objetivo': 70, 'en_uso': 90, 'error': 110}
+    assert obj.brillo == gavetas.BRILLO_DEFECTO
+
+
+def test_configurar_brillo_cambia_solo_lo_que_llega(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    cambio = gavetas.Gavetas.configurar_brillo(obj, {'objetivo': 20})
+    assert cambio is True
+    assert obj.brillo == {'objetivo': 20, 'en_uso': 90, 'error': 110}
+
+
+def test_configurar_brillo_fuera_de_rango_se_ignora(gavetas, placa_con_tira):
+    """No hay forma de subir a 255: BRILLO_MAX es el tope de seguridad."""
+    obj, _, _ = placa_con_tira
+    cambio = gavetas.Gavetas.configurar_brillo(
+        obj, {'objetivo': 255, 'en_uso': -1, 'error': 'no numero'})
+    assert cambio is False
+    assert obj.brillo == gavetas.BRILLO_DEFECTO
+
+
+def test_configurar_brillo_sin_cambios_devuelve_false(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert gavetas.Gavetas.configurar_brillo(obj, dict(gavetas.BRILLO_DEFECTO)) is False
+
+
+def test_configurar_brillo_repinta_el_objetivo_en_curso(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = set()
+    tira[2] = (0, 70, 0)   # como lo dejaria encender() con el brillo por defecto
+
+    gavetas.Gavetas.configurar_brillo(obj, {'objetivo': 25})
+
+    assert tira[2] == (0, 25, 0)
+
+
 # ── Apertura del puerto 80 ────────────────────────────────────────────────
 #
 # Una placa puede detectar sus expansores, encender gavetas y mandar latidos
@@ -649,3 +706,213 @@ def test_si_el_bind_falla_el_socket_se_cierra(gavetas, monkeypatch):
 
     assert gavetas.Gavetas._abrir_servidor(placa) is None
     assert creados and creados[0].cerrado, 'el socket fallido quedo sin cerrar'
+
+
+# ── Fase de "esperando devolucion" (parpadeo azul -> confirmacion verde) ────
+
+def _reloj_falso(monkeypatch, modulo):
+    reloj = types.ModuleType('time')
+    reloj.ticks_diff = lambda a, b: a - b
+    reloj.ticks_add = lambda a, b: a + b
+    monkeypatch.setattr(modulo, 'time', reloj)
+
+
+def test_marcar_espera_devolucion_cambia_solo_si_es_distinto(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert gavetas.Gavetas.marcar_espera_devolucion(obj, True) is True
+    assert obj.esperando_devolucion is True
+    assert gavetas.Gavetas.marcar_espera_devolucion(obj, True) is False
+    assert gavetas.Gavetas.marcar_espera_devolucion(obj, False) is True
+    assert obj.esperando_devolucion is False
+
+
+def test_el_azul_del_objetivo_parpadea_mientras_espera_devolucion(gavetas, placa_con_tira, monkeypatch):
+    """Sin esto el LED se queda azul fijo todo el rato que dura el engaste,
+    sin ningun aviso de 'toca devolver esto ya'."""
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = {3}   # sacada, en uso
+    obj.esperando_devolucion = True
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+    assert tira[2] == gavetas.COLOR_APAGADO
+
+    obj._parpadeo_hasta_ms = 0
+    gavetas.Gavetas._atender_parpadeo(obj, 20_000)
+    assert tira[2] == gavetas.COLOR_EN_USO
+
+
+def test_sin_esperar_devolucion_el_objetivo_no_parpadea(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = {3}
+    obj.esperando_devolucion = False
+    tira[2] = gavetas.COLOR_EN_USO
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+
+    assert tira[2] == gavetas.COLOR_EN_USO   # nadie lo toca: sigue fijo
+
+
+def test_los_dos_parpadeos_conviven_con_una_sola_escritura(gavetas, placa_con_tira, monkeypatch):
+    """Rojo de una equivocada + azul del objetivo esperando devolucion, a la
+    vez, con una unica llamada a tira.write() por vuelta."""
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = {3, 5}
+    obj.equivocadas = {5}
+    obj.esperando_devolucion = True
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+
+    escrituras_antes = tira.escrituras
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+
+    assert tira.escrituras == escrituras_antes + 1
+    assert tira[2] == gavetas.COLOR_APAGADO   # objetivo, apagado en este ciclo
+    assert tira[4] == gavetas.COLOR_APAGADO   # equivocada, apagado en este ciclo
+
+
+def test_devolver_la_gaveta_esperada_confirma_en_verde(gavetas, placa_con_tira):
+    """Cuando la pantalla ya habia pedido la devolucion, el verde fijo es la
+    confirmacion: la pantalla apagara casi al instante despues."""
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj.objetivo = 3
+    obj.fuera = {3}
+    obj.recogida = True
+    obj.esperando_devolucion = True
+
+    gavetas.Gavetas._aplicar_cambio(obj, 3, False)
+
+    assert obj.esperando_devolucion is False
+    assert tira[2] == gavetas.COLOR_OBJETIVO
+    assert obj.recogida is True   # no se toca: la pantalla ya sabe que se recogio
+
+
+def test_devolver_antes_de_que_lo_pidan_es_error_rojo_y_zumbido(gavetas, placa_con_tira):
+    """Devolverla a media faena, sin que nadie lo haya pedido, es un error
+    como cualquier gaveta equivocada: rojo parpadeando y zumbador, no una
+    vuelta silenciosa a verde."""
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj.objetivo = 3
+    obj.fuera = {3}
+    obj.recogida = True
+    obj.esperando_devolucion = False
+
+    gavetas.Gavetas._aplicar_cambio(obj, 3, False)
+
+    assert tira[2] == gavetas.COLOR_ERROR
+    assert obj.equivocadas == {3}
+    # Se resetea para que si la vuelven a sacar cuente como una recogida real.
+    assert obj.recogida is False
+
+
+def test_sacarla_de_nuevo_corrige_el_error_de_devolucion_temprana(gavetas, placa_con_tira):
+    """Si la habian devuelto antes de tiempo (rojo + zumbador) y el operario
+    la saca de nuevo, el error se corrige: deja de estar en equivocadas y,
+    si no queda ninguna otra, el zumbador se calla."""
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.equivocadas = {3}
+    obj.recogida = False
+
+    gavetas.Gavetas._aplicar_cambio(obj, 3, True)
+
+    assert obj.recogida is True
+    assert obj.equivocadas == set()
+    assert tira[2] == gavetas.COLOR_EN_USO
+
+
+def test_estado_incluye_esperando_devolucion(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    obj.esperando_devolucion = True
+    assert gavetas.Gavetas.estado(obj)['esperando_devolucion'] is True
+
+
+# ── Vigilancia constante de gavetas ajenas (rojo siempre, pitido solo en engaste) ──
+
+def test_una_gaveta_ajena_parpadea_en_rojo_incluso_en_reposo(gavetas, placa_con_tira):
+    """Antes, sin objetivo (nadie haciendo un engaste), una gaveta que no
+    tocaba no se encendia ni parpadeaba: quedaba sin vigilar."""
+    obj, _, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    obj.objetivo = None
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+
+    assert obj.equivocadas == {5}
+    assert avisos == [(5, True, 'sin_objetivo')]
+
+
+def test_zumbador_callado_en_reposo_aunque_haya_equivocadas(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, _, _ = placa_con_tira
+    sonados = []
+    obj._sonar = lambda nota: sonados.append(nota)
+    obj._patron = None
+    obj._patron_paso = 0
+    obj._patron_hasta_ms = 0
+    obj.objetivo = None
+    obj.equivocadas = {5}
+    obj._zumbido_hasta_ms = 0
+    obj._zumbido_encendido = False
+
+    gavetas.Gavetas._atender_zumbador(obj, 10_000)
+
+    assert sonados == []
+
+
+def test_zumbador_suena_si_hay_engaste_activo(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, _, _ = placa_con_tira
+    sonados = []
+    obj._sonar = lambda nota: sonados.append(nota)
+    obj._patron = None
+    obj._patron_paso = 0
+    obj._patron_hasta_ms = 0
+    obj.objetivo = 3
+    obj.equivocadas = {5}
+    obj._zumbido_hasta_ms = 0
+    obj._zumbido_encendido = False
+
+    gavetas.Gavetas._atender_zumbador(obj, 10_000)
+
+    assert sonados == [gavetas.NOTA_ALARMA]
+
+
+def test_corregir_una_gaveta_ajena_en_reposo_avisa_sin_objetivo(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    obj.objetivo = None
+    obj.equivocadas = {5}
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, False)
+
+    assert obj.equivocadas == set()
+    assert avisos == [(5, False, 'sin_objetivo')]
+
+
+def test_una_gaveta_ajena_durante_engaste_sigue_avisando_equivocada(gavetas, placa_con_tira):
+    """No se rompe el camino de siempre: con un engaste activo el resultado
+    sigue siendo 'equivocada'/'corregida', no 'sin_objetivo'."""
+    obj, _, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    obj.objetivo = 3
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+    assert avisos[-1] == (5, True, 'equivocada')
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, False)
+    assert avisos[-1] == (5, False, 'corregida')

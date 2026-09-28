@@ -137,7 +137,8 @@ if (-not $SinAccesoDirecto) {
         $shell = New-Object -ComObject WScript.Shell
         $acceso = $shell.CreateShortcut($lnk)
         $acceso.TargetPath = $exe
-        $acceso.Arguments = "--app=$Origen"
+        # Puesto con el monitor girado a vertical: abrir ya en pantalla completa.
+        $acceso.Arguments = "--app=$Origen --start-fullscreen"
         $acceso.Description = "COJOsw - Sistema de Engastado"
         $acceso.Save()
         Write-Host ("  [OK] Acceso directo creado: {0}" -f $lnk) -ForegroundColor Green

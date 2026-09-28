@@ -1,21 +1,29 @@
 // v3-gavetas.js — Pick-to-light: enciende la gaveta del terminal elegido y
 // espera a que el operario la saque antes de enseñarle los paquetes.
 //
-// El hardware es opcional (ver esp32/HARDWARE_PICK_TO_LIGHT.md), asi que TODO
+// El hardware es opcional (ver esp32/HARDWARE_PLACA_MASTER.md), asi que TODO
 // lo de aqui esta escrito para desaparecer sin dejar rastro: si el terminal no
 // tiene gaveta con luz, si el puesto no tiene lector asignado o si la placa no
 // contesta, el flujo de engastado sigue exactamente igual que antes. La puerta
 // de confirmacion ademas siempre trae un boton para saltarsela: un cajon con el
 // microinterruptor roto no puede dejar a nadie sin trabajar.
 
-// Resultado del ultimo /encender: {activo, led, gaveta, motivo}
+// Resultado del ultimo /encender: {activo, pendiente, led, gaveta, motivo}
 let gavetaLuzActual = null;
 
 const GAVETA_SONDEO_MS = 500;
 const GAVETA_VIGILANCIA_MS = 1500;
 
+// Cuanto se espera a que una gaveta 'pendiente' se encienda de verdad. La
+// placa sondea cada 4 s en reposo y necesita dos vueltas (recoger la orden y
+// confirmar la luz), asi que el caso malo ronda los 8 s; pasado este margen se
+// sigue sin gaveta, que es justo lo que hay que hacer cuando no hay luz: un
+// cajon que no se enciende no puede dejar a un operario mirando la pantalla.
+const GAVETA_ESPERA_LUZ_MS = 12000;
+
 let _gavetaVigilanciaTimer = null;
 let _gavetaUltimoErrorAvisado = null;
+let _gavetaUltimoRecogidaAvisada = null;
 
 
 /** Enciende en verde la gaveta del terminal (no hace nada si no hay luz). */
@@ -31,6 +39,25 @@ async function encenderGavetaTerminal(terminal) {
         const d = await r.json();
         if (d && d.success) gavetaLuzActual = d;
     } catch (e) { /* sin luz se trabaja igual */ }
+}
+
+
+/**
+ * Avisa al servidor de que hay alguien a punto de elegir terminal aqui.
+ *
+ * Se llama al enseñar la lista de terminales, unos segundos antes de la
+ * eleccion: con eso la placa ya sondea rapido cuando llega la orden y la
+ * gaveta enciende casi al instante, en vez de esperar a su sondeo lento de
+ * reposo. No enciende nada y no bloquea: si falla, todo sigue igual, solo
+ * mas lento.
+ */
+function avisarAtencionGaveta() {
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    fetch('/api/pick-to-light/atencion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+    }).catch(() => { /* sin aviso se trabaja igual */ });
 }
 
 
@@ -55,9 +82,16 @@ async function apagarGavetas() {
  * Devuelve una promesa que se resuelve cuando la placa confirma la recogida o
  * cuando el operario pulsa "Continuar sin confirmar". Si no hay luz encendida,
  * vuelve al instante: sin hardware esta funcion no existe.
+ *
+ * Con 'pendiente' el panel se abre antes de que haya luz (la placa esta viva
+ * pero todavia no ha sondeado) y espera aqui a que la confirme. Antes se
+ * miraba solo 'activo', que se decide en el instante del POST: con la placa en
+ * reposo la confirmacion llegaba despues y la gaveta se encendia sola con el
+ * operario ya en los paquetes.
  */
 async function esperarRecogidaGaveta() {
-    if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
+    if (!gavetaLuzActual) return;
+    if (!gavetaLuzActual.activo && !gavetaLuzActual.pendiente) return;
 
     const overlay = _crearPanelGaveta(gavetaLuzActual);
     document.body.appendChild(overlay);
@@ -65,6 +99,9 @@ async function esperarRecogidaGaveta() {
     const avisoError = overlay.querySelector('#gaveta-aviso-error');
     const avisoRfid = overlay.querySelector('#gaveta-aviso-rfid');
     let ultimoEstado = null;
+    let luzConfirmada = !!gavetaLuzActual.activo;
+    const limiteLuz = Date.now() + GAVETA_ESPERA_LUZ_MS;
+    _pintarEsperaLuz(overlay, luzConfirmada);
 
     try {
         await new Promise(resolve => {
@@ -92,6 +129,23 @@ async function esperarRecogidaGaveta() {
                     const d = await r.json();
                     if (!d || !d.success) return;
                     ultimoEstado = d;
+
+                    // Mientras la luz no este confirmada no hay puerta que
+                    // guardar: ni micro que vigilar, ni gaveta equivocada que
+                    // reprochar. O se enciende dentro del margen, o se sigue.
+                    if (!luzConfirmada) {
+                        if (d.placa_confirmo_luz && d.led === gavetaLuzActual.led) {
+                            luzConfirmada = true;
+                            // El resto del flujo (vigilancia de intrusas y
+                            // devolucion al acabar) mira 'activo': ahora que
+                            // hay luz de verdad, ya es verdad.
+                            gavetaLuzActual.activo = true;
+                            _pintarEsperaLuz(overlay, true);
+                        } else if (Date.now() > limiteLuz) {
+                            acabar();
+                        }
+                        return;
+                    }
 
                     if (d.error_led) {
                         avisoError.textContent = '⚠️ Esa no es: has abierto la gaveta '
@@ -159,6 +213,14 @@ async function esperarDevolucionGaveta() {
     detenerVigilanciaGaveta();
     if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
 
+    try {
+        await fetch('/api/pick-to-light/devolucion/iniciar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+        });
+    } catch (e) { /* sin esto la gaveta se queda en azul fijo, pero el flujo sigue igual */ }
+
     const overlay = _crearPanelDevolucion(gavetaLuzActual);
     document.body.appendChild(overlay);
 
@@ -223,6 +285,7 @@ function iniciarVigilanciaGaveta() {
     detenerVigilanciaGaveta();
     if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
     _gavetaUltimoErrorAvisado = null;
+    _gavetaUltimoRecogidaAvisada = null;
     _gavetaVigilanciaTimer = setInterval(async () => {
         if (!puestoSeleccionado || !puestoSeleccionado.id) return;
         try {
@@ -242,6 +305,20 @@ function iniciarVigilanciaGaveta() {
             } else {
                 _gavetaUltimoErrorAvisado = null;
             }
+
+            // La propia gaveta del terminal tiene que seguir fuera todo el
+            // engaste: si vuelve a estar puesta sin que nadie haya pedido
+            // devolverla, no esta sobre la mesa y hay que avisar.
+            if (d.recogida === false) {
+                if (!_gavetaUltimoRecogidaAvisada) {
+                    _gavetaUltimoRecogidaAvisada = gavetaLuzActual.led;
+                    mostrarMensaje('⚠️ La gaveta ' + gavetaLuzActual.led
+                                 + ' ha vuelto a estar dentro: sácala para seguir '
+                                 + 'con este terminal.', 'error');
+                }
+            } else {
+                _gavetaUltimoRecogidaAvisada = null;
+            }
         } catch (e) { /* un sondeo perdido no rompe nada */ }
     }, GAVETA_VIGILANCIA_MS);
 }
@@ -253,6 +330,21 @@ function detenerVigilanciaGaveta() {
         _gavetaVigilanciaTimer = null;
     }
     _gavetaUltimoErrorAvisado = null;
+    _gavetaUltimoRecogidaAvisada = null;
+}
+
+
+/** Cambia el panel entre "encendiendo" y "saca la gaveta" (ver 'pendiente'). */
+function _pintarEsperaLuz(overlay, confirmada) {
+    const icono = overlay.querySelector('#gaveta-icono');
+    const titulo = overlay.querySelector('#gaveta-titulo');
+    const sub = overlay.querySelector('#gaveta-sub');
+    if (!icono || !titulo || !sub) return;
+    icono.textContent = confirmada ? '💡' : '⏳';
+    titulo.textContent = confirmada ? 'Saca la gaveta iluminada' : 'Encendiendo la gaveta…';
+    titulo.style.color = confirmada ? '#198754' : '#6c757d';
+    sub.textContent = confirmada ? sub.dataset.normal
+                                 : 'Un momento: la placa está recogiendo la orden.';
 }
 
 
@@ -265,18 +357,19 @@ function _crearPanelGaveta(luz) {
         background: rgba(0,0,0,0.75);
         display: flex; align-items: center; justify-content: center;
     `;
+    const textoNormal = 'Está en verde. Al sacarla se pondrá en azul'
+                      + (luz.rfid ? ' y tendrás que acercar su etiqueta RFID al lector' : '')
+                      + '.';
     overlay.innerHTML = `
         <div style="background:#fff; border-radius:14px; padding:32px 40px; max-width:520px;
                     text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
-            <div style="font-size:3em; line-height:1;">💡</div>
-            <h2 style="margin:12px 0 4px; color:#198754;">Saca la gaveta iluminada</h2>
+            <div id="gaveta-icono" style="font-size:3em; line-height:1;">💡</div>
+            <h2 id="gaveta-titulo" style="margin:12px 0 4px; color:#198754;">Saca la gaveta iluminada</h2>
             <div style="font-size:2.2em; font-weight:bold; color:#212529; margin:10px 0;">
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
-            <div style="color:#6c757d; margin-bottom:18px;">
-                Está en verde. Al sacarla se pondrá en azul${luz.rfid
-                    ? ' y tendrás que acercar su etiqueta RFID al lector' : ''}.
-            </div>
+            <div id="gaveta-sub" style="color:#6c757d; margin-bottom:18px;"
+                 data-normal="${textoNormal}">${textoNormal}</div>
             <div id="gaveta-aviso-rfid" style="display:none; border-radius:8px; padding:10px;
                  margin-bottom:16px; font-weight:bold;"></div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;
@@ -311,7 +404,8 @@ function _crearPanelDevolucion(luz) {
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
             <div style="color:#6c757d; margin-bottom:18px;">
-                Terminal terminado. Mete el cajón y ciérralo antes de seguir.
+                Terminal terminado. La luz de la gaveta parpadeará en azul hasta que la
+                metas, y se pondrá en verde al confirmarlo. Ciérrala antes de seguir.
             </div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;
                  border:1px solid #f5c2c7; border-radius:8px; padding:10px; margin-bottom:16px;

@@ -1,0 +1,57 @@
+{# Aviso no bloqueante: los puestos de engastado se usan con el monitor
+   girado a vertical. Solo se muestra si el navegador está en horizontal, y
+   nunca tapa ni bloquea el resto de la pantalla. Incluir SOLO en las
+   plantillas de puesto (login_operario.html, index-v3.html). #}
+<div id="aviso-orientacion">
+    <span>📱 Esta pantalla está pensada para uso en <strong>vertical</strong>. Gira el monitor, o en Windows: clic derecho en el escritorio → Configuración de pantalla → Orientación → Vertical.</span>
+    <button type="button" id="aviso-orientacion-cerrar" aria-label="Cerrar aviso">&times;</button>
+</div>
+<style>
+    #aviso-orientacion {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 99999;
+        background: #b45309;
+        color: #fff8f1;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 0.85em;
+        padding: 8px 40px 8px 14px;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.25);
+    }
+    #aviso-orientacion-cerrar {
+        position: absolute;
+        top: 4px;
+        right: 8px;
+        background: transparent;
+        border: none;
+        color: inherit;
+        font-size: 1.3em;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    @media (orientation: landscape) {
+        #aviso-orientacion:not(.aviso-orientacion-oculto) {
+            display: flex;
+        }
+    }
+</style>
+<script>
+    (function () {
+        var aviso = document.getElementById('aviso-orientacion');
+        var cerrar = document.getElementById('aviso-orientacion-cerrar');
+        if (!aviso || !cerrar) return;
+        if (sessionStorage.getItem('aviso_orientacion_oculto') === '1') {
+            aviso.classList.add('aviso-orientacion-oculto');
+        }
+        cerrar.addEventListener('click', function () {
+            aviso.classList.add('aviso-orientacion-oculto');
+            sessionStorage.setItem('aviso_orientacion_oculto', '1');
+        });
+    })();
+</script>

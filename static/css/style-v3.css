@@ -489,7 +489,12 @@
     flex: 1;
     overflow-y: auto;
     padding-right: 4px;
-    max-height: 380px;
+    /* Relativo al 90vh de .modal-terminal-card (menos cabecera+pie+padding),
+       no un pixelaje fijo: en el monitor vertical de los puestos (Acer V227Q
+       girado, ~1920px de alto) esto deja ver muchos más terminales sin
+       scroll en vez de limitarse a los ~380px que bastaban en un monitor
+       normal en horizontal. */
+    max-height: calc(90vh - 300px);
     margin: 12px 0;
 }
 
@@ -2420,7 +2425,11 @@
     .puestos-grid, .maquinas-grid {
         grid-template-columns: 1fr;
     }
-    
+
+    .modal-bono-opciones, .info-paquete {
+        grid-template-columns: 1fr;
+    }
+
     .trabajo-header {
         flex-direction: column;
         gap: 10px;

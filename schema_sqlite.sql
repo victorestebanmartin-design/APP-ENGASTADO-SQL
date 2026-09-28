@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS terminales_imagenes (
 -- =====================================================
 -- 'gaveta' es la etiqueta que lee el operario ('Estante 3-B'); 'led' es el
 -- numero de gaveta en el pick-to-light del puesto (1..N, ver
--- esp32/HARDWARE_PICK_TO_LIGHT.md). NULL = gaveta sin luz: la app sigue
+-- esp32/HARDWARE_PLACA_MASTER.md). NULL = gaveta sin luz: la app sigue
 -- funcionando, solo que sin encender nada.
 CREATE TABLE IF NOT EXISTS terminales_gavetas (
     terminal_codigo TEXT PRIMARY KEY,

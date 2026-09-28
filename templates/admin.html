@@ -20,6 +20,7 @@
     </style>
 </head>
 <body>
+{% include '_version_badge.html' %}
     <div class="admin-app">
         <!-- Topbar -->
         <header class="admin-topbar">
@@ -549,6 +550,91 @@
                             <span id="ptl-micro-msg" style="font-size:0.88em;color:#94a3b8;"></span>
                         </div>
                         <div id="ptl-micro-grid" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+                    </div>
+
+                    <!-- Logica de los micro-interruptores (NC/NA + canales sin cablear) -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>⚙️ Lógica de los micro-interruptores</h2>
+                        <p class="instruccion">
+                            De fábrica la placa espera micros <strong>normalmente cerrados</strong>: la gaveta
+                            puesta cierra el contacto a masa y el canal lee 0. Si los micros de este puesto son
+                            del tipo contrario, marca "invertida".<br>
+                            Un canal <strong>sin micro cableado</strong> queda flotando en alto por el pull-up del
+                            MCP23017, así que la placa lo ve como "gaveta fuera" para siempre y puede disparar la
+                            alarma de gaveta robada. Apunta aquí esos canales (por ejemplo <code>3,5,9-16</code>)
+                            y la placa dejará de mirarlos hasta que los cablees.<br>
+                            Se guarda por placa y llega a ella al instante (o en su próximo sondeo, unos segundos).
+                            Dejarlo vacío y sin invertir es el comportamiento de siempre.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="display:flex;gap:6px;align-items:center;font-size:0.9em;color:#cbd5e1;">
+                                <input type="checkbox" id="ptl-micros-invertir"
+                                    style="width:auto;margin:0;">
+                                Lógica invertida (micros normalmente abiertos)
+                            </label>
+                            <input type="text" id="ptl-micros-ignorar" placeholder="Canales sin cablear: 3,5,9-16"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
+                            <button class="btn-primary" onclick="ptlGuardarMicrosConfig()">💾 Guardar y aplicar</button>
+                            <button class="btn-secondary" onclick="ptlResetMicrosConfig()">↩ Volver a lo de siempre</button>
+                        </div>
+                        <div id="ptl-micros-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
+                    </div>
+
+                    <!-- LEDs físicos por gaveta -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>💡 LEDs por gaveta</h2>
+                        <p class="instruccion">
+                            Cuántos LEDs físicos de la tira iluminan cada gaveta en este puesto. De fábrica
+                            es 1 LED por gaveta; algunos puestos recableados usan 3 para que se vean mejor.
+                            Se guarda por placa y llega a ella al instante (o en su próximo sondeo).
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;">LEDs por gaveta:</label>
+                            <select id="ptl-leds-por-gaveta"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;">
+                                <option value="1">1 LED (de fábrica)</option>
+                                <option value="3">3 LEDs</option>
+                            </select>
+                            <button class="btn-primary" onclick="ptlGuardarLedsConfig()">💾 Guardar y aplicar</button>
+                        </div>
+                        <div id="ptl-leds-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
+                    </div>
+
+                    <!-- Brillo de los LEDs -->
+                    <div class="card" style="margin-top:16px;">
+                        <h2>🔆 Brillo de los LEDs</h2>
+                        <p class="instruccion">
+                            El brillo de cada color viene atenuado de fábrica para no deslumbrar de cerca:
+                            <strong>verde</strong> = gaveta objetivo, <strong>azul</strong> = gaveta en uso,
+                            <strong>rojo</strong> = error. Se puede subir o bajar por placa, con un tope de
+                            seguridad para no volver la tira a plena potencia.<br>
+                            <strong>Probar</strong> enciende toda la tira con ese valor, para juzgar el
+                            deslumbramiento desde lejos antes de guardar. <strong>Guardar y aplicar</strong>
+                            lo deja fijo para esta placa.
+                        </p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🟢 Objetivo:</label>
+                            <input type="range" id="ptl-brillo-objetivo" min="0" max="200" value="70"
+                                style="width:220px;">
+                            <span id="ptl-brillo-objetivo-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">70</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('objetivo')">🧪 Probar</button>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🔵 En uso:</label>
+                            <input type="range" id="ptl-brillo-en-uso" min="0" max="200" value="90"
+                                style="width:220px;">
+                            <span id="ptl-brillo-en-uso-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">90</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('en_uso')">🧪 Probar</button>
+                        </div>
+                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                            <label style="font-size:0.9em;color:#94a3b8;width:110px;">🔴 Error:</label>
+                            <input type="range" id="ptl-brillo-error" min="0" max="200" value="110"
+                                style="width:220px;">
+                            <span id="ptl-brillo-error-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">110</span>
+                            <button class="btn-secondary" onclick="ptlProbarBrillo('error')">🧪 Probar</button>
+                        </div>
+                        <button class="btn-primary" onclick="ptlGuardarBrilloConfig()">💾 Guardar y aplicar</button>
+                        <div id="ptl-brillo-cfg-msg" style="font-size:0.88em;color:#94a3b8;margin-top:8px;"></div>
                     </div>
 
                     <!-- Registro de acciones -->
@@ -1876,6 +1962,12 @@
                 if (mapaMsg) mapaMsg.textContent = '';
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = _ptlLectorId ? 'Lector seleccionado: ' + _ptlLectorId : '';
+                _ptlMensaje('ptl-micros-cfg-msg', '', null);
+                ptlCargarMicrosConfig();
+                _ptlMensaje('ptl-leds-cfg-msg', '', null);
+                ptlCargarLedsConfig();
+                _ptlMensaje('ptl-brillo-cfg-msg', '', null);
+                ptlCargarBrilloConfig();
                 if (_ptlLectorId) ptlCargarMapa();
             }
         });
@@ -1981,13 +2073,237 @@
                     _ptlRenderMicroGrid(total, d.fuera || []);
                     if (_ptlMapaTotal) _ptlRenderMapa(d.fuera || [], d.canales_error || []);
                     var fuera = (d.fuera || []).length;
-                    _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' + (total - fuera) + ' puestas', true);
+                    var ignorados = (d.ignorados || []).length;
+                    _ptlMensaje('ptl-micro-msg', 'Leído: ' + total + ' total, ' + fuera + ' fuera, ' +
+                        ((d.puestas || []).length) + ' puestas' +
+                        (ignorados ? ', ' + ignorados + ' ignorados (sin cablear)' : '') +
+                        (d.invertir ? ' · lógica invertida' : ''), true);
                     _ptlLog('Micros: total=' + total + ', fuera=[' + (d.fuera || []).join(',') + '], puestas=[' + (d.puestas || []).join(',') + ']');
                 } else {
                     _ptlMensaje('ptl-micro-msg', d.message || 'Error', false);
                     _ptlLog('Error micros: ' + (d.message || '?'));
                 }
             } catch (e) { _ptlMensaje('ptl-micro-msg', 'Error de red', false); }
+        };
+
+        // ── Lógica de los micros (NC/NA + canales sin cablear) ───────────────
+
+        /** '3,5,9-16' -> [3,5,9,10,...,16]. Tolerante con espacios y basura. */
+        function _ptlParsearCanales(texto) {
+            var fuera = [];
+            (texto || '').split(',').forEach(function (trozo) {
+                trozo = trozo.trim();
+                if (!trozo) return;
+                var rango = trozo.split('-');
+                if (rango.length === 2) {
+                    var a = parseInt(rango[0], 10), b = parseInt(rango[1], 10);
+                    if (a > 0 && b >= a && b <= 128) {
+                        for (var i = a; i <= b; i++) fuera.push(i);
+                    }
+                    return;
+                }
+                var n = parseInt(trozo, 10);
+                if (n > 0 && n <= 128) fuera.push(n);
+            });
+            return Array.from(new Set(fuera)).sort(function (x, y) { return x - y; });
+        }
+
+        window.ptlCargarMicrosConfig = async function () {
+            var chk = document.getElementById('ptl-micros-invertir');
+            var txt = document.getElementById('ptl-micros-ignorar');
+            if (!chk || !txt) return;
+            if (!_ptlLectorId) { chk.checked = false; txt.value = ''; return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/micros/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Error', false); return; }
+                chk.checked = !!d.invertir;
+                txt.value = (d.ignorar || []).join(',');
+                _ptlMensaje('ptl-micros-cfg-msg', (d.invertir || (d.ignorar || []).length)
+                    ? 'Esta placa tiene una lógica de micros personalizada.'
+                    : 'Esta placa usa la lógica de siempre.', null);
+            } catch (e) {
+                _ptlMensaje('ptl-micros-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        async function _ptlEnviarMicrosConfig(invertir, ignorar) {
+            _ptlMensaje('ptl-micros-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/micros/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, invertir: invertir, ignorar: ignorar })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('Micros: invertir=' + invertir + ', ignorar=[' + ignorar.join(',') + ']' +
+                        (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-micros-cfg-msg', 'Error de red', false);
+            }
+        }
+
+        window.ptlGuardarMicrosConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var invertir = document.getElementById('ptl-micros-invertir').checked;
+            var ignorar = _ptlParsearCanales(document.getElementById('ptl-micros-ignorar').value);
+            document.getElementById('ptl-micros-ignorar').value = ignorar.join(',');
+            await _ptlEnviarMicrosConfig(invertir, ignorar);
+        };
+
+        window.ptlResetMicrosConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            document.getElementById('ptl-micros-invertir').checked = false;
+            document.getElementById('ptl-micros-ignorar').value = '';
+            await _ptlEnviarMicrosConfig(false, []);
+        };
+
+        // ── LEDs físicos por gaveta ────────────────────────────────────────
+
+        window.ptlCargarLedsConfig = async function () {
+            var sel = document.getElementById('ptl-leds-por-gaveta');
+            if (!sel) return;
+            if (!_ptlLectorId) { sel.value = '1'; return; }
+            try {
+                var resp = await fetch('/api/pick-to-light/leds/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Error', false); return; }
+                sel.value = String(d.leds_por_gaveta || 1);
+                _ptlMensaje('ptl-leds-cfg-msg', d.leds_por_gaveta && d.leds_por_gaveta !== 1
+                    ? 'Esta placa usa ' + d.leds_por_gaveta + ' LEDs por gaveta.'
+                    : 'Esta placa usa 1 LED por gaveta (de fábrica).', null);
+            } catch (e) {
+                _ptlMensaje('ptl-leds-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlGuardarLedsConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var sel = document.getElementById('ptl-leds-por-gaveta');
+            var leds = parseInt(sel.value, 10);
+            _ptlMensaje('ptl-leds-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/leds/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, leds_por_gaveta: leds })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-leds-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('LEDs por gaveta: ' + leds + (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-leds-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        // ── Brillo de los LEDs ─────────────────────────────────────────────
+
+        var PTL_BRILLO_FABRICA = { objetivo: 70, en_uso: 90, error: 110 };
+
+        ['objetivo', 'en_uso', 'error'].forEach(function (color) {
+            var input = document.getElementById('ptl-brillo-' + color.replace('_', '-'));
+            var val = document.getElementById('ptl-brillo-' + color.replace('_', '-') + '-val');
+            if (input && val) {
+                input.addEventListener('input', function () { val.textContent = input.value; });
+            }
+        });
+
+        function _ptlBrilloInput(color) {
+            return document.getElementById('ptl-brillo-' + color.replace('_', '-'));
+        }
+
+        function _ptlBrilloVal(color) {
+            return document.getElementById('ptl-brillo-' + color.replace('_', '-') + '-val');
+        }
+
+        window.ptlCargarBrilloConfig = async function () {
+            var colores = ['objetivo', 'en_uso', 'error'];
+            if (!_ptlLectorId) {
+                colores.forEach(function (color) {
+                    var input = _ptlBrilloInput(color), val = _ptlBrilloVal(color);
+                    if (input) input.value = PTL_BRILLO_FABRICA[color];
+                    if (val) val.textContent = PTL_BRILLO_FABRICA[color];
+                });
+                return;
+            }
+            try {
+                var resp = await fetch('/api/pick-to-light/brillo/config?device_id=' +
+                    encodeURIComponent(_ptlLectorId));
+                var d = await resp.json();
+                if (!d.success) { _ptlMensaje('ptl-brillo-cfg-msg', d.message || d.error || 'Error', false); return; }
+                var esFabrica = true;
+                colores.forEach(function (color) {
+                    var v = d[color];
+                    if (typeof v !== 'number') v = PTL_BRILLO_FABRICA[color];
+                    if (v !== PTL_BRILLO_FABRICA[color]) esFabrica = false;
+                    var input = _ptlBrilloInput(color), val = _ptlBrilloVal(color);
+                    if (input) input.value = v;
+                    if (val) val.textContent = v;
+                });
+                _ptlMensaje('ptl-brillo-cfg-msg', esFabrica
+                    ? 'Esta placa usa el brillo de fábrica.'
+                    : 'Esta placa usa un brillo personalizado.', null);
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlProbarBrillo = async function (color) {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var input = _ptlBrilloInput(color);
+            if (!input) return;
+            var v = parseInt(input.value, 10) || 0;
+            var rgb = color === 'objetivo' ? [0, v, 0] : (color === 'en_uso' ? [0, 0, v] : [v, 0, 0]);
+            _ptlMensaje('ptl-brillo-cfg-msg', 'Probando...', null);
+            try {
+                var d = await _ptlPost('/api/pick-to-light/test/todos', _ptlPayload({ color: rgb }));
+                if (d.success) {
+                    var total = d.gavetas || (d.estado && d.estado.gavetas) || _ptlTotalGavetas || 16;
+                    _ptlMensaje('ptl-brillo-cfg-msg', 'Probando ' + color + ' a ' + v + ' en los ' + total + ' LEDs.', true);
+                    _ptlLog('Prueba de brillo (' + color + '): ' + v + ' (' + rgb.join(',') + ')');
+                } else {
+                    _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Error', false);
+                    _ptlLog('Error al probar brillo (' + color + '): ' + (d.message || '?'));
+                }
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
+            }
+        };
+
+        window.ptlGuardarBrilloConfig = async function () {
+            if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
+            var objetivo = parseInt(_ptlBrilloInput('objetivo').value, 10) || 0;
+            var enUso = parseInt(_ptlBrilloInput('en_uso').value, 10) || 0;
+            var error = parseInt(_ptlBrilloInput('error').value, 10) || 0;
+            _ptlMensaje('ptl-brillo-cfg-msg', 'Guardando...', null);
+            try {
+                var resp = await fetch('/api/pick-to-light/brillo/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_id: _ptlLectorId, objetivo: objetivo, en_uso: enUso, error: error })
+                });
+                var d = await resp.json();
+                if (!d.success) {
+                    _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Error', false);
+                    return;
+                }
+                _ptlMensaje('ptl-brillo-cfg-msg', d.message || 'Guardado', true);
+                _ptlLog('Brillo: objetivo=' + objetivo + ', en_uso=' + enUso + ', error=' + error +
+                        (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
+            } catch (e) {
+                _ptlMensaje('ptl-brillo-cfg-msg', 'Error de red', false);
+            }
         };
 
         /**
@@ -2187,6 +2503,25 @@
             _ptlCanalPanel.rfidPoll = null;
         }
 
+        // Kanban de doble caja: el mapa solo dice si el canal tiene AL MENOS una
+        // etiqueta (booleano combinado), no cual de las dos. Para saber que boton
+        // pintar en cada caja (Asignar / Sustituir + Desvincular) nos apoyamos en
+        // lo que se ha confirmado o desvinculado en esta misma sesion de Admin,
+        // igual que ya hacia el panel de una sola etiqueta con el mapa completo.
+        var _ptlCanalRfidCajas = {};  // clave puesto|canal|caja -> true/false
+
+        function _ptlCanalRfidClave(canal, caja) {
+            return _ptlPuestoId + '|' + canal + '|' + caja;
+        }
+
+        function _ptlCanalRfidTiene(canal, caja) {
+            return !!_ptlCanalRfidCajas[_ptlCanalRfidClave(canal, caja)];
+        }
+
+        function _ptlCanalRfidMarcar(canal, caja, tiene) {
+            _ptlCanalRfidCajas[_ptlCanalRfidClave(canal, caja)] = tiene;
+        }
+
         window.ptlAbrirCanal = function (canal) {
             if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             if (_ptlCanalPanel) _ptlCanalDetener();
@@ -2257,14 +2592,30 @@
                             '<button class="btn-secondary" onclick="ptlCanalIrEtiqueta()">✏️ Editar etiqueta</button>' +
                             '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
                             'onclick="ptlCanalDesasignar()">🗑️ Desasignar</button>' +
-                            '<button class="btn-secondary" onclick="ptlCanalEncenderLed()">💡 Encender LED</button>' +
-                            (info.rfid
-                                ? '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🔁 Sustituir RFID</button>' +
-                                  '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
-                                  'onclick="ptlCanalRfidDesvincular()">🔓 Desvincular RFID</button>'
-                                : '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">🏷️ Asignar RFID</button>');
+                            '<button class="btn-secondary" onclick="ptlCanalEncenderLed()">💡 Encender LED</button>';
                 }
                 html += '</div>';
+                if (info.terminal) {
+                    // Kanban de doble caja: dos etiquetas RFID independientes por
+                    // canal, cualquiera de las dos vale para dar el terminal por
+                    // valido. Cada caja lleva su propio ciclo armar/sondear/confirmar.
+                    [1, 2].forEach(function (nCaja) {
+                        var tiene = _ptlCanalRfidTiene(_ptlCanalPanel.canal, nCaja);
+                        html += '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #334155;">' +
+                                '<div style="font-weight:600;margin-bottom:6px;">🏷️ Caja ' + nCaja + '</div>' +
+                                '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:6px;">' +
+                                (tiene ? '🏷️ con etiqueta' : '⭘ sin etiqueta') + '</div>' +
+                                '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                                (tiene
+                                    ? '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + nCaja + ')">' +
+                                      '🔁 Sustituir RFID</button>' +
+                                      '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
+                                      'onclick="ptlCanalRfidDesvincular(' + nCaja + ')">🔓 Desvincular RFID</button>'
+                                    : '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + nCaja +
+                                      ')">🏷️ Asignar RFID</button>') +
+                                '</div></div>';
+                    });
+                }
             } else if (_ptlCanalPanel.fase === 'asignar') {
                 var q = (_ptlCanalPanel.busqueda || '').toLowerCase();
                 var candidatos = _ptlMapaTerminalesDisponibles.filter(function (t) {
@@ -2297,14 +2648,16 @@
                         '<button class="btn-primary" onclick="ptlCanalGuardarEtiqueta()">Guardar</button> ' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             } else if (_ptlCanalPanel.fase === 'rfid_armando') {
-                html += '<p style="margin:0 0 10px;">📡 Acerca la etiqueta RFID de la gaveta al lector de este ' +
-                        'puesto (quedan <span id="ptl-canal-rfid-cuenta">' + _ptlCanalPanel.segundos + '</span> s)...</p>' +
+                html += '<p style="margin:0 0 10px;">📡 Caja ' + _ptlCanalPanel.caja + ': acerca la etiqueta RFID ' +
+                        'de la gaveta al lector de este puesto (quedan ' +
+                        '<span id="ptl-canal-rfid-cuenta">' + _ptlCanalPanel.segundos + '</span> s)...</p>' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             } else if (_ptlCanalPanel.fase === 'rfid_confirmar') {
-                html += '<p style="margin:0 0 10px;">Etiqueta leída: <strong>' + _dispEsc(_ptlCanalPanel.uid) +
-                        '</strong></p>' +
+                html += '<p style="margin:0 0 10px;">Caja ' + _ptlCanalPanel.caja + ' — etiqueta leída: <strong>' +
+                        _dispEsc(_ptlCanalPanel.uid) + '</strong></p>' +
                         '<button class="btn-primary" onclick="ptlCanalRfidConfirmar()">Confirmar</button> ' +
-                        '<button class="btn-secondary" onclick="ptlCanalRfidArmar()">↻ Volver a leer</button> ' +
+                        '<button class="btn-secondary" onclick="ptlCanalRfidArmar(' + _ptlCanalPanel.caja +
+                        ')">↻ Volver a leer</button> ' +
                         '<button class="btn-secondary" onclick="ptlCanalVolver()">Cancelar</button>';
             }
             html += '<div id="ptl-canal-msg" style="margin-top:10px;font-size:0.85em;"></div></div>';
@@ -2375,15 +2728,16 @@
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
         };
 
-        window.ptlCanalRfidArmar = async function () {
+        window.ptlCanalRfidArmar = async function (caja) {
             _ptlCanalDetener();
+            _ptlCanalPanel.caja = caja;
             _ptlCanalPanel.fase = 'rfid_armando';
             _ptlCanalPanel.segundos = 30;
             _ptlRenderCanalPanel();
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid/armar', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal })
+                    body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal, caja: caja })
                 });
                 var data = await resp.json();
                 if (!_ptlCanalPanel) return;   // se cerró el panel mientras se esperaba
@@ -2438,28 +2792,31 @@
         }
 
         window.ptlCanalRfidConfirmar = async function () {
+            var caja = _ptlCanalPanel.caja;
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
-                                          uid: _ptlCanalPanel.uid })
+                                          uid: _ptlCanalPanel.uid, caja: caja })
                 });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
-                _ptlLog('RFID asignado al canal ' + _ptlCanalPanel.canal + ': ' + data.uid);
+                _ptlLog('RFID asignado al canal ' + _ptlCanalPanel.canal + ' (caja ' + caja + '): ' + data.uid);
+                _ptlCanalRfidMarcar(_ptlCanalPanel.canal, caja, true);
                 await ptlCargarMapa();
                 _ptlCanalPanel.fase = 'ver';
                 _ptlRenderCanalPanel();
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
         };
 
-        window.ptlCanalRfidDesvincular = async function () {
-            if (!confirm('¿Quitar el RFID de este canal?')) return;
+        window.ptlCanalRfidDesvincular = async function (caja) {
+            if (!confirm('¿Quitar el RFID de la Caja ' + caja + ' de este canal?')) return;
             try {
                 var resp = await fetch('/api/pick-to-light/canal/rfid?puesto_id=' + encodeURIComponent(_ptlPuestoId) +
-                                       '&canal=' + _ptlCanalPanel.canal, { method: 'DELETE' });
+                                       '&canal=' + _ptlCanalPanel.canal + '&caja=' + caja, { method: 'DELETE' });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
+                _ptlCanalRfidMarcar(_ptlCanalPanel.canal, caja, false);
                 await ptlCargarMapa();
                 _ptlRenderCanalPanel();
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
@@ -2943,6 +3300,8 @@
                 _ptlLectorId = dev.id;
                 var info = document.getElementById('ptl-lector-info');
                 if (info) info.textContent = 'Lector seleccionado: ' + dev.id;
+                ptlCargarMicrosConfig();
+                ptlCargarLedsConfig();
                 await ptlCargarMapa();
                 if (gav.led) ptlAbrirCanal(gav.led);
             } catch (e) {

@@ -160,6 +160,26 @@ Cambiar icono → examinar hasta ese archivo.
 
 ---
 
+## Monitor de los puestos de engastado en vertical
+
+Los PCs de puesto de engastado están pensados para usarse con el **monitor
+girado a vertical** (soporte VESA): así los modales y listas de la pantalla V3
+aprovechan mejor el espacio y casi nunca hace falta hacer scroll.
+
+1. En Windows: clic derecho en el escritorio → **Configuración de pantalla**
+   → **Orientación de la pantalla** → **Vertical**. Confirmar y girar
+   físicamente el monitor en el soporte.
+2. El acceso directo del puesto ya abre la app en pantalla completa
+   (`--start-fullscreen`). Si el acceso directo es antiguo (creado antes de
+   este cambio), volver a ejecutar `_scripts_utiles\configurar_pc_puesto.ps1`
+   como administrador para que lo recree con el flag nuevo.
+3. Si alguien abre la app en un PC sin rotar (horizontal), sale un aviso
+   naranja arriba recordando girar la pantalla; no bloquea el uso, solo avisa.
+4. Pantalla completa no es modo kiosco: `F11` o `Alt+F4` siguen funcionando
+   para salir si hace falta.
+
+---
+
 ## Notas
 - La app **no requiere permisos de administrador** (sí se necesitan para abrir
   el puerto del firewall).

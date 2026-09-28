@@ -140,7 +140,8 @@ cablea** y el hilo 8 salta al pin 9 para los +5 V.
 Los pines 2-8 son logica de **3.3 V**, no RS-232, no RS-485 y no toleran 5 V.
 No conectar cargas, bobinas, LEDs, finales de carrera ni salidas de otro
 microcontrolador directamente. Los pines 5 y 6 son I2C: necesitan sus
-resistencias de pull-up de 4.7 k a 3.3 V en el modulo de MCP23017, no a 5 V.
+resistencias de pull-up de 2.2 k a 3.3 V. Van en el propio lector, justo antes
+de salir por el DB9-5/6 — no en el modulo de MCP23017 ni en ningun expansor.
 
 Las lineas quedan como entradas de alta impedancia en el firmware hasta que se
 defina el protocolo del multiplexor. Se pueden encadenar fisicamente varios
@@ -251,11 +252,21 @@ DB9-3 amarillo (+3.3 V, pad 20) ---> MCP23017 VDD (pin 9), RESET (pin 18)
 DB9-1 blanco  (GND) ---------------> MCP23017 VSS (pin 10)
 DB9-6 violeta (GPIO47, SDA) -------> MCP23017 SDA (pin 13)
 DB9-5 azul    (GPIO48, SCL) -------> MCP23017 SCL (pin 12)
-DB9-3 (+3.3 V) -- 4.7 k --> SDA    DB9-3 (+3.3 V) -- 4.7 k --> SCL
 ```
 
 Los 3.3 V viajan por el propio arnes (DB9-3), asi que al multiplexor solo llega
 el DB9: no hace falta tirar un cable de alimentacion aparte desde la caja.
+
+**Las pull-ups del bus I2C (2.2 kΩ SDA→3.3V y SCL→3.3V) van en el propio
+lector**, soldadas justo antes de salir por el DB9-5/6 — no en MUX 1 ni en
+ningun otro expansor. Es un unico par para todo el bus, sea cual sea el numero
+de MCP23017 encadenados.
+
+El diseño ya engastado como placa (con MCP23017, condensadores y proteccion
+de tira montados juntos) esta documentado agujero a agujero en
+[esp32/HARDWARE_PLACA_MASTER.md](esp32/HARDWARE_PLACA_MASTER.md): es una
+unica placa expansora, identica en las 8 posiciones, y todas reciben sus 5 V
+de la tira en paralelo directos de la fuente (no encadenados entre placas).
 
 **El MCP23017 se alimenta SIEMPRE a 3.3 V, nunca desde el 5 V.** Si se alimenta
 a 5 V, su I2C sube a 5 V y dana los GPIO del ESP32-S3 de forma permanente — es
@@ -283,9 +294,10 @@ Para MUX 2 y posteriores:
 
 3. Encadenar la tira WS2813 por su salida de datos entre tiras, no uniendo
    salidas de dos conversores de nivel.
-4. Usar **un solo juego** de pull-ups I2C de 4.7 k a 3.3 V en todo el bus. Con
-   mas de 1 m de bus o cable cercano a engastadoras, I2C directo no es fiable:
-   añadir extensor I2C diferencial o montar el primer MCP junto al lector.
+4. Usar **un solo juego** de pull-ups I2C de 2.2 k a 3.3 V en todo el bus,
+   montadas en el lector (no en ningun expansor, ver arriba). Con mas de 1 m
+   de bus o cable cercano a engastadoras, I2C directo no es fiable: añadir
+   extensor I2C diferencial o montar el primer MCP junto al lector.
 
 El firmware del lector incorpora `gavetas.py` para gen4: al detectar uno o
 mas MCP23017 activa el pick-to-light con `GPIO17/GPIO16/GPIO15`. Sin

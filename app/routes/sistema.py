@@ -19,6 +19,7 @@ import time
 import hmac
 import hashlib
 import traceback
+import unicodedata
 from datetime import datetime
 import pandas as pd
 
@@ -98,12 +99,17 @@ def _encontrar_git():
         r'C:\Program Files (x86)\Git\cmd\git.exe',
         r'C:\Program Files (x86)\Git\bin\git.exe',
     ]
+    appdata_local = os.environ.get('LOCALAPPDATA', '')
+    if appdata_local:
+        rutas_fijas.extend([
+            os.path.join(appdata_local, 'Programs', 'Git', 'cmd', 'git.exe'),
+            os.path.join(appdata_local, 'Programs', 'Git', 'bin', 'git.exe'),
+        ])
     for ruta in rutas_fijas:
         if os.path.isfile(ruta):
             return ruta
 
     # 3. Git empaquetado con GitHub Desktop (versión varía)
-    appdata_local = os.environ.get('LOCALAPPDATA', '')
     if appdata_local:
         patrones = [
             os.path.join(appdata_local, 'GitHubDesktop', 'app-*', 'resources', 'app', 'git', 'cmd', 'git.exe'),
@@ -212,7 +218,16 @@ def api_comprobar_actualizaciones():
         r_remoto = git(['rev-parse', '--short', 'origin/main'])
         commit_remoto = r_remoto.stdout.strip() if r_remoto.returncode == 0 else None
 
-        hay_actualizaciones = (commit_remoto and commit_remoto != commit_local)
+        # Version semantica (X.Y.Z): local desde disco, remota leyendo el
+        # fichero VERSION del commit de origin/main sin tocar el working
+        # tree. Es informativa (a quien la sube se le olvida a veces): la
+        # deteccion de "hay actualizaciones" de mas abajo se basa en commits,
+        # no en este numero.
+        from app.version import actual as _version_actual
+        version_local = _version_actual()
+        r_version_remota = git(['show', 'origin/main:VERSION'])
+        version_remota = (r_version_remota.stdout.strip()
+                           if r_version_remota.returncode == 0 else version_local)
 
         # Mensaje del último commit remoto
         r_msg = git(['log', 'origin/main', '-1', '--format=%s (%cr)'])
@@ -221,12 +236,15 @@ def api_comprobar_actualizaciones():
         # Listar commits pendientes de bajar
         r_pendientes = git(['log', f'HEAD..origin/main', '--oneline'])
         commits_pendientes = [l.strip() for l in r_pendientes.stdout.strip().splitlines() if l.strip()]
+        hay_actualizaciones = bool(commits_pendientes)
 
         return jsonify({
             'success': True,
             'hay_actualizaciones': hay_actualizaciones,
             'commit_local': commit_local,
             'commit_remoto': commit_remoto or commit_local,
+            'version_local': version_local,
+            'version_remota': version_remota,
             'mensaje_ultimo_commit': mensaje_ultimo,
             'commits_pendientes': commits_pendientes,
             'num_commits_pendientes': len(commits_pendientes)
@@ -300,9 +318,12 @@ def api_actualizar_sistema():
             except Exception:
                 pip_output = ' | ⚠️ Dependencias NO actualizadas (ejecuta a mano: pip install -r requirements.txt).'
 
-        # Commit nuevo tras el pull
+        # Commit y version nuevos tras el pull (VERSION ya esta actualizado
+        # en el working tree, asi que basta con releer el fichero).
         r_new = git(['log', '-1', '--format=%h — %s (%cr)'])
         commit_nuevo = r_new.stdout.strip()
+        from app.version import actual as _version_actual
+        version_nueva = _version_actual()
 
         # Programar reinicio: esperar 2s para que Flask envíe la respuesta primero.
         # En PythonAnywhere el reinicio se hace tocando el fichero WSGI de
@@ -328,7 +349,8 @@ def api_actualizar_sistema():
         return jsonify({
             'success': True,
             'actualizado': True,
-            'message': f'Sistema actualizado.{pip_output} Versión: {commit_nuevo} — Reiniciando servidor...',
+            'message': f'Sistema actualizado a v{version_nueva}.{pip_output} {commit_nuevo} — Reiniciando servidor...',
+            'version_nueva': version_nueva,
             'ficheros_actualizados': ficheros_cambian,
             'reiniciando': True
         })
@@ -2439,6 +2461,28 @@ def _rfid_firmware_manifest():
     return manifest
 
 
+def _rfid_puesto_para_pantalla(dev_id):
+    """Nombre del puesto asignado al lector, listo para pintar en su display.
+
+    Se reutiliza 'puesto_nombre' del registro de Admin -> Lectores RFID (lo
+    escribe la asignacion de puesto, y para los lectores de modulo lleva la
+    etiqueta del modulo): no hay campo nuevo que mantener al dia.
+
+    La fuente de la placa es un 8x8 ASCII de framebuf: una vocal acentuada
+    saldria como un garabato. Por eso se pliega a ASCII AQUI, que es donde hay
+    unicodedata, y no en MicroPython. Cadena vacia = sin asignar; la placa
+    decide entonces que enseñar (ver TITULO_DEF en lector_puesto.py).
+    """
+    if not dev_id:
+        return ''
+    dev = (_rfid_load_devices() or {}).get(dev_id) or {}
+    nombre = (dev.get('puesto_nombre') or '').strip()
+    if not nombre:
+        return ''
+    plano = unicodedata.normalize('NFKD', nombre).encode('ascii', 'ignore').decode('ascii')
+    return ' '.join(plano.upper().split())[:40]
+
+
 @bp.route('/api/esp32/rfid/firmware/version', methods=['GET'])
 def api_esp32_rfid_firmware_version():
     """Version y manifiesto del firmware disponible para la placa lectora RFID.
@@ -2451,7 +2495,13 @@ def api_esp32_rfid_firmware_version():
     try:
         dev_id = _esp32_device_id(request.args.get('id'))
         if dev_id:
-            _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'))
+            exp_raw = request.args.get('expansores')
+            try:
+                expansores = int(exp_raw) if exp_raw is not None else None
+            except (TypeError, ValueError):
+                expansores = None
+            _rfid_registrar_dispositivo(dev_id, ip=request.args.get('ip'), fw=request.args.get('fw'),
+                                         expansores=expansores)
 
             # Si Admin pidió OTA manual para este lector, se marca como
             # resuelta cuando ya reporta la versión publicada en servidor.
@@ -2466,6 +2516,7 @@ def api_esp32_rfid_firmware_version():
                 return devs
             _rfid_devices_actualizar(_cerrar_ota)
         return jsonify({'version': _rfid_firmware_version(),
+                        'puesto': _rfid_puesto_para_pantalla(dev_id),
                         'files': _rfid_firmware_manifest()})
     except Exception as e:
         return error_interno(e)
@@ -2521,8 +2572,14 @@ def _rfid_devices_actualizar(fn):
     return _json_actualizar(_rfid_devices_file(), {}, fn)
 
 
-def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
-    """Actualiza last_seen/ip/fw de un lector (lo crea si es la primera vez)."""
+def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None, expansores=None):
+    """Actualiza last_seen/ip/fw/expansores de un lector (lo crea si es la primera vez).
+
+    'expansores' es None si el latido no lo trae (compatibilidad con firmware
+    viejo); si lo trae, se guarda tal cual, incluido el 0 explicito -- eso es
+    lo que permite ver en Admin que una placa esclava se ha quedado sin
+    alimentacion aunque no llegue ningun evento de gaveta.
+    """
     def _touch(devs):
         dev = devs.setdefault(dev_id, {})
         dev['last_seen'] = datetime.now().isoformat()
@@ -2530,6 +2587,8 @@ def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None):
             dev['ip'] = ip
         if fw:
             dev['fw'] = fw
+        if expansores is not None:
+            dev['expansores'] = expansores
         return devs
     _rfid_devices_actualizar(_touch)
 

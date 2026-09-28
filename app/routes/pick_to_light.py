@@ -4,7 +4,7 @@ Pick-to-light de gavetas: enciende la luz del cajon del terminal elegido.
 El operario elige un terminal en engastado y se le enciende en verde el LED de
 su gaveta; al sacarla, la placa lo confirma y la app le muestra los paquetes.
 El hardware cuelga de la MISMA ESP32 del lector RFID del puesto (esquema en
-esp32/HARDWARE_PICK_TO_LIGHT.md), asi que aqui no hay ningun tipo de
+esp32/HARDWARE_PLACA_MASTER.md), asi que aqui no hay ningun tipo de
 dispositivo nuevo: se reaprovecha el registro de Admin -> Lectores RFID.
 
 Dos decisiones que explican la forma de este fichero:
@@ -22,6 +22,7 @@ Dos decisiones que explican la forma de este fichero:
 import http.client
 import json
 import os
+import time
 import uuid
 from datetime import datetime
 
@@ -39,6 +40,38 @@ TIMEOUT_PLACA_PROBAR = 4.0 # 'probar' es una accion de admin sin prisa: la
                            # y eso a veces tarda mas que el timeout normal
 RUTA_PLACA = '/gaveta'
 MAX_EVENTOS_PUESTO = 20    # historial corto por puesto, para no crecer sin fin
+
+# Desde PythonAnywhere no se puede empujar la orden a la placa (ver
+# _backend_pythonanywhere): la unica confirmacion de que la luz se ha
+# encendido DE VERDAD llega por el sondeo periodico de la placa, que solo
+# manda 'led=' cuando gavetas.encender() tuvo exito real (con tira WS2813
+# conectada). En vez de asumir 'activo:true' a ciegas, se espera un tiempo
+# prudencial a esa confirmacion antes de responder.
+#
+# OJO con este numero: NO es "lo que tarda la placa". El sondeo de la placa es
+# adaptativo (lector_puesto.py: 750 ms con gaveta encendida, GAVETA_POLL_IDLE_MS
+# = 4 s en reposo, y backoff hasta 15 s si falla), y al elegir terminal la placa
+# esta justo en reposo. Ademas hacen falta DOS vueltas: una para que recoja la
+# orden y otra para que avise con 'led='. O sea que esta espera se queda corta a
+# proposito: esperar aqui los ~8 s del caso malo seria dejar al operario mirando
+# una pantalla parada. Lo que cubre el resto es 'pendiente' (ver /encender): la
+# respuesta sale ya, y el modal espera la confirmacion con el sondeo que el
+# navegador hace igualmente cada 500 ms. Subir este numero no arregla nada que
+# no arregle ya 'pendiente'; solo bloquea mas rato.
+ESPERA_CONFIRMACION_PAW_S = 2.5
+PAUSA_CONFIRMACION_PAW_S = 0.25
+
+# Margen de 'last_seen' para dar una placa por viva. El mismo 90 s que usan
+# Admin -> Lectores RFID y _terminales_del_puesto: el latido va cada 60 s.
+MARGEN_PLACA_VIVA_S = 90
+
+# Cuanto se considera que un puesto esta "atendido" desde el ultimo aviso del
+# navegador. Mientras lo este, el sondeo de la placa va rapido (ver 'prisa' en
+# api_pick_to_light_orden y GAVETA_POLL_IDLE_MS en lector_puesto.py): en reposo
+# la placa sondea cada 4 s, y esa espera es la que hacia que la gaveta tardara
+# en encenderse despues de elegir terminal. Con nadie delante no cambia nada:
+# sin avisos recientes la placa se queda en su sondeo lento de siempre.
+ATENCION_S = 120
 
 
 # ==================== ESTADO COMPARTIDO ====================
@@ -132,6 +165,129 @@ def _puesto_de_la_placa(device_id):
     from app.routes.sistema import _rfid_load_devices
     dev = (_rfid_load_devices() or {}).get(device_id) or {}
     return dev.get('puesto_id') or ''
+
+
+# ==================== LOGICA DE LOS MICRO-INTERRUPTORES ====================
+#
+# Un MCP23017 trae 16 canales con pull-up interno: el que no tiene micro
+# cableado flota en alto y la placa lo lee como "gaveta fuera" para siempre.
+# En un puesto montado entero da igual (todos los canales llevan su micro),
+# pero en banco -- o en un armario a medio cablear -- eso deja la placa
+# creyendo que le han robado todas las gavetas.
+#
+# Por eso se puede ajustar por placa, desde Admin:
+#   - 'invertir': el micro es normalmente abierto (NA) en vez de normalmente
+#     cerrado (NC). Cambia la interpretacion del nivel de TODOS los canales.
+#   - 'ignorar': canales sin cablear todavia. No cuentan como fuera, ni como
+#     puestos, ni pueden disparar la alarma de gaveta robada.
+#
+# Se guarda en el MISMO registro de Admin -> Lectores RFID que ya lleva ip,
+# fw y numero de gavetas, y viaja a la placa por el sondeo que ya existe
+# (/api/esp32/rfid/gaveta/orden): ni tabla nueva ni canal nuevo. Los valores
+# por defecto (False / lista vacia) son exactamente el comportamiento de
+# siempre, asi que quitar la configuracion es volver atras del todo.
+
+MICROS_CANAL_MAX = 128       # mismo tope que /test/led
+MICROS_DEFECTO = {'invertir': False, 'ignorar': []}
+
+
+def _micros_cfg_normalizar(crudo):
+    """Configuracion de micros saneada a partir de lo que venga (JSON o disco)."""
+    crudo = crudo if isinstance(crudo, dict) else {}
+    canales = []
+    for valor in (crudo.get('ignorar') or [])[:MICROS_CANAL_MAX]:
+        try:
+            canal = int(valor)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= canal <= MICROS_CANAL_MAX:
+            canales.append(canal)
+    return {'invertir': bool(crudo.get('invertir')), 'ignorar': sorted(set(canales))}
+
+
+def _micros_cfg_device(device_id):
+    """Configuracion de micros guardada para esa placa (la de siempre si no hay)."""
+    if not device_id:
+        return dict(MICROS_DEFECTO)
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _micros_cfg_normalizar(dev.get('ptl_micros'))
+
+
+# ==================== LEDs FISICOS POR GAVETA ====================
+#
+# La mayoria de los puestos llevan 1 LED por gaveta (una tira WS2813, un pixel
+# = un canal del MCP23017). El primer puesto piloto recablea a 3 LEDs por
+# gaveta para que se vea mejor desde lejos; el resto se queda como esta. Es
+# configurable por placa, igual que la logica de los micros: se guarda en el
+# mismo registro de Admin -> Lectores RFID (ptl_leds_por_gaveta) y viaja en
+# CADA sondeo (/api/esp32/rfid/gaveta/orden), no como un comando suelto, para
+# que una placa que se reinicia lo recupere sola. El valor por defecto (1) es
+# exactamente el comportamiento de siempre: multiplica los pixels de la tira,
+# nunca el numero de gavetas/canales (eso sigue siendo n_gavetas / LED_GAVETA_MAX).
+
+LEDS_POR_GAVETA_DEFECTO = 1
+LEDS_POR_GAVETA_MAX = 16   # mismo tope que esp32/lib/gavetas.py:LEDS_POR_GAVETA_MAX
+
+
+def _leds_por_gaveta_normalizar(crudo):
+    """Numero de LEDs por gaveta saneado a partir de lo que venga (JSON o disco)."""
+    try:
+        n = int(crudo)
+    except (TypeError, ValueError):
+        return LEDS_POR_GAVETA_DEFECTO
+    if not 1 <= n <= LEDS_POR_GAVETA_MAX:
+        return LEDS_POR_GAVETA_DEFECTO
+    return n
+
+
+def _leds_por_gaveta_device(device_id):
+    """LEDs por gaveta guardados para esa placa (1 si no hay nada configurado)."""
+    if not device_id:
+        return LEDS_POR_GAVETA_DEFECTO
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _leds_por_gaveta_normalizar(dev.get('ptl_leds_por_gaveta'))
+
+
+# ==================== BRILLO DE LOS LEDs (por color) ====================
+#
+# Los tres colores de la tira (objetivo, en_uso, error) van atenuados a
+# proposito: un WS2813 a tope deslumbra a medio metro. El brillo de cada uno
+# es ajustable por placa, igual que los micros y los LEDs por gaveta: se
+# guarda en el MISMO registro de Admin -> Lectores RFID (ptl_brillo) y viaja
+# en CADA sondeo (/api/esp32/rfid/gaveta/orden). BRILLO_MAX es un tope de
+# seguridad bien por debajo de 255 para que nadie pueda subir el brillo hasta
+# deslumbrar, y los valores por defecto coinciden EXACTAMENTE con los que ya
+# llevaba el firmware: una placa o un servidor sin esta configuracion se
+# comporta igual que siempre.
+
+BRILLO_MAX = 200   # mismo tope que esp32/lib/gavetas.py:BRILLO_MAX
+BRILLO_DEFECTO = {'objetivo': 70, 'en_uso': 90, 'error': 110}
+
+
+def _brillo_cfg_normalizar(crudo):
+    """Configuracion de brillo saneada a partir de lo que venga (JSON o disco)."""
+    crudo = crudo if isinstance(crudo, dict) else {}
+    cfg = {}
+    for clave, defecto in BRILLO_DEFECTO.items():
+        try:
+            valor = int(crudo.get(clave))
+        except (TypeError, ValueError):
+            valor = defecto
+        if not 0 <= valor <= BRILLO_MAX:
+            valor = defecto
+        cfg[clave] = valor
+    return cfg
+
+
+def _brillo_cfg_device(device_id):
+    """Configuracion de brillo guardada para esa placa (la de siempre si no hay)."""
+    if not device_id:
+        return dict(BRILLO_DEFECTO)
+    from app.routes.sistema import _rfid_load_devices
+    dev = (_rfid_load_devices() or {}).get(device_id) or {}
+    return _brillo_cfg_normalizar(dev.get('ptl_brillo'))
 
 
 def _enviar_a_placa_con_datos(ip, payload, timeout=TIMEOUT_PLACA_PROBAR):
@@ -250,15 +406,18 @@ def _puesto_del_terminal(terminal):
 # lee de aqui para mostrarla; no tiene ningun PUT/DELETE propio.
 
 def _canales_del_puesto(puesto_id):
-    """{canal: {'terminal':..., 'gaveta':..., 'uid_rfid':...}} activos de este puesto."""
+    """{canal: {'terminal':..., 'gaveta':..., 'uid_rfid':..., 'uid_rfid_2':...}}
+    activos de este puesto. 'uid_rfid'/'uid_rfid_2' son las dos etiquetas del
+    kanban de doble caja: cualquiera de las dos vale como valida para el canal."""
     if not puesto_id:
         return {}
     filas = db.session.execute(text("""
-        SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid
+        SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid, uid_rfid_2
         FROM pick_to_light_canales
         WHERE puesto_id = :puesto_id AND activo = 1
     """), {'puesto_id': puesto_id}).fetchall()
-    return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2], 'uid_rfid': fila[3]} for fila in filas}
+    return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2],
+                      'uid_rfid': fila[3], 'uid_rfid_2': fila[4]} for fila in filas}
 
 
 def _gavetas_validas_del_puesto(puesto_id):
@@ -274,21 +433,23 @@ def _gavetas_validas_del_puesto(puesto_id):
 
 
 def _canal_del_terminal_en_puesto(terminal, puesto_id):
-    """(canal, etiqueta_gaveta, uid_rfid) del terminal EN ESE puesto, o (None, None, None).
+    """(canal, etiqueta_gaveta, uid_rfid, uid_rfid_2) del terminal EN ESE
+    puesto, o (None, None, None, None). Las dos ultimas son las etiquetas de
+    las dos cajas del kanban de doble caja: cualquiera de las dos vale.
 
     Buscar por (puesto, terminal) y no solo por terminal es lo que evita que
     un terminal con el mismo codigo asignado (por error) en dos puestos a la
     vez encienda la placa equivocada.
     """
     if not terminal or not puesto_id:
-        return None, None, None
+        return None, None, None, None
     row = db.session.execute(text("""
-        SELECT canal, etiqueta_gaveta, uid_rfid FROM pick_to_light_canales
+        SELECT canal, etiqueta_gaveta, uid_rfid, uid_rfid_2 FROM pick_to_light_canales
         WHERE puesto_id = :puesto_id AND terminal_codigo = :terminal AND activo = 1
     """), {'puesto_id': puesto_id, 'terminal': terminal}).fetchone()
     if not row:
-        return None, None, None
-    return row[0], row[1], row[2]
+        return None, None, None, None
+    return row[0], row[1], row[2], row[3]
 
 
 def _maquina_del_terminal_en_puesto(terminal, puesto_id):
@@ -308,6 +469,22 @@ def _normalizar_uid(bruto):
     if not bruto:
         return ''
     return ''.join(str(bruto).split()).upper().replace(':', '').replace('-', '')
+
+
+def _normalizar_caja(bruto):
+    """1 o 2 (kanban de doble caja); por defecto 1 si no viene o es invalido,
+    para que nada que ya llamara a estos endpoints sin 'caja' se rompa."""
+    try:
+        caja = int(bruto)
+    except (TypeError, ValueError):
+        return 1
+    return 2 if caja == 2 else 1
+
+
+def _columna_uid(caja):
+    """Nombre de columna SQL para esa caja. Nunca se interpola texto de
+    fuera: 'caja' ya viene saneado a 1 o 2 por _normalizar_caja."""
+    return 'uid_rfid_2' if caja == 2 else 'uid_rfid'
 
 
 def asignar_canal(puesto_id, canal, terminal, etiqueta):
@@ -441,7 +618,7 @@ RFID_ARMADO_DURACION_MS = 30_000   # "20-30 segundos" pedido: admin de pie delan
 # canal es el que usa /api/esp32/rfid/gaveta/orden para la orden de LED de
 # cada puesto, y un comando ahi pendiente le roba el turno al 'led' normal en
 # cuanto el sondeo lo ve (ver api_pick_to_light_orden). En vez de eso,
-# 'rfid_modo' se calcula solo de lo que ya hay en el estado (uid_esperado +
+# 'rfid_modo' se calcula solo de lo que ya hay en el estado (uids_esperados +
 # rfid_confirmado) y se manda en CADA sondeo junto al 'led': el propio
 # lector_puesto.py lo va sincronizando solo, poll a poll, sin comandos sueltos
 # que haya que acordarse de desarmar.
@@ -449,7 +626,7 @@ RFID_ARMADO_DURACION_MS = 30_000   # "20-30 segundos" pedido: admin de pie delan
 
 def _rfid_modo_de(actual):
     """rfid_modo que le toca mandar a la placa en el sondeo, o None."""
-    if actual.get('uid_esperado') and not actual.get('rfid_confirmado'):
+    if actual.get('uids_esperados') and not actual.get('rfid_confirmado'):
         return {'canal': actual.get('led'), 'orden_id': actual.get('orden_id')}
     return None
 
@@ -489,12 +666,15 @@ def _rfid_armado_guardar(datos):
 def _rfid_ocupante(uid, excluir_puesto=None, excluir_canal=None):
     """(puesto_id, canal, terminal) donde ya esta activo este UID, o None.
 
-    'excluir_*' deja pasar la fila que se esta editando (cambiar la etiqueta
-    de la MISMA gaveta no puede chocar consigo misma).
+    Comprueba las DOS columnas (uid_rfid y uid_rfid_2, caja 1 y caja 2 del
+    kanban de doble caja): un UID no puede repetirse ni entre canales
+    distintos ni entre las dos cajas de un mismo canal ni de canales
+    distintos. 'excluir_*' deja pasar la fila que se esta editando (cambiar
+    la etiqueta de la MISMA gaveta no puede chocar consigo misma).
     """
     fila = db.session.execute(text("""
         SELECT puesto_id, canal, terminal_codigo FROM pick_to_light_canales
-        WHERE uid_rfid = :uid AND activo = 1
+        WHERE (uid_rfid = :uid OR uid_rfid_2 = :uid) AND activo = 1
     """), {'uid': uid}).fetchone()
     if not fila:
         return None
@@ -519,6 +699,7 @@ def api_pick_to_light_rfid_armar():
             canal = int(datos.get('canal'))
         except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+        caja = _normalizar_caja(datos.get('caja'))
 
         device_id, _ = _placa_del_puesto(puesto_id)
         if not device_id:
@@ -529,8 +710,8 @@ def api_pick_to_light_rfid_armar():
             'duracion_ms': RFID_ARMADO_DURACION_MS,
         })
         armado = _rfid_armado_cargar()
-        armado[device_id] = {'puesto_id': puesto_id, 'canal': canal, 'seq': seq,
-                             'uid': None, 'listo': False}
+        armado[device_id] = {'puesto_id': puesto_id, 'canal': canal, 'caja': caja,
+                             'seq': seq, 'uid': None, 'listo': False}
         _rfid_armado_guardar(armado)
 
         return jsonify({'success': True, 'device_id': device_id, 'seq': seq,
@@ -560,7 +741,11 @@ def api_pick_to_light_rfid_sondear():
 @bp.route('/api/pick-to-light/canal/rfid', methods=['PUT'])
 @requiere_pin_admin
 def api_pick_to_light_rfid_confirmar():
-    """Confirma y guarda el UID leído para un canal que YA tiene terminal."""
+    """Confirma y guarda el UID leído para un canal que YA tiene terminal.
+
+    'caja' (1 o 2, por defecto 1) decide si se guarda en uid_rfid o
+    uid_rfid_2: las dos etiquetas del kanban de doble caja para este canal.
+    """
     try:
         datos = request.get_json(silent=True) or {}
         puesto_id = (datos.get('puesto_id') or '').strip()[:24]
@@ -571,6 +756,8 @@ def api_pick_to_light_rfid_confirmar():
         uid = _normalizar_uid(datos.get('uid'))
         if not uid:
             return jsonify({'success': False, 'message': 'Falta el UID leído'}), 400
+        caja = _normalizar_caja(datos.get('caja'))
+        columna = _columna_uid(caja)
 
         fila = db.session.execute(text("""
             SELECT terminal_codigo FROM pick_to_light_canales
@@ -590,11 +777,11 @@ def api_pick_to_light_rfid_confirmar():
                                        'de este mismo puesto' % (choque[1], choque[2]))}), 409
 
         db.session.execute(text("""
-            UPDATE pick_to_light_canales SET uid_rfid = :uid, updated_at = datetime('now')
+            UPDATE pick_to_light_canales SET %s = :uid, updated_at = datetime('now')
             WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
-        """), {'uid': uid, 'puesto_id': puesto_id, 'canal': canal})
+        """ % columna), {'uid': uid, 'puesto_id': puesto_id, 'canal': canal})
         db.session.commit()
-        return jsonify({'success': True, 'uid': uid})
+        return jsonify({'success': True, 'uid': uid, 'caja': caja})
     except Exception as e:
         return error_interno(e, 'Error al guardar el RFID del canal')
 
@@ -602,17 +789,20 @@ def api_pick_to_light_rfid_confirmar():
 @bp.route('/api/pick-to-light/canal/rfid', methods=['DELETE'])
 @requiere_pin_admin
 def api_pick_to_light_rfid_desvincular():
+    """Desvincula el UID de una caja del canal. 'caja' en query args (1 o 2,
+    por defecto 1) decide que columna se pone a NULL."""
     try:
         puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
         try:
             canal = int(request.args.get('canal'))
         except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
+        columna = _columna_uid(_normalizar_caja(request.args.get('caja')))
 
         db.session.execute(text("""
-            UPDATE pick_to_light_canales SET uid_rfid = NULL, updated_at = datetime('now')
+            UPDATE pick_to_light_canales SET %s = NULL, updated_at = datetime('now')
             WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
-        """), {'puesto_id': puesto_id, 'canal': canal})
+        """ % columna), {'puesto_id': puesto_id, 'canal': canal})
         db.session.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -673,11 +863,12 @@ def api_esp32_rfid_gaveta_lectura():
                 return jsonify({'success': True, 'ok': False,
                                 'mensaje': 'Esta lectura ya no corresponde a ningún trabajo activo'})
 
-            uid_esperado = actual.get('uid_esperado')
-            if not uid_esperado:
+            uids_esperados = actual.get('uids_esperados') or []
+            if not uids_esperados:
                 return jsonify({'success': True, 'ok': False, 'mensaje': 'Esta gaveta no lleva RFID'})
 
-            correcto = uid == uid_esperado
+            # Cualquiera de las dos etiquetas del kanban de doble caja vale.
+            correcto = uid in uids_esperados
 
             def _marcar(estado):
                 act = estado.get(puesto_id) or {}
@@ -697,7 +888,8 @@ def api_esp32_rfid_gaveta_lectura():
 
             if not correcto:
                 _registrar_incidencia(puesto_id, actual.get('led'), actual.get('terminal'),
-                                      'rfid_incorrecto', 'esperado=%s leido=%s' % (uid_esperado, uid))
+                                      'rfid_incorrecto', 'esperado=%s leido=%s' % (
+                                          '/'.join(uids_esperados), uid))
                 return jsonify({'success': True, 'ok': False,
                                 'mensaje': 'La etiqueta leída no corresponde a la gaveta esperada'})
             # UID correcto: se guarda como validado aunque el micro correcto
@@ -730,6 +922,66 @@ def _parsear_intrusas(crudo):
     return sorted(set(numeros))
 
 
+def _atencion_marcar(puesto_id):
+    """Apunta que hay un operario atendiendo ese puesto ahora mismo."""
+    if not puesto_id:
+        return
+
+    def _set(estado):
+        estado.setdefault(puesto_id, {})['atencion_hasta'] = time.time() + ATENCION_S
+        return estado
+    _estado_actualizar(_set)
+
+
+def _atencion_viva(puesto_id):
+    """True si el puesto tuvo un aviso de atencion hace menos de ATENCION_S."""
+    if not puesto_id:
+        return False
+    try:
+        actual = _estado_cargar().get(puesto_id) or {}
+        return float(actual.get('atencion_hasta') or 0) > time.time()
+    except (TypeError, ValueError):
+        return False
+
+
+def _placa_en_contacto(device_id):
+    """True si esa placa ha dado señales de vida hace poco (ver last_seen).
+
+    Sirve para distinguir "la placa aún no ha contestado" de "aquí no hay
+    placa": lo primero merece esperar la luz unos segundos, lo segundo no, y
+    confundirlos saca un modal de gaveta en un puesto con el lector desenchufado.
+    """
+    if not device_id:
+        return False
+    try:
+        from app.routes.sistema import _rfid_load_devices
+        dev = (_rfid_load_devices() or {}).get(device_id) or {}
+        visto = datetime.fromisoformat(dev.get('last_seen', ''))
+        return (datetime.now() - visto).total_seconds() < MARGEN_PLACA_VIVA_S
+    except Exception:
+        return False
+
+
+def _esperar_confirmacion_luz(puesto_id, led):
+    """Espera acotada a que la placa confirme por sondeo que ENCENDIÓ 'led'.
+
+    Solo tiene sentido en el camino PAW (ver _backend_pythonanywhere): ahí no
+    hay forma de saber si la luz se encendió de verdad salvo esperando a que
+    la propia placa lo diga en su próximo GET a /api/esp32/rfid/gaveta/orden
+    (cada 750 ms). No bloquea de más: TIMEOUT_PLACA_PROBAR ya deja precedente
+    de esperas bloqueantes similares en este mismo fichero.
+    """
+    transcurrido = 0.0
+    while transcurrido < ESPERA_CONFIRMACION_PAW_S:
+        actual = _estado_cargar().get(puesto_id) or {}
+        if actual.get('led') == led and actual.get('placa_confirmo_luz'):
+            return True
+        time.sleep(PAUSA_CONFIRMACION_PAW_S)
+        transcurrido += PAUSA_CONFIRMACION_PAW_S
+    actual = _estado_cargar().get(puesto_id) or {}
+    return actual.get('led') == led and bool(actual.get('placa_confirmo_luz'))
+
+
 # ==================== API PARA LA APP ====================
 
 @bp.route('/api/pick-to-light/encender', methods=['POST'])
@@ -748,7 +1000,7 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False,
                             'motivo': 'Falta el puesto o el terminal'})
 
-        led, gaveta, uid_rfid = _canal_del_terminal_en_puesto(terminal, puesto_id)
+        led, gaveta, uid_rfid, uid_rfid_2 = _canal_del_terminal_en_puesto(terminal, puesto_id)
         if not led:
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta,
                             'motivo': 'El terminal %s no tiene gaveta con luz en este puesto' % terminal})
@@ -772,18 +1024,45 @@ def api_pick_to_light_encender():
         # Se apunta la peticion aunque la placa no conteste: asi el sondeo del
         # navegador sabe que ya no espera nada de un terminal anterior.
         def _set(estado):
-            estado[puesto_id] = {'led': led, 'terminal': terminal, 'gaveta': gaveta,
+            # La marca de atencion sobrevive al encendido: si no, al terminar
+            # este terminal el puesto volveria al sondeo lento con el operario
+            # todavia delante, eligiendo el siguiente.
+            atencion = (estado.get(puesto_id) or {}).get('atencion_hasta')
+            estado[puesto_id] = {'atencion_hasta': atencion,
+                                 'led': led, 'terminal': terminal, 'gaveta': gaveta,
                                  'recogida': False, 'devuelta': False, 'validas': validas,
                                  'error_led': None, 'intrusas': [], 'eventos': [],
-                                 'orden_id': orden_id, 'uid_esperado': uid_rfid,
-                                 'rfid_confirmado': False, 'uid_incorrecto': None}
+                                 'orden_id': orden_id,
+                                 'uids_esperados': [u for u in (uid_rfid, uid_rfid_2) if u],
+                                 'rfid_confirmado': False, 'uid_incorrecto': None,
+                                 'placa_confirmo_luz': False}
             return estado
         _estado_actualizar(_set)
 
         remoto = not ok and _backend_pythonanywhere()
-        return jsonify({'success': True, 'activo': ok or remoto, 'led': led, 'gaveta': gaveta,
-                'rfid': bool(uid_rfid),
-                'motivo': ('La placa recibirá la orden por sondeo.' if remoto else motivo)})
+        activo = ok
+        motivo_final = motivo
+        if remoto:
+            # No se puede asumir que la luz se encendio solo porque no se
+            # pudo empujar la orden: hay que esperar a que la propia placa lo
+            # confirme por su sondeo (ver api_pick_to_light_orden).
+            confirmado = _esperar_confirmacion_luz(puesto_id, led)
+            activo = confirmado
+            motivo_final = ('' if confirmado else
+                            'La placa no confirmó la luz a tiempo (PAW)')
+
+        # 'pendiente': no hay confirmación TODAVÍA, pero la placa está viva y la
+        # orden ya está apuntada, así que lo normal es que la luz se encienda en
+        # cuanto la placa sondee. Sin esto, una placa en reposo (4 s entre
+        # sondeos) llegaba siempre tarde a la espera de arriba y el navegador se
+        # saltaba la puerta de confirmación: la gaveta se encendía sola con el
+        # operario ya en la lista de paquetes.
+        pendiente = (not activo) and _placa_en_contacto(device_id)
+        if pendiente:
+            motivo_final = ''
+        return jsonify({'success': True, 'activo': activo, 'pendiente': pendiente,
+                'led': led, 'gaveta': gaveta,
+                'rfid': bool(uid_rfid or uid_rfid_2), 'motivo': motivo_final})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
 
@@ -803,13 +1082,51 @@ def api_pick_to_light_apagar():
             ok, _ = _enviar_a_placa(ip, {'apagar': True})
 
         def _borrar(estado):
-            estado.pop(puesto_id, None)
+            # Se va la orden, pero NO la atencion: el operario que acaba de
+            # terminar un terminal sigue delante eligiendo el siguiente, y la
+            # placa tiene que seguir rapida para que esa gaveta encienda ya.
+            # Para todo lo demas un puesto con solo esta marca se lee igual
+            # que uno que no esta: el resto de campos se consultan con .get.
+            estado[puesto_id] = {'atencion_hasta': time.time() + ATENCION_S}
             return estado
         _estado_actualizar(_borrar)
 
         return jsonify({'success': True, 'activo': ok})
     except Exception as e:
         return error_interno(e, 'Error al apagar las gavetas')
+
+
+@bp.route('/api/pick-to-light/devolucion/iniciar', methods=['POST'])
+def api_pick_to_light_devolucion_iniciar():
+    """Avisa a la placa de que toca devolver la gaveta ya.
+
+    Lo llama la pantalla de engastado (esperarDevolucionGaveta en
+    v3-gavetas.js) en cuanto el operario termina el terminal en curso, no
+    Admin -- mismo criterio que /atencion y /incidencia, sin
+    @requiere_pin_admin. El LED del objetivo pasa de azul fijo a parpadear
+    en azul hasta que lo devuelvan, momento en el que la propia placa lo
+    confirma en verde (ver marcar_espera_devolucion en esp32/lib/gavetas.py).
+
+    Responde SIEMPRE 200: esto no puede bloquear al operario por una luz.
+    Si el puesto no existe o no hay orden activa, no hace nada.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        if not puesto_id:
+            return jsonify({'success': True})
+
+        def _set(estado):
+            actual = estado.get(puesto_id) or {}
+            if actual.get('led'):
+                actual['esperando_devolucion'] = True
+                estado[puesto_id] = actual
+            return estado
+        _estado_actualizar(_set)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return error_interno(e, 'Error al avisar de la devolución de la gaveta')
 
 
 def _calcular_estado_orden(actual):
@@ -824,9 +1141,31 @@ def _calcular_estado_orden(actual):
         return 'rfid_incorrecto'
     if not actual.get('recogida'):
         return 'esperando_micro'
-    if actual.get('uid_esperado') and not actual.get('rfid_confirmado'):
+    if actual.get('uids_esperados') and not actual.get('rfid_confirmado'):
         return 'esperando_rfid'
     return 'confirmada'
+
+
+@bp.route('/api/pick-to-light/atencion', methods=['POST'])
+def api_pick_to_light_atencion():
+    """Avisa de que hay un operario a punto de elegir terminal en ese puesto.
+
+    Lo manda la pantalla de engastado al enseñar la lista de terminales, unos
+    segundos antes de que el operario elija. Con eso la placa ya esta sondeando
+    rapido cuando llega la orden, en vez de tardar hasta 4 s en recogerla.
+
+    No enciende nada ni habla con la placa: solo deja una marca con caducidad,
+    asi que responde 200 siempre y nunca puede parar el flujo de trabajo.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        if not puesto_id:
+            return jsonify({'success': True, 'atendido': False})
+        _atencion_marcar(puesto_id)
+        return jsonify({'success': True, 'atendido': True, 'segundos': ATENCION_S})
+    except Exception as e:
+        return error_interno(e, 'Error al avisar de la atención al puesto')
 
 
 @bp.route('/api/pick-to-light/estado', methods=['GET'])
@@ -845,9 +1184,12 @@ def api_pick_to_light_estado():
             'error_led': actual.get('error_led'),
             'intrusas': list(actual.get('intrusas') or []),
             'orden_id': actual.get('orden_id'),
-            'uid_esperado': bool(actual.get('uid_esperado')),
+            'uid_esperado': bool(actual.get('uids_esperados')),
             'rfid_confirmado': bool(actual.get('rfid_confirmado')),
             'uid_incorrecto': bool(actual.get('uid_incorrecto')),
+            # Lo que le falta al modal cuando entra en 'pendiente': hasta que
+            # esto sea True la luz no está encendida de verdad (ver /encender).
+            'placa_confirmo_luz': bool(actual.get('placa_confirmo_luz')),
             'estado': _calcular_estado_orden(actual),
         })
     except Exception as e:
@@ -877,13 +1219,28 @@ def api_pick_to_light_orden():
 
         # Un comando de prueba manda sobre la gaveta de trabajo: quien lo ha
         # pedido esta delante del armario mirando que LED se enciende.
+        # La logica de los micros va en TODAS las respuestas de este sondeo,
+        # tambien en la del comando de prueba: si solo fuera en la normal, una
+        # placa que se reinicia mientras alguien prueba el cableado leeria los
+        # micros con el criterio equivocado justo durante la prueba.
+        micros = _micros_cfg_device(device_id)
+        leds_por_gaveta = _leds_por_gaveta_device(device_id)
+        brillo = _brillo_cfg_device(device_id)
+
+        puesto_id = _puesto_de_la_placa(device_id)
+        esperando_devolucion = bool(
+            (_estado_cargar().get(puesto_id) or {}).get('esperando_devolucion')) \
+            if puesto_id else False
+
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
             return jsonify({'success': True,
                             'test': pendiente['cmd'],
+                            'micros': micros,
+                            'leds_por_gaveta': leds_por_gaveta,
+                            'brillo': brillo,
+                            'esperando_devolucion': esperando_devolucion,
                             'test_seq': pendiente.get('seq')})
-
-        puesto_id = _puesto_de_la_placa(device_id)
 
         try:
             led_reportado = int(request.args.get('led') or 0)
@@ -896,6 +1253,11 @@ def api_pick_to_light_orden():
         def _falta_reconfirmar(actual):
             if not actual or led_reportado != actual.get('led'):
                 return False
+            # La sola presencia de 'led=' coincidiendo con el objetivo ya es
+            # la confirmacion de que gavetas.encender() tuvo exito de verdad
+            # (con tira conectada): ver ESPERA_CONFIRMACION_PAW_S.
+            if not actual.get('placa_confirmo_luz'):
+                return True
             if arg_recogida and not actual.get('recogida'):
                 return True
             if bool(actual.get('devuelta')) != arg_puesta:
@@ -910,6 +1272,7 @@ def api_pick_to_light_orden():
             actual = estado_todo.get(puesto_id) or {}
             if led_reportado != actual.get('led'):
                 return estado_todo
+            actual['placa_confirmo_luz'] = True
             if arg_recogida and not actual.get('recogida'):
                 actual['recogida'] = True
                 actual['error_led'] = None
@@ -936,6 +1299,14 @@ def api_pick_to_light_orden():
                         'led': led,
                         'terminal': (estado or {}).get('terminal') or '',
                         'validas': (estado or {}).get('validas') or [],
+                        'micros': micros,
+                        'leds_por_gaveta': leds_por_gaveta,
+                        'brillo': brillo,
+                        'esperando_devolucion': esperando_devolucion,
+                        # Con un operario delante la placa sondea rapido; sin
+                        # nadie, vuelve sola a su ritmo lento en cuanto caduca
+                        # la marca (ver ATENCION_S y _atencion_marcar).
+                        'prisa': _atencion_viva(puesto_id),
                         'rfid_modo': _rfid_modo_de(estado or {})})
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
@@ -1136,6 +1507,153 @@ def api_ptl_test_micros():
         return error_interno(e, 'Error al leer micro-interruptores')
 
 
+@bp.route('/api/pick-to-light/micros/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_micros_config_leer():
+    """Logica de micros guardada para una placa (NC/NA + canales ignorados)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        cfg = _micros_cfg_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'canal_max': MICROS_CANAL_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer la configuración de micros')
+
+
+@bp.route('/api/pick-to-light/micros/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_micros_config_guardar():
+    """Guarda la logica de micros de una placa y se la empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se la lleva igual en
+    unos segundos, y un 502 aqui haria pensar que no se ha guardado nada.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        cfg = _micros_cfg_normalizar(datos)
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_micros'] = cfg
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'micros_config': cfg})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar la configuración de micros')
+
+
+@bp.route('/api/pick-to-light/leds/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_leds_config_leer():
+    """LEDs fisicos por gaveta guardados para una placa (1 si no hay nada configurado)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        leds_por_gaveta = _leds_por_gaveta_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'leds_por_gaveta': leds_por_gaveta,
+                        'leds_por_gaveta_max': LEDS_POR_GAVETA_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer los LEDs por gaveta')
+
+
+@bp.route('/api/pick-to-light/leds/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_leds_config_guardar():
+    """Guarda los LEDs fisicos por gaveta de una placa y se los empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se lo lleva igual en
+    unos segundos, como con la configuracion de micros.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        leds_por_gaveta = _leds_por_gaveta_normalizar(datos.get('leds_por_gaveta'))
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_leds_por_gaveta'] = leds_por_gaveta
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'leds_config': leds_por_gaveta})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'leds_por_gaveta': leds_por_gaveta,
+                        'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar los LEDs por gaveta')
+
+
+@bp.route('/api/pick-to-light/brillo/config', methods=['GET'])
+@requiere_pin_admin
+def api_ptl_brillo_config_leer():
+    """Brillo por color guardado para una placa (los valores de siempre si no hay nada)."""
+    try:
+        device_id, _ = _resolver_placa_test(request.args)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+        cfg = _brillo_cfg_device(device_id)
+        return jsonify({'success': True, 'device_id': device_id,
+                        'objetivo': cfg['objetivo'], 'en_uso': cfg['en_uso'],
+                        'error': cfg['error'], 'max': BRILLO_MAX})
+    except Exception as e:
+        return error_interno(e, 'Error al leer el brillo de los LEDs')
+
+
+@bp.route('/api/pick-to-light/brillo/config', methods=['PUT'])
+@requiere_pin_admin
+def api_ptl_brillo_config_guardar():
+    """Guarda el brillo por color de una placa y se lo empuja si se puede.
+
+    Responde 200 aunque la placa no conteste: el sondeo se lo lleva igual en
+    unos segundos, como con la configuracion de micros y de LEDs por gaveta.
+    """
+    try:
+        from app.routes.sistema import _rfid_devices_actualizar
+        datos = request.get_json(silent=True) or {}
+        device_id, ip = _resolver_placa_test(datos)
+        if not device_id:
+            return jsonify({'success': False, 'message': 'Lector no encontrado'}), 404
+
+        cfg = _brillo_cfg_normalizar(datos)
+
+        def _guardar(devs):
+            devs.setdefault(device_id, {})['ptl_brillo'] = cfg
+            return devs
+        _rfid_devices_actualizar(_guardar)
+
+        aplicado, motivo = _enviar_a_placa(ip, {'brillo_config': cfg})
+        return jsonify({'success': True, 'device_id': device_id,
+                        'objetivo': cfg['objetivo'], 'en_uso': cfg['en_uso'],
+                        'error': cfg['error'], 'aplicado': aplicado,
+                        'message': ('Aplicado en la placa.' if aplicado else
+                                    'Guardado. La placa lo cogerá en su próximo '
+                                    'sondeo (%s).' % motivo)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar el brillo de los LEDs')
+
+
 @bp.route('/api/pick-to-light/test/fin', methods=['POST'])
 @requiere_pin_admin
 def api_ptl_test_fin():
@@ -1188,7 +1706,8 @@ def api_pick_to_light_mapa():
         canales = [{'canal': canal,
                     'terminal': (asignados.get(canal) or {}).get('terminal'),
                     'gaveta': (asignados.get(canal) or {}).get('gaveta'),
-                    'rfid': bool((asignados.get(canal) or {}).get('uid_rfid'))}
+                    'rfid': bool((asignados.get(canal) or {}).get('uid_rfid')
+                                 or (asignados.get(canal) or {}).get('uid_rfid_2'))}
                   for canal in range(1, total + 1)]
 
         # Terminales de las maquinas de este puesto que aun no tienen canal:
@@ -1401,22 +1920,28 @@ def api_esp32_rfid_gaveta():
             n_gavetas = int(datos.get('gavetas') or 0)
         except (TypeError, ValueError):
             n_gavetas = 0
-        try:
-            n_expansores = int(datos.get('expansores') or 0)
-        except (TypeError, ValueError):
-            n_expansores = 0
+        # 'expansores' in datos distingue "no vino el campo" (firmware viejo,
+        # no tocar lo que ya hubiera) de "vino a 0" (la placa esclava se ha
+        # quedado sin 5V y hay que reflejarlo, no dejar el valor antiguo).
+        if 'expansores' in datos:
+            try:
+                n_expansores = int(datos.get('expansores') or 0)
+            except (TypeError, ValueError):
+                n_expansores = 0
+        else:
+            n_expansores = None
         # 'http' dice si la placa consiguio abrir su puerto 80. Una placa que
         # detecta los expansores pero no puede escuchar se ve igual de sana
         # desde Admin, y el unico sintoma es un ConnectionRefusedError al
         # empujarle una orden: guardarlo evita diagnosticar a ciegas.
         puerto_abierto = datos.get('http')
         en_prueba = datos.get('en_prueba')
-        if n_gavetas or n_expansores or puerto_abierto is not None or en_prueba is not None:
+        if n_gavetas or n_expansores is not None or puerto_abierto is not None or en_prueba is not None:
             def _touch(devs):
                 dev = devs.setdefault(device_id, {})
                 if n_gavetas:
                     dev['gavetas'] = n_gavetas
-                if n_expansores:
+                if n_expansores is not None:
                     dev['expansores'] = n_expansores
                 if puerto_abierto is not None:
                     dev['ptl_http'] = bool(puerto_abierto)

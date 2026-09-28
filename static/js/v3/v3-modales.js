@@ -467,6 +467,10 @@ function verInstruccionesMaquina() {
 async function abrirModalTerminal() {
     _mostrarModalWizard('modal-terminal');
 
+    // Igual que en la pantalla de seleccion: avisar antes de que elija, para
+    // que la placa este sondeando rapido cuando llegue la orden de encender.
+    avisarAtencionGaveta();
+
     const subtitulo = document.getElementById('modal-terminal-subtitulo');
     if (subtitulo) subtitulo.textContent = `${puestoSeleccionado?.nombre || ''} → ${maquinaSeleccionada?.nombre || ''}`;
 

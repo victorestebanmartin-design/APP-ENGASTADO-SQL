@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Placa MASTER / ESCLAVA Pick-To-Light - 1 Página A4</title>
+  <title>Placa expansora Pick-To-Light - 1 Página A4</title>
   <style>
     @page { size: A4 portrait; margin: 8mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -49,7 +49,7 @@
 <body>
 
   <div class="print-bar no-print">
-    <span>🖨️ <strong>Placa MASTER / ESCLAVA del Pick-To-Light — 1 página A4</strong></span>
+    <span>🖨️ <strong>Placa expansora del Pick-To-Light — 1 página A4</strong></span>
     <button class="print-btn" onclick="window.print()">Imprimir / Guardar en PDF (Ctrl+P)</button>
   </div>
 
@@ -106,7 +106,7 @@
         </defs>
 
         <!-- ══ CABECERA ══ -->
-        <text x="30" y="48" class="title-main">Placa MASTER y placa ESCLAVA — Pick-To-Light de gavetas</text>
+        <text x="30" y="48" class="title-main">Placa expansora — Pick-To-Light de gavetas (misma placa en las 8 posiciones)</text>
         <text x="30" y="68" class="title-sub">Rejilla 20 × 14 paso 2,54 mm · 12 pads de soldadura por lateral · 1 × MCP23017 + 16 microinterruptores por placa</text>
         <text x="30" y="86" class="meta-text">APP-ENGASTADO-SQL · esp32/HARDWARE_PLACA_MASTER.md · No requiere cambio de firmware ni subir FW_VERSION: gavetas.py detecta los expansores al arrancar</text>
         <line x1="30" y1="96" x2="970" y2="96" stroke="#0f172a" stroke-width="1.5"/>
@@ -123,20 +123,20 @@
         <text x="95"  y="269" class="lbl-s"   text-anchor="middle">gen4 · DB9</text>
 
         <rect x="255" y="145" width="185" height="141" class="box-module"/>
-        <text x="347" y="170" class="lbl-box" text-anchor="middle">PLACA MASTER</text>
+        <text x="347" y="170" class="lbl-box" text-anchor="middle">PLACA "MASTER" (por posición)</text>
         <text x="347" y="190" class="lbl-s"   text-anchor="middle">MCP23017 · 0x20</text>
         <text x="347" y="206" class="lbl-s"   text-anchor="middle">gavetas 1 – 16</text>
-        <text x="347" y="226" class="lbl-s"   text-anchor="middle">pull-ups 4k7 del bus</text>
-        <text x="347" y="242" class="lbl-s"   text-anchor="middle">reparte los 5 V</text>
+        <text x="347" y="226" class="lbl-s"   text-anchor="middle">J1 va al DB9 del lector</text>
+        <text x="347" y="242" class="lbl-s"   text-anchor="middle">5 V propios por J0</text>
         <text x="347" y="262" class="lbl-s"   text-anchor="middle">J0 J1 J2 J3 J4</text>
 
         <rect x="545" y="145" width="185" height="141" class="box-slave"/>
-        <text x="637" y="170" class="lbl-box" text-anchor="middle">PLACA ESCLAVA</text>
+        <text x="637" y="170" class="lbl-box" text-anchor="middle">PLACA IDÉNTICA (0x21…)</text>
         <text x="637" y="190" class="lbl-s"   text-anchor="middle">MCP23017 · 0x21</text>
         <text x="637" y="206" class="lbl-s"   text-anchor="middle">gavetas 17 – 32</text>
-        <text x="637" y="226" class="lbl-s"   text-anchor="middle">sin pull-ups</text>
-        <text x="637" y="242" class="lbl-s"   text-anchor="middle">sin entrada de fuente</text>
-        <text x="637" y="262" class="lbl-s"   text-anchor="middle">J1 J2 J3 J4</text>
+        <text x="637" y="226" class="lbl-s"   text-anchor="middle">J1 va al J4 anterior</text>
+        <text x="637" y="242" class="lbl-s"   text-anchor="middle">5 V propios por J0</text>
+        <text x="637" y="262" class="lbl-s"   text-anchor="middle">J0 J1 J2 J3 J4</text>
 
         <rect x="835" y="145" width="135" height="141" class="box-ghost"/>
         <text x="902" y="200" class="lbl-b"  text-anchor="middle">…</text>
@@ -154,6 +154,8 @@
 
         <path d="M160,174 L250,174" class="wire-pwr" marker-end="url(#arP)"/>
         <text x="205" y="167" class="lbl-pwr" text-anchor="middle">+5V</text>
+        <text x="205" y="345" class="lbl-s" text-anchor="middle">La fuente reparte +5V/GND en paralelo</text>
+        <text x="205" y="359" class="lbl-s" text-anchor="middle">a CADA placa por su propio J0 (no J4).</text>
         <path d="M160,257 L205,257 L205,205 L250,205" class="wire-bus" marker-end="url(#arB)"/>
         <text x="207" y="288" class="lbl-bus" text-anchor="middle">DB9 · J1</text>
         <text x="207" y="301" class="lbl-s"   text-anchor="middle">3V3 SDA SCL DATA GND</text>
@@ -175,7 +177,7 @@
 
         <!-- ══ §2 PLANO DE LA PLACA ══ -->
         <line x1="30" y1="378" x2="970" y2="378" stroke="#cbd5e1" stroke-width="1"/>
-        <text x="30" y="404" class="sec-header">2 · Plano de la placa (idéntico en MASTER y ESCLAVA — solo cambia lo que se puebla)</text>
+        <text x="30" y="404" class="sec-header">2 · Plano de la placa (idéntica en las 8 posiciones — solo cambia el strap de dirección)</text>
 
         <!-- contorno -->
         <rect x="200" y="430" width="600" height="392" fill="#ffffff" stroke="#0f172a" stroke-width="2" rx="4"/>
@@ -295,19 +297,18 @@
         <text x="289" y="550" class="lbl-box" text-anchor="middle">ALIMENTACIÓN</text>
         <text x="289" y="564" class="lbl-box" text-anchor="middle">Y BUS  (C1…C6)</text>
         <g class="lbl-s">
-          <text x="218" y="588" class="lbl-pwr">J0 · 2 vías  ← FUENTE</text>
-          <text x="226" y="602">+5V · GND   (solo MASTER)</text>
+          <text x="218" y="588" class="lbl-pwr">J0 · 2 vías  ← FUENTE (en paralelo)</text>
+          <text x="226" y="602">+5V · GND   (en TODAS las placas)</text>
           <text x="218" y="624" class="lbl-bus">J1 · 6 vías  ← DB9 / placa ant.</text>
           <text x="226" y="638">3V3 · GND · DATA · SCL · SDA · 5V</text>
           <text x="218" y="662">F1  PTC rearmable 2 A  (en +5V)</text>
           <text x="218" y="680">C3  1000 µF / 10 V  (5V ↔ GND)</text>
           <text x="218" y="698">C1  100 nF  pegado al pin 9-10</text>
-          <text x="218" y="716">R1  4k7  SDA → 3V3</text>
-          <text x="218" y="734">R2  4k7  SCL → 3V3</text>
-          <text x="218" y="756" class="lbl-warn-b">R1, R2 y F1: SOLO en la MASTER</text>
-          <text x="218" y="772">Son los pull-up de TODO el bus.</text>
-          <text x="218" y="786">Repetirlos en cada esclava baja</text>
-          <text x="218" y="800">la resistencia y mata el I2C.</text>
+          <text x="218" y="716" class="lbl-warn-b">F1 y C3: en TODAS las placas.</text>
+          <text x="218" y="732">Sin pull-ups I2C en esta placa:</text>
+          <text x="218" y="746">van 2,2k SDA/SCL→3V3 en el</text>
+          <text x="218" y="760">lector, antes del DB9. Un solo</text>
+          <text x="218" y="774">par para todo el bus.</text>
         </g>
 
         <!-- Zona derecha: salidas -->
@@ -352,53 +353,53 @@
           <text x="490" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A2 (17)</text>
           <text x="620" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A1 (16)</text>
           <text x="750" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">A0 (15)</text>
-          <text x="880" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">PULL-UPS</text>
+          <text x="880" y="913" class="lbl-b" fill="#ffffff" text-anchor="middle">J1 VIENE DE</text>
         </g>
         <g class="lbl">
           <rect x="30" y="920" width="940" height="22" fill="#eff6ff" stroke="#cbd5e1"/>
-          <text x="95"  y="935" text-anchor="middle" font-weight="bold">MASTER</text>
+          <text x="95"  y="935" text-anchor="middle" font-weight="bold">"MASTER" (posición)</text>
           <text x="230" y="935" text-anchor="middle">1 – 16</text>
           <text x="360" y="935" text-anchor="middle" font-weight="bold">0x20</text>
           <text x="490" y="935" text-anchor="middle">GND</text>
           <text x="620" y="935" text-anchor="middle">GND</text>
           <text x="750" y="935" text-anchor="middle">GND</text>
-          <text x="880" y="935" text-anchor="middle" font-weight="bold" fill="#b91c1c">SÍ (4k7)</text>
+          <text x="880" y="935" text-anchor="middle" font-weight="bold" fill="#b91c1c">DB9 lector</text>
 
           <rect x="30" y="942" width="940" height="20" fill="#ffffff" stroke="#cbd5e1"/>
-          <text x="95"  y="956" text-anchor="middle">ESCLAVA 1</text>
+          <text x="95"  y="956" text-anchor="middle">Placa idéntica 2</text>
           <text x="230" y="956" text-anchor="middle">17 – 32</text>
           <text x="360" y="956" text-anchor="middle" font-weight="bold">0x21</text>
           <text x="490" y="956" text-anchor="middle">GND</text>
           <text x="620" y="956" text-anchor="middle">GND</text>
           <text x="750" y="956" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
-          <text x="880" y="956" text-anchor="middle">no</text>
+          <text x="880" y="956" text-anchor="middle">J4 anterior</text>
 
           <rect x="30" y="962" width="940" height="20" fill="#f8fafc" stroke="#cbd5e1"/>
-          <text x="95"  y="976" text-anchor="middle">ESCLAVA 2</text>
+          <text x="95"  y="976" text-anchor="middle">Placa idéntica 3</text>
           <text x="230" y="976" text-anchor="middle">33 – 48</text>
           <text x="360" y="976" text-anchor="middle" font-weight="bold">0x22</text>
           <text x="490" y="976" text-anchor="middle">GND</text>
           <text x="620" y="976" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
           <text x="750" y="976" text-anchor="middle">GND</text>
-          <text x="880" y="976" text-anchor="middle">no</text>
+          <text x="880" y="976" text-anchor="middle">J4 anterior</text>
 
           <rect x="30" y="982" width="940" height="20" fill="#ffffff" stroke="#cbd5e1"/>
-          <text x="95"  y="996" text-anchor="middle">ESCLAVA 3</text>
+          <text x="95"  y="996" text-anchor="middle">Placa idéntica 4</text>
           <text x="230" y="996" text-anchor="middle">49 – 64</text>
           <text x="360" y="996" text-anchor="middle" font-weight="bold">0x23</text>
           <text x="490" y="996" text-anchor="middle">GND</text>
           <text x="620" y="996" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
           <text x="750" y="996" text-anchor="middle" fill="#dc2626" font-weight="bold">+3,3 V</text>
-          <text x="880" y="996" text-anchor="middle">no</text>
+          <text x="880" y="996" text-anchor="middle">J4 anterior</text>
 
           <rect x="30" y="1002" width="940" height="20" fill="#f8fafc" stroke="#cbd5e1"/>
-          <text x="95"  y="1016" text-anchor="middle">ESCLAVA 4 … 7</text>
+          <text x="95"  y="1016" text-anchor="middle">Placas idénticas 5…8</text>
           <text x="230" y="1016" text-anchor="middle">65 – 128</text>
           <text x="360" y="1016" text-anchor="middle" font-weight="bold">0x24 … 0x27</text>
           <text x="620" y="1016" text-anchor="middle" class="lbl-s">A2 = +3,3 V, y A1/A0 siguiendo el binario (100, 101, 110, 111)</text>
-          <text x="880" y="1016" text-anchor="middle">no</text>
+          <text x="880" y="1016" text-anchor="middle">J4 anterior</text>
         </g>
-        <text x="30" y="1040" class="lbl-s">El firmware ordena los expansores de menor a mayor dirección: el strap ES la numeración de las gavetas del puesto. Dos placas con el mismo strap se ven como una sola.</text>
+        <text x="30" y="1040" class="lbl-s">El firmware ordena los expansores de menor a mayor dirección: el strap ES la numeración de las gavetas del puesto. Dos placas con el mismo strap se ven como una sola. La placa es la MISMA en las 8 filas: solo cambia el jumper.</text>
         <text x="30" y="1056" class="lbl-s">RESET (pin 18) SIEMPRE a +3,3 V. Flotando, el chip se reinicia solo y el puesto pierde gavetas al azar. INTA e INTB se dejan al aire: el firmware sondea, no usa interrupciones.</text>
 
         <!-- ══ §4 AVISOS ══ -->
@@ -426,14 +427,14 @@
         <text x="359" y="1251" class="lbl-warn">parece un fallo de software.</text>
 
         <rect x="660" y="1112" width="310" height="150" class="box-warn"/>
-        <text x="674" y="1132" class="lbl-warn-b">⚠ Una sola masa, y está en la MASTER.</text>
-        <text x="674" y="1150" class="lbl-warn">El GND de la fuente, el del DB9 y el</text>
-        <text x="674" y="1165" class="lbl-warn">retorno de los micros se juntan aquí y en</text>
-        <text x="674" y="1180" class="lbl-warn">ningún otro sitio. Sin masa común los</text>
-        <text x="674" y="1195" class="lbl-warn">datos no tienen contra qué medirse.</text>
-        <text x="674" y="1218" class="lbl-warn-b">⚠ Más de 3 placas: 5 V directos a cada J0.</text>
-        <text x="674" y="1236" class="lbl-warn">32 LEDs a tope son ~2 A y hoy pasan todos</text>
-        <text x="674" y="1251" class="lbl-warn">por la MASTER. La cadena de datos sigue igual.</text>
+        <text x="674" y="1132" class="lbl-warn-b">⚠ Una sola masa, en estrella desde la fuente.</text>
+        <text x="674" y="1150" class="lbl-warn">El GND de la fuente llega a cada placa por</text>
+        <text x="674" y="1165" class="lbl-warn">su propio J0; el del DB9 y el retorno de los</text>
+        <text x="674" y="1180" class="lbl-warn">micros se juntan con esa red en la placa</text>
+        <text x="674" y="1195" class="lbl-warn">pegada al lector. Sin masa común, los</text>
+        <text x="674" y="1218" class="lbl-warn-b">⚠ TODAS las placas: 5 V directos a su J0.</text>
+        <text x="674" y="1236" class="lbl-warn">Desde la primera, no solo con varias: cada</text>
+        <text x="674" y="1251" class="lbl-warn">placa lleva su F1+C3, no se encadena por J4.</text>
 
         <rect x="30" y="1275" width="940" height="62" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" rx="6"/>
         <text x="44" y="1295" class="lbl-b">Comprobación final, en este orden:</text>

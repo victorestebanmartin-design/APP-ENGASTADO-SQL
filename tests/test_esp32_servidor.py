@@ -97,6 +97,48 @@ def test_ficheros_sin_host_se_sirven_intactos(admin_client, client):
     assert servido == en_disco
 
 
+# ── Nombre del puesto para la pantalla del lector ─────────────────────────
+#
+# La placa lo pinta bajo el logo, donde antes ponia siempre "LECTOR PUESTO".
+# Viaja en el latido/OTA porque ese lo hace TODO lector (con gavetas o sin
+# ellas) nada mas arrancar y cada ~60 s.
+
+def test_el_latido_del_lector_trae_el_nombre_de_su_puesto(client, admin_client):
+    client.get('/api/esp32/rfid/firmware/version?id=aabbccddee01&ip=192.168.50.2&fw=x')
+    admin_client.post('/api/esp32/rfid/devices/aabbccddee01', json={'puesto_id': 'puesto_001'})
+
+    datos = client.get('/api/esp32/rfid/firmware/version?id=aabbccddee01').get_json()
+    assert datos['puesto']
+    assert datos['puesto'] == datos['puesto'].upper()
+
+
+def test_lector_sin_puesto_asignado_no_recibe_nombre(client):
+    """Cadena vacia, no un error: la placa se queda con 'LECTOR PUESTO'."""
+    datos = client.get('/api/esp32/rfid/firmware/version?id=aabbccddee02&ip=192.168.50.3&fw=x')
+    assert datos.status_code == 200
+    assert datos.get_json()['puesto'] == ''
+
+
+def test_el_nombre_del_puesto_va_sin_acentos(client, admin_client, app):
+    """La fuente de la placa es ASCII de 8x8: una tilde saldria como basura."""
+    import json
+    import os
+    from app.routes.sistema import _rfid_puesto_para_pantalla
+    ruta = os.path.join(app.config['DATA_DIR'], 'esp32_rfid_devices.json')
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump({'aabbccddee03': {'puesto_nombre': '  Máquinas   Ñu  '}}, f)
+    with app.test_request_context():
+        assert _rfid_puesto_para_pantalla('aabbccddee03') == 'MAQUINAS NU'
+
+
+def test_el_lector_de_un_modulo_ensena_la_etiqueta_del_modulo(client, admin_client):
+    client.get('/api/esp32/rfid/firmware/version?id=aabbccddee04&ip=192.168.50.4&fw=x')
+    admin_client.post('/api/esp32/rfid/devices/aabbccddee04',
+                      json={'puesto_id': 'modulo:mangueras'})
+    datos = client.get('/api/esp32/rfid/firmware/version?id=aabbccddee04').get_json()
+    assert 'MANGUERAS' in datos['puesto']
+
+
 # ── Flasheo por USB ───────────────────────────────────────────────────────
 
 def test_flash_usb_display_rechaza_host_invalido(admin_client):

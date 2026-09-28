@@ -46,7 +46,7 @@ que ya no existe.
 esa carpeta está excluida del test de arriba).
 
 Las placas se actualizan por OTA, y el servidor anuncia la versión leyendo
-`FW_VERSION` de `esp32/main.py` **del código desplegado**
+`FW_VERSION` de `esp32/micropython/lector_puesto.py` **del código desplegado**
 (`app/routes/sistema.py:_rfid_firmware_version`). Así que al tocar el firmware:
 
 1. Sube `FW_VERSION` (formato `AAAA-MM-DDx`), o las placas no verán nada nuevo.
@@ -58,13 +58,14 @@ Las placas se actualizan por OTA, y el servidor anuncia la versión leyendo
 
 La placa del lector RFID puede llevar además una tira WS2813 y expansores
 MCP23017 que encienden la gaveta del terminal elegido (`esp32/lib/gavetas.py`,
-`app/routes/pick_to_light.py`, esquema en `esp32/HARDWARE_PICK_TO_LIGHT.md`).
+`app/routes/pick_to_light.py`, esquema en `esp32/HARDWARE_PLACA_MASTER.md`).
 
 La mayoría de los puestos no lo tienen, y los que lo tienen se quedan sin él en
 cuanto se va la luz de la fuente de 5 V. Por eso:
 
 - `gavetas.crear()` devuelve `None` si no encuentra expansores en el bus I2C, y
-  `main.py` se salta todo lo demás. Un mismo firmware para todas las placas.
+  `lector_puesto.py` se salta todo lo demás. Un mismo firmware para todas las
+  placas.
 - Los endpoints de `pick_to_light.py` responden **200 con `activo: False` y un
   motivo legible**, nunca 500: sin gaveta configurada, sin lector asignado o con
   la placa desenchufada, engastado tiene que llegar a los paquetes igual.
@@ -72,9 +73,35 @@ cuanto se va la luz de la fuente de 5 V. Por eso:
   siempre trae el botón «Continuar sin confirmar». Un microinterruptor roto no
   puede dejar a un operario sin trabajar.
 
-Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en `esp32/main.py`:
+Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en
+`esp32/micropython/lector_puesto.py`:
 esa carpeta entra entera en el manifiesto OTA, pero la placa solo se actualiza
 si la versión cambia.
+
+## Version de la app: `VERSION`, semver, la sube el asistente
+
+El fichero `VERSION` en la raíz (`X.Y.Z`) es la versión que se ve en la
+insignia discreta de cada pantalla (`templates/_version_badge.html`, via
+`{{ version_app }}` — `app/version.py` lo lee y lo inyecta en toda plantilla
+por `app/__init__.py`) y en Admin → Sistema al comprobar actualizaciones
+(`app/routes/sistema.py:api_comprobar_actualizaciones`).
+
+El usuario no la toca a mano: **si eres el asistente (Claude Code, GitHub
+Copilot, o cualquier otro) y vas a hacer commit de un cambio que se suba a
+`main`, sube tú `VERSION` como parte de ese commit**, sin preguntar. El
+tamaño del salto es criterio tuyo, según lo que pese el cambio:
+
+- Patch (`1.5.3` → `1.5.4`): un cambio normal, un fix.
+- Minor (`1.5.4` → `1.6.0`): algo gordo — una función nueva, un flujo que
+  cambia.
+- Major (`1.6.0` → `2.0.0`): algo gordísimo — cambia cómo se usa la app o
+  rompe compatibilidad con lo anterior.
+
+No la bajes ni la dejes igual "por si acaso": cada commit a `main` que
+cambie código de la app sube el número, aunque sea un patch. La insignia de
+las pantallas solo sirve si sube: es lo que le permite a cualquiera, con un
+vistazo, confirmar que ese puesto está en lo último (y notar si no lo está).
+No apliques esto a cambios que no vayan a `main` (ramas de prueba, WIP local).
 
 ## Rechazos de tarjeta: el mensaje es parte del arreglo
 
