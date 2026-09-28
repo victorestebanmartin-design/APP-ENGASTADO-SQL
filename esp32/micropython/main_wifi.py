@@ -59,7 +59,7 @@ from uart_display import DisplayUart
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-11b"
+FW_VERSION = "2026-09-28a"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -336,6 +336,14 @@ def bip_atencion():
     for _ in range(3):
         tono(70, _SOL); pausa(90)
 
+def bip_ahorro(activo):
+    """Modo ahorro de la P4 cambiado: bajando = ahorro (se apaga cuando no
+    hace falta); subiendo = pantalla siempre encendida."""
+    if activo:
+        tono(90, _SOL); pausa(40); tono(180, _DO)
+    else:
+        tono(90, _DO); pausa(40); tono(180, _SOL)
+
 def bip_recogido():
     """OK a una RECOGIDA: fanfarria ascendente, el sonido de 'empieza'."""
     tono(70, _DO); pausa(35)
@@ -448,6 +456,29 @@ work_idx   = 0     # paquete mostrado dentro de esa lista
 # Lo ya confirmado en esta pantalla: clave de puesto -> "lote|fase"
 confirmados = {}
 
+# Modo ahorro de la P4: con el, su retro solo se enciende en el detalle de un
+# puesto; sin el (por defecto), siempre encendida. Se cambia manteniendo los
+# botones 1 y 2 a la vez 5 s y vive en la flash del carro: si se cambia la
+# pantalla, el modo se queda con el carro.
+AHORRO_FICHERO  = "p4_ahorro.txt"
+AHORRO_COMBO_MS = 5000
+
+def _cargar_ahorro():
+    try:
+        with open(AHORRO_FICHERO) as f:
+            return f.read().strip() == '1'
+    except OSError:
+        return False
+
+def _guardar_ahorro(activo):
+    try:
+        with open(AHORRO_FICHERO, "w") as f:
+            f.write('1' if activo else '0')
+    except OSError as e:
+        print("No se pudo guardar el modo ahorro:", e)
+
+p4_ahorro = _cargar_ahorro()
+
 display_uart = DisplayUart(
     uart_id=DISPLAY_UART_ID,
     tx_pin=DISPLAY_UART_TX,
@@ -476,6 +507,7 @@ def _enviar_display(ops, carro, fw, sel='', pide_ok=False):
         'wifi': bool(conectado),
         'sel': str(sel or ''),
         'ok': bool(pide_ok),
+        'ahorro': bool(p4_ahorro),
         'ops': ops,
     })
 
@@ -1293,6 +1325,9 @@ nfc_uid_ts    = 0                 # cuando se leyo
 display_fp    = ''                # ultima instantanea aceptada por la UART
 display_sel   = None              # ultimo puesto seleccionado enviado a la P4
 display_ok    = False             # ultimo valor de 'ok' (pide confirmacion) enviado
+display_ahorro = None             # ultimo modo ahorro enviado a la P4
+combo_t0      = 0                 # inicio de 1+2 mantenidos (0 = no)
+combo_hecho   = False             # ya se cambio el modo en esta pulsacion
 display_ts    = 0                 # cuando se envio la ultima (para el reenvio)
 ok_p4_id      = ''                # id del ultimo OK tactil atendido (anti-repeticion)
 ok_p4_ts      = 0                 # cuando se atendio
@@ -1308,6 +1343,24 @@ while True:
     if not arranque_marcado:
         arranque_marcado = True
         _marcar_arranque_ok()
+
+    # ── Botones 1+2 mantenidos 5 s: cambia el modo ahorro de la P4 ────
+    # Va antes del bucle de botones y desarma los dos: si no, al segundo
+    # cada uno contaria como pulsacion larga y liberaria su puesto.
+    if btns_puesto[0].value() == 0 and btns_puesto[1].value() == 0:
+        btns_armado[0] = False
+        btns_armado[1] = False
+        if combo_t0 == 0:
+            combo_t0 = now
+        elif not combo_hecho and time.ticks_diff(now, combo_t0) >= AHORRO_COMBO_MS:
+            combo_hecho = True
+            p4_ahorro = not p4_ahorro
+            _guardar_ahorro(p4_ahorro)
+            print("Modo ahorro P4:", "ON" if p4_ahorro else "OFF")
+            bip_ahorro(p4_ahorro)
+    else:
+        combo_t0 = 0
+        combo_hecho = False
 
     # ── Botones 1-7: corta = ver mi puesto, larga = liberarlo ─────────
     for i, bp_ in enumerate(btns_puesto):
@@ -1549,11 +1602,13 @@ while True:
                 # encender el carro para que volviera a mandarle algo.
                 reenvio = time.ticks_diff(now, display_ts) >= 5000
                 if fp != display_fp or sel_disp != display_sel \
-                        or pide_ok != display_ok or reenvio:
+                        or pide_ok != display_ok or p4_ahorro != display_ahorro \
+                        or reenvio:
                     if _enviar_display(ops, ca, fw_servidor, sel_disp, pide_ok):
                         display_fp = fp
                         display_sel = sel_disp
                         display_ok = pide_ok
+                        display_ahorro = p4_ahorro
                         display_ts = time.ticks_ms()
                 if not ops:
                     if en_work_mode:

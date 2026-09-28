@@ -8,6 +8,10 @@
 #                                 se salta la sonda I2C, la calibracion y la
 #                                 barra CONFIRMAR; el orden del argumento da
 #                                 igual, "notouch COM6" tambien vale)
+#   ./compilar.sh COM6 debug   -> diagnostico: Serial por el USB, retro siempre
+#                                 encendida y trama de prueba si el carro no
+#                                 manda nada en 8 s (se combina con notouch).
+#                                 NO dejarlo en produccion.
 #
 # No usa PlatformIO. Llama al arduino-cli que trae el Arduino IDE, que es el
 # mismo motor que usa el IDE por dentro y ya tiene la config buena:
@@ -34,25 +38,31 @@ else
 fi
 
 PORT=""
-BUILD_PROPS=()
+EXTRA=""
 for arg in "$@"; do
-    if [ "$arg" = "notouch" ]; then
-        BUILD_PROPS+=(--build-property "compiler.cpp.extra_flags=-DHAS_TOUCH=0")
-    else
-        PORT="$arg"
-    fi
+    case "$arg" in
+        notouch) EXTRA="$EXTRA -DHAS_TOUCH=0" ;;
+        # Serial por el USB de programar (por defecto la P4 no saca log por
+        # USB), retro siempre encendida y trama de prueba si el carro calla.
+        debug)   FQBN="$FQBN,USBMode=hwcdc,CDCOnBoot=cdc"; EXTRA="$EXTRA -DP4_DEBUG=1" ;;
+        *)       PORT="$arg" ;;
+    esac
 done
+BUILD_PROPS=()
+[ -n "$EXTRA" ] && BUILD_PROPS+=(--build-property "compiler.cpp.extra_flags=$EXTRA")
 
 # Build-path explicito: "upload" no admite --build-property, asi que hace
 # falta apuntarle al mismo directorio donde "compile" dejo el .bin (si no, se
 # fia de la cache por defecto de arduino-cli, que no distingue variantes por
-# build-property y podria subir el binario de la otra).
-BUILD_DIR="$(mktemp -d)"
-trap 'rm -rf "$BUILD_DIR"' EXIT
+# build-property y podria subir el binario de la otra). Un directorio fijo por
+# variante: reutiliza LVGL ya compilada (si no, ~7 min cada vez).
+VARIANTE="$(printf '%s' "$FQBN$EXTRA" | md5sum | cut -c1-8)"
+BUILD_DIR="${TMPDIR:-/tmp}/p4_build_$VARIANTE"
+mkdir -p "$BUILD_DIR"
 
 echo ">> Compilando  $SKETCH_DIR"
 echo ">> FQBN        $FQBN"
-[ ${#BUILD_PROPS[@]} -gt 0 ] && echo ">> Variante    SIN TACTIL (HAS_TOUCH=0)"
+[ -n "$EXTRA" ] && echo ">> Flags      $EXTRA"
 "$CLI" compile --fqbn "$FQBN" "${BUILD_PROPS[@]}" --build-path "$BUILD_DIR" "$SKETCH_DIR"
 
 if [ -n "$PORT" ]; then

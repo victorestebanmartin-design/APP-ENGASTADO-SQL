@@ -28,7 +28,6 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
-#include "gfx4desp32_ESP32_P4_101CT_CLB.h"
 #include "esp_cache.h"   // esp_cache_msync: volcar la cache al framebuffer PSRAM
 #include <Preferences.h> // NVS: guardar la calibracion tactil
 #include <Wire.h>        // sonda I2C del GT911 al arrancar
@@ -46,9 +45,20 @@
 #ifndef HAS_TOUCH
 #define HAS_TOUCH 1
 #endif
+// Diagnostico (compilar.sh ... debug): retro siempre encendida para ver las
+// pantallas de espera/diagnostico, y una trama de prueba si el carro calla.
+#ifndef P4_DEBUG
+#define P4_DEBUG 0
+#endif
+// Cada variante con su clase de la libreria 4D: la CT arranca el GT911 en
+// gfx.begin(); la 101 (ESP32-P4-101, sin CT) no lo toca.
 #if HAS_TOUCH
+#include "gfx4desp32_ESP32_P4_101CT_CLB.h"
+typedef gfx4desp32_ESP32_P4_101CT_CLB Panel;
 #define HAS_TOUCH_TAG " [tactil]"
 #else
+#include "gfx4desp32_ESP32_P4_101.h"
+typedef gfx4desp32_ESP32_P4_101 Panel;
 #define HAS_TOUCH_TAG " [SIN tactil]"
 #endif
 
@@ -110,13 +120,15 @@ unsigned long ultimo_rx    = 0;
 unsigned long ultimo_hb    = 0;
 bool          tiene_datos   = false;
 bool          backlight_on  = true;   // refleja gfx.BacklightOn(); ver backlight_set()
+bool          modo_ahorro   = false;  // lo manda el carro ("ahorro"); falta el campo = sin ahorro
+bool          ahorro_conocido = false; // ya llego una trama: a partir de ahi, avisar de cambios
 unsigned long rx_bytes     = 0;
 char          diag[48]      = "sin tramas";
 char          lastline[900] = "";
 uint32_t      huella_prev   = 0;
 
 // ── UART ────────────────────────────────────────────────────────────────────
-gfx4desp32_ESP32_P4_101CT_CLB gfx;
+Panel                         gfx;
 HardwareSerial                carroUart(1);
 String                        buf;
 String                        pendiente;
@@ -135,6 +147,11 @@ static lv_obj_t *lbl_carro, *lbl_wifi, *lbl_fw, *cont;
 // sobre TODA la pantalla capta el toque en cualquier punto cuando el carro
 // pide OK: cumple lo pedido ("Enter / barra espaciadora en toda la zona").
 static lv_obj_t *ok_overlay = nullptr;
+
+// Aviso "Modo ahorro ACTIVADO/DESACTIVADO" en la capa superior (sobrevive a
+// los lv_obj_clean de 'cont'); mientras vive, la retro se queda encendida.
+static lv_obj_t *aviso_obj   = nullptr;
+static uint32_t  aviso_hasta = 0;
 
 #define TOUCH_DEBUG 0   // 1 = rotulo de diagnostico tactil abajo-izquierda
 #if TOUCH_DEBUG
@@ -163,12 +180,17 @@ static char   cal_i2c[24] = "?";   // resultado de la sonda I2C del GT911
 // consulta el GT911 por I2C directamente. Devuelve true con el crudo del 1er
 // contacto; el mapa afin de la calibracion lo convierte a coordenadas LVGL.
 static bool touch_raw(int *x, int *y) {
+#if HAS_TOUCH
     int tx[5], ty[5];
     int n = gfx.touch_GetTouchPoints(tx, ty);
     if (n <= 0) return false;
     *x = tx[0];
     *y = ty[0];
     return true;
+#else
+    (void)x; (void)y;
+    return false;
+#endif
 }
 
 // ── Helpers de fase ─────────────────────────────────────────────────────────
@@ -255,7 +277,8 @@ static int selIndex() {
 static uint32_t huellaActual() {
     uint32_t h = 2166136261u;
     char t[80];
-    snprintf(t, sizeof(t), "%s|%s|%d|%d|%d", sel_id, carro_id, (int)wifi_ok, nops, (int)tiene_datos);
+    snprintf(t, sizeof(t), "%s|%s|%d|%d|%d|%d", sel_id, carro_id, (int)wifi_ok, nops,
+             (int)tiene_datos, (int)modo_ahorro);
     h = fnv(t, h);
     if (!tiene_datos) { snprintf(t, sizeof(t), "R%lu|%s", rx_bytes >> 10, diag); return fnv(t, h); }
     int si = selIndex();
@@ -864,18 +887,43 @@ static void ui_detalle(int idx) {
 #endif
 }
 
-// Ahorro de bateria: la P4 y el carro comparten power bank, y el panel es lo
-// que mas consume. El "cerebro" (LVGL, UART, WiFi del carro) sigue despierto
-// siempre -- la retro solo se enciende con paquetes de verdad en pantalla, es
-// decir en vista Detalle (sel_id no vacio: se ha pasado tarjeta o pulsado un
-// puesto del carro). Con la vista Lista (sel_id vacio, aunque nops > 0) o sin
-// datos se queda apagada. LVGL sigue refrescando el framebuffer con
-// normalidad aunque la retro este apagada: al reencender no hay que esperar
-// ningun repintado, sale ya dibujado.
+// Modo ahorro (lo activa el carro con 1+2 mantenidos 5 s): la P4 y el carro
+// comparten power bank, y el panel es lo que mas consume. En ahorro la retro
+// solo se enciende con paquetes de verdad en pantalla, es decir en vista
+// Detalle (sel_id no vacio: se ha pasado tarjeta o pulsado un puesto del
+// carro); en Lista o sin datos se queda apagada. Sin ahorro (por defecto, y
+// con carros que no mandan el campo) siempre encendida. LVGL sigue
+// refrescando el framebuffer aunque la retro este apagada: al reencender sale
+// ya dibujado.
 static void backlight_set(bool on) {
+#if P4_DEBUG
+    on = true;
+#endif
     if (on == backlight_on) return;
     gfx.BacklightOn(on);
     backlight_on = on;
+}
+
+static void aviso_ahorro(bool activo) {
+    if (aviso_obj) lv_obj_delete(aviso_obj);
+    aviso_obj = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(aviso_obj, 900, 360);
+    lv_obj_center(aviso_obj);
+    lv_obj_set_style_bg_color(aviso_obj, COL_PANEL2, 0);
+    lv_obj_set_style_bg_opa(aviso_obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(aviso_obj, 24, 0);
+    lv_obj_set_style_border_width(aviso_obj, 4, 0);
+    lv_obj_set_style_border_color(aviso_obj, activo ? COL_AMBAR : COL_VERDE, 0);
+    lv_obj_remove_flag(aviso_obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *t = lv_label_create(aviso_obj);
+    lv_label_set_text(t, activo
+        ? "MODO AHORRO ACTIVADO\n\nLa pantalla solo se enciende\nal ver los paquetes de un puesto"
+        : "MODO AHORRO DESACTIVADO\n\nPantalla siempre encendida");
+    lv_obj_set_style_text_font(t, F_LG, 0);
+    lv_obj_set_style_text_color(t, COL_TXT, 0);
+    lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(t);
+    aviso_hasta = millis() + 3000;
 }
 
 static void ui_actualizar(bool forzar) {
@@ -883,7 +931,7 @@ static void ui_actualizar(bool forzar) {
     if (!forzar && h == huella_prev) return;
     huella_prev = h;
 
-    backlight_set(tiene_datos && sel_id[0] != '\0');
+    backlight_set(!modo_ahorro || aviso_obj != nullptr || (tiene_datos && sel_id[0] != '\0'));
 
     lv_label_set_text_fmt(lbl_carro, "CARRO %s", carro_id);
     lv_label_set_text(lbl_wifi, wifi_ok ? "WiFi" : "SIN WiFi");
@@ -1009,6 +1057,10 @@ static void procesarLinea(const String &msg) {
     copiaCampo(sel_id,   sizeof(sel_id),   doc["sel"],   "");
     wifi_ok = doc["wifi"] | false;
     pide_ok = doc["ok"]   | false;
+    bool ahorro = doc["ahorro"] | false;
+    if (ahorro_conocido && ahorro != modo_ahorro) aviso_ahorro(ahorro);
+    modo_ahorro = ahorro;
+    ahorro_conocido = true;
     // El carro ya no pide OK (o cambio de puesto): corta cualquier reintento vivo.
     if (!pide_ok) ok_tx_activo = false;
 
@@ -1182,7 +1234,7 @@ void setup() {
     ui_actualizar(true);
     lv_obj_invalidate(lv_screen_active());   // repinta TODA la pantalla al menos una vez
 
-    Serial.println("P4 pantalla_p4_101 v12 (LVGL) ready" HAS_TOUCH_TAG);
+    Serial.println("P4 pantalla_p4_101 v13 (LVGL) ready" HAS_TOUCH_TAG);
     Serial.printf("UART1 rx=%d tx=%d baud=%lu rxbuf=4096\n", UART_RX_PIN, UART_TX_PIN,
                   (unsigned long)UART_BAUD);
 }
@@ -1198,6 +1250,27 @@ void loop() {
     }
 
     unsigned long now = millis();
+#if P4_DEBUG
+    // Sin carro: a los 8 s sin un byte, se pinta un detalle de prueba para
+    // separar "no sabe pintar" de "no le llega nada". CARRO TEST lo delata.
+    static bool test_inyectado = false;
+    if (!test_inyectado && rx_bytes == 0 && now > 8000UL) {
+        test_inyectado = true;
+        Serial.println("DEBUG: sin tramas del carro en 8 s, inyecto trama de prueba");
+        procesarLinea(String(
+            "{\"v\":1,\"tipo\":\"estado\",\"carro\":\"TEST\",\"fw\":\"debug\",\"wifi\":false,"
+            "\"sel\":\"p1\",\"ops\":[{\"operario\":\"p1\",\"data\":{\"puesto_nombre\":\"PRUEBA\","
+            "\"puesto_id\":\"p1\",\"fase\":\"recoger\",\"boton\":1,\"paquetes\":["
+            "{\"etiqueta\":12,\"elem\":\"S206\",\"cables\":3,\"term\":5,\"color\":\"#2563eb\"},"
+            "{\"etiqueta\":13,\"elem\":\"S207\",\"cables\":2,\"term\":4,\"color\":\"#16a34a\"}]}}]}"));
+        now = millis();   // procesarLinea fija ultimo_rx > now: sin esto la resta da la vuelta
+    }
+#endif
+    if (aviso_obj && (int32_t)(now - aviso_hasta) >= 0) {
+        lv_obj_delete(aviso_obj);
+        aviso_obj = nullptr;
+        ui_actualizar(true);   // re-evalua la retro ya sin el aviso
+    }
     if (tiene_datos && now - ultimo_rx > 90000UL) {
         tiene_datos = false;
         snprintf(diag, sizeof(diag), "timeout 90 s sin trama");
