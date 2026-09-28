@@ -38,6 +38,20 @@
 #define ARDUINOJSON_ENABLE_INFINITY 1
 #include <ArduinoJson.h>
 
+// Algunas unidades del mismo panel llegan sin el GT911 tactil (el operario
+// confirma en el ESP32 del carro, no aqui). Con HAS_TOUCH=0 (compilar.sh
+// COMx notouch) se salta la sonda I2C, la calibracion y la barra CONFIRMAR:
+// sin este flag, cal_leer_punto() agota su timeout de 25 s en los 5 puntos
+// en CADA arranque (~2 min) porque nunca llega un toque.
+#ifndef HAS_TOUCH
+#define HAS_TOUCH 1
+#endif
+#if HAS_TOUCH
+#define HAS_TOUCH_TAG " [tactil]"
+#else
+#define HAS_TOUCH_TAG " [SIN tactil]"
+#endif
+
 // ── UART del carro ───────────────────────────────────────────────────────────
 static constexpr int      UART_RX_PIN = 52;
 static constexpr int      UART_TX_PIN = 50;
@@ -802,7 +816,9 @@ static void ui_detalle(int idx) {
         // 3 celdas por fila, 2 filas. Descuento paddings de cont (40) y card (32).
         int gw = LV_W - 40 - 32;
         int gh = LV_H - 100 - 40 - 32 - 64 - 28 - 30;   // header, pads, cabecera, meta, gaps
+#if HAS_TOUCH
         if (pide_ok) gh -= 106;                         // hueco de la barra CONFIRMAR
+#endif
         int cw = (gw - 2 * 16 - 6) / 3;                 // -6: margen para que quepan 3
         int ch = (gh - 16) / 2;
         if (ch < 150) ch = 150;
@@ -810,8 +826,11 @@ static void ui_detalle(int idx) {
         for (int t = 0; t < o.nbuf; t++) celdaPaquete(grid, o.paq[t], cw, ch);
     }
 
-    // Barra CONFIRMAR: solo cuando el carro la pide. Parpadea para que se vea
-    // desde lejos; al tocarla se manda el OK al carro (con ACK y reintento).
+    // Barra CONFIRMAR: solo cuando el carro la pide, y solo si hay tactil para
+    // pulsarla. En las unidades sin GT911 el operario confirma en el propio
+    // carro (ESP32 wifi): mostrar aqui un boton que nunca responde al toque
+    // confundiria mas que ayudar.
+#if HAS_TOUCH
     if (!pide_ok) return;
     lv_obj_t *ok = lv_obj_create(c);
     lv_obj_set_width(ok, LV_PCT(100));
@@ -842,6 +861,7 @@ static void ui_detalle(int idx) {
     lv_anim_set_playback_duration(&an, 450);
     lv_anim_set_repeat_count(&an, LV_ANIM_REPEAT_INFINITE);
     lv_anim_start(&an);
+#endif
 }
 
 // Ahorro de bateria: la P4 y el carro comparten power bank, y el panel es lo
@@ -878,9 +898,11 @@ static void ui_actualizar(bool forzar) {
         else         ui_lista(sel_id[0] != '\0');
     }
 
+#if HAS_TOUCH
     // El velo de confirmacion solo vive mientras haya detalle y el carro pida OK.
     if (tiene_datos && selIndex() >= 0 && pide_ok) ok_overlay_poner();
     else                                           ok_overlay_quitar();
+#endif
 }
 
 // ── LVGL: pintar / tactil / tick ───────────────────────────────────────────
@@ -1096,8 +1118,10 @@ void setup() {
     Serial.begin(115200);
     gfx.begin();
     gfx.BacklightOn(true);
-    gfx.touch_Set(TOUCH_ENABLE);
     fb = gfx.SelectFB(0);
+
+#if HAS_TOUCH
+    gfx.touch_Set(TOUCH_ENABLE);
 
     // Sonda I2C del GT911 (bus 7/8, lo abrio gfx.begin()). Deja constancia en
     // pantalla si la calibracion no recibe toques: distingue "sin cablear /
@@ -1109,6 +1133,7 @@ void setup() {
                  e5d == 0 ? "OK" : "no", e14 == 0 ? "OK" : "no");
         Serial.printf("GT911 %s\n", cal_i2c);
     }
+#endif
 
     // Pinta el framebuffer entero del color de fondo antes de arrancar LVGL.
     // En modo PARTIAL, LVGL solo repinta lo que cambia; si algun borde no lo
@@ -1139,6 +1164,7 @@ void setup() {
     lv_display_set_flush_cb(disp, flush_cb);
     lv_display_set_buffers(disp, b1, b2, BUFPX * 2, LV_DISPLAY_RENDER_MODE_PARTIAL);
 
+#if HAS_TOUCH
     lv_indev_t *indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, touch_cb);
@@ -1150,12 +1176,13 @@ void setup() {
     cal_cargar();
     if (!cal_valida || cal_pedir_recalibrado(2500))
         calibrar();
+#endif
 
     ui_build();
     ui_actualizar(true);
     lv_obj_invalidate(lv_screen_active());   // repinta TODA la pantalla al menos una vez
 
-    Serial.println("P4 pantalla_p4_101 v12 (LVGL) ready");
+    Serial.println("P4 pantalla_p4_101 v12 (LVGL) ready" HAS_TOUCH_TAG);
     Serial.printf("UART1 rx=%d tx=%d baud=%lu rxbuf=4096\n", UART_RX_PIN, UART_TX_PIN,
                   (unsigned long)UART_BAUD);
 }
