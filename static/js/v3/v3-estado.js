@@ -36,6 +36,7 @@ let terminalesEnEspera = []; // Lista de terminales cuyos pendientes son TODOS p
 let paquetesActuales = []; // Paquetes del carro actual
 let gruposEtiquetasCache = null; // Cache de grupos de etiquetas
 let sesionActualId = null; // ID de la sesión activa de trabajo (bloqueo concurrente)
+let herramientasDelPuesto = []; // Herramientas manuales censadas (RFID) en el puesto actual
 
 // ── Push a pantalla ESP32 ────────────────────────────────────────────────────
 // Se envia al MISMO servidor que sirve esta pagina (cadena vacia = ruta

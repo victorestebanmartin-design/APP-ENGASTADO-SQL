@@ -316,6 +316,18 @@ def _apply_migrations(db_path):
     """)
     conn.commit()
 
+    # Migración: columna 'tipo' en pick_to_light_canales. Hasta ahora todo
+    # canal era un terminal de verdad (validado contra maquinas_terminales);
+    # con la trazabilidad RFID de herramientas manuales, un canal puede llevar
+    # en vez de eso el nombre libre de una herramienta, sin máquina detrás.
+    # DEFAULT 'terminal' hace que las filas existentes no cambien de sentido.
+    cur.execute("PRAGMA table_info(pick_to_light_canales)")
+    ptl_cols = {row[1] for row in cur.fetchall()}
+    if ptl_cols and 'tipo' not in ptl_cols:
+        cur.execute("ALTER TABLE pick_to_light_canales ADD COLUMN "
+                    "tipo TEXT NOT NULL DEFAULT 'terminal'")
+        conn.commit()
+
     # Migra lo que ya hubiera en terminales_gavetas.led, resolviendo el puesto
     # via la maquina a la que este asignado el terminal. INSERT OR IGNORE hace
     # esto idempotente entre reinicios y no pisa una asignacion que el admin

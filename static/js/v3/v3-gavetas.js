@@ -61,6 +61,51 @@ function avisarAtencionGaveta() {
 }
 
 
+/**
+ * Herramientas manuales censadas (RFID) en el puesto actual.
+ *
+ * Mismo canal físico que las gavetas de terminal (pick_to_light_canales),
+ * solo que con tipo='herramienta': por eso se listan aquí, junto al resto del
+ * pick-to-light, y no en un módulo aparte. Si el servidor no tiene lector
+ * asignado a este puesto o no hay ninguna herramienta censada, la lista sale
+ * vacía y el panel de herramientas simplemente no se pinta.
+ */
+async function cargarHerramientasDelPuesto() {
+    herramientasDelPuesto = [];
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    try {
+        const r = await fetch('/api/herramientas-puesto?puesto_id='
+                              + encodeURIComponent(puestoSeleccionado.id));
+        const d = await r.json();
+        if (d && d.success) herramientasDelPuesto = d.herramientas || [];
+    } catch (e) { /* sin herramientas censadas se trabaja igual */ }
+}
+
+
+/**
+ * El operario elige una herramienta manual censada: se enciende su gaveta y
+ * se reutiliza la MISMA puerta de confirmación por RFID que ya existe para
+ * las gavetas de terminal (esperarRecogidaGaveta), en vez de un modal nuevo.
+ *
+ * Solo tiene sentido ofrecerlo mientras no hay YA una gaveta de terminal en
+ * curso: el estado de pick-to-light es de una orden por puesto (ver
+ * app/routes/pick_to_light.py), así que encender aquí una herramienta a mitad
+ * de un terminal le robaría el 'led' activo a la vigilancia de esa gaveta.
+ * Por eso el punto de entrada vive en la pantalla de selección de terminal,
+ * antes de elegir uno (ver mostrarTerminalesAsignados en v3-seleccion.js).
+ */
+async function seleccionarHerramientaManual(codigo, nombre) {
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    await encenderGavetaTerminal(codigo);
+    await esperarRecogidaGaveta();
+    // Confirmación hecha (o saltada): la luz no tiene que quedarse encendida
+    // esperando una devolución, a diferencia del terminal la herramienta
+    // puede tardar en volver y no hay un "siguiente paso" que la reclame.
+    await apagarGavetas();
+    mostrarMensaje('🔧 Herramienta "' + (nombre || codigo) + '" confirmada.', 'success');
+}
+
+
 /** Apaga todas las gavetas del puesto (terminal terminado o cambiado). */
 async function apagarGavetas() {
     detenerVigilanciaGaveta();

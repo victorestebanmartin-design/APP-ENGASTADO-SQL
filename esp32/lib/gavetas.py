@@ -151,6 +151,12 @@ class Gavetas:
         # antes de que esto existiera: volver atras es dejarlos como estan aqui.
         self.invertir = False       # True = micro normalmente abierto (NA)
         self.ignorar = set()        # canales sin cablear: ni fuera, ni alarma
+        # Canales concretos con la logica AL REVES del resto de la placa: sirve
+        # para mezclar en un mismo expansor gavetas normales (NC = dentro) con
+        # sensores de herramienta (GND = fuera, la polaridad contraria). Con
+        # 'invertir' ya no basta porque ese es global a los 16 canales; esto
+        # invierte solo los de la lista, encima del criterio general.
+        self.invertidos = set()
 
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
@@ -189,6 +195,11 @@ class Gavetas:
         todo el rato. Ignorarlos es lo que permite probar en banco con solo
         unos pocos micros conectados.
 
+        Los canales de self.invertidos leen con la logica AL REVES del resto
+        de la placa (ver el comentario en __init__): se decide primero con el
+        criterio general (self.invertir) y LUEGO se da la vuelta solo a esos
+        canales, antes de mirar si el resultado cuenta como "fuera".
+
         De paso deja en self.canales_error los canales de un expansor que no
         respondio esta vez: sin esto, Admin no puede distinguir "todas
         puestas" de "no se puede leer este trozo del bus I2C".
@@ -211,7 +222,10 @@ class Gavetas:
                 gaveta = base + canal + 1
                 if gaveta in self.ignorar:
                     continue
-                if bits & (1 << canal):     # 1 = contacto abierto = gaveta fuera
+                abierto = bool(bits & (1 << canal))    # 1 = contacto abierto
+                if gaveta in self.invertidos:
+                    abierto = not abierto
+                if abierto:
                     fuera.add(gaveta)
         if self.ignorar:
             errores = set(g for g in errores if g not in self.ignorar)
@@ -237,17 +251,25 @@ class Gavetas:
                     ignorar.add(int(crudo))
                 except (TypeError, ValueError):
                     continue
+            invertidos = set()
+            for crudo in (cfg.get("invertidos") or ()):
+                try:
+                    invertidos.add(int(crudo))
+                except (TypeError, ValueError):
+                    continue
         except Exception as e:
             print("Gavetas: configuracion de micros no valida:", e)
             return False
 
-        if invertir == self.invertir and ignorar == self.ignorar:
+        if (invertir == self.invertir and ignorar == self.ignorar
+                and invertidos == self.invertidos):
             return False
 
         self.invertir = invertir
         self.ignorar = ignorar
-        print("Gavetas: micros invertir=%s ignorar=%s" % (
-            invertir, sorted(ignorar)))
+        self.invertidos = invertidos
+        print("Gavetas: micros invertir=%s ignorar=%s invertidos=%s" % (
+            invertir, sorted(ignorar), sorted(invertidos)))
 
         # Rebase: foto nueva y a empezar de cero con los cambios pendientes.
         self._cambio_pendiente = {}
@@ -481,6 +503,7 @@ class Gavetas:
             # enseña para no tener que fiarse de lo guardado en el servidor.
             "invertir": self.invertir,
             "ignorar": sorted(self.ignorar),
+            "invertidos": sorted(self.invertidos),
             "leds_por_gaveta": self.leds_por_gaveta,
             "brillo": self.brillo,
             "http": self._servidor is not None,

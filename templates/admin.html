@@ -574,9 +574,17 @@
                             </label>
                             <input type="text" id="ptl-micros-ignorar" placeholder="Canales sin cablear: 3,5,9-16"
                                 style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
+                            <input type="text" id="ptl-micros-invertidos" placeholder="Canales con lógica invertida: 11,12"
+                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
                             <button class="btn-primary" onclick="ptlGuardarMicrosConfig()">💾 Guardar y aplicar</button>
                             <button class="btn-secondary" onclick="ptlResetMicrosConfig()">↩ Volver a lo de siempre</button>
                         </div>
+                        <p class="instruccion" style="margin-top:2px;">
+                            "Lógica invertida" (arriba) es de <strong>toda la placa</strong>. Si solo unos pocos
+                            canales llevan un sensor con la polaridad al revés del resto (por ejemplo, un sensor de
+                            presencia de herramienta que da masa cuando la herramienta está FUERA), apunta esos
+                            canales aquí uno a uno; no afecta al resto de canales de la placa.
+                        </p>
                         <div id="ptl-micros-cfg-msg" style="font-size:0.88em;color:#94a3b8;"></div>
                     </div>
 
@@ -2129,8 +2137,9 @@
         window.ptlCargarMicrosConfig = async function () {
             var chk = document.getElementById('ptl-micros-invertir');
             var txt = document.getElementById('ptl-micros-ignorar');
-            if (!chk || !txt) return;
-            if (!_ptlLectorId) { chk.checked = false; txt.value = ''; return; }
+            var txtInv = document.getElementById('ptl-micros-invertidos');
+            if (!chk || !txt || !txtInv) return;
+            if (!_ptlLectorId) { chk.checked = false; txt.value = ''; txtInv.value = ''; return; }
             try {
                 var resp = await fetch('/api/pick-to-light/micros/config?device_id=' +
                     encodeURIComponent(_ptlLectorId));
@@ -2138,7 +2147,8 @@
                 if (!d.success) { _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Error', false); return; }
                 chk.checked = !!d.invertir;
                 txt.value = (d.ignorar || []).join(',');
-                _ptlMensaje('ptl-micros-cfg-msg', (d.invertir || (d.ignorar || []).length)
+                txtInv.value = (d.invertidos || []).join(',');
+                _ptlMensaje('ptl-micros-cfg-msg', (d.invertir || (d.ignorar || []).length || (d.invertidos || []).length)
                     ? 'Esta placa tiene una lógica de micros personalizada.'
                     : 'Esta placa usa la lógica de siempre.', null);
             } catch (e) {
@@ -2146,13 +2156,14 @@
             }
         };
 
-        async function _ptlEnviarMicrosConfig(invertir, ignorar) {
+        async function _ptlEnviarMicrosConfig(invertir, ignorar, invertidos) {
             _ptlMensaje('ptl-micros-cfg-msg', 'Guardando...', null);
             try {
                 var resp = await fetch('/api/pick-to-light/micros/config', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device_id: _ptlLectorId, invertir: invertir, ignorar: ignorar })
+                    body: JSON.stringify({ device_id: _ptlLectorId, invertir: invertir, ignorar: ignorar,
+                                          invertidos: invertidos })
                 });
                 var d = await resp.json();
                 if (!d.success) {
@@ -2161,6 +2172,7 @@
                 }
                 _ptlMensaje('ptl-micros-cfg-msg', d.message || 'Guardado', true);
                 _ptlLog('Micros: invertir=' + invertir + ', ignorar=[' + ignorar.join(',') + ']' +
+                        ', invertidos=[' + invertidos.join(',') + ']' +
                         (d.aplicado ? ' (aplicado ya)' : ' (pendiente del sondeo)'));
             } catch (e) {
                 _ptlMensaje('ptl-micros-cfg-msg', 'Error de red', false);
@@ -2171,15 +2183,18 @@
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
             var invertir = document.getElementById('ptl-micros-invertir').checked;
             var ignorar = _ptlParsearCanales(document.getElementById('ptl-micros-ignorar').value);
+            var invertidos = _ptlParsearCanales(document.getElementById('ptl-micros-invertidos').value);
             document.getElementById('ptl-micros-ignorar').value = ignorar.join(',');
-            await _ptlEnviarMicrosConfig(invertir, ignorar);
+            document.getElementById('ptl-micros-invertidos').value = invertidos.join(',');
+            await _ptlEnviarMicrosConfig(invertir, ignorar, invertidos);
         };
 
         window.ptlResetMicrosConfig = async function () {
             if (!_ptlLectorId) { alert('Selecciona primero un lector.'); return; }
             document.getElementById('ptl-micros-invertir').checked = false;
             document.getElementById('ptl-micros-ignorar').value = '';
-            await _ptlEnviarMicrosConfig(false, []);
+            document.getElementById('ptl-micros-invertidos').value = '';
+            await _ptlEnviarMicrosConfig(false, [], []);
         };
 
         // ── LEDs físicos por gaveta ────────────────────────────────────────
@@ -2474,11 +2489,15 @@
                 else if (esAbierto)   { bg = 'rgba(37,99,235,.18)';   borde = '#3b82f6'; texto = '#93c5fd'; }
                 else                  { bg = 'rgba(74,222,128,.18)'; borde = '#4ade80'; texto = '#4ade80'; }
 
+                var esHerramienta = esAsignado && info.tipo === 'herramienta';
                 var rfidBadge = esAsignado ? (info.rfid ? ' 🏷️' : ' ⭘') : '';
+                var tipoBadge = esHerramienta ? ' 🔧' : '';
                 var linea2 = esError ? 'ERROR LECTURA'
                            : esAsignado ? (_dispEsc(info.terminal) + (info.gaveta ? ' · ' + _dispEsc(info.gaveta) : ''))
                            : 'Canal libre';
-                var titulo = 'Canal ' + i + (esAsignado ? ': ' + info.terminal : ': sin asignar') +
+                var titulo = 'Canal ' + i + (esAsignado
+                                ? ': ' + info.terminal + (esHerramienta ? ' (herramienta)' : ' (terminal)')
+                                : ': sin asignar') +
                              (esError ? ' — error de lectura del expansor' : esAbierto ? ' — ABIERTA' : ' — cerrada') +
                              (esAsignado ? (info.rfid ? ' — con RFID' : ' — sin RFID') : '') +
                              ' — clic para gestionar';
@@ -2487,7 +2506,7 @@
                         'style="width:118px;min-height:56px;border-radius:8px;cursor:pointer;' +
                         'border:2px solid ' + borde + ';background:' + bg + ';padding:6px 8px;' +
                         'display:flex;flex-direction:column;justify-content:center;">' +
-                        '<div style="font-weight:700;font-size:0.8em;color:' + texto + ';">Canal ' + i + rfidBadge + '</div>' +
+                        '<div style="font-weight:700;font-size:0.8em;color:' + texto + ';">Canal ' + i + tipoBadge + rfidBadge + '</div>' +
                         '<div style="font-size:0.66em;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
                         linea2 + '</div></div>';
             }
@@ -2562,11 +2581,20 @@
 
         function _ptlCanalInfo(canal) {
             var info = _ptlMapaCanales.filter(function (c) { return c.canal === canal; })[0];
-            return info || { canal: canal, terminal: null, gaveta: null, rfid: false };
+            return info || { canal: canal, terminal: null, gaveta: null, rfid: false, tipo: 'terminal' };
         }
 
         window.ptlCanalIrAsignar = function () {
+            var info = _ptlCanalInfo(_ptlCanalPanel.canal);
             _ptlCanalPanel.fase = 'asignar';
+            _ptlCanalPanel.busqueda = '';
+            _ptlCanalPanel.tipo = info.tipo === 'herramienta' ? 'herramienta' : 'terminal';
+            _ptlRenderCanalPanel();
+        };
+
+        window.ptlCanalTipoCambiar = function (tipo) {
+            if (!_ptlCanalPanel) return;
+            _ptlCanalPanel.tipo = tipo === 'herramienta' ? 'herramienta' : 'terminal';
             _ptlCanalPanel.busqueda = '';
             _ptlRenderCanalPanel();
         };
@@ -2589,8 +2617,10 @@
             var info = _ptlCanalInfo(_ptlCanalPanel.canal);
             var abierto = _ptlMapaFueraActual.indexOf(_ptlCanalPanel.canal) !== -1;
             var conError = _ptlMapaErrorActual.indexOf(_ptlCanalPanel.canal) !== -1;
+            var esHerramienta = info.terminal && info.tipo === 'herramienta';
             var cabecera = 'Canal ' + _ptlCanalPanel.canal + (info.terminal
-                ? ' — ' + _dispEsc(info.terminal) + (info.gaveta ? ' (' + _dispEsc(info.gaveta) + ')' : '')
+                ? ' — ' + (esHerramienta ? '🔧 ' : '') + _dispEsc(info.terminal) +
+                  (info.gaveta ? ' (' + _dispEsc(info.gaveta) + ')' : '')
                 : ' — libre');
 
             var html = '<div style="background:#1e293b;border-radius:10px;padding:14px;">' +
@@ -2601,12 +2631,14 @@
             if (_ptlCanalPanel.fase === 'ver') {
                 html += '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:10px;">Micro: ' +
                         (conError ? '⚠️ error de lectura' : abierto ? '🔵 abierta' : '🟢 cerrada') +
+                        (info.terminal ? ' · Tipo: ' + (esHerramienta ? '🔧 herramienta' : '📦 terminal') : '') +
                         (info.terminal ? ' · RFID: ' + (info.rfid ? '🏷️ configurado' : '⭘ sin configurar') : '') +
                         '</div><div style="display:flex;gap:8px;flex-wrap:wrap;">';
                 if (!info.terminal) {
                     html += '<button class="btn-primary" onclick="ptlCanalIrAsignar()">➕ Asignar terminal</button>';
                 } else {
-                    html += '<button class="btn-secondary" onclick="ptlCanalIrAsignar()">🔁 Cambiar terminal</button>' +
+                    html += '<button class="btn-secondary" onclick="ptlCanalIrAsignar()">🔁 ' +
+                            (esHerramienta ? 'Cambiar herramienta' : 'Cambiar terminal') + '</button>' +
                             '<button class="btn-secondary" onclick="ptlCanalIrEtiqueta()">✏️ Editar etiqueta</button>' +
                             '<button class="btn-secondary" style="border-color:#dc2626;color:#f87171;" ' +
                             'onclick="ptlCanalDesasignar()">🗑️ Desasignar</button>' +
@@ -2617,7 +2649,8 @@
                     // Kanban de doble caja: dos etiquetas RFID independientes por
                     // canal, cualquiera de las dos vale para dar el terminal por
                     // valido. Cada caja lleva su propio ciclo armar/sondear/confirmar.
-                    [1, 2].forEach(function (nCaja) {
+                    // Las herramientas no tienen doble caja: solo la caja 1 tiene sentido.
+                    (esHerramienta ? [1] : [1, 2]).forEach(function (nCaja) {
                         var tiene = _ptlCanalRfidTiene(_ptlCanalPanel.canal, nCaja);
                         html += '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #334155;">' +
                                 '<div style="font-weight:600;margin-bottom:6px;">🏷️ Caja ' + nCaja + '</div>' +
@@ -2635,26 +2668,49 @@
                     });
                 }
             } else if (_ptlCanalPanel.fase === 'asignar') {
-                var q = (_ptlCanalPanel.busqueda || '').toLowerCase();
-                var candidatos = _ptlMapaTerminalesDisponibles.filter(function (t) {
-                    if (!q) return true;
-                    return t.terminal.toLowerCase().indexOf(q) !== -1 ||
-                           (t.maquina || '').toLowerCase().indexOf(q) !== -1;
-                });
-                var opciones = candidatos.map(function (t) {
-                    return '<option value="' + _dispEsc(t.terminal) + '">' + _dispEsc(t.terminal) +
-                           (t.maquina ? ' — ' + _dispEsc(t.maquina) : '') + '</option>';
-                }).join('') || '<option disabled>— sin terminales libres en este puesto —</option>';
-                html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Terminales de las máquinas ' +
-                        'de este puesto, sin canal todavía. Busca por código o máquina.</p>' +
-                        '<input type="text" id="ptl-canal-busqueda" placeholder="Buscar..." ' +
-                        'value="' + _dispEsc(_ptlCanalPanel.busqueda || '') + '" oninput="ptlCanalBuscar(this.value)" ' +
-                        'style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
-                        'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
-                        '<select id="ptl-canal-terminal" size="6" style="width:100%;background:#0f172a;' +
-                        'border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
-                        opciones + '</select>' +
-                        '<input type="text" id="ptl-canal-etiqueta" placeholder="Etiqueta de la gaveta (ej: A-12)" ' +
+                var tipoAsignar = _ptlCanalPanel.tipo === 'herramienta' ? 'herramienta' : 'terminal';
+                html += '<div style="display:flex;gap:0;margin-bottom:10px;border:1px solid #334155;' +
+                        'border-radius:8px;overflow:hidden;width:fit-content;">' +
+                        '<button type="button" onclick="ptlCanalTipoCambiar(\'terminal\')" style="border:none;' +
+                        'padding:6px 14px;cursor:pointer;font-size:0.85em;' +
+                        (tipoAsignar === 'terminal'
+                            ? 'background:#2563eb;color:#fff;' : 'background:#0f172a;color:#94a3b8;') +
+                        '">📦 Terminal</button>' +
+                        '<button type="button" onclick="ptlCanalTipoCambiar(\'herramienta\')" style="border:none;' +
+                        'padding:6px 14px;cursor:pointer;font-size:0.85em;' +
+                        (tipoAsignar === 'herramienta'
+                            ? 'background:#2563eb;color:#fff;' : 'background:#0f172a;color:#94a3b8;') +
+                        '">🔧 Herramienta</button></div>';
+                if (tipoAsignar === 'terminal') {
+                    var q = (_ptlCanalPanel.busqueda || '').toLowerCase();
+                    var candidatos = _ptlMapaTerminalesDisponibles.filter(function (t) {
+                        if (!q) return true;
+                        return t.terminal.toLowerCase().indexOf(q) !== -1 ||
+                               (t.maquina || '').toLowerCase().indexOf(q) !== -1;
+                    });
+                    var opciones = candidatos.map(function (t) {
+                        return '<option value="' + _dispEsc(t.terminal) + '">' + _dispEsc(t.terminal) +
+                               (t.maquina ? ' — ' + _dispEsc(t.maquina) : '') + '</option>';
+                    }).join('') || '<option disabled>— sin terminales libres en este puesto —</option>';
+                    html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Terminales de las máquinas ' +
+                            'de este puesto, sin canal todavía. Busca por código o máquina.</p>' +
+                            '<input type="text" id="ptl-canal-busqueda" placeholder="Buscar..." ' +
+                            'value="' + _dispEsc(_ptlCanalPanel.busqueda || '') + '" oninput="ptlCanalBuscar(this.value)" ' +
+                            'style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                            'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                            '<select id="ptl-canal-terminal" size="6" style="width:100%;background:#0f172a;' +
+                            'border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                            opciones + '</select>';
+                } else {
+                    html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Nombre libre de la ' +
+                            'herramienta (no hace falta que exista en el catálogo de terminales).</p>' +
+                            '<input type="text" id="ptl-canal-herramienta" placeholder="Nombre de la herramienta ' +
+                            '(ej: Pelacables 3)" value="' +
+                            (info.tipo === 'herramienta' ? _dispEsc(info.terminal || '') : '') +
+                            '" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                            'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">';
+                }
+                html += '<input type="text" id="ptl-canal-etiqueta" placeholder="Etiqueta de la gaveta (ej: A-12)" ' +
                         'value="' + _dispEsc(info.gaveta || '') + '" style="width:100%;padding:7px 10px;' +
                         'background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:10px;">' +
                         '<button class="btn-primary" onclick="ptlCanalGuardarAsignacion()">Guardar</button> ' +
@@ -2683,20 +2739,28 @@
         }
 
         window.ptlCanalGuardarAsignacion = async function () {
-            var sel = document.getElementById('ptl-canal-terminal');
-            var terminal = sel && sel.value;
+            var tipo = _ptlCanalPanel.tipo === 'herramienta' ? 'herramienta' : 'terminal';
+            var terminal;
+            if (tipo === 'terminal') {
+                var sel = document.getElementById('ptl-canal-terminal');
+                terminal = sel && sel.value;
+                if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Elige un terminal de la lista.', false); return; }
+            } else {
+                terminal = ((document.getElementById('ptl-canal-herramienta') || {}).value || '').trim();
+                if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Escribe el nombre de la herramienta.', false); return; }
+            }
             var etiqueta = ((document.getElementById('ptl-canal-etiqueta') || {}).value || '').trim();
-            if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Elige un terminal de la lista.', false); return; }
             if (!etiqueta) { _ptlMensaje('ptl-canal-msg', 'Escribe una etiqueta para la gaveta.', false); return; }
             try {
                 var resp = await fetch('/api/pick-to-light/canal', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
-                                          terminal: terminal, etiqueta_gaveta: etiqueta })
+                                          terminal: terminal, etiqueta_gaveta: etiqueta, tipo: tipo })
                 });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }
-                _ptlLog('Canal ' + _ptlCanalPanel.canal + ' asignado a ' + terminal);
+                _ptlLog('Canal ' + _ptlCanalPanel.canal + ' asignado a ' + terminal +
+                        (tipo === 'herramienta' ? ' (herramienta)' : ''));
                 await ptlCargarMapa();
                 _ptlCanalPanel.fase = 'ver';
                 _ptlRenderCanalPanel();
@@ -2711,7 +2775,8 @@
                 var resp = await fetch('/api/pick-to-light/canal', {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ puesto_id: _ptlPuestoId, canal: _ptlCanalPanel.canal,
-                                          terminal: info.terminal, etiqueta_gaveta: etiqueta })
+                                          terminal: info.terminal, etiqueta_gaveta: etiqueta,
+                                          tipo: info.tipo === 'herramienta' ? 'herramienta' : 'terminal' })
                 });
                 var data = await resp.json();
                 if (!data.success) { _ptlMensaje('ptl-canal-msg', data.message || 'Error', false); return; }

@@ -288,7 +288,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
                      'validas': [7], 'rfid_modo': None, 'prisa': False,
-                     'micros': {'invertir': False, 'ignorar': []},
+                     'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
@@ -299,7 +299,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     # operario que se va (ver test_terminar_un_terminal_mantiene_la_placa_a_punto).
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': True,
-                     'micros': {'invertir': False, 'ignorar': []},
+                     'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
@@ -499,7 +499,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
                      'validas': [], 'rfid_modo': None, 'prisa': False,
-                     'micros': {'invertir': False, 'ignorar': []},
+                     'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
@@ -524,10 +524,10 @@ def test_guardar_logica_de_micros_llega_a_la_placa_y_al_sondeo(app, client, admi
     datos = respuesta.get_json()
     assert datos['success'] is True and datos['aplicado'] is True
     assert datos['ignorar'] == [3, 5]      # ordenado, sin repetidos ni basura
-    assert con_placa[-1][1] == {'micros_config': {'invertir': True, 'ignorar': [3, 5]}}
+    assert con_placa[-1][1] == {'micros_config': {'invertir': True, 'ignorar': [3, 5], 'invertidos': []}}
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden['micros'] == {'invertir': True, 'ignorar': [3, 5]}
+    assert orden['micros'] == {'invertir': True, 'ignorar': [3, 5], 'invertidos': []}
 
 
 def test_guardar_logica_de_micros_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
@@ -552,7 +552,7 @@ def test_volver_a_la_logica_de_micros_de_siempre(app, client, admin_client, con_
                      json={'device_id': device_id, 'invertir': False, 'ignorar': []})
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
-    assert orden['micros'] == {'invertir': False, 'ignorar': []}
+    assert orden['micros'] == {'invertir': False, 'ignorar': [], 'invertidos': []}
 
 
 def test_brillo_por_defecto_es_el_de_siempre(app, admin_client, con_placa):
@@ -1107,9 +1107,12 @@ def test_mapa_marca_asignados_y_libres_sin_mezclar_puestos(app, admin_client):
     assert datos['total_gavetas'] == 5
     assert len(datos['canales']) == 5
     por_canal = {c['canal']: c for c in datos['canales']}
-    assert por_canal[2] == {'canal': 2, 'terminal': 'ZZMAPA1', 'gaveta': 'A-1', 'rfid': False}
-    assert por_canal[4] == {'canal': 4, 'terminal': None, 'gaveta': None, 'rfid': False}
-    assert por_canal[1] == {'canal': 1, 'terminal': None, 'gaveta': None, 'rfid': False}
+    assert por_canal[2] == {'canal': 2, 'terminal': 'ZZMAPA1', 'gaveta': 'A-1',
+                            'tipo': 'terminal', 'rfid': False}
+    assert por_canal[4] == {'canal': 4, 'terminal': None, 'gaveta': None,
+                            'tipo': 'terminal', 'rfid': False}
+    assert por_canal[1] == {'canal': 1, 'terminal': None, 'gaveta': None,
+                            'tipo': 'terminal', 'rfid': False}
 
 
 def test_mapa_puede_pedirse_por_puesto_id(app, admin_client):

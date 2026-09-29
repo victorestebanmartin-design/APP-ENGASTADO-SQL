@@ -180,6 +180,11 @@ def _puesto_de_la_placa(device_id):
 #     cerrado (NC). Cambia la interpretacion del nivel de TODOS los canales.
 #   - 'ignorar': canales sin cablear todavia. No cuentan como fuera, ni como
 #     puestos, ni pueden disparar la alarma de gaveta robada.
+#   - 'invertidos': canales CONCRETOS con la logica al reves del resto de la
+#     placa. Nace de mezclar en un mismo expansor gavetas normales con
+#     sensores de presencia de herramienta manual (dan GND cuando la
+#     herramienta esta FUERA, la polaridad contraria a una gaveta): 'invertir'
+#     no sirve para eso porque es global a los 16 canales.
 #
 # Se guarda en el MISMO registro de Admin -> Lectores RFID que ya lleva ip,
 # fw y numero de gavetas, y viaja a la placa por el sondeo que ya existe
@@ -188,21 +193,28 @@ def _puesto_de_la_placa(device_id):
 # siempre, asi que quitar la configuracion es volver atras del todo.
 
 MICROS_CANAL_MAX = 128       # mismo tope que /test/led
-MICROS_DEFECTO = {'invertir': False, 'ignorar': []}
+MICROS_DEFECTO = {'invertir': False, 'ignorar': [], 'invertidos': []}
 
 
-def _micros_cfg_normalizar(crudo):
-    """Configuracion de micros saneada a partir de lo que venga (JSON o disco)."""
-    crudo = crudo if isinstance(crudo, dict) else {}
+def _sanear_lista_canales(crudo):
+    """Lista de canales 1..MICROS_CANAL_MAX, sin duplicados y ordenada."""
     canales = []
-    for valor in (crudo.get('ignorar') or [])[:MICROS_CANAL_MAX]:
+    for valor in (crudo or [])[:MICROS_CANAL_MAX]:
         try:
             canal = int(valor)
         except (TypeError, ValueError):
             continue
         if 1 <= canal <= MICROS_CANAL_MAX:
             canales.append(canal)
-    return {'invertir': bool(crudo.get('invertir')), 'ignorar': sorted(set(canales))}
+    return sorted(set(canales))
+
+
+def _micros_cfg_normalizar(crudo):
+    """Configuracion de micros saneada a partir de lo que venga (JSON o disco)."""
+    crudo = crudo if isinstance(crudo, dict) else {}
+    return {'invertir': bool(crudo.get('invertir')),
+            'ignorar': _sanear_lista_canales(crudo.get('ignorar')),
+            'invertidos': _sanear_lista_canales(crudo.get('invertidos'))}
 
 
 def _micros_cfg_device(device_id):
@@ -404,20 +416,29 @@ def _puesto_del_terminal(terminal):
 # ESTA es la unica tabla desde la que se escribe la asignacion terminal ->
 # gaveta -> LED -> RFID. La ficha de Terminales (app/routes/puestos.py) solo
 # lee de aqui para mostrarla; no tiene ningun PUT/DELETE propio.
+#
+# 'tipo' ('terminal', el de siempre, o 'herramienta') reaprovecha toda esta
+# tabla para la trazabilidad RFID de herramientas manuales: mismo canal,
+# mismo RFID de gaveta, mismo kanban de doble caja, pero sin la validacion
+# contra maquinas_terminales (una herramienta manual no esta atada a ninguna
+# maquina). Ver asignar_canal().
 
 def _canales_del_puesto(puesto_id):
-    """{canal: {'terminal':..., 'gaveta':..., 'uid_rfid':..., 'uid_rfid_2':...}}
-    activos de este puesto. 'uid_rfid'/'uid_rfid_2' son las dos etiquetas del
-    kanban de doble caja: cualquiera de las dos vale como valida para el canal."""
+    """{canal: {'terminal':..., 'gaveta':..., 'uid_rfid':..., 'uid_rfid_2':...,
+    'tipo':...}} activos de este puesto. 'uid_rfid'/'uid_rfid_2' son las dos
+    etiquetas del kanban de doble caja: cualquiera de las dos vale como valida
+    para el canal. 'tipo' distingue un terminal de corte ('terminal', el de
+    siempre) de una herramienta manual ('herramienta')."""
     if not puesto_id:
         return {}
     filas = db.session.execute(text("""
-        SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid, uid_rfid_2
+        SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid, uid_rfid_2, tipo
         FROM pick_to_light_canales
         WHERE puesto_id = :puesto_id AND activo = 1
     """), {'puesto_id': puesto_id}).fetchall()
     return {fila[0]: {'terminal': fila[1], 'gaveta': fila[2],
-                      'uid_rfid': fila[3], 'uid_rfid_2': fila[4]} for fila in filas}
+                      'uid_rfid': fila[3], 'uid_rfid_2': fila[4],
+                      'tipo': fila[5] or 'terminal'} for fila in filas}
 
 
 def _gavetas_validas_del_puesto(puesto_id):
@@ -433,23 +454,25 @@ def _gavetas_validas_del_puesto(puesto_id):
 
 
 def _canal_del_terminal_en_puesto(terminal, puesto_id):
-    """(canal, etiqueta_gaveta, uid_rfid, uid_rfid_2) del terminal EN ESE
-    puesto, o (None, None, None, None). Las dos ultimas son las etiquetas de
-    las dos cajas del kanban de doble caja: cualquiera de las dos vale.
+    """(canal, etiqueta_gaveta, uid_rfid, uid_rfid_2, tipo) del terminal EN ESE
+    puesto, o (None, None, None, None, None). Las dos etiquetas de en medio
+    son las de las dos cajas del kanban de doble caja: cualquiera de las dos
+    vale. 'tipo' ('terminal'/'herramienta') va al final para no romper a quien
+    ya desempaquetaba el tuple de 4 antes de que existiera.
 
     Buscar por (puesto, terminal) y no solo por terminal es lo que evita que
     un terminal con el mismo codigo asignado (por error) en dos puestos a la
     vez encienda la placa equivocada.
     """
     if not terminal or not puesto_id:
-        return None, None, None, None
+        return None, None, None, None, None
     row = db.session.execute(text("""
-        SELECT canal, etiqueta_gaveta, uid_rfid, uid_rfid_2 FROM pick_to_light_canales
+        SELECT canal, etiqueta_gaveta, uid_rfid, uid_rfid_2, tipo FROM pick_to_light_canales
         WHERE puesto_id = :puesto_id AND terminal_codigo = :terminal AND activo = 1
     """), {'puesto_id': puesto_id, 'terminal': terminal}).fetchone()
     if not row:
-        return None, None, None, None
-    return row[0], row[1], row[2], row[3]
+        return None, None, None, None, None
+    return row[0], row[1], row[2], row[3], (row[4] or 'terminal')
 
 
 def _maquina_del_terminal_en_puesto(terminal, puesto_id):
@@ -487,19 +510,27 @@ def _columna_uid(caja):
     return 'uid_rfid_2' if caja == 2 else 'uid_rfid'
 
 
-def asignar_canal(puesto_id, canal, terminal, etiqueta):
+def asignar_canal(puesto_id, canal, terminal, etiqueta, tipo='terminal'):
     """Valida y guarda una asignacion de canal. Devuelve (ok, error_o_None).
 
     Comparte esta funcion la API interactiva y la importacion masiva del
     kanban: las mismas reglas tienen que cumplirse vengan de donde vengan.
+
+    'tipo' distingue un terminal de corte de verdad ('terminal', el de
+    siempre) de una herramienta manual ('herramienta'): una herramienta no
+    esta vinculada a ninguna maquina, asi que 'terminal' pasa a ser solo su
+    nombre/codigo libre y se salta la validacion contra maquinas_terminales.
+    Todo lo demas (canal unico por puesto, RFID de gaveta, kanban) es la
+    misma infraestructura para los dos tipos.
     """
     from app.routes.puestos import LED_GAVETA_MAX
+    tipo = 'herramienta' if tipo == 'herramienta' else 'terminal'
     if not puesto_id:
         return False, 'Falta el puesto'
     if not 1 <= canal <= LED_GAVETA_MAX:
         return False, 'El canal tiene que estar entre 1 y %d' % LED_GAVETA_MAX
     if not terminal:
-        return False, 'Falta el terminal'
+        return False, 'Falta el terminal' if tipo == 'terminal' else 'Falta la herramienta'
     etiqueta = (etiqueta or '').strip()[:80]
     if not etiqueta:
         return False, 'La etiqueta de la gaveta no puede estar vacía'
@@ -512,7 +543,7 @@ def asignar_canal(puesto_id, canal, terminal, etiqueta):
         if total and canal > total:
             return False, 'El canal %d no existe: esta placa solo tiene %d' % (canal, total)
 
-    if not _maquina_del_terminal_en_puesto(terminal, puesto_id):
+    if tipo == 'terminal' and not _maquina_del_terminal_en_puesto(terminal, puesto_id):
         return False, ('El terminal %s no pertenece a ninguna máquina de este puesto' % terminal)
 
     ocupante_canal = db.session.execute(text("""
@@ -531,13 +562,15 @@ def asignar_canal(puesto_id, canal, terminal, etiqueta):
                        % (terminal, ocupante_terminal[0]))
 
     db.session.execute(text("""
-        INSERT INTO pick_to_light_canales (puesto_id, canal, terminal_codigo, etiqueta_gaveta, activo)
-        VALUES (:puesto_id, :canal, :terminal, :etiqueta, 1)
+        INSERT INTO pick_to_light_canales (puesto_id, canal, terminal_codigo, etiqueta_gaveta, tipo, activo)
+        VALUES (:puesto_id, :canal, :terminal, :etiqueta, :tipo, 1)
         ON CONFLICT(puesto_id, canal) WHERE activo = 1 DO UPDATE
             SET terminal_codigo = excluded.terminal_codigo,
                 etiqueta_gaveta = excluded.etiqueta_gaveta,
+                tipo            = excluded.tipo,
                 updated_at      = datetime('now')
-    """), {'puesto_id': puesto_id, 'canal': canal, 'terminal': terminal, 'etiqueta': etiqueta})
+    """), {'puesto_id': puesto_id, 'canal': canal, 'terminal': terminal,
+           'etiqueta': etiqueta, 'tipo': tipo})
     db.session.commit()
     return True, None
 
@@ -568,12 +601,13 @@ def api_pick_to_light_asignar_canal():
             return jsonify({'success': False, 'message': 'El canal tiene que ser un número'}), 400
         terminal = (datos.get('terminal') or '').strip()[:40]
         etiqueta = (datos.get('etiqueta_gaveta') or '').strip()[:80]
+        tipo = 'herramienta' if datos.get('tipo') == 'herramienta' else 'terminal'
 
-        ok, error = asignar_canal(puesto_id, canal, terminal, etiqueta)
+        ok, error = asignar_canal(puesto_id, canal, terminal, etiqueta, tipo=tipo)
         if not ok:
             return jsonify({'success': False, 'message': error}), 400
         return jsonify({'success': True, 'puesto_id': puesto_id, 'canal': canal,
-                        'terminal': terminal, 'etiqueta_gaveta': etiqueta})
+                        'terminal': terminal, 'etiqueta_gaveta': etiqueta, 'tipo': tipo})
     except Exception as e:
         return error_interno(e, 'Error al asignar el canal')
 
@@ -1000,7 +1034,7 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False,
                             'motivo': 'Falta el puesto o el terminal'})
 
-        led, gaveta, uid_rfid, uid_rfid_2 = _canal_del_terminal_en_puesto(terminal, puesto_id)
+        led, gaveta, uid_rfid, uid_rfid_2, _tipo = _canal_del_terminal_en_puesto(terminal, puesto_id)
         if not led:
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta,
                             'motivo': 'El terminal %s no tiene gaveta con luz en este puesto' % terminal})
@@ -1518,6 +1552,7 @@ def api_ptl_micros_config_leer():
         cfg = _micros_cfg_device(device_id)
         return jsonify({'success': True, 'device_id': device_id,
                         'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'invertidos': cfg['invertidos'],
                         'canal_max': MICROS_CANAL_MAX})
     except Exception as e:
         return error_interno(e, 'Error al leer la configuración de micros')
@@ -1548,6 +1583,7 @@ def api_ptl_micros_config_guardar():
         aplicado, motivo = _enviar_a_placa(ip, {'micros_config': cfg})
         return jsonify({'success': True, 'device_id': device_id,
                         'invertir': cfg['invertir'], 'ignorar': cfg['ignorar'],
+                        'invertidos': cfg['invertidos'],
                         'aplicado': aplicado,
                         'message': ('Aplicado en la placa.' if aplicado else
                                     'Guardado. La placa lo cogerá en su próximo '
@@ -1706,6 +1742,7 @@ def api_pick_to_light_mapa():
         canales = [{'canal': canal,
                     'terminal': (asignados.get(canal) or {}).get('terminal'),
                     'gaveta': (asignados.get(canal) or {}).get('gaveta'),
+                    'tipo': (asignados.get(canal) or {}).get('tipo') or 'terminal',
                     'rfid': bool((asignados.get(canal) or {}).get('uid_rfid')
                                  or (asignados.get(canal) or {}).get('uid_rfid_2'))}
                   for canal in range(1, total + 1)]

@@ -313,6 +313,13 @@ function mostrarTerminalesAsignados() {
     // antes de que elija, para que la gaveta encienda sin esperas.
     avisarAtencionGaveta();
 
+    // Herramientas manuales censadas de este puesto (RFID + pick-to-light).
+    // Se ofrecen aquí, ANTES de elegir terminal, porque el pick-to-light solo
+    // sigue una orden a la vez por puesto (ver seleccionarHerramientaManual en
+    // v3-gavetas.js): mezclarlo con una gaveta de terminal ya en curso le
+    // robaría el LED activo a esa gaveta.
+    cargarHerramientasDelPuesto().then(mostrarHerramientasManuales);
+
     if (terminalesAsignados.length === 0) {
         container.innerHTML = '<p class="no-data">⚠️ Esta máquina no tiene terminales asignados. Ve al panel de administración para asignar terminales.</p>';
         return;
@@ -404,6 +411,37 @@ function mostrarTerminalesAsignados() {
     if (terminalesEnEspera.length > 0) {
         _verificarBloqueosPendientes();
     }
+}
+
+/**
+ * Pinta la lista de herramientas manuales censadas en este puesto (si hay
+ * alguna). Sin herramientas censadas el contenedor se queda vacío y no se ve
+ * nada distinto de hoy.
+ */
+function mostrarHerramientasManuales(lista) {
+    const container = document.getElementById('herramientas-manuales');
+    if (!container) return;
+    if (!lista || lista.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    container.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+            <h3 style="margin-top:0;">🔧 Herramientas manuales de este puesto</h3>
+            <p class="instruccion">Antes de usar una, acércala al lector para confirmar que es la correcta:</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;">
+                ${lista.map(h => `
+                    <button type="button"
+                            onclick="seleccionarHerramientaManual('${h.codigo}', '${(h.nombre || h.codigo).replace(/'/g, "\\'")}')"
+                            style="background:#fff; border:2px solid #6f42c1; border-radius:10px;
+                                   padding:16px; text-align:center; cursor:pointer; font-size:1em;">
+                        <div style="font-size:1.2em; font-weight:bold; color:#6f42c1;">${h.nombre}</div>
+                        <div style="font-size:0.85em; color:#6c757d;">${h.rfid ? 'Con verificación RFID' : 'Sin RFID asignado'}</div>
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+    `;
 }
 
 /**

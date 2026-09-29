@@ -94,6 +94,15 @@ micro-interruptores**, y se guarda por placa:
 |---|---|---|
 | Lógica invertida | Interpreta `0` = gaveta fuera (micros normalmente abiertos) | desactivada |
 | Canales sin cablear | Esos canales no se leen: ni fuera, ni puestos, ni alarma | vacío |
+| Canales con lógica invertida (individual) | Esos canales concretos leen al revés del resto de la placa | vacío |
+
+El tercer ajuste es distinto del primero: "Lógica invertida" es global a los
+16 canales de la placa, pero un mismo expansor puede llevar mezcladas gavetas
+normales (NC = dentro) con un sensor de presencia de herramienta manual, cuyo
+contacto da GND cuando la herramienta está FUERA de su soporte (justo la
+polaridad contraria a una gaveta). Marcar ese canal en "Canales con lógica
+invertida" lo corrige sin tocar el resto del puesto. Mismo espíritu que
+"Canales sin cablear": se ajusta por canal, desde Admin, sin firmware nuevo.
 
 La configuración viaja a la placa en la respuesta del sondeo
 `/api/esp32/rfid/gaveta/orden` (y se empuja al puerto 80 al guardarla, si el

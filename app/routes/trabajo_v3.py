@@ -260,6 +260,55 @@ def datos_trabajo_v3():
         return error_interno(e, 'Error al obtener datos')
 
 
+# ==================== HERRAMIENTAS MANUALES (TRAZABILIDAD RFID) ====================
+#
+# Reutilizan el mismo mecanismo de pick-to-light que las gavetas de terminal:
+# un canal más de pick_to_light_canales (misma tabla, mismo puesto_id), solo
+# que con tipo='herramienta' en vez de 'terminal'. El alta (nombre libre + UID
+# RFID) la hace Admin con el flujo de armar/leer/confirmar que ya existe para
+# gavetas; aquí solo se lee, para que el operario sepa qué herramientas censadas
+# tiene delante en SU puesto.
+#
+# La columna 'tipo' puede no existir todavía si el servidor no ha pasado por la
+# migración correspondiente (ver app/__init__.py): en ese caso no hay ninguna
+# herramienta que listar, así que se responde una lista vacía en vez de un 500 —
+# mismo criterio de "nunca bloquear al operario" que el resto de Pick-to-Light.
+
+@bp.route('/api/herramientas-puesto', methods=['GET'])
+def api_herramientas_puesto():
+    """Herramientas manuales censadas (RFID) en un puesto, para que el
+    operario elija cuál va a usar antes de acercarla al lector."""
+    try:
+        puesto_id = (request.args.get('puesto_id') or '').strip()[:24]
+        if not puesto_id:
+            return jsonify({'success': True, 'herramientas': []})
+
+        try:
+            filas = db.session.execute(text("""
+                SELECT canal, terminal_codigo, etiqueta_gaveta, uid_rfid, uid_rfid_2
+                FROM pick_to_light_canales
+                WHERE puesto_id = :puesto_id AND activo = 1 AND tipo = 'herramienta'
+                ORDER BY etiqueta_gaveta
+            """), {'puesto_id': puesto_id}).fetchall()
+        except Exception:
+            # Columna 'tipo' todavía sin migrar en este servidor: sin ella no
+            # hay forma de distinguir herramientas de terminales, así que se
+            # trata como "todavía no hay herramientas censadas".
+            db.session.rollback()
+            filas = []
+
+        herramientas = [{
+            'codigo': f[1],
+            'nombre': f[2] or f[1],
+            'canal': f[0],
+            'rfid': bool(f[3] or f[4]),
+        } for f in filas]
+
+        return jsonify({'success': True, 'herramientas': herramientas})
+    except Exception as e:
+        return error_interno(e, 'Error al obtener las herramientas del puesto')
+
+
 # ==================== SESIONES DE TRABAJO (BLOQUEO CONCURRENTE) ====================
 
 @bp.route('/api/sesion/liberar', methods=['POST'])

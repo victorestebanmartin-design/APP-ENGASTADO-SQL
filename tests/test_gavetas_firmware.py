@@ -257,6 +257,7 @@ class PlacaConTira:
         # repetirlo aqui o el banco de pruebas deja de parecerse a la placa.
         obj.invertir = False
         obj.ignorar = set()
+        obj.invertidos = set()
         obj.fuera = set()
         obj._ultima_lectura_ms = 0
         obj._cambio_pendiente = {}
@@ -321,6 +322,7 @@ def placa_con_tira(gavetas):
     # lectura de micros (normalmente cerrado y ningun canal ignorado).
     obj.invertir = False
     obj.ignorar = set()
+    obj.invertidos = set()
     obj.fuera = set()
     obj._ultima_lectura_ms = 0
     obj._cambio_pendiente = {}
