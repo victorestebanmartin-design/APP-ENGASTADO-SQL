@@ -57,6 +57,55 @@
             font-size: 0.8em;
         }
         .login-reasignar:hover { color: #94a3b8; }
+        .login-manual {
+            margin-top: 22px;
+            padding-top: 18px;
+            border-top: 1px solid rgba(148,163,184,.14);
+        }
+        .login-manual summary {
+            cursor: pointer;
+            color: #64748b;
+            font-size: 0.82em;
+            list-style: none;
+        }
+        .login-manual summary::-webkit-details-marker { display: none; }
+        .login-manual summary:hover { color: #94a3b8; }
+        .login-manual-body { margin-top: 14px; text-align: left; }
+        .login-manual-body label {
+            display: block;
+            font-size: 0.78em;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+        .login-manual-body select {
+            width: 100%;
+            box-sizing: border-box;
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.3);
+            color: #f1f5f9;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.95em;
+        }
+        .login-manual-error {
+            color: #f87171;
+            font-size: 0.8em;
+            margin-top: 8px;
+        }
+        .login-manual-error.hidden { display: none; }
+        .btn-login-manual {
+            margin-top: 12px;
+            width: 100%;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 11px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-login-manual:disabled { opacity: .6; cursor: default; }
     </style>
 </head>
 <body>
@@ -73,6 +122,18 @@
         </a>
         <br>
         <a href="{{ url_for('main.admin_pin') }}?next=/admin&amp;force=1" class="login-reasignar">🆘 SOS Admin (PIN)</a>
+
+        <details class="login-manual">
+            <summary>¿Este equipo no tiene lector RFID? Identifícate sin tarjeta</summary>
+            <div class="login-manual-body">
+                <label for="select-operario-manual">Operario</label>
+                <select id="select-operario-manual">
+                    <option value="">— Seleccionar operario —</option>
+                </select>
+                <div id="login-manual-error" class="login-manual-error hidden"></div>
+                <button type="button" class="btn-login-manual" onclick="entrarSinTarjeta()">Entrar</button>
+            </div>
+        </details>
     </div>
 
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
@@ -167,44 +228,115 @@
 
         _iniciarSondeoEstadoRfid();
 
-        iniciarDeteccionRfid(`/api/operarios/logins?${FILTRO_LOGINS}`, function (login) {
-            const msg = document.getElementById('login-msg');
-            msg.textContent = `✓ ${login.operario}`;
-            msg.style.color = '#4ade80';
-
-            fetch('/api/sesion/operario/adoptar', {
+        /**
+         * Adopta en la sesion de este navegador un login_id ya creado (por
+         * tarjeta o por el selector manual de abajo) y, si el operario tiene
+         * permiso para el modulo de ESTE equipo, entra directo. Compartida
+         * por las dos vias: el PC ya sabe su puesto/modulo por si mismo
+         * (ver _pc_identidad en puestos.py), asi que ninguna de las dos
+         * necesita preguntarlo.
+         */
+        function _adoptarYEntrar(loginId, nombreOperario, alFallar) {
+            return fetch('/api/sesion/operario/adoptar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ login_id: login.id })
+                body: JSON.stringify({ login_id: loginId })
             })
                 .then(r => r.json())
                 .then(d => {
                     if (!d.success) {
-                        mostrarMotivo('rechazo',
-                            d.error || 'No se pudo entrar.',
-                            'Vuelve a pasar la tarjeta. Si sigue igual, avisa al administrador.');
+                        alFallar(d.error || 'No se pudo entrar.');
                         return;
                     }
                     // Estar identificado no basta: el operario tiene que tener
                     // permitido el modulo de ESTE equipo (Admin -> Operarios).
                     if (d.permitido === false) {
-                        mostrarMotivo('rechazo',
-                            `Acceso denegado a ${MODULO_LABEL}: ${login.operario} ` +
+                        alFallar(
+                            `Acceso denegado a ${MODULO_LABEL}: ${nombreOperario} ` +
                             'no tiene permiso para este módulo',
                             'Contacta con el administrador para que te dé acceso ' +
                             '(Admin → Operarios → Módulos permitidos).');
                         fetch('/api/sesion/operario/salir', { method: 'POST' }).catch(() => {});
-                        setTimeout(() => window.location.reload(), 12000);
                         return;
                     }
                     // Entrada directa al modulo de este PC
                     window.location.href = DESTINO || '/modules';
                 })
                 .catch(() => {
-                    mostrarMotivo('rechazo', 'Error de conexión con el servidor.',
-                        'Comprueba la red y vuelve a pasar la tarjeta.');
+                    alFallar('Error de conexión con el servidor.');
                 });
+        }
+
+        iniciarDeteccionRfid(`/api/operarios/logins?${FILTRO_LOGINS}`, function (login) {
+            const msg = document.getElementById('login-msg');
+            msg.textContent = `✓ ${login.operario}`;
+            msg.style.color = '#4ade80';
+
+            _adoptarYEntrar(login.id, login.operario, (motivo, consejo) => {
+                mostrarMotivo('rechazo', motivo,
+                    consejo || 'Vuelve a pasar la tarjeta. Si sigue igual, avisa al administrador.');
+                if (consejo) setTimeout(() => window.location.reload(), 12000);
+            });
         });
+
+        // Respaldo manual para los puestos que todavia no tienen lector RFID:
+        // mismo login exclusivo que usa la tarjeta (POST /api/operarios/login),
+        // solo que el operario se identifica eligiendo su nombre en vez de
+        // pasarlo por el lector.
+        fetch('/api/operarios')
+            .then(r => r.json())
+            .then(data => {
+                const sel = document.getElementById('select-operario-manual');
+                if (sel && data.operarios) {
+                    data.operarios.filter(o => o.activo).forEach(o => {
+                        const opt = document.createElement('option');
+                        opt.value = o.nombre;
+                        opt.textContent = o.nombre;
+                        sel.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {}); // silencioso: el respaldo manual se queda vacio si falla
+
+        function entrarSinTarjeta() {
+            const sel = document.getElementById('select-operario-manual');
+            const errorDiv = document.getElementById('login-manual-error');
+            const nombre = sel ? sel.value : '';
+            const btn = document.querySelector('.btn-login-manual');
+
+            errorDiv.classList.add('hidden');
+            if (!nombre) {
+                errorDiv.textContent = 'Selecciona tu operario de la lista.';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            if (btn) btn.disabled = true;
+            fetch('/api/operarios/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nombre })
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success) {
+                        errorDiv.textContent = d.error || 'No se pudo entrar con ese operario.';
+                        errorDiv.classList.remove('hidden');
+                        if (btn) btn.disabled = false;
+                        return;
+                    }
+                    _adoptarYEntrar(d.login_id, nombre, (motivo, consejo) => {
+                        errorDiv.textContent = consejo ? `${motivo} — ${consejo}` : motivo;
+                        errorDiv.classList.remove('hidden');
+                        if (btn) btn.disabled = false;
+                    });
+                })
+                .catch(() => {
+                    errorDiv.textContent = 'Error de conexión con el servidor.';
+                    errorDiv.classList.remove('hidden');
+                    if (btn) btn.disabled = false;
+                });
+        }
 
         // Reasignación: exige PIN de admin (ver /api/puesto/pc/reasignar).
         // Aquí solo se manda a la pantalla del selector; si el PC ya tiene
