@@ -510,6 +510,42 @@ def _columna_uid(caja):
     return 'uid_rfid_2' if caja == 2 else 'uid_rfid'
 
 
+def _ptl_invertidos_sincronizar(puesto_id, canal, es_herramienta):
+    """Mete o saca 'canal' de la lista de 'invertidos' de la placa de ese
+    puesto segun si el canal es ahora una herramienta manual o no.
+
+    Un sensor de presencia de herramienta da GND cuando la herramienta esta
+    FUERA (al reves que una gaveta de terminal), asi que sin esto habria que
+    teclear a mano el numero de canal en Admin -> Lectores RFID cada vez que
+    se asigna o se quita una herramienta. Solo toca ESTE canal: no pisa
+    entradas de 'invertidos' que el admin haya metido a mano para otros
+    canales por cualquier otro motivo.
+    """
+    device_id, ip = _placa_del_puesto(puesto_id)
+    if not device_id:
+        return
+
+    cfg = _micros_cfg_device(device_id)
+    invertidos = set(cfg['invertidos'])
+    if es_herramienta:
+        if canal in invertidos:
+            return
+        invertidos.add(canal)
+    else:
+        if canal not in invertidos:
+            return
+        invertidos.discard(canal)
+    cfg['invertidos'] = _sanear_lista_canales(sorted(invertidos))
+
+    from app.routes.sistema import _rfid_devices_actualizar
+
+    def _guardar(devs):
+        devs.setdefault(device_id, {})['ptl_micros'] = cfg
+        return devs
+    _rfid_devices_actualizar(_guardar)
+    _enviar_a_placa(ip, {'micros_config': cfg})
+
+
 def asignar_canal(puesto_id, canal, terminal, etiqueta, tipo='terminal'):
     """Valida y guarda una asignacion de canal. Devuelve (ok, error_o_None).
 
@@ -572,6 +608,7 @@ def asignar_canal(puesto_id, canal, terminal, etiqueta, tipo='terminal'):
     """), {'puesto_id': puesto_id, 'canal': canal, 'terminal': terminal,
            'etiqueta': etiqueta, 'tipo': tipo})
     db.session.commit()
+    _ptl_invertidos_sincronizar(puesto_id, canal, tipo == 'herramienta')
     return True, None
 
 
@@ -582,6 +619,7 @@ def desasignar_canal(puesto_id, canal):
         WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
     """), {'puesto_id': puesto_id, 'canal': canal})
     db.session.commit()
+    _ptl_invertidos_sincronizar(puesto_id, canal, False)
 
 
 @bp.route('/api/pick-to-light/canal', methods=['PUT'])
@@ -1762,6 +1800,19 @@ def api_pick_to_light_mapa():
             terminales_disponibles = [{'terminal': fila[0], 'maquina': fila[1]}
                                       for fila in filas if fila[0] not in asignados_ya]
 
+        # Maquinas MANUALES de este puesto, para listarlas al asignar una
+        # "herramienta" en vez de dejar un campo de texto libre. Las
+        # automaticas/semiautomaticas no se cogen ni se pasan por el lector,
+        # asi que no tiene sentido ofrecerlas aqui.
+        maquinas_disponibles = []
+        if puesto_id:
+            filas_maq = db.session.execute(text("""
+                SELECT nombre FROM maquinas
+                WHERE puesto_id = :puesto_id AND activo = 1 AND tipo_operacion = 'MANUAL'
+                ORDER BY nombre
+            """), {'puesto_id': puesto_id}).fetchall()
+            maquinas_disponibles = [fila[0] for fila in filas_maq]
+
         online = False
         try:
             # Mismo margen (90s) que Admin -> Lectores RFID: el latido se
@@ -1783,6 +1834,7 @@ def api_pick_to_light_mapa():
             },
             'total_gavetas': total, 'canales': canales,
             'terminales_disponibles': terminales_disponibles,
+            'maquinas_disponibles': maquinas_disponibles,
         })
     except Exception as e:
         return error_interno(e, 'Error al construir el mapa de cobertura')

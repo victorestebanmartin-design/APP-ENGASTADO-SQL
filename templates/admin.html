@@ -1819,6 +1819,7 @@
         var _ptlMapaCanales = [];   // [{canal, terminal, gaveta, rfid}] del ultimo /mapa cargado
         var _ptlMapaTotal = 0;
         var _ptlMapaTerminalesDisponibles = [];   // [{terminal, maquina}] sin canal aun en este puesto
+        var _ptlMapaMaquinasDisponibles = [];     // [nombre, ...] maquinas de este puesto, para asignar herramienta
         var _ptlPuestoId = '';      // puesto del lector elegido, para PUT/DELETE /canal (que van por puesto)
         var _ptlCorr = null;        // estado de la comprobacion guiada LED-micro, o null si no hay ninguna
         var _ptlCanalPanel = null;  // canal abierto en el panel de accion, o null
@@ -1980,6 +1981,7 @@
                 _ptlMapaCanales = [];
                 _ptlMapaTotal = 0;
                 _ptlMapaTerminalesDisponibles = [];
+                _ptlMapaMaquinasDisponibles = [];
                 _ptlPuestoId = '';
                 if (_ptlCanalPanel) ptlCanalCerrar();
                 _ptlRenderMapa([], []);
@@ -2406,6 +2408,7 @@
                 var mapa = await resp.json();
                 if (!mapa.success) {
                     _ptlMapaCanales = []; _ptlMapaTotal = 0; _ptlMapaTerminalesDisponibles = [];
+                    _ptlMapaMaquinasDisponibles = [];
                     _ptlRenderMapa([], []);
                     _ptlRenderDispositivo(null);
                     _ptlMensaje('ptl-mapa-msg', mapa.message || 'Error al cargar el mapa', false);
@@ -2414,6 +2417,7 @@
                 _ptlMapaCanales = mapa.canales || [];
                 _ptlMapaTotal = mapa.total_gavetas || 0;
                 _ptlMapaTerminalesDisponibles = mapa.terminales_disponibles || [];
+                _ptlMapaMaquinasDisponibles = mapa.maquinas_disponibles || [];
                 _ptlPuestoId = mapa.puesto_id || '';
                 _ptlRenderDispositivo(mapa.dispositivo || null);
                 if (!_ptlMapaTotal) {
@@ -2562,7 +2566,7 @@
         window.ptlAbrirCanal = function (canal) {
             if (_ptlCorr) { alert('Termina o cancela la comprobación de correspondencia primero.'); return; }
             if (_ptlCanalPanel) _ptlCanalDetener();
-            _ptlCanalPanel = { canal: canal, fase: 'ver', busqueda: '' };
+            _ptlCanalPanel = { canal: canal, fase: 'ver', busqueda: '', herramientaLibre: undefined };
             _ptlRenderCanalPanel();
         };
 
@@ -2589,6 +2593,8 @@
             _ptlCanalPanel.fase = 'asignar';
             _ptlCanalPanel.busqueda = '';
             _ptlCanalPanel.tipo = info.tipo === 'herramienta' ? 'herramienta' : 'terminal';
+            _ptlCanalPanel.herramientaLibre = undefined;
+            _ptlCanalPanel.herramientaValor = undefined;
             _ptlRenderCanalPanel();
         };
 
@@ -2596,7 +2602,25 @@
             if (!_ptlCanalPanel) return;
             _ptlCanalPanel.tipo = tipo === 'herramienta' ? 'herramienta' : 'terminal';
             _ptlCanalPanel.busqueda = '';
+            _ptlCanalPanel.herramientaLibre = undefined;
+            _ptlCanalPanel.herramientaValor = undefined;
             _ptlRenderCanalPanel();
+        };
+
+        window.ptlCanalHerramientaSelect = function (valor) {
+            if (!_ptlCanalPanel) return;
+            var eraLibre = _ptlCanalPanel.herramientaLibre;
+            _ptlCanalPanel.herramientaLibre = (valor === '__LIBRE__');
+            if (!_ptlCanalPanel.herramientaLibre) {
+                _ptlCanalPanel.herramientaValor = valor;
+            }
+            // Solo hace falta repintar al entrar o salir del modo libre (para
+            // mostrar/ocultar el texto libre): repintar siempre reconstruye el
+            // <select> y, con el valor viejo guardado, "deshace" lo que se
+            // acaba de elegir en pantalla.
+            if (_ptlCanalPanel.herramientaLibre !== eraLibre) {
+                _ptlRenderCanalPanel();
+            }
         };
 
         window.ptlCanalIrEtiqueta = function () {
@@ -2635,7 +2659,8 @@
                         (info.terminal ? ' · RFID: ' + (info.rfid ? '🏷️ configurado' : '⭘ sin configurar') : '') +
                         '</div><div style="display:flex;gap:8px;flex-wrap:wrap;">';
                 if (!info.terminal) {
-                    html += '<button class="btn-primary" onclick="ptlCanalIrAsignar()">➕ Asignar terminal</button>';
+                    html += '<button class="btn-primary" onclick="ptlCanalIrAsignar()">➕ Asignar terminal / ' +
+                            'herramienta</button>';
                 } else {
                     html += '<button class="btn-secondary" onclick="ptlCanalIrAsignar()">🔁 ' +
                             (esHerramienta ? 'Cambiar herramienta' : 'Cambiar terminal') + '</button>' +
@@ -2702,13 +2727,36 @@
                             'border:1px solid #334155;color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
                             opciones + '</select>';
                 } else {
-                    html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Nombre libre de la ' +
-                            'herramienta (no hace falta que exista en el catálogo de terminales).</p>' +
-                            '<input type="text" id="ptl-canal-herramienta" placeholder="Nombre de la herramienta ' +
-                            '(ej: Pelacables 3)" value="' +
-                            (info.tipo === 'herramienta' ? _dispEsc(info.terminal || '') : '') +
-                            '" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
-                            'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">';
+                    var maquinasHerr = _ptlMapaMaquinasDisponibles || [];
+                    var valorActualHerr = info.tipo === 'herramienta' ? (info.terminal || '') : '';
+                    var enCatalogoHerr = maquinasHerr.indexOf(valorActualHerr) !== -1;
+                    if (_ptlCanalPanel.herramientaLibre === undefined) {
+                        _ptlCanalPanel.herramientaLibre = !maquinasHerr.length ||
+                                                           (!!valorActualHerr && !enCatalogoHerr);
+                        _ptlCanalPanel.herramientaValor = enCatalogoHerr ? valorActualHerr : '';
+                    }
+                    var valorSelHerr = _ptlCanalPanel.herramientaValor || '';
+                    var opcionesMaq = maquinasHerr.map(function (m) {
+                        return '<option value="' + _dispEsc(m) + '"' +
+                               (!_ptlCanalPanel.herramientaLibre && m === valorSelHerr ? ' selected' : '') +
+                               '>' + _dispEsc(m) + '</option>';
+                    }).join('');
+                    html += '<p style="margin:0 0 8px;font-size:0.85em;color:#94a3b8;">Máquinas manuales de ' +
+                            'este puesto. Si la herramienta no está en la lista, elige "Otra" y escribe su ' +
+                            'nombre.</p>' +
+                            '<select id="ptl-canal-herramienta-sel" onchange="ptlCanalHerramientaSelect(this.value)" ' +
+                            'style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                            'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                            opcionesMaq +
+                            '<option value="__LIBRE__"' + (_ptlCanalPanel.herramientaLibre ? ' selected' : '') +
+                            '>Otra (escribir nombre)...</option></select>';
+                    if (_ptlCanalPanel.herramientaLibre) {
+                        html += '<input type="text" id="ptl-canal-herramienta" placeholder="Nombre de la ' +
+                                'herramienta (ej: Pelacables 3)" value="' +
+                                (enCatalogoHerr ? '' : _dispEsc(valorActualHerr)) +
+                                '" style="width:100%;padding:7px 10px;background:#0f172a;border:1px solid #334155;' +
+                                'color:#f1f5f9;border-radius:8px;margin-bottom:8px;">';
+                    }
                 }
                 html += '<input type="text" id="ptl-canal-etiqueta" placeholder="Etiqueta de la gaveta (ej: A-12)" ' +
                         'value="' + _dispEsc(info.gaveta || '') + '" style="width:100%;padding:7px 10px;' +
@@ -2745,9 +2793,13 @@
                 var sel = document.getElementById('ptl-canal-terminal');
                 terminal = sel && sel.value;
                 if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Elige un terminal de la lista.', false); return; }
-            } else {
+            } else if (_ptlCanalPanel.herramientaLibre) {
                 terminal = ((document.getElementById('ptl-canal-herramienta') || {}).value || '').trim();
                 if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Escribe el nombre de la herramienta.', false); return; }
+            } else {
+                var selHerr = document.getElementById('ptl-canal-herramienta-sel');
+                terminal = (selHerr && selHerr.value) || '';
+                if (!terminal) { _ptlMensaje('ptl-canal-msg', 'Elige una máquina de la lista.', false); return; }
             }
             var etiqueta = ((document.getElementById('ptl-canal-etiqueta') || {}).value || '').trim();
             if (!etiqueta) { _ptlMensaje('ptl-canal-msg', 'Escribe una etiqueta para la gaveta.', false); return; }

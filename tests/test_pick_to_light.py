@@ -555,6 +555,97 @@ def test_volver_a_la_logica_de_micros_de_siempre(app, client, admin_client, con_
     assert orden['micros'] == {'invertir': False, 'ignorar': [], 'invertidos': []}
 
 
+def test_asignar_herramienta_invierte_el_canal_solo(app, client, admin_client, con_placa):
+    """Un sensor de herramienta manual da GND cuando esta FUERA (al reves que
+    una gaveta de terminal): asignar el canal como 'herramienta' tiene que
+    meterlo en 'invertidos' sin que el admin toque nada a mano."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/canal',
+                                 json={'puesto_id': 'puesto_001', 'canal': 7,
+                                       'terminal': 'Pelacables 3', 'etiqueta_gaveta': 'A-12',
+                                       'tipo': 'herramienta'})
+    assert respuesta.get_json()['success'] is True
+    assert con_placa[-1][1] == {'micros_config': {'invertir': False, 'ignorar': [], 'invertidos': [7]}}
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertidos'] == [7]
+
+
+def test_volver_a_terminal_saca_el_canal_de_invertidos(app, client, admin_client, con_placa):
+    """Si una herramienta se quita y ese mismo canal pasa a ser un terminal de
+    corte, deja de tener la logica al reves."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': 'Pelacables 3',
+                           'etiqueta_gaveta': 'A-12', 'tipo': 'herramienta'})
+    admin_client.delete('/api/pick-to-light/canal?puesto_id=puesto_001&canal=7')
+
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': '640204',
+                           'etiqueta_gaveta': 'A-12', 'tipo': 'terminal'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertidos'] == []
+
+
+def test_desasignar_herramienta_saca_el_canal_de_invertidos(app, client, admin_client, con_placa):
+    """Quitar del todo una herramienta tampoco deja el canal invertido para
+    quien ocupe ese numero despues."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': 'Pelacables 3',
+                           'etiqueta_gaveta': 'A-12', 'tipo': 'herramienta'})
+
+    admin_client.delete('/api/pick-to-light/canal?puesto_id=puesto_001&canal=7')
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertidos'] == []
+
+
+def test_asignar_herramienta_no_pisa_invertidos_de_otros_canales(app, client, admin_client, con_placa):
+    """La sincronizacion automatica no puede borrar lo que el admin ya tenia
+    metido a mano para otro canal."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/micros/config',
+                     json={'device_id': device_id, 'invertir': False, 'ignorar': [],
+                           'invertidos': [40]})
+
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': 'Pelacables 3',
+                           'etiqueta_gaveta': 'A-12', 'tipo': 'herramienta'})
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertidos'] == [7, 40]
+
+
+def test_asignar_herramienta_sin_placa_no_es_un_error(app, client, admin_client, sin_placa):
+    """La placa desenchufada no puede impedir asignar una herramienta: lo
+    cogera al sondear, igual que el resto de configuracion de pick-to-light."""
+    device_id = _registrar_lector(app)
+
+    respuesta = admin_client.put('/api/pick-to-light/canal',
+                                 json={'puesto_id': 'puesto_001', 'canal': 7,
+                                       'terminal': 'Pelacables 3', 'etiqueta_gaveta': 'A-12',
+                                       'tipo': 'herramienta'})
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()['success'] is True
+
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['micros']['invertidos'] == [7]
+
+
+def test_asignar_herramienta_sin_lector_en_el_puesto_no_es_un_error(admin_client):
+    """Un puesto sin lector RFID asignado todavia no tiene placa a la que
+    sincronizar nada: la asignacion tiene que guardarse igual."""
+    respuesta = admin_client.put('/api/pick-to-light/canal',
+                                 json={'puesto_id': 'puesto_001', 'canal': 7,
+                                       'terminal': 'Pelacables 3', 'etiqueta_gaveta': 'A-12',
+                                       'tipo': 'herramienta'})
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()['success'] is True
+
+
 def test_brillo_por_defecto_es_el_de_siempre(app, admin_client, con_placa):
     """Sin configurar nada, los valores coinciden con los COLOR_* de gavetas.py."""
     device_id = _registrar_lector(app)
