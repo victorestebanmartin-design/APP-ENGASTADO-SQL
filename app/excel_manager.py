@@ -410,6 +410,7 @@ class ExcelManager:
         col_longitud         = _col(['Longitud'])
         col_seccion          = _col(['Sección', 'Seccion'])
         col_observaciones    = _col(['Observaciones'])
+        col_serie            = _col(['Series'])
 
         if not col_de_manguito:
             raise ValueError("Columna 'De Manguito' no encontrada en el Excel")
@@ -456,6 +457,7 @@ class ExcelManager:
                 'longitud':      _lon,
                 'seccion':       _safe(row[col_seccion])        if col_seccion    else '',
                 'activo_manguera': activo_manguera,
+                'serie':         _serie_str(row[col_serie]) if col_serie else '',
             }
 
             if de_elemento not in elementos:

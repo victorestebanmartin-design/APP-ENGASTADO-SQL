@@ -490,7 +490,7 @@
     var errorCorte  = document.getElementById('modal-mg-corte-error');
     var listaEl     = document.getElementById('modal-mg-lista-contenido');
 
-    var VISTAS = ['modo', 'txttipo', 'metodo', 'input', 'lista', 'swform', 'excelform'];
+    var VISTAS = ['modo', 'txttipo', 'metodo', 'input', 'lista', 'swform', 'excelform', 'reetiquetado'];
 
     function mostrarVista(v) {
       VISTAS.forEach(function (n) {
@@ -582,15 +582,81 @@
       }
 
       if (flujo === 'guiado') {
-        cerrar();
-        cargarGuiado(corte);
+        comprobarReetiquetado(corte);
       } else {
         // txt_sw → pasar al formulario de ref/edición
         corteSel = corte;
         var lbl = document.getElementById('mg-swform-corte');
         if (lbl) lbl.textContent = corte.codigo + (corte.descripcion ? ' · ' + corte.descripcion : '');
+        sugerirRefEdicion(corte);
         mostrarVista('swform');
       }
+    }
+
+    // ── Reetiquetado previo al guiado ───────────────────────────────────
+    // La máquina de corte junta los cables con el mismo (cable, elemento) aunque
+    // sean de series distintas. Si hay alguno, el guiado no empieza hasta que
+    // el operario confirme que ha repartido los cables y pegado las etiquetas
+    // de reserva. Si la consulta falla no se bloquea el trabajo.
+    function fmtLongitud(l) {
+      return l == null ? '' : ' · ' + String(l).replace('.', ',') + ' m';
+    }
+
+    function pintarReetiquetado(colisiones) {
+      var nReservas = colisiones.reduce(function (a, c) { return a + c.reservas.length; }, 0);
+      document.getElementById('mg-reet-resumen').textContent =
+        colisiones.length + ' paquete' + (colisiones.length !== 1 ? 's' : '') + ' juntados por la máquina · ' +
+        nReservas + ' etiqueta' + (nReservas !== 1 ? 's' : '') + ' de reserva';
+      document.getElementById('mg-reet-lista').innerHTML = colisiones.map(function (c) {
+        var movs = c.reservas.map(function (r) {
+          var cables = r.cables.map(function (k) {
+            return k.cantidad + '× marca <b>' + esc(k.marca || '—') + '</b>' + esc(fmtLongitud(k.longitud)) +
+                   (k.igual_en_principal ? ' <span class="mg-reet-igual">(hay iguales en ' + esc(c.principal.etiqueta) + ': da lo mismo cuál)</span>' : '');
+          }).join(' &nbsp;·&nbsp; ');
+          return '<div class="mg-reet-mover">Etiqueta <b>#' + esc(r.etiqueta) + '</b> → ' +
+                 (cables || (r.num_cables + ' cable' + (r.num_cables !== 1 ? 's' : ''))) + '</div>';
+        }).join('');
+        return '<div class="mg-reet-item">' +
+                 '<div class="mg-reet-cab">' + esc(c.elemento) + '<small>' + esc(c.cod_cable) + '</small></div>' +
+                 '<div class="mg-reet-quedan">Etiqueta principal en el paquete: #' + esc(c.principal.etiqueta) + '</div>' +
+                 movs +
+               '</div>';
+      }).join('');
+    }
+
+    async function comprobarReetiquetado(corte) {
+      var colisiones = [];
+      try {
+        var res  = await fetch('/api/manguitos/reetiquetado', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archivo: corte.archivo })
+        });
+        var data = await res.json();
+        if (data.success && data.colisiones) colisiones = data.colisiones;
+      } catch (e) {
+        console.error('No se pudo comprobar el reetiquetado:', e);
+      }
+      if (!colisiones.length) {
+        cerrar();
+        cargarGuiado(corte);
+        return;
+      }
+      corteSel = corte;
+      pintarReetiquetado(colisiones);
+      mostrarVista('reetiquetado');
+    }
+
+    // Referencia = nombre del proyecto; edición = «EDnn» del nombre del archivo
+    // (H0371556_h0392484_PC_SALA_RENFE_HC_ED09.XLSX → ed_09). Si el corte no
+    // trae alguno de los dos, el campo conserva el valor por defecto.
+    function sugerirRefEdicion(corte) {
+      var refEl = document.getElementById('mg-sw-ref');
+      var edEl  = document.getElementById('mg-sw-edicion');
+      var ref = String(corte.descripcion || '').trim();
+      var m = /_ed[_-]?(\d+)\.[a-z0-9]+$/i.exec(String(corte.archivo || ''));
+      if (refEl) refEl.value = ref || 'PC_CAB_BADEN';
+      if (edEl)  edEl.value  = m ? 'ed_' + m[1] : 'ed_04';
     }
 
     // ── Generar TXT según SW ────────────────────────────────────────────
@@ -715,6 +781,12 @@
     }
 
     document.getElementById('btn-mg-sw-volver').addEventListener('click', irAMetodoCorte);
+    document.getElementById('btn-mg-reet-volver').addEventListener('click', irAMetodoCorte);
+    document.getElementById('btn-mg-reet-confirmar').addEventListener('click', function () {
+      var corte = corteSel;
+      cerrar();
+      if (corte) cargarGuiado(corte);
+    });
     document.getElementById('btn-mg-sw-generar').addEventListener('click', generarTxtSw);
     document.getElementById('btn-mg-excel-volver').addEventListener('click', function () {
       mostrarVista('txttipo');

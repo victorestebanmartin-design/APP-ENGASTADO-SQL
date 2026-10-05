@@ -18,6 +18,8 @@ import hashlib
 from datetime import datetime
 import pandas as pd
 
+from app.colisiones_etiquetas import detectar_colisiones, etiqueta_texto
+
 from repositories.proyecto_repository import ProyectoRepository
 from repositories.orden_repository import OrdenRepository
 from repositories.codigo_corte_repository import CodigoCorteRepository
@@ -430,6 +432,44 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
             margin-top: 0.5mm;
         }}
         
+        /* Reserva: etiquetas que la máquina junta con otra y no se usan en el corte */
+        .etiqueta-vacia {{
+            visibility: hidden;
+        }}
+
+        .etiqueta-reserva {{
+            border-style: dashed !important;
+            position: relative;
+        }}
+
+        .etiqueta-reserva::before {{
+            content: "RESERVA";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            background: #dc2626;
+            color: #fff;
+            font-size: 5.5pt;
+            font-weight: bold;
+            line-height: 3mm;
+            letter-spacing: 0.3pt;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }}
+
+        .etiqueta-reserva .etiqueta-bottom {{
+            padding: 1mm;
+            gap: 0.2mm;
+        }}
+
+        .etiqueta-en-paquete {{
+            color: #dc2626;
+            font-weight: bold;
+            font-size: 6pt;
+        }}
+
         /* Estilos para vista previa en pantalla */
         @media screen {{
             .etiquetas-container {{
@@ -459,8 +499,8 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
     <div class="etiquetas-container">
 """
     
-    # Generar etiquetas (hasta 65 por página: 13 columnas x 5 filas)
-    for i, grupo in enumerate(grupos):
+    def _celda(grupo, i, principal=None):
+        """HTML de una etiqueta. 'principal' (texto) marca una etiqueta de reserva."""
         sub_num = grupo.get('sub_numero', 0)
         if sub_num and sub_num > 0:
             numero = f"{grupo.get('numero_etiqueta', i + 1)}.{str(sub_num).zfill(2)}"
@@ -475,52 +515,81 @@ def generar_html_etiquetas_impresion(grupos, archivo, codigo_corte="", color_map
         etq_txt_color = (text_color_map or {}).get(cod_key) or _text_color_for_bg(etq_color)
         border_color = '#f59e0b' if es_padre else '#333'
         top_border   = '#f59e0b' if es_padre else '#0ea5e9'
+        if principal:
+            border_color = '#dc2626'
 
         # Truncar textos para que quepan en etiquetas pequeñas
         elemento = grupo['elemento'][:15] if len(grupo['elemento']) > 15 else grupo['elemento']
         cod_cable = grupo['cod_cable'][:12] if len(grupo['cod_cable']) > 12 else grupo['cod_cable']
         seccion = grupo.get('seccion', '')[:10] if grupo.get('seccion') else ''
-        descripcion = grupo.get('descripcion', '')[:18] if grupo.get('descripcion') else ''
 
-        html += f"""
-        <div class="etiqueta" style="border-color: {border_color};">
+        h = f"""
+        <div class="etiqueta{' etiqueta-reserva' if principal else ''}" style="border-color: {border_color};">
             <div class="etiqueta-top" style="border-bottom-color: {top_border};">
                 <div class="etiqueta-numero" style="background: {etq_color}; color: {etq_txt_color};">{badge_label}</div>
                 <div class="etiqueta-elemento">{elemento}</div>
             </div>
             <div class="etiqueta-bottom">"""
-        
+
         # Añadir código de corte si existe
         if codigo_corte:
-            html += f"""
+            h += f"""
                 <div class="etiqueta-info-line etiqueta-corte">{codigo_corte}</div>"""
-        
-        html += f"""
+
+        h += f"""
                 <div class="etiqueta-info-line etiqueta-cable">{cod_cable}</div>"""
-        
+
         if seccion:
-            html += f"""
+            h += f"""
                 <div class="etiqueta-info-line etiqueta-seccion">{seccion}</div>"""
-        
-        html += """
+
+        if principal:
+            h += f"""
+                <div class="etiqueta-info-line etiqueta-en-paquete">cortado en {principal}</div>"""
+
+        h += """
             </div>
         </div>
 """
-        
+        return h
+
+    # La máquina de corte junta lo que comparte (cable, elemento), sea cual
+    # sea la serie: una etiqueta se queda en la hoja y las demás van a reserva.
+    reservas = []   # (grupo, texto de la etiqueta principal)
+    ids_reserva = set()
+    for c in detectar_colisiones(grupos):
+        txt = etiqueta_texto(c['principal'].get('numero_etiqueta'), c['principal'].get('sub_numero'))
+        for r in c['reservas']:
+            reservas.append((r, txt))
+            ids_reserva.add(id(r))
+    reservas.sort(key=lambda x: (x[0].get('numero_etiqueta') or 0, x[0].get('sub_numero') or 0))
+    normales = [g for g in grupos if id(g) not in ids_reserva]
+
+    # Una sola rejilla 13x5 sobre la hoja troquelada: las etiquetas normales
+    # primero y las de reserva a partir de una fila nueva, así cada una cae
+    # justo sobre su pegatina y la reserva se despega aparte del corte.
+    # (Nada de recuadros con borde o relleno: desplazarían la rejilla.)
+    celdas = [_celda(g, i) for i, g in enumerate(normales)]
+    if reservas:
+        celdas += ['<div class="etiqueta-vacia"></div>'] * (-len(celdas) % 13)
+        celdas += [_celda(g, i, principal=txt) for i, (g, txt) in enumerate(reservas)]
+
+    for i, celda in enumerate(celdas):
+        html += celda
         # Salto de página cada 65 etiquetas (13 columnas x 5 filas)
-        if (i + 1) % 65 == 0 and (i + 1) < len(grupos):
+        if (i + 1) % 65 == 0 and (i + 1) < len(celdas):
             html += """
     </div>
     <div class="page-break"></div>
     <div class="etiquetas-container">
 """
-    
+
     html += """
     </div>
 </body>
 </html>
 """
-    
+
     return html
 
 

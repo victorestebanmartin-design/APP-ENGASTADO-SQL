@@ -26,7 +26,8 @@ from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
-from app.excel_manager import ExcelManager
+from app.excel_manager import ExcelManager, leer_excel_cacheado, _serie_str
+from app.colisiones_etiquetas import detectar_colisiones, etiqueta_texto
 from app.auth import (
     requiere_pin_admin,
     requiere_modulo,
@@ -65,6 +66,44 @@ def _respuesta_descarga_manguitos(ficheros: dict, ref: str, edicion: str):
     zip_nombre = f"{ref} {edicion} manguitos.zip"
     return send_file(zip_buf, mimetype='application/zip', as_attachment=True,
                      download_name=zip_nombre)
+
+
+def _buscador_etiquetas(archivo):
+    """Devuelve buscar(manguito, elemento) -> 'N' o 'N.SS' (o None).
+
+    Una etiqueta se identifica por (cable, elemento, serie): el mismo
+    elemento con el mismo cable puede estar en una serie (1.01) y suelto (24).
+    Enlazar solo por (cable, elemento) dejaba el manguito en la última
+    etiqueta leída y la serie entera desaparecía de la pantalla.
+    """
+    por_serie = {}   # (cod, elemento, serie) -> label
+    por_cable = {}   # (cod, elemento) -> label (primer match)
+    por_elem = {}    # elemento -> label (primer match)
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(
+                """SELECT elemento, numero_etiqueta, sub_numero, cod_cable, grupo_serie
+                   FROM etiquetas_elementos
+                   WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)
+                   ORDER BY numero_etiqueta, sub_numero"""
+            ), {'arch': archivo}).fetchall()
+    except Exception:
+        rows = []
+    for elem, num_etq, sub_num, cod, serie in rows:
+        cod = (cod or '').strip().upper()
+        serie = (serie or '').strip()
+        label = f"{num_etq}.{str(int(sub_num)).zfill(2)}" if sub_num and int(sub_num) > 0 else str(num_etq)
+        por_serie.setdefault((cod, elem, serie), label)
+        por_cable.setdefault((cod, elem), label)
+        por_elem.setdefault(elem, label)
+
+    def buscar(mg, elemento):
+        cod = (mg.get('cod_cable') or '').strip().upper()
+        serie = (mg.get('serie') or '').strip()
+        return (por_serie.get((cod, elemento, serie))
+                or por_cable.get((cod, elemento))
+                or por_elem.get(elemento))
+    return buscar
 
 
 @bp.route('/manguitos')
@@ -152,24 +191,10 @@ def api_manguitos_datos():
 
         # Enriquecer cada manguito individual con su numero_etiqueta según (cod_cable, elemento)
         try:
-            with db.engine.connect() as conn:
-                rows = conn.execute(text(
-                    """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
-                       FROM etiquetas_elementos
-                       WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)"""
-                ), {'arch': archivo}).fetchall()
-            num_map_full = {}   # (cod_cable.upper(), elemento) -> label
-            num_map_elem = {}   # elemento -> label (fallback: primer match)
-            for r in rows:
-                elem_name, num_etq, sub_num, cod = r[0], r[1], r[2], (r[3] or '').strip().upper()
-                label = f"{num_etq}.{str(int(sub_num)).zfill(2)}" if sub_num and int(sub_num) > 0 else str(num_etq)
-                num_map_full[(cod, elem_name)] = label
-                if elem_name not in num_map_elem:
-                    num_map_elem[elem_name] = label
+            buscar = _buscador_etiquetas(archivo)
             for elem in resultado:
                 for mg in elem.get('manguitos', []):
-                    cod = (mg.get('cod_cable') or '').strip().upper()
-                    mg['numero_etiqueta'] = num_map_full.get((cod, elem['elemento'])) or num_map_elem.get(elem['elemento'])
+                    mg['numero_etiqueta'] = buscar(mg, elem['elemento'])
 
             # Reagrupar por etiqueta (paquete): cada paquete corresponde a un único
             # cable/etiqueta. Agrupar por 'De Elemento' mezclaba manguitos de etiquetas
@@ -206,6 +231,80 @@ def api_manguitos_datos():
         return error_interno(e)
 
 
+@bp.route('/api/manguitos/reetiquetado', methods=['POST'])
+def api_manguitos_reetiquetado():
+    """Paquetes que la máquina de corte ha juntado y hay que repartir.
+
+    Devuelve, por cada (cable, elemento) repetido en varias etiquetas, qué
+    cables se quedan con la etiqueta principal y cuáles hay que pasar a cada
+    etiqueta de reserva. Los cables se distinguen por marca y longitud; si en
+    la principal hay otros iguales, da lo mismo cuál se mueve.
+    """
+    data = request.get_json() or {}
+    archivo = data.get('archivo', '').strip()
+    if not archivo:
+        return jsonify({'success': False, 'error': 'Archivo no especificado'})
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.execute(text(
+                """SELECT numero_etiqueta, sub_numero, cod_cable, elemento, grupo_serie, num_cables
+                   FROM etiquetas_elementos WHERE archivo_excel = :arch
+                   ORDER BY numero_etiqueta, sub_numero"""
+            ), {'arch': archivo}).fetchall()
+        etiquetas = [dict(zip(('numero_etiqueta', 'sub_numero', 'cod_cable', 'elemento',
+                               'grupo_serie', 'num_cables'), r)) for r in rows]
+        colisiones = detectar_colisiones(etiquetas)
+        if not colisiones:
+            return jsonify({'success': True, 'colisiones': []})
+
+        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/cortes')
+        filepath = ExcelManager(upload_folder)._ruta_segura(archivo)
+        if not filepath or not os.path.exists(filepath):
+            raise FileNotFoundError(f'Archivo no encontrado: {archivo}')
+        df = leer_excel_cacheado(filepath)
+
+        col_marca = next((c for c in ('Cable / Marca', 'De Marca') if c in df.columns), None)
+        df = df[df['Cod. cable'].notna() & (df['Cod. cable'].astype(str).str.strip() != '')]
+        series = df['Series'].apply(_serie_str) if 'Series' in df.columns else pd.Series('', index=df.index)
+        cods = df['Cod. cable'].astype(str).str.strip().str.upper()
+        elems = df['De Elemento Etiquetas'].astype(str).str.strip()
+
+        def _cables(cod, elem, serie):
+            sub = df[(cods == cod) & (elems == elem) & (series == serie)]
+            cuenta = {}
+            for _, r in sub.iterrows():
+                marca = _serie_str(r[col_marca]) if col_marca else ''
+                try:
+                    lon = round(float(r['Longitud']), 3)
+                except (KeyError, TypeError, ValueError):
+                    lon = None
+                cuenta[(marca, lon)] = cuenta.get((marca, lon), 0) + 1
+            return cuenta
+
+        def _ficha(e, cod, elem):
+            cuenta = _cables(cod, elem, (e.get('grupo_serie') or '').strip())
+            return {'etiqueta': etiqueta_texto(e['numero_etiqueta'], e['sub_numero']),
+                    'num_cables': e['num_cables'], 'cuenta': cuenta}
+
+        salida = []
+        for c in colisiones:
+            cod, elem = c['cod_cable'], c['elemento']
+            principal = _ficha(c['principal'], cod, elem)
+            reservas = []
+            for r in c['reservas']:
+                f = _ficha(r, cod, elem)
+                cables = [{'marca': m, 'longitud': l, 'cantidad': n,
+                           'igual_en_principal': (m, l) in principal['cuenta']}
+                          for (m, l), n in sorted(f['cuenta'].items(), key=lambda kv: (str(kv[0][0]), kv[0][1] or 0))]
+                reservas.append({'etiqueta': f['etiqueta'], 'num_cables': f['num_cables'], 'cables': cables})
+            salida.append({'cod_cable': cod, 'elemento': elem,
+                           'principal': {'etiqueta': principal['etiqueta'], 'num_cables': principal['num_cables']},
+                           'reservas': reservas})
+        return jsonify({'success': True, 'colisiones': salida})
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/manguitos/generar-txt', methods=['POST'])
 def api_manguitos_generar_txt():
     """Genera un TXT por código de manguito, ordenado por número de etiqueta"""
@@ -221,33 +320,13 @@ def api_manguitos_generar_txt():
         elementos = em.get_manguitos(archivo)
 
         # Obtener numero_etiqueta formateado por (cod_cable, elemento) desde BD
-        num_map_full = {}   # (cod_cable.upper(), elemento) -> label
-        num_map_elem = {}   # elemento -> label (fallback)
-        try:
-            with db.engine.connect() as conn:
-                rows = conn.execute(text(
-                    """SELECT elemento, numero_etiqueta, sub_numero, cod_cable
-                       FROM etiquetas_elementos
-                       WHERE archivo_excel = :arch AND (es_grupo_padre = 0 OR COALESCE(es_padre_manual,0) = 1)"""
-                ), {'arch': archivo}).fetchall()
-            for r in rows:
-                elem_name, num_etq, sub_num, cod = r[0], r[1], r[2], (r[3] or '').strip().upper()
-                if sub_num and int(sub_num) > 0:
-                    label = f"{num_etq}.{str(int(sub_num)).zfill(2)}"
-                else:
-                    label = str(num_etq)
-                num_map_full[(cod, elem_name)] = label
-                if elem_name not in num_map_elem:
-                    num_map_elem[elem_name] = label
-        except Exception:
-            pass
+        buscar = _buscador_etiquetas(archivo)
 
         # Aplanar: lista de manguitos con su numero de etiqueta (por cable) para ordenar
         lista_plana = []
         for elem in elementos:
             for m in elem['manguitos']:
-                cod = (m.get('cod_cable') or '').strip().upper()
-                num_str = num_map_full.get((cod, elem['elemento'])) or num_map_elem.get(elem['elemento'])
+                num_str = buscar(m, elem['elemento'])
                 try:
                     num_float = float(num_str) if num_str else float('inf')
                 except (ValueError, TypeError):

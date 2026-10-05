@@ -157,6 +157,17 @@
     /* Coming soon (tab pedido) */
     .coming-soon { text-align: center; padding: 60px 20px; color: #9ca3af; }
     .coming-soon .cs-icon { font-size: 48px; margin-bottom: 12px; }
+
+    /* Aviso de reetiquetado previo al guiado */
+    .mg-reet-explica { font-size: 13px; color: #4b5563; line-height: 1.45; margin: 0 0 10px; text-align: left; }
+    .mg-reet-lista { max-height: 46vh; overflow-y: auto; text-align: left; }
+    .mg-reet-item { border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; background: #fff; }
+    .mg-reet-cab { font-weight: 700; color: #1f2937; font-size: 14px; }
+    .mg-reet-cab small { font-weight: 400; color: #6b7280; margin-left: 6px; }
+    .mg-reet-quedan { font-size: 12px; color: #6b7280; margin: 2px 0 4px; }
+    .mg-reet-mover { font-size: 13px; color: #7f1d1d; background: #fef2f2; border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+    .mg-reet-mover b { color: #dc2626; }
+    .mg-reet-igual { color: #6b7280; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -330,6 +341,29 @@
         </div>
         <div class="modal-bono-footer">
           <button type="button" id="btn-mg-lista-volver" class="btn-volver-modal">← Volver</button>
+        </div>
+      </div>
+
+      <!-- Vista 8: reetiquetado previo al guiado (paquetes que la máquina juntó) -->
+      <div id="modal-mg-reetiquetado" class="hidden">
+        <div class="modal-operario-header">
+          <div class="modal-operario-icon">🏷️</div>
+          <h2>Antes de empezar: reetiquetar</h2>
+          <p id="mg-reet-resumen">—</p>
+        </div>
+        <div class="modal-operario-body">
+          <p class="mg-reet-explica">
+            La máquina de corte junta los cables que comparten <strong>cable y elemento</strong>
+            aunque vayan en series distintas. Cada paquete lleva la etiqueta
+            <strong>principal</strong>; las demás están en el recuadro <strong>RESERVA</strong>
+            de la hoja de etiquetas, dentro de la caja de corte. Separa los cables indicados
+            (por marca y longitud) y pégales su etiqueta de reserva.
+          </p>
+          <div id="mg-reet-lista" class="mg-reet-lista"></div>
+        </div>
+        <div class="modal-bono-footer">
+          <button type="button" id="btn-mg-reet-volver" class="btn-volver-modal">← Volver</button>
+          <button type="button" id="btn-mg-reet-confirmar" class="btn-confirmar-operario btn-confirmar-flex">✔ Ya he reetiquetado · Empezar</button>
         </div>
       </div>
 
