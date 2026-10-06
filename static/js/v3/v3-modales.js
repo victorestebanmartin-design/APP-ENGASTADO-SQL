@@ -407,6 +407,9 @@ async function abrirModalMaquina() {
 async function seleccionarMaquinaDesdeModal(idx) {
     maquinaSeleccionada = _maquinasCache[idx];
 
+    // Máquina censada con pick-to-light + RFID: coger la herramienta antes de seguir.
+    await verificarMaquinaPtl(maquinaSeleccionada);
+
     // Si la máquina lleva regulación, mostrar popup de verificación primero
     if (maquinaSeleccionada.lleva_regulacion) {
         mostrarModalRegulacion();

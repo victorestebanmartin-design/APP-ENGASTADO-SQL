@@ -83,14 +83,16 @@ async function destellarGaveta() {
  */
 async function verificarMaquinaPtl(maquina) {
     if (!maquina || !puestoSeleccionado || !puestoSeleccionado.id) return;
+    // Admin guarda el código recortado a 40 caracteres y sin espacios.
+    const nombreMaq = (maquina.nombre || '').trim().slice(0, 40);
 
     // Misma máquina que ya se está usando: ya está confirmada y en azul.
-    if (herramientaEnUso && herramientaEnUso.codigo === maquina.nombre) return;
+    if (herramientaEnUso && herramientaEnUso.codigo === nombreMaq) return;
     // Otra máquina: la anterior hay que devolverla (azul parpadeando).
     if (herramientaEnUso) await devolverHerramientaMaquina(false);
 
     await cargarHerramientasDelPuesto();
-    const censada = herramientasDelPuesto.find(h => h.codigo === maquina.nombre);
+    const censada = herramientasDelPuesto.find(h => h.codigo === nombreMaq);
     if (!censada) return;
 
     avisarAtencionGaveta();
@@ -273,13 +275,14 @@ function avisarAtencionGaveta() {
  */
 async function cargarHerramientasDelPuesto() {
     herramientasDelPuesto = [];
-    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return herramientasDelPuesto;
     try {
         const r = await fetch('/api/herramientas-puesto?puesto_id='
                               + encodeURIComponent(puestoSeleccionado.id));
         const d = await r.json();
         if (d && d.success) herramientasDelPuesto = d.herramientas || [];
     } catch (e) { /* sin herramientas censadas se trabaja igual */ }
+    return herramientasDelPuesto;
 }
 
 
