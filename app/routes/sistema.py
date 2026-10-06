@@ -2680,6 +2680,7 @@ def api_esp32_rfid_devices():
         puestos += [
             {'id': 'modulo:mangueras', 'nombre': '🌊 Mangueras (módulo completo)'},
             {'id': 'modulo:manguitos', 'nombre': '🔩 Manguitos (módulo completo)'},
+            {'id': 'modulo:manguitos_mangueras', 'nombre': 'Manguitos y Mangueras (puesto compartido)'},
         ]
         return jsonify({'success': True, 'devices': out, 'puestos': puestos,
                         'firmware_version': version_srv})

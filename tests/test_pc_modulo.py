@@ -64,6 +64,7 @@ def test_pc_sin_configurar_no_tiene_modulo(client):
 @pytest.mark.parametrize('modulo,destino', [
     ('mangueras', '/mangueras'),
     ('manguitos', '/manguitos'),
+    ('manguitos_mangueras', '/modules'),
 ])
 def test_configurar_pc_de_modulo_sin_puesto(client, modulo, destino):
     """Mangueras y manguitos NO piden puesto: se configura el PC y ya."""
@@ -357,6 +358,78 @@ def test_sin_permiso_para_el_modulo_del_pc_no_hay_bucle(app, client):
     client.post('/api/pc/configurar', json={'modulo': 'manguitos'})
     _operario_dentro(app, client, 'Mar', modulos=['etiquetas'], modulo_login='manguitos')
     assert client.get('/modules').status_code == 200
+
+
+def test_pc_compartido_pide_tarjeta_y_muestra_solo_dos_modulos(app, client):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos_mangueras'})
+    assert client.get('/modules').headers['Location'].endswith('/login')
+    login = client.get('/login').get_data(as_text=True)
+    assert 'manguitos_mangueras' in login
+    assert 'Manguitos y Mangueras' in login
+
+    login_id = _operario_dentro(app, client, 'Compartido', modulo_login='manguitos_mangueras')
+    assert client.post('/api/sesion/operario/adoptar', json={'login_id': login_id}).get_json()['permitido']
+    respuesta = client.get('/modules')
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.get_data(as_text=True)
+    assert 'class="puesto-compartido"' in cuerpo
+    assert 'class="mod-card mod-manguitos"' in cuerpo
+    assert 'class="mod-card mod-mangueras"' in cuerpo
+    assert 'class="mod-card mod-engastado"' not in cuerpo
+    assert 'class="mod-card mod-etiquetas"' not in cuerpo
+    assert 'class="mod-card mod-admin"' not in cuerpo
+    for ruta in ('/manguitos', '/mangueras'):
+        pagina = client.get(ruta).get_data(as_text=True)
+        assert 'Volver a módulos' in pagina
+        assert 'salirModulo' not in pagina
+    client.post('/api/sesion/operario/salir')
+    assert client.get('/modules').headers['Location'].endswith('/login')
+
+
+@pytest.mark.parametrize('permitidos', [['manguitos'], ['mangueras'], []])
+def test_pc_compartido_respeta_permisos_individuales(app, client, permitidos):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos_mangueras'})
+    login_id = _operario_dentro(app, client, 'Parcial', modulos=permitidos,
+                               modulo_login='manguitos_mangueras')
+    adoptado = client.post('/api/sesion/operario/adoptar', json={'login_id': login_id}).get_json()
+    assert adoptado['permitido'] == bool(permitidos)
+    cuerpo = client.get('/modules').get_data(as_text=True)
+    for modulo in ('manguitos', 'mangueras'):
+        assert (f'class="mod-card mod-{modulo}"' in cuerpo) == (modulo in permitidos)
+        assert client.get(f'/{modulo}').status_code == (200 if modulo in permitidos else 403)
+
+
+@pytest.mark.parametrize('permitidos', [['manguitos', 'mangueras'], ['manguitos'], ['mangueras'], []])
+def test_lector_compartido_login_rfid(app, client, admin_client, permitidos):
+    _activar_gate(app)
+    client.post('/api/pc/configurar', json={'modulo': 'manguitos_mangueras'})
+    opciones = admin_client.get('/api/esp32/rfid/devices').get_json()['puestos']
+    assert any(opcion['id'] == 'modulo:manguitos_mangueras' for opcion in opciones)
+    assert admin_client.post('/api/esp32/rfid/devices/aabbccddeeff', json={
+        'puesto_id': 'modulo:manguitos_mangueras',
+    }).get_json()['success']
+    operario = client.post('/api/operarios', json={'nombre': 'Tarjeta compartida'}).get_json()['operario']
+    client.put(f"/api/operarios/{operario['id']}", json={
+        'tag_uid': 'A1B2C3D4', 'modulos_permitidos': permitidos,
+    })
+    respuesta = client.post('/api/puestos/engastado_v3/entrada', json={
+        'device_id': 'aabbccddeeff', 'tag_uid': 'A1B2C3D4',
+    })
+    assert respuesta.status_code == (200 if permitidos else 403)
+    logins = client.get('/api/operarios/logins?modulo=manguitos_mangueras').get_json()['logins']
+    assert len(logins) == (1 if permitidos else 0)
+    assert client.get('/api/operarios/logins?modulo=manguitos').get_json()['logins'] == []
+    assert client.get('/api/operarios/logins?modulo=mangueras').get_json()['logins'] == []
+    estado = client.get('/api/rfid/entrada/estado?modulo=manguitos_mangueras').get_json()['evento']
+    assert estado['estado'] == ('ok' if permitidos else 'rechazo')
+    if permitidos:
+        login_id = respuesta.get_json()['login_id']
+        assert client.post('/api/sesion/operario/adoptar', json={'login_id': login_id}).get_json()['permitido']
+        assert client.get('/modules').status_code == 200
+    else:
+        assert estado['consejo']
 
 
 # ==================== Motivo del rechazo en el lector RFID ====================

@@ -71,7 +71,9 @@ COOKIE_PUESTO_PC_MAX_AGE = 315360000  # ~10 anios
 
 # Modulos a los que se puede dedicar un PC de planta. Un PC dedicado entra
 # DIRECTO a su modulo al identificarse: nunca ve la rejilla de /modules.
-MODULOS_PC = ('engastado', 'mangueras', 'manguitos')
+ROL_MANGUITOS_MANGUERAS = 'manguitos_mangueras'
+MODULOS_COMPARTIDOS = ('manguitos', 'mangueras')
+MODULOS_PC = ('engastado', 'mangueras', 'manguitos', ROL_MANGUITOS_MANGUERAS)
 
 # El servidor es el caso aparte: no es un puesto de trabajo, es la maquina
 # desde la que se administra todo. Ahi si tiene sentido la rejilla completa,
@@ -82,15 +84,16 @@ ROL_SERVIDOR = 'servidor'
 # Todo lo que puede ser un PC.
 ROLES_PC = MODULOS_PC + (ROL_SERVIDOR,)
 # De esos, los que NO llevan puesto asociado.
-ROLES_SIN_PUESTO = ('mangueras', 'manguitos', ROL_SERVIDOR)
+ROLES_SIN_PUESTO = ('mangueras', 'manguitos', ROL_MANGUITOS_MANGUERAS, ROL_SERVIDOR)
 # Compatibilidad: los modulos (sin el servidor) que no llevan puesto.
-MODULOS_SIN_PUESTO = ('mangueras', 'manguitos')
+MODULOS_SIN_PUESTO = ('mangueras', 'manguitos', ROL_MANGUITOS_MANGUERAS)
 
 # Como se llaman de cara al operario (pantallas de login y de configuracion).
 MODULOS_APP_LABEL = {
     'engastado': 'Engastado',
     'mangueras': 'Preparación de Mangueras',
     'manguitos': 'Colocación de Manguitos',
+    ROL_MANGUITOS_MANGUERAS: 'Manguitos y Mangueras',
     ROL_SERVIDOR: 'Servidor',
 }
 

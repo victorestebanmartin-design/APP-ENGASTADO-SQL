@@ -104,7 +104,10 @@ def modules():
     En el servidor sí se ve la rejilla entera y sin pedir tarjeta. Con el gate
     desactivado se comporta como siempre: todo visible, sin filtrar."""
     from app.auth import gate_operario_activo
-    from app.routes.puestos import _pc_identidad, _destino_modulo, MODULOS_PC, ROL_SERVIDOR
+    from app.routes.puestos import (
+        _pc_identidad, _destino_modulo, MODULOS_PC, ROL_SERVIDOR,
+        ROL_MANGUITOS_MANGUERAS, MODULOS_COMPARTIDOS,
+    )
     permitidos = set(MODULOS_APP.keys())  # por defecto, todos
     if gate_operario_activo():
         nombre = session.get('operario_actual')
@@ -113,6 +116,12 @@ def modules():
         # El servidor ve y puede todo, sin tarjeta.
         if modulo_pc == ROL_SERVIDOR:
             return render_template('modules.html', permitidos=permitidos)
+
+        if modulo_pc == ROL_MANGUITOS_MANGUERAS:
+            from app.routes.base import operario_puede
+            permitidos = {modulo for modulo in MODULOS_COMPARTIDOS
+                          if nombre and operario_puede(nombre, modulo)}
+            return render_template('modules.html', permitidos=permitidos, compartido=True)
 
         # PC de planta: a su módulo. Si el operario NO tiene permiso para el
         # módulo del equipo se le deja ver la rejilla a propósito: redirigirle

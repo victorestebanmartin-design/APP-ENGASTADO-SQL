@@ -413,13 +413,14 @@ def api_sesion_operario_adoptar():
         # comprueba aqui para que la pantalla de login pueda avisar en el
         # acto ("falta de permisos, avisa al admin") en vez de mandar al
         # operario a una pagina 403 (ver app/auth.py:requiere_modulo).
-        from app.routes.puestos import _pc_identidad
+        from app.routes.puestos import _pc_identidad, ROL_MANGUITOS_MANGUERAS, MODULOS_COMPARTIDOS
         from app.routes.base import operario_puede
         from app.auth import gate_operario_activo
         modulo, _, _ = _pc_identidad()
         permitido = True
         if gate_operario_activo() and modulo:
-            permitido = operario_puede(nombre, modulo)
+            modulos = MODULOS_COMPARTIDOS if modulo == ROL_MANGUITOS_MANGUERAS else (modulo,)
+            permitido = any(operario_puede(nombre, destino) for destino in modulos)
 
         return jsonify({'success': True, 'operario_nombre': nombre,
                         'modulo': modulo, 'permitido': permitido})
@@ -775,8 +776,10 @@ def api_engastado_v3_entrada():
             # login exclusivo del operario para nada.
             if modulo_lector and gate_operario_activo():
                 from app.routes.base import operario_puede, MODULOS_APP
-                if not operario_puede(nombre, modulo_lector):
-                    etiqueta = MODULOS_APP.get(modulo_lector, {}).get('label', modulo_lector)
+                from app.routes.puestos import ROL_MANGUITOS_MANGUERAS, MODULOS_COMPARTIDOS, MODULOS_APP_LABEL
+                modulos = MODULOS_COMPARTIDOS if modulo_lector == ROL_MANGUITOS_MANGUERAS else (modulo_lector,)
+                if not any(operario_puede(nombre, destino) for destino in modulos):
+                    etiqueta = MODULOS_APP_LABEL.get(modulo_lector) or MODULOS_APP.get(modulo_lector, {}).get('label', modulo_lector)
                     motivo = (f'Acceso denegado a {etiqueta}: '
                               f'{nombre} no tiene permiso para este módulo')
                     _rechazo(motivo, 'SIN_PERMISO', operario=nombre,

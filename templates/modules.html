@@ -222,6 +222,29 @@
       text-align: center;
     }
 
+    .puesto-compartido .modules-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: 1fr;
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .puesto-compartido .mod-card { justify-content: center; border-radius: 8px; }
+    .puesto-compartido .mod-desc { display: none; }
+    .puesto-compartido .mod-title { letter-spacing: 0; line-height: 1.2; }
+    .puesto-compartido .mod-btn { max-width: 280px; letter-spacing: 0; }
+    .puesto-compartido .modules-header { flex-wrap: wrap; gap: 10px; }
+    .puesto-compartido .modules-header-right { flex-wrap: wrap; gap: 8px; }
+    @media (max-width: 600px) {
+      .puesto-compartido .modules-grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+      }
+      .puesto-compartido .mod-card { padding: 14px; }
+      .puesto-compartido .mod-icon { margin: 0 0 8px; }
+      .puesto-compartido .mod-title { font-size: 22px; }
+    }
+
     /* ── Popup producción ── */
     .prod-overlay {
       display: none; position: fixed; inset: 0;
@@ -281,13 +304,13 @@
     .prod-close:hover { background: #334155; color: #f8fafc; }
   </style>
 </head>
-<body>
+<body{% if compartido %} class="puesto-compartido"{% endif %}>
 {% include '_version_badge.html' %}
   <div class="modules-wrap">
 
     <div class="modules-header">
       <a href="{{ url_for('main.home') }}" class="modules-header-logo">COJO<span class="sw">sw</span></a>
-      <span class="modules-header-title">MÓDULOS DEL SISTEMA</span>
+      <span class="modules-header-title">{{ 'MANGUITOS Y MANGUERAS' if compartido else 'MÓDULOS DEL SISTEMA' }}</span>
       <div class="modules-header-right">
         {% if session.operario_actual %}
         <span class="modules-header-back" style="cursor:default;" title="Operario identificado en este PC">👤 {{ session.operario_actual }}</span>
@@ -335,6 +358,7 @@
       {% endif %}
 
       <!-- ══ FILA 2: Cards pequeñas (4 columnas) ════════════════ -->
+      {% if not compartido %}
       <div class="modules-row-bottom">
 
         <!-- Administración -->
@@ -379,6 +403,7 @@
         {% endif %}
 
       </div><!-- /modules-row-bottom -->
+      {% endif %}
 
     </div>
     <footer class="modules-copyright" aria-label="Copyright">© 2026 COJOsw</footer>
