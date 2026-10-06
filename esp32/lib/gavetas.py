@@ -151,6 +151,7 @@ class Gavetas:
         self.herr = None
         self.herr_modo = None
         self.herr_devuelta = False
+        self.herramientas = set()
         self._aviso_hasta_ms = 0
         # Gaveta que solo es valida porque es el objetivo (el servidor no la
         # incluye en 'validas': una herramienta cogida es normal que este
@@ -302,6 +303,51 @@ class Gavetas:
         if not self.equivocadas:
             self._parar_zumbido()
         return True
+
+    def configurar_herramientas(self, cfg):
+        """Sincroniza los canales de herramientas manuales censados en el puesto."""
+        herramientas = set()
+        for valor in (cfg or ()):
+            try:
+                canal = int(valor)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= canal <= self.n_gavetas:
+                herramientas.add(canal)
+
+        cambiado = herramientas != self.herramientas
+        anteriores = self.herramientas
+        self.herramientas = herramientas
+        for canal in anteriores - herramientas:
+            if (canal in self.equivocadas
+                and (self.validas is None or canal not in self.validas)
+                and canal not in (self.herr, self.objetivo)):
+                self.equivocadas.discard(canal)
+                self._pintar(canal, COLOR_APAGADO)
+        for canal in herramientas:
+            if canal == self.herr or canal == self.objetivo:
+                estaba_intrusa = canal in self.equivocadas
+                self.equivocadas.discard(canal)
+                if estaba_intrusa:
+                    if canal == self.herr:
+                        self._pintar_herramienta()
+                    else:
+                        color = (self._color_en_uso() if canal in self.fuera
+                                 else self._color_objetivo())
+                        self._pintar(canal, color)
+                continue
+            if canal in self.fuera:
+                if canal not in self.equivocadas:
+                    resultado = "equivocada" if self.objetivo is not None else "sin_objetivo"
+                    self._avisar(canal, True, resultado)
+                    self.equivocadas.add(canal)
+                    self._pintar(canal, self._color_error())
+            elif canal in self.equivocadas:
+                self.equivocadas.discard(canal)
+                self._pintar(canal, COLOR_APAGADO)
+        if not self.equivocadas:
+            self._parar_zumbido()
+        return cambiado
 
     def configurar_brillo(self, cfg):
         """Aplica el brillo por color que manda el servidor (Admin -> Pick-to-Light).
@@ -550,7 +596,8 @@ class Gavetas:
         # gaveta configurada (sin microinterruptor cableado, o un hueco
         # vacio del armario) no cuenta: es ruido del expansor, no un robo.
         for otra in self.fuera:
-            if otra != gaveta and self._es_gaveta_real(otra):
+            if (otra != gaveta and otra != self.herr
+                    and self._es_gaveta_real(otra)):
                 self.equivocadas.add(otra)
                 self._avisar(otra, True, "equivocada")
         self._pintar(gaveta, self._color_en_uso() if gaveta in self.fuera else self._color_objetivo())
@@ -565,7 +612,8 @@ class Gavetas:
         comportaba siempre, para una placa recien arrancada o un servidor
         viejo que aun no manda la lista.
         """
-        return self.validas is None or gaveta in self.validas
+        return (self.validas is None or gaveta in self.validas
+                or gaveta in self.herramientas)
 
     def apagar(self):
         """Todo apagado y sin objetivo: la placa vuelve a estar en reposo."""

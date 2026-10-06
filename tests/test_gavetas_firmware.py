@@ -255,6 +255,7 @@ class PlacaConTira:
         obj.herr = None
         obj.herr_modo = None
         obj.herr_devuelta = False
+        obj.herramientas = set()
         obj._aviso_hasta_ms = 0
         obj._extra_valida = None
         obj.validas = None
@@ -326,6 +327,7 @@ def placa_con_tira(gavetas):
     obj.herr = None
     obj.herr_modo = None
     obj.herr_devuelta = False
+    obj.herramientas = set()
     obj._aviso_hasta_ms = 0
     obj._extra_valida = None
     obj.validas = None
@@ -1070,6 +1072,55 @@ def test_sacar_la_herramienta_en_uso_no_es_gaveta_robada(gavetas, placa_con_tira
     gavetas.Gavetas._aplicar_cambio(obj, 5, False)
 
     assert avisos == [] and obj.equivocadas == set() and obj.herr_devuelta is False
+
+
+def test_herramienta_no_seleccionada_parpadea_rojo_en_reposo(
+        gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj.fuera = set()
+    gavetas.Gavetas.configurar_herramientas(obj, [5, 6])
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+    assert tira[4] == gavetas.COLOR_APAGADO
+    gavetas.Gavetas.configurar_herramientas(obj, [5, 6])
+    assert tira[4] == gavetas.COLOR_APAGADO
+    obj._parpadeo_hasta_ms = 0
+    gavetas.Gavetas._atender_parpadeo(obj, 20_000)
+
+    assert obj.equivocadas == {5}
+    assert tira[4] == gavetas.COLOR_ERROR
+
+
+def test_durante_engaste_alarma_herramienta_distinta_a_la_en_uso(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj._leer_micros = lambda: set()
+    gavetas.Gavetas.configurar_herramientas(obj, [5, 6])
+    gavetas.Gavetas.encender(obj, 1, '640204', validas=[1, 2])
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'})
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+    gavetas.Gavetas._aplicar_cambio(obj, 6, True)
+
+    assert obj.equivocadas == {6}
+    assert tira[5] == gavetas.COLOR_ERROR
+
+
+def test_desasignar_herramienta_limpia_su_alerta(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    gavetas.Gavetas.configurar_herramientas(obj, [5])
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+
+    gavetas.Gavetas.configurar_herramientas(obj, [])
+
+    assert obj.equivocadas == set()
+    assert tira[4] == gavetas.COLOR_APAGADO
 
 
 def test_pedir_devolver_con_la_herramienta_ya_dentro_confirma_al_momento(gavetas, placa_con_tira):

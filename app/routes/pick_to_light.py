@@ -458,6 +458,12 @@ def _gavetas_validas_del_puesto(puesto_id):
                   if info.get('tipo') != 'herramienta')
 
 
+def _herramientas_del_puesto(puesto_id):
+    """Canales de herramientas manuales que la placa debe vigilar en reposo."""
+    return sorted(canal for canal, info in _canales_del_puesto(puesto_id).items()
+                  if info.get('tipo') == 'herramienta')
+
+
 def _info_uid(uid, puesto_id):
     """Dice a quien pertenece una etiqueta RFID leida, o None si no esta censada.
 
@@ -1561,6 +1567,7 @@ def api_pick_to_light_orden():
             return jsonify({'success': True,
                             'test': pendiente['cmd'],
                             'micros': micros,
+                            'herramientas': _herramientas_del_puesto(puesto_id),
                             'leds_por_gaveta': leds_por_gaveta,
                             'brillo': brillo,
                             'esperando_devolucion': esperando_devolucion,
@@ -1623,6 +1630,7 @@ def api_pick_to_light_orden():
                         'led': led,
                         'terminal': (estado or {}).get('terminal') or '',
                         'validas': (estado or {}).get('validas') or [],
+                        'herramientas': _herramientas_del_puesto(puesto_id),
                         'micros': micros,
                         'leds_por_gaveta': leds_por_gaveta,
                         'brillo': brillo,

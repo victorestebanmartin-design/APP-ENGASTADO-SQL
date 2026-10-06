@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-10-05c"
+FW_VERSION = "2026-10-06a"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -1070,6 +1070,8 @@ while True:
                 # luz aparte de la orden, tambien en cada sondeo.
                 if "herramienta" in orden:
                     gav.marcar_herramienta(orden.get("herramienta"))
+                if "herramientas" in orden:
+                    gav.configurar_herramientas(orden.get("herramientas"))
 
                 # La verificacion RFID de la orden productiva NO es un
                 # comando de un solo tiro como 'alta': el servidor la manda en

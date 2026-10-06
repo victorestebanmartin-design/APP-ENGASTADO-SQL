@@ -287,7 +287,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
                 json={'puesto_id': 'puesto_001', 'terminal': '640204'})
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 7, 'terminal': '640204',
-                     'validas': [7], 'rfid_modo': None, 'prisa': False,
+                     'validas': [7], 'herramientas': [], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
@@ -298,7 +298,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
     # 'prisa' sigue a True a proposito: apagar es terminal terminado, no
     # operario que se va (ver test_terminar_un_terminal_mantiene_la_placa_a_punto).
     assert orden == {'success': True, 'apagar': True, 'led': None, 'terminal': '',
-                     'validas': [], 'rfid_modo': None, 'prisa': True,
+                     'validas': [], 'herramientas': [], 'rfid_modo': None, 'prisa': True,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
@@ -498,7 +498,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
 
     orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
     assert orden == {'success': True, 'apagar': False, 'led': 5, 'terminal': '',
-                     'validas': [], 'rfid_modo': None, 'prisa': False,
+                     'validas': [], 'herramientas': [], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
                      'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
@@ -1827,7 +1827,7 @@ def test_destellar_sin_orden_activa_no_hace_nada_ni_falla(app, client, con_placa
 
 def test_las_herramientas_no_entran_en_las_gavetas_validas(app, client, admin_client, con_placa):
     """Una maquina cogida esta fuera todo el engaste: no es una gaveta robada."""
-    _registrar_lector(app)
+    device_id = _registrar_lector(app)
     _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
     _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
 
@@ -1840,6 +1840,8 @@ def test_las_herramientas_no_entran_en_las_gavetas_validas(app, client, admin_cl
     assert r.get_json()['tipo'] == 'herramienta'
     assert con_placa[-1][1] == {'led': 9, 'terminal': 'FRESADORA', 'validas': [7],
                                 'parpadeo': True}
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['validas'] == [7] and orden['herramientas'] == [9]
 
 
 def test_etiqueta_de_otra_herramienta_del_puesto_dice_donde_va(app, client, admin_client, con_placa):
