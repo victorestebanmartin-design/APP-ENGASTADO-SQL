@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-09-29a"
+FW_VERSION = "2026-10-05c"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -439,13 +439,35 @@ def actualizar_pantalla_gavetas(forzar=False):
     if not gav:
         return
 
+    # Lo que falta por devolver (gaveta del terminal y/o herramienta): manda
+    # sobre el resto de pantallas, porque es lo que el operario tiene que hacer.
+    dev_gaveta = (gav.objetivo if (gav.esperando_devolucion and gav.objetivo is not None
+                                   and gav.objetivo in gav.fuera) else None)
+    dev_herr = (gav.herr if (gav.herr is not None and gav.herr_modo == "devolver"
+                             and not gav.herr_devuelta) else None)
     estado = (gav.objetivo, gav.recogida, tuple(sorted(gav.equivocadas)),
-              gav.terminal)
+              gav.terminal, dev_gaveta, dev_herr)
     if not forzar and estado == _ultimo_estado_gavetas:
         return
     _ultimo_estado_gavetas = estado
 
-    objetivo, recogida, equivocadas, terminal = estado
+    objetivo, recogida, equivocadas, terminal, dev_gaveta, dev_herr = estado
+    if dev_gaveta is not None or dev_herr is not None:
+        rect(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, BLACK)
+        text_center(14, "DEVUELVE", BLUE, BLACK, 4)
+        y = 70
+        if dev_gaveta is not None:
+            text_center(y, "GAVETA %02d" % dev_gaveta, WHITE, BLACK, 2)
+            y += 34
+        if dev_herr is not None:
+            text_center(y, "HERRAMIENTA %02d" % dev_herr, WHITE, BLACK, 2)
+            y += 34
+        if terminal and dev_gaveta is not None:
+            text_center(y + 6, ("TERMINAL " + terminal)[:35].upper(), GRAY, BLACK, 1)
+        text_center(190, "DEJALA EN SU SITIO", WHITE, BLACK, 1)
+        text_center(211, "LA LUZ AZUL PARPADEA", GRAY, BLACK, 1)
+        return
+
     if objetivo is None:
         draw_idle()
         return
@@ -947,7 +969,7 @@ while True:
         # autocorrige sin depender de que un unico intento llegue.
         _pausa_gaveta = GAVETA_POLL_MS
         if (gav is not None and gav.objetivo is None and _ptl_rfid_modo is None
-                and not _gaveta_prisa):
+                and not _gaveta_prisa and gav.herr is None):
             _pausa_gaveta = GAVETA_POLL_IDLE_MS
         if gaveta_fallos:
             _pausa_gaveta = min(GAVETA_POLL_MAX_MS, _pausa_gaveta * (1 + gaveta_fallos))
@@ -955,6 +977,9 @@ while True:
                 time.ticks_diff(now, ultima_orden_gavetas) > _pausa_gaveta):
             ultima_orden_gavetas = now
             parametros = "device_id=" + DEVICE_ID
+            if gav.herr is not None and gav.herr_devuelta:
+                # Reconfirma "herramienta devuelta": mismo motivo que 'puesta'.
+                parametros += "&herr_devuelta=1"
             if gav.objetivo:
                 puesta = gav.recogida and gav.objetivo not in gav.fuera
                 parametros += "&led=%d&recogida=%d&puesta=%d" % (
@@ -1033,6 +1058,18 @@ while True:
                                         orden.get("validas"))
                     except (TypeError, ValueError):
                         pass
+
+                # Verde fijo o parpadeando ("cogela ya"). Va DESPUES de
+                # encender: encender() lo deja en fijo, y el servidor lo repite
+                # en cada sondeo, asi que una placa recien reiniciada lo
+                # recupera sola. Un servidor viejo no manda la clave: fijo.
+                if "parpadeo" in orden and gav.objetivo is not None:
+                    gav.marcar_parpadeo(orden.get("parpadeo"))
+
+                # Herramienta de la maquina (azul en uso / rojo a devolver):
+                # luz aparte de la orden, tambien en cada sondeo.
+                if "herramienta" in orden:
+                    gav.marcar_herramienta(orden.get("herramienta"))
 
                 # La verificacion RFID de la orden productiva NO es un
                 # comando de un solo tiro como 'alta': el servidor la manda en

@@ -62,6 +62,9 @@ async function cargarPaquetesDelCarro() {
         // sacado la gaveta iluminada. Los datos ya estan cargados detras del
         // panel, asi que confirmar es instantaneo; y si no hay luz encendida,
         // esperarRecogidaGaveta() vuelve sin pintar nada.
+        // Elegido el carro, la gaveta del terminal (fija desde que se eligio el
+        // terminal) pasa a parpadear: ahora toca cogerla.
+        await destellarGaveta();
         await esperarRecogidaGaveta();
 
         // Mostrar modal de confirmación de paquetes

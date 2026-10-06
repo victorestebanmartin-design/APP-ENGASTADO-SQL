@@ -466,6 +466,10 @@ async function terminarTerminal() {
 
     // Verificar si terminamos todos los terminales de esta máquina
     if (terminalesCompletados.length === terminalesAsignados.length) {
+        // Se acabó el trabajo de la máquina: su herramienta (azul hasta ahora)
+        // pasa a azul parpadeando y hay que devolverla. Mientras queden
+        // terminales de esta máquina se queda en azul.
+        await devolverHerramientaMaquina(true);
         mostrarMensaje('🎉 ¡Todos los terminales completados!', 'success');
         setTimeout(() => {
             mostrarResumenFinal();

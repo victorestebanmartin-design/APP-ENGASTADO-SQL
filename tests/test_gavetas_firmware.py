@@ -251,6 +251,12 @@ class PlacaConTira:
         obj.recogida = False
         obj.equivocadas = set()
         obj.esperando_devolucion = False
+        obj.parpadeo = False
+        obj.herr = None
+        obj.herr_modo = None
+        obj.herr_devuelta = False
+        obj._aviso_hasta_ms = 0
+        obj._extra_valida = None
         obj.validas = None
         # Los mismos valores por defecto que pone __init__: esta instancia se
         # monta a mano, asi que cada atributo nuevo del firmware hay que
@@ -316,6 +322,12 @@ def placa_con_tira(gavetas):
     obj.recogida = False
     obj.equivocadas = set()
     obj.esperando_devolucion = False
+    obj.parpadeo = False
+    obj.herr = None
+    obj.herr_modo = None
+    obj.herr_devuelta = False
+    obj._aviso_hasta_ms = 0
+    obj._extra_valida = None
     obj.validas = None
     obj.canales_error = set()
     # Igual que en el otro banco de arriba: los defectos de __init__ para la
@@ -918,3 +930,231 @@ def test_una_gaveta_ajena_durante_engaste_sigue_avisando_equivocada(gavetas, pla
 
     gavetas.Gavetas._aplicar_cambio(obj, 5, False)
     assert avisos[-1] == (5, False, 'corregida')
+
+
+# ── Verde fijo / verde parpadeando ("cogela ya") ─────────────────────────────
+
+def test_marcar_parpadeo_cambia_solo_si_es_distinto(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    assert gavetas.Gavetas.marcar_parpadeo(obj, True) is True
+    assert obj.parpadeo is True
+    assert gavetas.Gavetas.marcar_parpadeo(obj, True) is False
+    assert gavetas.Gavetas.marcar_parpadeo(obj, False) is True
+
+
+def test_el_verde_del_objetivo_parpadea_si_se_pide_y_sigue_dentro(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.parpadeo = True
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+    assert tira[2] == gavetas.COLOR_APAGADO
+
+    obj._parpadeo_hasta_ms = 0
+    gavetas.Gavetas._atender_parpadeo(obj, 20_000)
+    assert tira[2] == gavetas.COLOR_OBJETIVO
+
+
+def test_en_verde_fijo_el_objetivo_no_parpadea(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.parpadeo = False
+    tira[2] = gavetas.COLOR_OBJETIVO
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+
+    assert tira[2] == gavetas.COLOR_OBJETIVO
+
+
+def test_ya_cogida_deja_de_parpadear(gavetas, placa_con_tira, monkeypatch):
+    """Con la gaveta fuera el azul de 'en uso' manda: el verde ya no parpadea."""
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = {3}
+    obj.parpadeo = True
+    tira[2] = gavetas.COLOR_EN_USO
+
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+
+    assert tira[2] == gavetas.COLOR_EN_USO
+
+
+def test_volver_a_fijo_repinta_el_objetivo(gavetas, placa_con_tira):
+    """Si se fija justo en la fase oscura del parpadeo, no puede quedarse apagado."""
+    obj, tira, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.parpadeo = True
+    tira[2] = gavetas.COLOR_APAGADO
+
+    gavetas.Gavetas.marcar_parpadeo(obj, False)
+
+    assert tira[2] == gavetas.COLOR_OBJETIVO
+
+
+def test_una_herramienta_cogida_no_es_gaveta_robada_tras_apagar(gavetas, placa_con_tira):
+    """La maquina que se coge al empezar queda fuera todo el engaste: el servidor
+    no la manda en 'validas', y al apagar su orden deja de contar como valida."""
+    obj, _, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj._leer_micros = lambda: set()
+
+    gavetas.Gavetas.encender(obj, 5, 'FRESA', [1, 2, 3])
+    assert obj.validas == {1, 2, 3, 5}
+    gavetas.Gavetas.apagar(obj)
+    assert obj.validas == {1, 2, 3}
+    assert not gavetas.Gavetas._es_gaveta_real(obj, 5)
+
+
+# ── Herramienta de la maquina: azul en uso, rojo parpadeando al devolver ─────
+
+def test_herramienta_en_uso_se_pinta_azul_y_sobrevive_a_apagar(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj.fuera = {5}   # la herramienta esta fuera, en uso
+
+    assert gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'}) is True
+    assert tira[4] == gavetas.COLOR_EN_USO
+    # Una orden de terminal que se enciende y se apaga no se la lleva.
+    gavetas.Gavetas.apagar(obj)
+    assert tira[4] == gavetas.COLOR_EN_USO
+    assert gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'}) is False
+
+
+def test_herramienta_a_devolver_parpadea_en_azul(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, tira, _ = placa_con_tira
+    obj.fuera = {5}
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'})
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'devolver'})
+    assert tira[4] == gavetas.COLOR_EN_USO
+
+    obj._parpadeo_hasta_ms = 0
+    obj._parpadeo_encendido = True
+    gavetas.Gavetas._atender_parpadeo(obj, 10_000)
+    assert tira[4] == gavetas.COLOR_APAGADO
+    obj._parpadeo_hasta_ms = 0
+    gavetas.Gavetas._atender_parpadeo(obj, 20_000)
+    assert tira[4] == gavetas.COLOR_EN_USO
+
+
+def test_devolver_la_herramienta_la_confirma_y_pone_el_verde_fijo(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    obj._lanzar = lambda *a: None
+    obj.fuera = {5}
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'devolver'})
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, False)
+
+    assert obj.herr_devuelta is True
+    assert tira[4] == gavetas.COLOR_OBJETIVO
+    assert avisos == [(5, False, 'herramienta_devuelta')]
+    assert obj.equivocadas == set()
+
+
+def test_sacar_la_herramienta_en_uso_no_es_gaveta_robada(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *a: avisos.append(a)
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'})
+
+    gavetas.Gavetas._aplicar_cambio(obj, 5, True)
+    gavetas.Gavetas._aplicar_cambio(obj, 5, False)
+
+    assert avisos == [] and obj.equivocadas == set() and obj.herr_devuelta is False
+
+
+def test_pedir_devolver_con_la_herramienta_ya_dentro_confirma_al_momento(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    obj._lanzar = lambda *a: None
+    obj.fuera = set()
+
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'devolver'})
+
+    assert obj.herr_devuelta is True
+
+
+def test_quitar_la_herramienta_apaga_su_luz(gavetas, placa_con_tira):
+    obj, tira, _ = placa_con_tira
+    obj.fuera = {5}
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'})
+
+    assert gavetas.Gavetas.marcar_herramienta(obj, None) is True
+    assert obj.herr is None and tira[4] == gavetas.COLOR_APAGADO
+
+
+def test_orden_solo_herramienta_no_toca_la_orden_en_curso(gavetas, placa_con_tira):
+    obj, _, _ = placa_con_tira
+    obj.objetivo = 3
+    obj.fuera = {5}
+
+    respuesta = gavetas.Gavetas._responder(
+        obj, b'{"herramienta": {"led": 5, "modo": "en_uso"}}')
+
+    assert respuesta['ok'] is True and obj.objetivo == 3 and obj.herr == 5
+
+
+# ── Pitidito mientras falte algo por devolver ────────────────────────────────
+
+def test_pitidito_mientras_falte_devolver_la_herramienta(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, _, _ = placa_con_tira
+    obj._avisar = lambda *a: None
+    lanzados = []
+    obj._lanzar = lambda patron: lanzados.append(patron)
+    obj._patron = None
+    obj.fuera = {5}
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'devolver'})
+
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 10_000)
+    assert lanzados == [gavetas.PATRON_AVISO]
+    # Hasta que pase el intervalo no vuelve a sonar.
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 10_500)
+    assert len(lanzados) == 1
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 10_000 + gavetas.AVISO_DEVOLUCION_MS)
+    assert len(lanzados) == 2
+
+
+def test_pitidito_tambien_para_la_gaveta_del_terminal_pendiente_de_devolver(
+        gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, _, _ = placa_con_tira
+    lanzados = []
+    obj._lanzar = lambda patron: lanzados.append(patron)
+    obj._patron = None
+    obj.objetivo = 3
+    obj.fuera = {3}
+    obj.esperando_devolucion = True
+
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 10_000)
+
+    assert lanzados == [gavetas.PATRON_AVISO]
+
+
+def test_sin_nada_pendiente_no_hay_pitidito(gavetas, placa_con_tira, monkeypatch):
+    _reloj_falso(monkeypatch, gavetas)
+    obj, _, _ = placa_con_tira
+    lanzados = []
+    obj._lanzar = lambda patron: lanzados.append(patron)
+    obj._patron = None
+    obj.fuera = {5}
+    gavetas.Gavetas.marcar_herramienta(obj, {'led': 5, 'modo': 'en_uso'})
+
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 10_000)
+
+    assert lanzados == []
+    # Ni con la gaveta del terminal ya devuelta (dentro) aunque se siga esperando.
+    obj.objetivo = 3
+    obj.fuera = set()
+    obj.esperando_devolucion = True
+    gavetas.Gavetas._atender_aviso_devolucion(obj, 20_000)
+    assert lanzados == []

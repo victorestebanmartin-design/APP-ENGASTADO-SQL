@@ -258,6 +258,10 @@ async function cargarMaquinas(puestoId) {
  */
 async function seleccionarMaquina(maquina) {
     maquinaSeleccionada = maquina;
+
+    // Máquina censada con pick-to-light + RFID: antes de nada hay que coger la
+    // herramienta y confirmarla en el lector. Si no está censada, no hace nada.
+    await verificarMaquinaPtl(maquina);
     
     // Obtener terminales que tienen datos en el bono
     let terminalesConDatos = [];
@@ -421,6 +425,11 @@ function mostrarTerminalesAsignados() {
 function mostrarHerramientasManuales(lista) {
     const container = document.getElementById('herramientas-manuales');
     if (!container) return;
+    // La herramienta de la máquina elegida ya se confirmó al elegir máquina
+    // (verificarMaquinaPtl): no se vuelve a ofrecer.
+    if (lista && maquinaSeleccionada) {
+        lista = lista.filter(h => h.codigo !== maquinaSeleccionada.nombre);
+    }
     if (!lista || lista.length === 0) {
         container.innerHTML = '';
         return;
@@ -531,6 +540,7 @@ async function cargarAreaTrabajoV2() {
  * Navegación - Volver a selección de puestos
  */
 async function volverAPuestos() {
+    await cerrarPtlAlSalir();
     if (puestoBloqueadoPorRfid) {
         mostrarMensaje('Este puesto está fijado automáticamente (lector/PC). Para cambiarlo, libera el puesto del PC en Admin y reasigna.', 'error');
         await abrirModalMaquina();
@@ -550,6 +560,7 @@ async function volverAPuestos() {
  * Navegación - Cambiar máquina
  */
 async function cambiarMaquina() {
+    await cerrarPtlAlSalir();
     document.getElementById('paso-trabajo').classList.add('hidden');
     maquinaSeleccionada = null;
     terminalesAsignados = [];

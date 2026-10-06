@@ -90,6 +90,8 @@ _FA = 1397
 
 PATRON_COGIDA = ((_MI, 40), (0, 30), (_SOL, 70))     # sube: "bien, es esa"
 PATRON_DEVUELTA = ((_SOL, 70), (0, 30), (_DO, 40))   # baja: "cerrado"
+PATRON_AVISO = ((_MI, 60),)                           # pitidito: "devuelve lo que falta"
+AVISO_DEVOLUCION_MS = 4000  # cada cuanto se repite mientras falte algo por devolver
 
 # Alarma de gaveta robada: corta y rapida molesta mucho mas que un pitido
 # largo, y es la unica forma de que alguien suelte el cajon y lo devuelva.
@@ -136,6 +138,24 @@ class Gavetas:
         # cuando el operario termina el terminal (ver marcar_espera_devolucion).
         # Con esto activo el objetivo parpadea en azul hasta que lo devuelven.
         self.esperando_devolucion = False
+        # Verde parpadeando en vez de fijo mientras el objetivo sigue dentro:
+        # "cogela ya". Lo marca el servidor al elegir carro (ver
+        # marcar_parpadeo); fijo significa "es tuya pero aun no hace falta".
+        self.parpadeo = False
+        # Herramienta de la maquina elegida: segunda luz INDEPENDIENTE del
+        # objetivo (que es la gaveta del terminal). Azul fijo mientras se usa
+        # (herr_modo 'en_uso'), azul parpadeando cuando toca devolverla
+        # ('devolver') hasta que su micro dice que ha vuelto (herr_devuelta),
+        # y verde fijo al confirmarlo: los mismos colores y modos que la
+        # gaveta de un terminal.
+        self.herr = None
+        self.herr_modo = None
+        self.herr_devuelta = False
+        self._aviso_hasta_ms = 0
+        # Gaveta que solo es valida porque es el objetivo (el servidor no la
+        # incluye en 'validas': una herramienta cogida es normal que este
+        # fuera). Al apagar se quita, para no vigilarla como gaveta robada.
+        self._extra_valida = None
         # Numeros de LED con un terminal de verdad detras, segun el servidor.
         # None = sin lista todavia (firmware recien arrancado o servidor
         # viejo): no se restringe nada, que es como se comportaba siempre.
@@ -343,6 +363,72 @@ class Gavetas:
         self.esperando_devolucion = activo
         return True
 
+    def marcar_parpadeo(self, activo):
+        """Aplica "parpadea en verde" (cogela ya) o "verde fijo" a la orden en curso.
+
+        Nunca lanza. Devuelve True si ha cambiado. Al volver a fijo repinta el
+        objetivo: si se apago justo en la fase oscura del parpadeo, se quedaria
+        sin luz hasta la proxima orden.
+        """
+        activo = bool(activo)
+        if activo == self.parpadeo:
+            return False
+        self.parpadeo = activo
+        if (not activo and self.objetivo is not None and self.objetivo not in self.fuera
+                and not self.esperando_devolucion):
+            self._pintar(self.objetivo, self._color_objetivo())
+        return True
+
+    def marcar_herramienta(self, cfg):
+        """Aplica la herramienta en uso / a devolver que manda el servidor.
+
+        'cfg' es {'led': n, 'modo': 'en_uso'|'devolver'} o None/{} para quitar
+        la luz. Nunca lanza. Devuelve True si algo ha cambiado.
+        """
+        try:
+            led = int(cfg.get("led")) if cfg else None
+        except Exception:
+            led = None
+        if not led or not 1 <= led <= self.n_gavetas:
+            if self.herr is None:
+                return False
+            self._pintar(self.herr, COLOR_APAGADO)
+            self.herr = None
+            self.herr_modo = None
+            self.herr_devuelta = False
+            return True
+        modo = "devolver" if cfg.get("modo") == "devolver" else "en_uso"
+        if led == self.herr and modo == self.herr_modo:
+            return False
+        if self.herr is not None and led != self.herr:
+            self._pintar(self.herr, COLOR_APAGADO)
+        self.herr = led
+        self.herr_modo = modo
+        if modo != "devolver":
+            self.herr_devuelta = False
+        if modo == "devolver" and led not in self.fuera:
+            # Ya estaba dentro cuando se pidio devolverla: nada que esperar.
+            self._confirmar_herramienta_devuelta()
+        else:
+            self._pintar_herramienta()
+        return True
+
+    def _pintar_herramienta(self):
+        if self.herr is None or self.herr == self.objetivo:
+            return
+        if self.herr_modo == "devolver":
+            self._pintar(self.herr, self._color_objetivo() if self.herr_devuelta
+                     else self._color_en_uso())
+        else:
+            self._pintar(self.herr, self._color_en_uso())
+
+    def _confirmar_herramienta_devuelta(self):
+        self.herr_devuelta = True
+        # Verde fijo como al devolver una gaveta; el servidor la quita despues.
+        self._pintar(self.herr, self._color_objetivo())
+        self._lanzar(PATRON_DEVUELTA)
+        self._avisar(self.herr, False, "herramienta_devuelta")
+
     def _indices(self, gaveta):
         """Rango de indices de pixel de la tira que representan esa gaveta.
 
@@ -389,6 +475,7 @@ class Gavetas:
             self._pintar(self.objetivo, color)
         for gaveta in self.equivocadas:
             self._pintar(gaveta, self._color_error())
+        self._pintar_herramienta()
 
     def configurar_leds(self, n):
         """Aplica los LEDs fisicos por gaveta que manda el servidor.
@@ -451,7 +538,9 @@ class Gavetas:
         self.terminal = terminal or ""
         if validas is not None:
             self.validas = set(validas)
-            self.validas.add(gaveta)
+            if gaveta not in self.validas:
+                self.validas.add(gaveta)
+                self._extra_valida = gaveta
         self.recogida = False
         self.fuera = self._leer_micros()
         # Al empezar un terminal, TODAS las demas gavetas del puesto tienen
@@ -483,9 +572,15 @@ class Gavetas:
         self.objetivo = None
         self.terminal = ""
         self.recogida = False
+        self.parpadeo = False
+        if self._extra_valida is not None and self.validas is not None:
+            self.validas.discard(self._extra_valida)
+        self._extra_valida = None
         self.equivocadas.clear()
         self._parar_zumbido()
         self._apagar_tira()
+        # La herramienta de la maquina no es parte de la orden: sigue encendida.
+        self._pintar_herramienta()
 
     def estado(self):
         return {
@@ -495,6 +590,10 @@ class Gavetas:
             "terminal": self.terminal,
             "recogida": self.recogida,
             "esperando_devolucion": self.esperando_devolucion,
+            "parpadeo": self.parpadeo,
+            "herramienta": self.herr,
+            "herramienta_modo": self.herr_modo,
+            "herramienta_devuelta": self.herr_devuelta,
             "equivocadas": sorted(self.equivocadas),
             "fuera": sorted(self.fuera),
             "validas": sorted(self.validas) if self.validas is not None else None,
@@ -668,6 +767,28 @@ class Gavetas:
 
     # ── Micro-interruptores ─────────────────────────────────────────────────
 
+    def _pendiente_devolver(self):
+        """True mientras falte por devolver la gaveta del terminal o la herramienta."""
+        herramienta = (self.herr is not None and self.herr_modo == "devolver"
+                       and not self.herr_devuelta)
+        gaveta = (self.esperando_devolucion and self.objetivo is not None
+                  and self.objetivo in self.fuera)
+        return herramienta or gaveta
+
+    def _atender_aviso_devolucion(self, ahora):
+        """Pitidito periodico mientras falte algo por devolver (sin bloquear).
+
+        Un LED que parpadea no basta si el operario ya se ha ido a otra cosa:
+        el aviso sonoro es lo que le hace volver. No pisa un aviso en curso.
+        """
+        if self._en_prueba or not self._pendiente_devolver():
+            return
+        if time.ticks_diff(ahora, self._aviso_hasta_ms) < 0:
+            return
+        self._aviso_hasta_ms = time.ticks_add(ahora, AVISO_DEVOLUCION_MS)
+        if self._patron is None:
+            self._lanzar(PATRON_AVISO)
+
     def _atender_parpadeo(self, ahora):
         """Dos parpadeos independientes, sincronizados por el mismo reloj:
 
@@ -676,13 +797,20 @@ class Gavetas:
         - El azul del objetivo mientras se espera que lo devuelvan
           (self.esperando_devolucion) y siga fuera: avisa de "toca devolver
           esto ya" sin necesidad de que nadie mire la pantalla.
+        - El verde del objetivo mientras siga dentro y el servidor haya pedido
+          "cogela ya" (self.parpadeo): fijo es "es esta", parpadeando es "ahora".
 
         Los dos pueden coexistir. Se agrupan los cambios de pixel y se llama a
         self.tira.write() UNA sola vez por vuelta, no una por cada aviso.
         """
         espera_objetivo = (self.esperando_devolucion and self.objetivo is not None
                             and self.objetivo in self.fuera)
-        if self.tira is None or (not self.equivocadas and not espera_objetivo):
+        coge_objetivo = (self.parpadeo and self.objetivo is not None
+                         and self.objetivo not in self.fuera)
+        herr_azul = (self.herr is not None and self.herr_modo == "devolver"
+                     and not self.herr_devuelta and self.herr != self.objetivo)
+        if self.tira is None or (not self.equivocadas and not espera_objetivo
+                                 and not coge_objetivo and not herr_azul):
             return
         if time.ticks_diff(ahora, self._parpadeo_hasta_ms) < 0:
             return
@@ -699,6 +827,16 @@ class Gavetas:
             color_objetivo = self._color_en_uso() if self._parpadeo_encendido else COLOR_APAGADO
             for i in self._indices(self.objetivo):
                 self.tira[i] = color_objetivo
+
+        if coge_objetivo:
+            color_objetivo = self._color_objetivo() if self._parpadeo_encendido else COLOR_APAGADO
+            for i in self._indices(self.objetivo):
+                self.tira[i] = color_objetivo
+
+        if herr_azul:
+            color_herr = self._color_en_uso() if self._parpadeo_encendido else COLOR_APAGADO
+            for i in self._indices(self.herr):
+                self.tira[i] = color_herr
 
         self.tira.write()
 
@@ -730,6 +868,14 @@ class Gavetas:
 
         if self._en_prueba:
             # En modo prueba solo se actualiza el estado; sin luces ni zumbido.
+            return
+
+        if gaveta == self.herr and gaveta != self.objetivo:
+            # La herramienta de la maquina: sacarla/ponerla es normal, solo
+            # cuenta cuando se pidio devolverla y ya esta dentro.
+            if (not ahora_fuera and self.herr_modo == "devolver"
+                    and not self.herr_devuelta):
+                self._confirmar_herramienta_devuelta()
             return
 
         if gaveta == self.objetivo:
@@ -928,6 +1074,14 @@ class Gavetas:
                 or isinstance(brillo_cfg, dict)) and not _trae_orden(datos)):
             return {"ok": True, "estado": self.estado()}
 
+        if "herramienta" in datos and not _trae_orden(datos):
+            self.marcar_herramienta(datos.get("herramienta"))
+            return {"ok": True, "estado": self.estado()}
+
+        if datos.get("parpadeo") is not None and not _trae_orden(datos):
+            self.marcar_parpadeo(datos.get("parpadeo"))
+            return {"ok": True, "estado": self.estado()}
+
         if datos.get("apagar"):
             self.apagar()
             return {"ok": True, "estado": self.estado()}
@@ -945,6 +1099,8 @@ class Gavetas:
             return {"ok": False, "error": "led no es un numero"}
 
         ok, motivo = self.encender(led, datos.get("terminal") or "", datos.get("validas"))
+        if ok and datos.get("parpadeo") is not None:
+            self.marcar_parpadeo(datos.get("parpadeo"))
         return {"ok": ok, "error": motivo, "estado": self.estado()}
 
     def _atender_timeout_prueba(self, ahora):
@@ -971,6 +1127,7 @@ class Gavetas:
         self._atender_micros(ahora)
         self._atender_zumbador(ahora)
         self._atender_parpadeo(ahora)
+        self._atender_aviso_devolucion(ahora)
         self._atender_timeout_prueba(ahora)
 
 

@@ -11,6 +11,10 @@
 // Resultado del ultimo /encender: {activo, pendiente, led, gaveta, motivo}
 let gavetaLuzActual = null;
 
+// Herramienta de la máquina elegida mientras se trabaja con ella (azul fijo en
+// la placa): {codigo, nombre, puesto_id}, o null. Ver verificarMaquinaPtl.
+let herramientaEnUso = null;
+
 const GAVETA_SONDEO_MS = 500;
 const GAVETA_VIGILANCIA_MS = 1500;
 
@@ -26,20 +30,217 @@ let _gavetaUltimoErrorAvisado = null;
 let _gavetaUltimoRecogidaAvisada = null;
 
 
-/** Enciende en verde la gaveta del terminal (no hace nada si no hay luz). */
-async function encenderGavetaTerminal(terminal) {
+/**
+ * Enciende en verde la gaveta del terminal (no hace nada si no hay luz).
+ *
+ * 'modo' es 'fijo' (por defecto: "es esta, aun no hace falta cogerla") o
+ * 'parpadeo' ("cogela ya"). De fijo a parpadeo se pasa con destellarGaveta().
+ */
+async function encenderGavetaTerminal(terminal, modo) {
     gavetaLuzActual = null;
     if (!puestoSeleccionado || !puestoSeleccionado.id) return;
     try {
         const r = await fetch('/api/pick-to-light/encender', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ puesto_id: puestoSeleccionado.id, terminal: terminal })
+            body: JSON.stringify({ puesto_id: puestoSeleccionado.id, terminal: terminal,
+                                   modo: modo || 'fijo' })
         });
         const d = await r.json();
         if (d && d.success) gavetaLuzActual = d;
     } catch (e) { /* sin luz se trabaja igual */ }
 }
+
+
+/**
+ * Pasa la gaveta encendida de verde fijo a verde parpadeando: ahora toca
+ * cogerla. Se llama al elegir carro. Sin luz encendida no hace nada.
+ */
+async function destellarGaveta() {
+    if (!gavetaLuzActual || (!gavetaLuzActual.activo && !gavetaLuzActual.pendiente)) return;
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    try {
+        await fetch('/api/pick-to-light/destellar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+        });
+    } catch (e) { /* sin parpadeo la gaveta sigue en verde fijo */ }
+}
+
+
+/**
+ * Primer paso tras elegir máquina: si está censada con pick-to-light + RFID,
+ * la luz de su cajón parpadea en verde, el operario la coge y la acerca al
+ * lector, y solo entonces se sigue con la elección de terminal.
+ *
+ * Una máquina se considera censada cuando hay una herramienta del puesto con
+ * su mismo nombre (el alta de Admin las elige del catálogo de máquinas). Si no
+ * lo está, o no hay luz/placa, esto vuelve al instante y el flujo es el de
+ * siempre. Una etiqueta que no es la suya se explica en pantalla (dónde va la
+ * que se ha cogido, o aviso al jefe de línea) y siempre queda «Continuar sin
+ * confirmar».
+ */
+async function verificarMaquinaPtl(maquina) {
+    if (!maquina || !puestoSeleccionado || !puestoSeleccionado.id) return;
+
+    // Misma máquina que ya se está usando: ya está confirmada y en azul.
+    if (herramientaEnUso && herramientaEnUso.codigo === maquina.nombre) return;
+    // Otra máquina: la anterior hay que devolverla (azul parpadeando).
+    if (herramientaEnUso) await devolverHerramientaMaquina(false);
+
+    await cargarHerramientasDelPuesto();
+    const censada = herramientasDelPuesto.find(h => h.codigo === maquina.nombre);
+    if (!censada) return;
+
+    avisarAtencionGaveta();
+    await encenderGavetaTerminal(censada.codigo, 'parpadeo');
+    const habiaLuz = !!(gavetaLuzActual && (gavetaLuzActual.activo || gavetaLuzActual.pendiente));
+    await esperarRecogidaGaveta();
+
+    // Confirmada (o saltada): la herramienta queda en azul fijo mientras dure
+    // el trabajo de la máquina, aunque se cambie de terminal, y la orden se
+    // apaga para que el terminal que se elija ahora encienda su propia gaveta.
+    if (habiaLuz) {
+        try {
+            await fetch('/api/pick-to-light/herramienta/en-uso', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ puesto_id: puestoSeleccionado.id })
+            });
+            herramientaEnUso = { codigo: censada.codigo, nombre: censada.nombre,
+                                 puesto_id: puestoSeleccionado.id };
+        } catch (e) { /* sin luz azul se trabaja igual */ }
+    }
+    await apagarGavetas();
+}
+
+
+/**
+ * Pide devolver la herramienta de la máquina: su luz pasa a azul parpadeando
+ * hasta que vuelve a su sitio. Se llama al acabar la máquina, al cambiar de
+ * máquina o puesto y al cerrar sesión. Con 'bloquear' además espera en una
+ * pantalla a que la devuelvan (solo al acabar la máquina: en los demás casos
+ * el operario ya se está yendo y la luz roja sigue avisando sola).
+ */
+async function devolverHerramientaMaquina(bloquear) {
+    if (!herramientaEnUso) return;
+    const herramienta = herramientaEnUso;
+    herramientaEnUso = null;
+    try {
+        await fetch('/api/pick-to-light/herramienta/devolver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puesto_id: herramienta.puesto_id })
+        });
+    } catch (e) { return; /* sin luz, nada que esperar */ }
+    if (bloquear) await _esperarDevolucionHerramienta(herramienta);
+}
+
+
+/** Pantalla de "devuelve la herramienta" con el mismo doble click que la gaveta. */
+async function _esperarDevolucionHerramienta(herramienta) {
+    const overlay = document.createElement('div');
+    overlay.id = 'herramienta-devolucion-overlay';
+    overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 10000;
+        background: rgba(0,0,0,0.75);
+        display: flex; align-items: center; justify-content: center;
+    `;
+    overlay.innerHTML = `
+        <div style="background:#fff; border-radius:14px; padding:32px 40px; max-width:520px;
+                    text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+            <div style="font-size:3em; line-height:1;">📥</div>
+            <h2 style="margin:12px 0 4px; color:#dc3545;">Devuelve la herramienta</h2>
+            <div style="font-size:2.2em; font-weight:bold; color:#212529; margin:10px 0;">
+                🔧 ${herramienta.nombre || herramienta.codigo}
+            </div>
+            <div style="color:#6c757d; margin-bottom:18px;">
+                Has terminado con esta máquina. Su luz parpadea en azul hasta que la
+                vuelvas a dejar en su sitio.
+            </div>
+            <button id="herramienta-continuar" type="button"
+                    style="background:#6c757d; color:#fff; border:none; border-radius:8px;
+                           padding:10px 18px; cursor:pointer; font-size:0.95em;">
+                Continuar sin devolverla
+            </button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const boton = overlay.querySelector('#herramienta-continuar');
+    try {
+        await new Promise(resolve => {
+            let insistiendo = false;
+            const temporizador = setInterval(async () => {
+                try {
+                    const r = await fetch('/api/pick-to-light/estado?puesto_id='
+                                          + encodeURIComponent(herramienta.puesto_id));
+                    const d = await r.json();
+                    if (d && d.success && !d.herramienta) { clearInterval(temporizador); resolve(); }
+                } catch (e) { /* un sondeo perdido no rompe nada */ }
+            }, GAVETA_SONDEO_MS);
+            boton.onclick = () => {
+                if (!insistiendo) {
+                    insistiendo = true;
+                    boton.textContent = 'Sí, seguir sin devolverla';
+                    boton.style.background = '#dc3545';
+                    return;
+                }
+                clearInterval(temporizador);
+                resolve();
+            };
+        });
+    } finally {
+        overlay.remove();
+    }
+}
+
+
+/** ¿Hay algo encendido o fuera que habría que comprobar al irse? */
+function _hayPtlPendiente() {
+    return !!(herramientaEnUso
+              || (gavetaLuzActual && (gavetaLuzActual.activo || gavetaLuzActual.pendiente)));
+}
+
+
+/**
+ * El operario se va a mitad de trabajo (cerrar sesión, cambiar de máquina o de
+ * puesto): en vez de apagar las luces sin más, el servidor comprueba qué falta
+ * por devolver. La gaveta del terminal y la herramienta de la máquina que sigan
+ * fuera pasan a azul parpadeando, con pitido y mensaje en el display del
+ * lector, hasta que vuelvan; lo que estaba encendido sin sacar se apaga.
+ */
+async function cerrarPtlAlSalir() {
+    detenerVigilanciaGaveta();
+    const hayAlgo = _hayPtlPendiente();
+    const puestoId = (herramientaEnUso && herramientaEnUso.puesto_id)
+                  || (puestoSeleccionado && puestoSeleccionado.id);
+    herramientaEnUso = null;
+    gavetaLuzActual = null;
+    if (!hayAlgo || !puestoId) return;
+    try {
+        await fetch('/api/pick-to-light/cierre', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puesto_id: puestoId })
+        });
+    } catch (e) { /* sin luz, nada que comprobar */ }
+}
+
+
+// Cerrar o recargar la pestaña a mitad de trabajo: mismo cierre que arriba
+// (sendBeacon sobrevive a la descarga de la página).
+window.addEventListener('beforeunload', () => {
+    if (!_hayPtlPendiente() || !navigator.sendBeacon) return;
+    const puestoId = (herramientaEnUso && herramientaEnUso.puesto_id)
+                  || (puestoSeleccionado && puestoSeleccionado.id);
+    if (!puestoId) return;
+    try {
+        navigator.sendBeacon('/api/pick-to-light/cierre',
+                             new Blob([JSON.stringify({ puesto_id: puestoId })],
+                                      { type: 'application/json' }));
+    } catch (e) { /* ignorar */ }
+});
 
 
 /**
@@ -143,6 +344,7 @@ async function esperarRecogidaGaveta() {
 
     const avisoError = overlay.querySelector('#gaveta-aviso-error');
     const avisoRfid = overlay.querySelector('#gaveta-aviso-rfid');
+    const esHerramienta = gavetaLuzActual.tipo === 'herramienta';
     let ultimoEstado = null;
     let luzConfirmada = !!gavetaLuzActual.activo;
     const limiteLuz = Date.now() + GAVETA_ESPERA_LUZ_MS;
@@ -202,14 +404,14 @@ async function esperarRecogidaGaveta() {
                     }
 
                     if (d.estado === 'rfid_incorrecto') {
-                        avisoRfid.textContent = '❌ Esa etiqueta no es de esta gaveta. '
-                                              + 'Acerca la etiqueta correcta al lector.';
+                        avisoRfid.textContent = _textoRfidIncorrecto(d, gavetaLuzActual);
                         avisoRfid.style.background = '#f8d7da';
                         avisoRfid.style.color = '#842029';
                         avisoRfid.style.display = 'block';
                     } else if (d.estado === 'esperando_rfid') {
-                        avisoRfid.textContent = '📛 Acerca la etiqueta RFID de la gaveta al lector '
-                                              + 'para confirmar.';
+                        avisoRfid.textContent = esHerramienta
+                            ? '📛 Acerca la herramienta al lector para confirmar que es la correcta.'
+                            : '📛 Acerca la etiqueta RFID de la gaveta al lector para confirmar.';
                         avisoRfid.style.background = '#cfe2ff';
                         avisoRfid.style.color = '#084298';
                         avisoRfid.style.display = 'block';
@@ -231,6 +433,34 @@ async function esperarRecogidaGaveta() {
     // sola, pero sin este aviso en pantalla el operario oye el zumbador sin
     // saber por que (la puerta de arriba ya se ha cerrado).
     iniciarVigilanciaGaveta();
+}
+
+
+/**
+ * Qué decirle al operario cuando acerca una etiqueta que no toca.
+ *
+ * Tres casos, según lo que sepa el servidor de esa etiqueta (uid_incorrecto_info):
+ * es de otra gaveta/herramienta de este puesto (se dice dónde colocarla), es de
+ * otro puesto, o no está censada (jefe de línea). En los tres hay botón de
+ * continuar, que es lo que evita dejar a nadie parado por una etiqueta.
+ */
+function _textoRfidIncorrecto(d, luz) {
+    const info = d.uid_incorrecto_info;
+    const esHerr = luz.tipo === 'herramienta';
+    const buscada = luz.gaveta || ('gaveta ' + luz.led);
+    const cualToca = esHerr ? 'la que parpadea' : 'la iluminada';
+    if (!info) {
+        return '❌ Etiqueta no reconocida: no está censada. Avisa al JEFE DE LINEA. '
+             + 'Por ahora puedes continuar sin confirmar.';
+    }
+    const queEs = info.tipo === 'herramienta' ? 'la herramienta' : 'la gaveta';
+    if (info.en_este_puesto) {
+        return '❌ Esa es ' + queEs + ' «' + info.nombre + '», no «' + buscada + '». '
+             + 'Colócala en su sitio (' + info.gaveta + ', canal ' + info.canal + ') '
+             + 'y coge ' + cualToca + '.';
+    }
+    return '❌ Esa es ' + queEs + ' «' + info.nombre + '», del puesto ' + info.puesto_nombre + '. '
+         + 'Devuélvela allí y coge ' + cualToca + '.';
 }
 
 
@@ -386,7 +616,10 @@ function _pintarEsperaLuz(overlay, confirmada) {
     const sub = overlay.querySelector('#gaveta-sub');
     if (!icono || !titulo || !sub) return;
     icono.textContent = confirmada ? '💡' : '⏳';
-    titulo.textContent = confirmada ? 'Saca la gaveta iluminada' : 'Encendiendo la gaveta…';
+    const esHerr = overlay.dataset.herramienta === '1';
+    titulo.textContent = confirmada
+        ? (esHerr ? 'Coge la herramienta iluminada' : 'Saca la gaveta iluminada')
+        : 'Encendiendo la gaveta…';
     titulo.style.color = confirmada ? '#198754' : '#6c757d';
     sub.textContent = confirmada ? sub.dataset.normal
                                  : 'Un momento: la placa está recogiendo la orden.';
@@ -397,21 +630,25 @@ function _pintarEsperaLuz(overlay, confirmada) {
 function _crearPanelGaveta(luz) {
     const overlay = document.createElement('div');
     overlay.id = 'gaveta-overlay';
+    overlay.dataset.herramienta = luz.tipo === 'herramienta' ? '1' : '0';
     overlay.style.cssText = `
         position: fixed; inset: 0; z-index: 10000;
         background: rgba(0,0,0,0.75);
         display: flex; align-items: center; justify-content: center;
     `;
-    const textoNormal = 'Está en verde. Al sacarla se pondrá en azul'
-                      + (luz.rfid ? ' y tendrás que acercar su etiqueta RFID al lector' : '')
+    const esHerr = luz.tipo === 'herramienta';
+    const textoNormal = 'Parpadea en verde. Al ' + (esHerr ? 'cogerla' : 'sacarla')
+                      + ' se pondrá en azul'
+                      + (luz.rfid ? (esHerr ? ' y tendrás que acercarla al lector'
+                                            : ' y tendrás que acercar su etiqueta RFID al lector') : '')
                       + '.';
     overlay.innerHTML = `
         <div style="background:#fff; border-radius:14px; padding:32px 40px; max-width:520px;
                     text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
             <div id="gaveta-icono" style="font-size:3em; line-height:1;">💡</div>
-            <h2 id="gaveta-titulo" style="margin:12px 0 4px; color:#198754;">Saca la gaveta iluminada</h2>
+            <h2 id="gaveta-titulo" style="margin:12px 0 4px; color:#198754;">${esHerr ? 'Coge la herramienta iluminada' : 'Saca la gaveta iluminada'}</h2>
             <div style="font-size:2.2em; font-weight:bold; color:#212529; margin:10px 0;">
-                📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
+                ${esHerr ? '🔧' : '📦'} ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
             <div id="gaveta-sub" style="color:#6c757d; margin-bottom:18px;"
                  data-normal="${textoNormal}">${textoNormal}</div>

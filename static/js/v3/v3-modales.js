@@ -49,9 +49,11 @@ async function confirmarOperario() {
 async function salirEngastadoV3() {
     if (!confirm('¿Cerrar sesión y salir del módulo de Engastado?')) return;
 
-    // Apagar las gavetas: dejar una luz encendida en un puesto vacio confunde
-    // al siguiente operario que llegue.
-    await apagarGavetas();
+    // Comprobar las gavetas y la herramienta: lo que siga fuera (gaveta del
+    // terminal o máquina) se queda pidiendo su devolución en el puesto, con luz,
+    // pitido y mensaje en el lector; lo encendido sin sacar se apaga, para no
+    // confundir al siguiente operario que llegue.
+    await cerrarPtlAlSalir();
 
     // Cerrar login exclusivo del módulo en servidor.
     try {

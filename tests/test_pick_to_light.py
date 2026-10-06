@@ -290,7 +290,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
                      'validas': [7], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
-                     'esperando_devolucion': False,
+                     'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
     client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
@@ -301,7 +301,7 @@ def test_lector_tras_nat_puede_sondear_su_orden(app, client, admin_client, con_p
                      'validas': [], 'rfid_modo': None, 'prisa': True,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
-                     'esperando_devolucion': False,
+                     'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
 
@@ -501,7 +501,7 @@ def test_pythonanywhere_puede_probar_un_led_por_sondeo(app, client, admin_client
                      'validas': [], 'rfid_modo': None, 'prisa': False,
                      'micros': {'invertir': False, 'ignorar': [], 'invertidos': []},
                      'leds_por_gaveta': 1,
-                     'esperando_devolucion': False,
+                     'esperando_devolucion': False, 'parpadeo': False, 'herramienta': None,
                      'brillo': {'objetivo': 70, 'en_uso': 90, 'error': 110}}
 
 
@@ -1749,3 +1749,316 @@ def test_prueba_guiada_registra_cruces_y_sin_respuesta_como_incidencias(app, adm
     incidencias = admin_client.get('/api/pick-to-light/incidencias?puesto_id=puesto_001').get_json()
     tipos = sorted(i['tipo'] for i in incidencias['incidencias'])
     assert tipos == ['canal_cruzado', 'micro_sin_respuesta']
+
+
+# ── Flujo de la máquina: parpadeo, validas sin herramientas, etiqueta ajena ───
+
+def _asignar_herramienta(admin_client, puesto_id, canal, nombre, etiqueta='H-1'):
+    r = admin_client.put('/api/pick-to-light/canal',
+                         json={'puesto_id': puesto_id, 'canal': canal, 'terminal': nombre,
+                               'etiqueta_gaveta': etiqueta, 'tipo': 'herramienta'})
+    assert r.status_code == 200, r.get_json()
+
+
+def _asignar_uid(admin_client, puesto_id, canal, uid):
+    r = admin_client.put('/api/pick-to-light/canal/rfid',
+                         json={'puesto_id': puesto_id, 'canal': canal, 'uid': uid})
+    assert r.status_code == 200, r.get_json()
+
+
+def _marcar_uid_incorrecto(app, puesto_id, uid):
+    """Simula que la placa ha leido una etiqueta que no tocaba."""
+    with app.app_context():
+        ruta = pick_to_light._estado_file()
+    with open(ruta, encoding='utf-8') as f:
+        datos = json.load(f)
+    datos[puesto_id]['uid_incorrecto'] = uid
+    with open(ruta, 'w', encoding='utf-8') as f:
+        json.dump(datos, f)
+
+
+def test_encender_en_modo_parpadeo_lo_manda_a_la_placa_y_al_sondeo(
+        app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    r = client.post('/api/pick-to-light/encender',
+                    json={'puesto_id': 'puesto_001', 'terminal': '640204', 'modo': 'parpadeo'})
+    assert r.get_json()['tipo'] == 'terminal'
+    assert con_placa == [('192.168.50.151', {'led': 7, 'terminal': '640204',
+                                             'validas': [7], 'parpadeo': True})]
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['parpadeo'] is True
+
+
+def test_encender_por_defecto_es_verde_fijo(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+    assert orden['parpadeo'] is False
+    assert 'parpadeo' not in con_placa[0][1]
+
+
+def test_destellar_pasa_de_fijo_a_parpadeo_sin_orden_nueva(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    orden_id = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['orden_id']
+
+    r = client.post('/api/pick-to-light/destellar', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['activo'] is True
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['parpadeo'] is True and estado['orden_id'] == orden_id
+    assert con_placa[-1] == ('192.168.50.151', {'parpadeo': True})
+    assert client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()['parpadeo'] is True
+
+
+def test_destellar_sin_orden_activa_no_hace_nada_ni_falla(app, client, con_placa):
+    _registrar_lector(app)
+    r = client.post('/api/pick-to-light/destellar', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['activo'] is False
+    assert con_placa == []
+
+
+def test_las_herramientas_no_entran_en_las_gavetas_validas(app, client, admin_client, con_placa):
+    """Una maquina cogida esta fuera todo el engaste: no es una gaveta robada."""
+    _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    assert con_placa[-1][1]['validas'] == [7]
+
+    r = client.post('/api/pick-to-light/encender',
+                    json={'puesto_id': 'puesto_001', 'terminal': 'FRESADORA', 'modo': 'parpadeo'})
+    assert r.get_json()['tipo'] == 'herramienta'
+    assert con_placa[-1][1] == {'led': 9, 'terminal': 'FRESADORA', 'validas': [7],
+                                'parpadeo': True}
+
+
+def test_etiqueta_de_otra_herramienta_del_puesto_dice_donde_va(app, client, admin_client, con_placa):
+    _registrar_lector(app)
+    _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
+    _asignar_herramienta(admin_client, 'puesto_001', 10, 'PRENSA', 'H-10')
+    _asignar_uid(admin_client, 'puesto_001', 9, 'AA11')
+    _asignar_uid(admin_client, 'puesto_001', 10, 'BB22')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': 'FRESADORA'})
+    _marcar_uid_incorrecto(app, 'puesto_001', 'BB22')
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'rfid_incorrecto'
+    info = estado['uid_incorrecto_info']
+    assert info['en_este_puesto'] is True and info['nombre'] == 'PRENSA'
+    assert info['gaveta'] == 'H-10' and info['canal'] == 10 and info['tipo'] == 'herramienta'
+
+
+def test_etiqueta_no_censada_no_trae_info(app, client, admin_client, con_placa):
+    """Etiqueta desconocida: la pantalla manda al jefe de linea."""
+    _registrar_lector(app)
+    _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
+    _asignar_uid(admin_client, 'puesto_001', 9, 'AA11')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': 'FRESADORA'})
+    _marcar_uid_incorrecto(app, 'puesto_001', 'DESCONOCIDA')
+
+    estado = client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+    assert estado['estado'] == 'rfid_incorrecto' and estado['uid_incorrecto_info'] is None
+
+
+# ── Herramienta de la maquina en uso / a devolver ─────────────────────────────
+
+def _orden_poll(client, device_id, extra=''):
+    return client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id + extra).get_json()
+
+
+def _poner_herramienta_en_uso(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': 'FRESADORA', 'modo': 'parpadeo'})
+    r = client.post('/api/pick-to-light/herramienta/en-uso', json={'puesto_id': 'puesto_001'})
+    assert r.get_json()['activo'] is True
+    return device_id
+
+
+def test_herramienta_en_uso_sobrevive_a_apagar_y_a_encender_un_terminal(
+        app, client, admin_client, con_placa):
+    device_id = _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    assert con_placa[-1] == ('192.168.50.151', {'herramienta': {'led': 9, 'modo': 'en_uso'}})
+
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+    assert _orden_poll(client, device_id)['herramienta'] == {'led': 9, 'modo': 'en_uso'}
+
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    orden = _orden_poll(client, device_id)
+    assert orden['led'] == 7 and orden['herramienta'] == {'led': 9, 'modo': 'en_uso'}
+
+
+def test_en_uso_solo_vale_si_la_orden_en_curso_es_una_herramienta(
+        app, client, admin_client, con_placa):
+    _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    r = client.post('/api/pick-to-light/herramienta/en-uso', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['activo'] is False
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['herramienta'] is None
+
+
+def test_devolver_pone_la_herramienta_en_rojo_y_la_placa_lo_recibe(
+        app, client, admin_client, con_placa):
+    device_id = _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+
+    r = client.post('/api/pick-to-light/herramienta/devolver', json={'puesto_id': 'puesto_001'})
+    assert r.get_json()['activo'] is True
+    assert con_placa[-1] == ('192.168.50.151', {'herramienta': {'led': 9, 'modo': 'devolver'}})
+    assert _orden_poll(client, device_id)['herramienta'] == {'led': 9, 'modo': 'devolver'}
+    assert _orden_poll(client, device_id)['prisa'] is True
+
+
+def test_devolver_acepta_un_beacon_sin_content_type(app, client, admin_client, con_placa):
+    _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    r = client.post('/api/pick-to-light/herramienta/devolver',
+                    data=json.dumps({'puesto_id': 'puesto_001'}), content_type='text/plain')
+    assert r.get_json()['activo'] is True
+
+
+def test_devolver_sin_herramienta_en_uso_no_hace_nada(app, client, con_placa):
+    _registrar_lector(app)
+    r = client.post('/api/pick-to-light/herramienta/devolver', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['activo'] is False
+    assert con_placa == []
+
+
+def test_la_placa_confirma_la_devolucion_por_el_sondeo(app, client, admin_client, con_placa):
+    device_id = _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    client.post('/api/pick-to-light/herramienta/devolver', json={'puesto_id': 'puesto_001'})
+
+    orden = _orden_poll(client, device_id, '&herr_devuelta=1')
+    assert orden['herramienta'] is None
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['herramienta'] is None
+
+
+def test_la_placa_confirma_la_devolucion_por_el_aviso_suelto(app, client, admin_client, con_placa):
+    _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    client.post('/api/pick-to-light/herramienta/devolver', json={'puesto_id': 'puesto_001'})
+
+    r = client.post('/api/esp32/rfid/gaveta',
+                    json={'device_id': 'aabbccddeeff', 'led': 9, 'fuera': False,
+                          'resultado': 'herramienta_devuelta'})
+    assert r.status_code == 200
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['herramienta'] is None
+
+
+def test_una_confirmacion_de_devolucion_no_quita_la_herramienta_en_uso(
+        app, client, admin_client, con_placa):
+    """Una lectura vieja de 'devuelta' no puede apagar el azul de una herramienta
+    que sigue en uso: solo cuenta si se habia pedido devolverla."""
+    device_id = _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    _orden_poll(client, device_id, '&herr_devuelta=1')
+    assert client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()['herramienta']['modo'] == 'en_uso'
+
+
+# ── Cierre de sesion a mitad de trabajo ───────────────────────────────────────
+
+def _estado_ptl(client):
+    return client.get('/api/pick-to-light/estado?puesto_id=puesto_001').get_json()
+
+
+def _sacar_gaveta(client, led=7):
+    """La placa avisa de que el operario ha sacado la gaveta correcta."""
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': 'aabbccddeeff', 'led': led, 'fuera': True, 'resultado': 'ok'})
+
+
+def test_cierre_con_la_gaveta_del_terminal_fuera_pide_devolverla(
+        app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    _sacar_gaveta(client)
+
+    r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
+    assert r.get_json() == {'success': True, 'gaveta': True, 'herramienta': False}
+
+    # La orden sigue viva y la placa recibe "toca devolver" por el sondeo.
+    orden = _orden_poll(client, device_id)
+    assert orden['led'] == 7 and orden['esperando_devolucion'] is True and orden['apagar'] is False
+
+    # Al devolverla, la orden se borra sola (la placa recibe 'apagar').
+    client.post('/api/esp32/rfid/gaveta',
+                json={'device_id': device_id, 'led': 7, 'fuera': False, 'resultado': 'devuelta'})
+    orden = _orden_poll(client, device_id)
+    assert orden['led'] is None and orden['apagar'] is True
+
+
+def test_cierre_con_la_gaveta_encendida_sin_sacar_la_apaga(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+
+    r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
+    assert r.get_json()['gaveta'] is False
+    assert _orden_poll(client, device_id)['apagar'] is True
+    assert con_placa[-1] == ('192.168.50.151', {'apagar': True})
+
+
+def test_cierre_pide_devolver_gaveta_y_herramienta_a_la_vez(
+        app, client, admin_client, con_placa):
+    device_id = _poner_herramienta_en_uso(app, client, admin_client, con_placa)
+    client.post('/api/pick-to-light/apagar', json={'puesto_id': 'puesto_001'})
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    _sacar_gaveta(client)
+
+    r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
+    assert r.get_json() == {'success': True, 'gaveta': True, 'herramienta': True}
+    orden = _orden_poll(client, device_id)
+    assert orden['esperando_devolucion'] is True
+    assert orden['herramienta'] == {'led': 9, 'modo': 'devolver'}
+    assert orden['prisa'] is True
+
+
+def test_cierre_a_mitad_de_coger_la_herramienta_con_ella_en_la_mano(
+        app, client, admin_client, con_placa):
+    """Se va tras sacar la maquina pero antes de confirmarla: es 'a devolver'."""
+    device_id = _registrar_lector(app)
+    _asignar_herramienta(admin_client, 'puesto_001', 9, 'FRESADORA', 'H-9')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': 'FRESADORA', 'modo': 'parpadeo'})
+    _sacar_gaveta(client, led=9)
+
+    r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
+    assert r.get_json() == {'success': True, 'gaveta': False, 'herramienta': True}
+    orden = _orden_poll(client, device_id)
+    assert orden['led'] is None and orden['herramienta'] == {'led': 9, 'modo': 'devolver'}
+
+
+def test_cierre_acepta_un_beacon_sin_content_type(app, client, admin_client, con_placa):
+    _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 7, '640204', 'A-12')
+    client.post('/api/pick-to-light/encender',
+                json={'puesto_id': 'puesto_001', 'terminal': '640204'})
+    _sacar_gaveta(client)
+    r = client.post('/api/pick-to-light/cierre',
+                    data=json.dumps({'puesto_id': 'puesto_001'}), content_type='text/plain')
+    assert r.get_json()['gaveta'] is True
+
+
+def test_cierre_sin_nada_encendido_no_hace_nada_ni_falla(app, client, con_placa):
+    _registrar_lector(app)
+    r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
+    assert r.status_code == 200 and r.get_json()['gaveta'] is False
+    assert client.post('/api/pick-to-light/cierre', json={}).status_code == 200

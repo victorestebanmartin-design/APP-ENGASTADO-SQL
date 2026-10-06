@@ -444,13 +444,41 @@ def _canales_del_puesto(puesto_id):
 def _gavetas_validas_del_puesto(puesto_id):
     """LEDs con un terminal de verdad detras, entre los de este puesto.
 
+    Las herramientas manuales NO entran: una maquina cogida para trabajar esta
+    fuera de su sitio todo el engaste y eso es lo normal, no una gaveta robada.
+    Si entraran, la placa pondria la suya en rojo y pitaria al elegir terminal.
+
     Un expansor MCP23017 trae 16 canales aunque solo se haya cableado un
     microinterruptor: los que faltan quedan flotando con el pull-up interno y
     leen "abierto" todo el rato. Sin esta lista la placa los confundiria con
     gavetas robadas. Con ella, cualquier canal que no sea el numero de LED de
     algun terminal de este puesto es ruido del expansor y se ignora.
     """
-    return sorted(_canales_del_puesto(puesto_id).keys())
+    return sorted(canal for canal, info in _canales_del_puesto(puesto_id).items()
+                  if info.get('tipo') != 'herramienta')
+
+
+def _info_uid(uid, puesto_id):
+    """Dice a quien pertenece una etiqueta RFID leida, o None si no esta censada.
+
+    Sirve para que, cuando el operario acerca una etiqueta que no toca, la
+    pantalla pueda decirle QUE ha cogido y DONDE va, en vez de un generico
+    "esa no es". 'en_este_puesto' distingue la gaveta de al lado de una
+    herramienta que se ha ido a otro puesto.
+    """
+    if not uid:
+        return None
+    fila = db.session.execute(text("""
+        SELECT c.puesto_id, c.canal, c.terminal_codigo, c.etiqueta_gaveta, c.tipo, p.nombre
+        FROM pick_to_light_canales c
+        LEFT JOIN puestos p ON p.id = c.puesto_id
+        WHERE (c.uid_rfid = :uid OR c.uid_rfid_2 = :uid) AND c.activo = 1
+    """), {'uid': uid}).fetchone()
+    if not fila:
+        return None
+    return {'en_este_puesto': fila[0] == puesto_id, 'canal': fila[1],
+            'nombre': fila[2], 'gaveta': fila[3] or fila[2],
+            'tipo': fila[4] or 'terminal', 'puesto_nombre': fila[5] or fila[0]}
 
 
 def _canal_del_terminal_en_puesto(terminal, puesto_id):
@@ -1072,7 +1100,7 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False,
                             'motivo': 'Falta el puesto o el terminal'})
 
-        led, gaveta, uid_rfid, uid_rfid_2, _tipo = _canal_del_terminal_en_puesto(terminal, puesto_id)
+        led, gaveta, uid_rfid, uid_rfid_2, tipo = _canal_del_terminal_en_puesto(terminal, puesto_id)
         if not led:
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta,
                             'motivo': 'El terminal %s no tiene gaveta con luz en este puesto' % terminal})
@@ -1083,7 +1111,14 @@ def api_pick_to_light_encender():
                             'motivo': 'Este puesto no tiene lector asignado en Admin'})
 
         validas = _gavetas_validas_del_puesto(puesto_id)
-        ok, motivo = _enviar_a_placa(ip, {'led': led, 'terminal': terminal, 'validas': validas})
+        # 'fijo' (verde que se queda quieto: "este es el tuyo, aun no hace falta
+        # cogerlo") o 'parpadeo' (verde intermitente: "cogelo ya"). Se pasa de
+        # uno a otro sin nueva orden con /destellar.
+        parpadeo = datos.get('modo') == 'parpadeo'
+        payload = {'led': led, 'terminal': terminal, 'validas': validas}
+        if parpadeo:
+            payload['parpadeo'] = True
+        ok, motivo = _enviar_a_placa(ip, payload)
 
         # Cada encendido es una orden nueva: el orden_id es lo que evita que
         # una lectura RFID tardia de la orden ANTERIOR (p.ej. el operario tapa
@@ -1100,9 +1135,13 @@ def api_pick_to_light_encender():
             # este terminal el puesto volveria al sondeo lento con el operario
             # todavia delante, eligiendo el siguiente.
             atencion = (estado.get(puesto_id) or {}).get('atencion_hasta')
-            estado[puesto_id] = {'atencion_hasta': atencion,
+            # La herramienta de la maquina (azul en uso) no es parte de la
+            # orden: sobrevive a que se encienda otra gaveta.
+            herramienta = (estado.get(puesto_id) or {}).get('herramienta')
+            estado[puesto_id] = {'atencion_hasta': atencion, 'herramienta': herramienta,
                                  'led': led, 'terminal': terminal, 'gaveta': gaveta,
                                  'recogida': False, 'devuelta': False, 'validas': validas,
+                                 'parpadeo': parpadeo, 'tipo': tipo,
                                  'error_led': None, 'intrusas': [], 'eventos': [],
                                  'orden_id': orden_id,
                                  'uids_esperados': [u for u in (uid_rfid, uid_rfid_2) if u],
@@ -1133,7 +1172,7 @@ def api_pick_to_light_encender():
         if pendiente:
             motivo_final = ''
         return jsonify({'success': True, 'activo': activo, 'pendiente': pendiente,
-                'led': led, 'gaveta': gaveta,
+                'led': led, 'gaveta': gaveta, 'tipo': tipo,
                 'rfid': bool(uid_rfid or uid_rfid_2), 'motivo': motivo_final})
     except Exception as e:
         return error_interno(e, 'Error al encender la gaveta')
@@ -1159,13 +1198,214 @@ def api_pick_to_light_apagar():
             # placa tiene que seguir rapida para que esa gaveta encienda ya.
             # Para todo lo demas un puesto con solo esta marca se lee igual
             # que uno que no esta: el resto de campos se consultan con .get.
-            estado[puesto_id] = {'atencion_hasta': time.time() + ATENCION_S}
+            estado[puesto_id] = {'atencion_hasta': time.time() + ATENCION_S,
+                                 'herramienta': (estado.get(puesto_id) or {}).get('herramienta')}
             return estado
         _estado_actualizar(_borrar)
 
         return jsonify({'success': True, 'activo': ok})
     except Exception as e:
         return error_interno(e, 'Error al apagar las gavetas')
+
+
+@bp.route('/api/pick-to-light/destellar', methods=['POST'])
+def api_pick_to_light_destellar():
+    """Pasa la gaveta encendida de verde fijo a verde parpadeando.
+
+    Engastado enciende la gaveta del terminal en cuanto se elige (fija), y la
+    hace parpadear cuando se elige el carro: ahi es cuando hay que cogerla.
+    Es un cambio sobre la orden en curso, no una orden nueva: no toca la
+    recogida ni la verificacion RFID.
+
+    Responde SIEMPRE 200, y sin orden activa no hace nada.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        if not puesto_id:
+            return jsonify({'success': True, 'activo': False})
+
+        def _set(estado):
+            actual = estado.get(puesto_id) or {}
+            if actual.get('led'):
+                actual['parpadeo'] = True
+                estado[puesto_id] = actual
+            return estado
+        estado = _estado_actualizar(_set)
+
+        if (estado.get(puesto_id) or {}).get('led'):
+            _device_id, ip = _placa_del_puesto(puesto_id)
+            if ip:
+                _enviar_a_placa(ip, {'parpadeo': True})
+        return jsonify({'success': True, 'activo': bool((estado.get(puesto_id) or {}).get('led'))})
+    except Exception as e:
+        return error_interno(e, 'Error al hacer parpadear la gaveta')
+
+
+# ==================== HERRAMIENTA DE LA MAQUINA ====================
+#
+# La herramienta de la maquina elegida es una segunda luz, independiente de la
+# orden (la gaveta del terminal): azul fijo mientras se trabaja con ella, aunque
+# se cambie de terminal, y azul parpadeando cuando toca devolverla (acaba la
+# maquina, se cambia de maquina/puesto, se cierra sesion o se recarga la pagina)
+# hasta que su micro dice que ha vuelto. Vive en estado[puesto]['herramienta'] =
+# {'led', 'terminal', 'modo': 'en_uso'|'devolver'}; sin ella no hay luz.
+
+def _herramienta_devuelta(estado, puesto_id):
+    """Quita la herramienta del estado si se estaba esperando su devolucion."""
+    actual = estado.get(puesto_id) or {}
+    herr = actual.get('herramienta')
+    if herr and herr.get('modo') == 'devolver':
+        actual['herramienta'] = None
+        estado[puesto_id] = actual
+    return estado
+
+
+def _cerrar_si_devuelta(estado, puesto_id):
+    """Tras un cierre de sesion, la orden se borra en cuanto devuelven la gaveta.
+
+    La orden se queda viva mientras falte la gaveta para que la placa siga
+    pidiendola (azul parpadeando, pitido, display); al volver, verde un
+    momento y fuera. La herramienta de la maquina y la atencion se conservan.
+    """
+    actual = estado.get(puesto_id) or {}
+    if actual.get('cerrar_al_devolver') and actual.get('devuelta'):
+        estado[puesto_id] = {'atencion_hasta': actual.get('atencion_hasta'),
+                             'herramienta': actual.get('herramienta')}
+    return estado
+
+
+@bp.route('/api/pick-to-light/cierre', methods=['POST'])
+def api_pick_to_light_cierre():
+    """El operario se va a mitad de trabajo (cierra sesion, cambia de maquina o
+    de puesto, cierra o recarga la pestana): hay que comprobar lo que falta.
+
+    - Gaveta de terminal sacada: sigue pidiendo devolverla (azul parpadeando,
+      pitido y mensaje en el display) hasta que vuelva; entonces se borra.
+    - Herramienta de la maquina: igual, a devolver.
+    - Gaveta encendida pero sin sacar: se apaga, no hay nada que devolver.
+
+    Tambien lo manda un sendBeacon (JSON sin Content-Type). Responde SIEMPRE
+    200 y sin luz no hace nada.
+    """
+    try:
+        datos = request.get_json(force=True, silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        resultado = {'gaveta': False, 'herramienta': None, 'apagar': False}
+
+        def _set(estado):
+            actual = estado.get(puesto_id) or {}
+            herr = actual.get('herramienta')
+            if actual.get('led'):
+                fuera = bool(actual.get('recogida')) and not actual.get('devuelta')
+                if actual.get('tipo') == 'herramienta':
+                    # Se iba a mitad de coger la herramienta de la maquina:
+                    # si ya la tiene en la mano, pasa a ser "a devolver".
+                    if fuera:
+                        herr = {'led': actual['led'], 'modo': 'en_uso',
+                                'terminal': actual.get('terminal'),
+                                'gaveta': actual.get('gaveta')}
+                    actual = {'atencion_hasta': actual.get('atencion_hasta'),
+                              'herramienta': herr}
+                    resultado['apagar'] = True
+                elif fuera:
+                    actual['esperando_devolucion'] = True
+                    actual['cerrar_al_devolver'] = True
+                    resultado['gaveta'] = True
+                else:
+                    actual = {'atencion_hasta': actual.get('atencion_hasta'),
+                              'herramienta': herr}
+                    resultado['apagar'] = True
+            if herr:
+                herr['modo'] = 'devolver'
+                actual['herramienta'] = herr
+                resultado['herramienta'] = dict(herr)
+            if actual or herr:
+                estado[puesto_id] = actual
+            return estado
+
+        if puesto_id:
+            _estado_actualizar(_set)
+            if resultado['gaveta'] or resultado['herramienta']:
+                _atencion_marcar(puesto_id)
+            _device_id, ip = _placa_del_puesto(puesto_id)
+            if ip:
+                if resultado['apagar']:
+                    _enviar_a_placa(ip, {'apagar': True})
+                if resultado['herramienta']:
+                    _enviar_a_placa(ip, {'herramienta': {
+                        'led': resultado['herramienta']['led'], 'modo': 'devolver'}})
+        return jsonify({'success': True, 'gaveta': resultado['gaveta'],
+                        'herramienta': bool(resultado['herramienta'])})
+    except Exception as e:
+        return error_interno(e, 'Error al cerrar el pick-to-light')
+
+
+@bp.route('/api/pick-to-light/herramienta/en-uso', methods=['POST'])
+def api_pick_to_light_herramienta_en_uso():
+    """La herramienta de la orden en curso pasa a 'en uso' (azul fijo).
+
+    Se llama tras confirmar la herramienta de la maquina. Si la orden en curso
+    no es una herramienta (o no hay luz), no hace nada. Responde SIEMPRE 200.
+    """
+    try:
+        datos = request.get_json(silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        resultado = {}
+
+        def _set(estado):
+            actual = estado.get(puesto_id) or {}
+            if actual.get('led') and actual.get('tipo') == 'herramienta':
+                actual['herramienta'] = {'led': actual['led'], 'modo': 'en_uso',
+                                         'terminal': actual.get('terminal'),
+                                         'gaveta': actual.get('gaveta')}
+                estado[puesto_id] = actual
+                resultado.update(actual['herramienta'])
+            return estado
+        if puesto_id:
+            _estado_actualizar(_set)
+        if resultado:
+            _device_id, ip = _placa_del_puesto(puesto_id)
+            if ip:
+                _enviar_a_placa(ip, {'herramienta': {'led': resultado['led'], 'modo': 'en_uso'}})
+        return jsonify({'success': True, 'activo': bool(resultado)})
+    except Exception as e:
+        return error_interno(e, 'Error al marcar la herramienta en uso')
+
+
+@bp.route('/api/pick-to-light/herramienta/devolver', methods=['POST'])
+def api_pick_to_light_herramienta_devolver():
+    """Pide devolver la herramienta: su luz pasa a azul parpadeando.
+
+    Tambien lo manda un sendBeacon al cerrar o recargar la pestana, asi que
+    acepta el JSON sin Content-Type. Sin herramienta en uso no hace nada.
+    """
+    try:
+        datos = request.get_json(force=True, silent=True) or {}
+        puesto_id = (datos.get('puesto_id') or '').strip()[:24]
+        resultado = {}
+
+        def _set(estado):
+            actual = estado.get(puesto_id) or {}
+            herr = actual.get('herramienta')
+            if herr:
+                herr['modo'] = 'devolver'
+                actual['herramienta'] = herr
+                estado[puesto_id] = actual
+                resultado.update(herr)
+            return estado
+        if puesto_id:
+            _estado_actualizar(_set)
+            if resultado:
+                # La placa tiene que enterarse rapido: sondeo rapido y empuje.
+                _atencion_marcar(puesto_id)
+                _device_id, ip = _placa_del_puesto(puesto_id)
+                if ip:
+                    _enviar_a_placa(ip, {'herramienta': {'led': resultado['led'],
+                                                         'modo': 'devolver'}})
+        return jsonify({'success': True, 'activo': bool(resultado)})
+    except Exception as e:
+        return error_interno(e, 'Error al pedir la devolución de la herramienta')
 
 
 @bp.route('/api/pick-to-light/devolucion/iniciar', methods=['POST'])
@@ -1259,6 +1499,13 @@ def api_pick_to_light_estado():
             'uid_esperado': bool(actual.get('uids_esperados')),
             'rfid_confirmado': bool(actual.get('rfid_confirmado')),
             'uid_incorrecto': bool(actual.get('uid_incorrecto')),
+            # Quien es la etiqueta que no tocaba (o None si no esta censada):
+            # con esto la pantalla dice donde va, o avisa al jefe de linea.
+            'uid_incorrecto_info': _info_uid(actual.get('uid_incorrecto'), puesto_id),
+            'parpadeo': bool(actual.get('parpadeo')),
+            'tipo': actual.get('tipo') or 'terminal',
+            # None cuando no hay herramienta en uso, o ya se ha devuelto.
+            'herramienta': actual.get('herramienta'),
             # Lo que le falta al modal cuando entra en 'pendiente': hasta que
             # esto sea True la luz no está encendida de verdad (ver /encender).
             'placa_confirmo_luz': bool(actual.get('placa_confirmo_luz')),
@@ -1303,6 +1550,11 @@ def api_pick_to_light_orden():
         esperando_devolucion = bool(
             (_estado_cargar().get(puesto_id) or {}).get('esperando_devolucion')) \
             if puesto_id else False
+
+        # La placa reconfirma en cada sondeo que su herramienta ya esta dentro
+        # (el POST suelto de _aplicar_aviso puede perderse, este GET se repite).
+        if puesto_id and request.args.get('herr_devuelta') == '1':
+            _estado_actualizar(lambda e: _herramienta_devuelta(e, puesto_id))
 
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
@@ -1357,7 +1609,7 @@ def api_pick_to_light_orden():
                 actual['intrusas'] = intrusas
                 actual['error_led'] = intrusas[0] if intrusas else None
             estado_todo[puesto_id] = actual
-            return estado_todo
+            return _cerrar_si_devuelta(estado_todo, puesto_id)
 
         estado_todo = _estado_cargar()
         if (puesto_id and led_reportado
@@ -1375,6 +1627,9 @@ def api_pick_to_light_orden():
                         'leds_por_gaveta': leds_por_gaveta,
                         'brillo': brillo,
                         'esperando_devolucion': esperando_devolucion,
+                        'parpadeo': bool((estado or {}).get('parpadeo')),
+                        'herramienta': ({'led': herr['led'], 'modo': herr['modo']}
+                                        if (herr := (estado or {}).get('herramienta')) else None),
                         # Con un operario delante la placa sondea rapido; sin
                         # nadie, vuelve sola a su ritmo lento en cuanto caduca
                         # la marca (ver ATENCION_S y _atencion_marcar).
@@ -2046,6 +2301,10 @@ def api_esp32_rfid_gaveta():
             return jsonify({'success': True})
 
         def _aplicar_aviso(estado):
+            if resultado == 'herramienta_devuelta':
+                # La herramienta de la maquina ha vuelto a su sitio: se acabo
+                # el rojo. No toca nada de la orden en curso.
+                return _herramienta_devuelta(estado, puesto_id)
             actual = estado.get(puesto_id) or {}
             intrusas = set(actual.get('intrusas') or [])
             if resultado == 'ok' and led and led == actual.get('led'):
@@ -2065,7 +2324,7 @@ def api_esp32_rfid_gaveta():
             eventos.append({'led': led, 'fuera': fuera, 'resultado': resultado})
             actual['eventos'] = eventos[-MAX_EVENTOS_PUESTO:]
             estado[puesto_id] = actual
-            return estado
+            return _cerrar_si_devuelta(estado, puesto_id)
         _estado_actualizar(_aplicar_aviso)
 
         return jsonify({'success': True})
