@@ -301,7 +301,7 @@ function mostrarListaMaquinas(maquinas) {
                             <span class="badge-tipo ${tipoCls}">${tipoIcon} ${tipo}</span>
                             ${regBadge}
                             ${pdfBtn}
-                            <span class="stat">🔗 ${maquina.terminales_asignados ? maquina.terminales_asignados.length : 0}</span>
+                            ${chipTerminales(maquina)}
                             <span class="stat-status ${maquina.activo ? 'activo' : 'inactivo'}">
                                 ${maquina.activo ? '✅ Activa' : '❌ Inactiva'}
                             </span>
@@ -311,6 +311,74 @@ function mostrarListaMaquinas(maquinas) {
             </div>
         </div>
     `).join('');
+}
+
+// ================================
+// TERMINALES DE UNA MÁQUINA (chip + modal)
+// ================================
+
+let _maquinaTerminalesId = null;     // máquina abierta en el modal
+let _maquinaDestinoPendiente = null; // se preselecciona al pintar Terminales
+
+/** Chip clicable con la cantidad de terminales asignados a la máquina. */
+function chipTerminales(maquina) {
+    const n = maquina.terminales_asignados ? maquina.terminales_asignados.length : 0;
+    const titulo = n ? 'Ver los terminales asignados' : 'Sin terminales — clic para asignar';
+    return `<button type="button" class="chip-terminales ${n ? '' : 'vacio'}"
+                onclick="event.stopPropagation();abrirTerminalesMaquina('${maquina.id}')"
+                title="${titulo}">🔗 ${n} terminal${n !== 1 ? 'es' : ''}</button>`;
+}
+
+/** Abre el modal con los terminales de la máquina (quitar / asignar más). */
+function abrirTerminalesMaquina(maquinaId) {
+    _maquinaTerminalesId = maquinaId;
+    pintarTerminalesMaquina();
+    document.getElementById('modal-terminales-maquina').classList.add('active');
+}
+
+function pintarTerminalesMaquina() {
+    const maquina = (dataMaquinas || []).find(m => m.id === _maquinaTerminalesId);
+    if (!maquina) { cerrarModal('modal-terminales-maquina'); return; }
+    const lista = maquina.terminales_asignados || [];
+    document.getElementById('modal-terminales-titulo').textContent =
+        `Terminales de ${maquina.nombre}`;
+    document.getElementById('modal-terminales-sub').textContent =
+        `${maquina.puesto_nombre || 'Sin puesto'} · ${lista.length} terminal${lista.length !== 1 ? 'es' : ''}`;
+    const cont = document.getElementById('modal-terminales-lista');
+    cont.innerHTML = lista.length
+        ? lista.map(t => `
+            <div class="mt-row">
+                <span class="mt-code">${t}</span>
+                <button type="button" class="btn-desvincular" title="Quitar de esta máquina"
+                        onclick="quitarTerminalDeMaquina('${t}')">✕</button>
+            </div>`).join('')
+        : '<div class="mt-vacio">Esta máquina no tiene terminales asignados.</div>';
+}
+
+async function quitarTerminalDeMaquina(terminal) {
+    try {
+        const resp = await fetch('/api/desasignar-terminal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ terminal })
+        });
+        const data = await resp.json();
+        if (!data.success) { alert('Error: ' + data.message); return; }
+        await cargarMaquinas();          // refresca chips y dataMaquinas
+        pintarTerminalesMaquina();
+        cargarAsignaciones();            // la pestaña Terminales también cambia
+    } catch (e) {
+        console.error(e);
+        alert('Error al quitar el terminal');
+    }
+}
+
+/** Lleva a Terminales con «Solo sin asignar» y esta máquina como destino. */
+function asignarMasAMaquina() {
+    _maquinaDestinoPendiente = _maquinaTerminalesId;
+    document.getElementById('filtro-estado').value = 'sin-asignar';
+    cerrarModal('modal-terminales-maquina');
+    gpNav('terminales');   // recarga las asignaciones y aplica la preselección
 }
 
 /**
@@ -789,6 +857,12 @@ function mostrarAsignaciones(dataTerminales, maquinas) {
         </div>
     `;
 
+    if (_maquinaDestinoPendiente) {
+        const sel = document.getElementById('maquina-destino');
+        if (sel) { sel.value = _maquinaDestinoPendiente; sel.focus(); }
+        _maquinaDestinoPendiente = null;
+    }
+
     aplicarFiltros();
 }
 
@@ -864,17 +938,33 @@ async function asignarSeleccionados() {
     const terminales = Array.from(seleccionadas).map(card => card.dataset.terminal);
     
     try {
+        const fallos = [];
+        let ok = 0;
         for (const terminal of terminales) {
-            await fetch('/api/asignar-terminal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ terminal, maquina_id: maquinaId })
-            });
+            let data = null;
+            try {
+                const resp = await fetch('/api/asignar-terminal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ terminal, maquina_id: maquinaId })
+                });
+                data = await resp.json();
+            } catch (e) {
+                data = { success: false, message: 'sin respuesta del servidor' };
+            }
+            if (data && data.success) ok++;
+            else fallos.push(`${terminal}: ${(data && data.message) || 'error'}`);
         }
-        
-        mostrarNotificacion(`${terminales.length} terminales asignados correctamente`, 'success');
+
+        if (ok > 0) {
+            mostrarNotificacion(`${ok} terminal${ok !== 1 ? 'es' : ''} asignado${ok !== 1 ? 's' : ''} correctamente`, 'success');
+        }
+        if (fallos.length) {
+            alert('No se pudieron asignar:\n' + fallos.join('\n'));
+        }
         cargarAsignaciones();
-        
+        cargarMaquinas();   // el chip de cada máquina cuenta sus terminales
+
     } catch (error) {
         console.error('Error:', error);
         alert('Error al asignar terminales');
@@ -901,10 +991,11 @@ async function desasignarTerminal(terminal) {
         if (data.success) {
             mostrarNotificacion(data.message, 'success');
             cargarAsignaciones();
+            cargarMaquinas();
         } else {
             alert('Error: ' + data.message);
         }
-        
+
     } catch (error) {
         console.error('Error:', error);
         alert('Error al desasignar terminal');

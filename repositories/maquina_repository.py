@@ -161,8 +161,14 @@ class MaquinaRepository(BaseRepository):
             WHERE id = :id
         """
         rows = self.execute_update(query, {'id': id})
+        if rows > 0:
+            # La UI promete "elimina tambien las asignaciones de terminales":
+            # si se quedaran, esos terminales parecerian libres pero seguirian
+            # atados a una maquina que ya no existe.
+            self.execute_delete(
+                "DELETE FROM maquinas_terminales WHERE maquina_id = :id", {'id': id})
         return rows > 0
-    
+
     def eliminar_maquina(self, id: str) -> bool:
         """Eliminar permanentemente una máquina"""
         query = "DELETE FROM maquinas WHERE id = :id"
@@ -180,16 +186,25 @@ class MaquinaRepository(BaseRepository):
         Returns:
             True si se asignó correctamente
         """
-        query = """
-            INSERT INTO maquinas_terminales (maquina_id, terminal_codigo, activo)
-            VALUES (:maquina_id, :terminal_codigo, 1)
-        """
         params = {
             'maquina_id': maquina_id,
             'terminal_codigo': terminal_codigo
         }
         try:
-            self.execute_insert(query, params)
+            # Limpia asignaciones huerfanas: filas de maquinas desactivadas
+            # (borrado suave) o inactivas de este mismo terminal. Sin esto el
+            # UNIQUE(maquina_id, terminal_codigo) o la comprobacion previa
+            # rechazaban la asignacion por una fila que la UI ni siquiera ve.
+            self.execute_delete("""
+                DELETE FROM maquinas_terminales
+                WHERE terminal_codigo = :terminal_codigo
+                  AND (activo = 0
+                       OR maquina_id NOT IN (SELECT id FROM maquinas WHERE activo = 1))
+            """, {'terminal_codigo': terminal_codigo})
+            self.execute_insert("""
+                INSERT INTO maquinas_terminales (maquina_id, terminal_codigo, activo)
+                VALUES (:maquina_id, :terminal_codigo, 1)
+            """, params)
             return True
         except Exception:
             # Puede fallar si ya existe
@@ -239,6 +254,7 @@ class MaquinaRepository(BaseRepository):
             JOIN maquinas m ON mt.maquina_id = m.id
             LEFT JOIN puestos p ON m.puesto_id = p.id
             WHERE mt.terminal_codigo = :terminal_codigo AND mt.activo = 1
+              AND m.activo = 1
         """
         resultados = self.execute_select(query, {'terminal_codigo': terminal_codigo})
         return resultados[0] if resultados else None

@@ -537,6 +537,26 @@
             flex-shrink: 0;
         }
 
+        /* Chip de terminales en la tarjeta de máquina + modal de su lista */
+        .chip-terminales {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 0.72rem; padding: 2px 9px; border-radius: 20px; cursor: pointer;
+            background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.35);
+            color: #93c5fd; font-family: inherit; transition: all .14s; white-space: nowrap;
+        }
+        .chip-terminales:hover { background: rgba(59,130,246,.25); border-color: #3b82f6; color: #dbeafe; }
+        .chip-terminales.vacio { background: transparent; border-style: dashed; color: var(--text-muted); }
+        .mt-sub { font-size: 0.74rem; color: #94a3b8; margin-top: 2px; }
+        #modal-terminales-maquina .p-modal-box { width: min(440px, 95vw); }
+        .mt-lista { display: flex; flex-direction: column; gap: 6px; }
+        .mt-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 7px 12px; border-radius: 8px; background: #2a3a52; border: 1px solid #334155;
+        }
+        .mt-row:hover { border-color: #3b82f6; }
+        .mt-code { font-family: 'DM Mono', monospace; font-size: 0.84rem; font-weight: 600; color: #f1f5f9; }
+        .mt-vacio { text-align: center; padding: 22px 8px; color: #64748b; font-size: 0.86rem; }
+
         /* Filtros sección terminales */
         .terminales-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
         .terminales-filtros label { font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
@@ -968,6 +988,26 @@
     </div>
 </div>
 
+<!-- ══ MODAL: Terminales de una máquina ═════════════════════════ -->
+<div id="modal-terminales-maquina" class="p-modal">
+    <div class="p-modal-box">
+        <div class="p-modal-header">
+            <div>
+                <h3 id="modal-terminales-titulo">Terminales</h3>
+                <div id="modal-terminales-sub" class="mt-sub"></div>
+            </div>
+            <button class="p-modal-close" onclick="cerrarModal('modal-terminales-maquina')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div id="modal-terminales-lista" class="mt-lista"></div>
+        </div>
+        <div class="p-modal-footer">
+            <button class="btn btn-secondary" onclick="cerrarModal('modal-terminales-maquina')">Cerrar</button>
+            <button class="btn btn-primary" onclick="asignarMasAMaquina()">➕ Asignar más terminales</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ MODAL: Imagen de terminal ══════════════════════════════════ -->
 <div id="modal-img-terminal" class="p-modal">
     <div class="p-modal-box">
@@ -1027,6 +1067,13 @@ document.addEventListener('DOMContentLoaded', function() {
         m.addEventListener('click', function(e) {
             if (e.target === m) m.classList.remove('active');
         });
+    });
+
+    // Escape cierra el modal abierto
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.p-modal.active').forEach(function(m) { m.classList.remove('active'); });
+        }
     });
 
     // Iniciar carga de datos (el JS de gestion-puestos.js también llama a esto en DOMContentLoaded)
