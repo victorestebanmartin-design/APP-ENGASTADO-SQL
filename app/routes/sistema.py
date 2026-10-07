@@ -883,12 +883,10 @@ def api_esp32_eventos():
 @bp.route('/api/esp32/ultimo-tag', methods=['GET'])
 @requiere_pin_admin
 def api_esp32_ultimo_tag():
-    """Última tarjeta NFC leída en un carro y no reconocida.
+    """Última tarjeta NFC leída por un flujo legacy de captura.
 
-    Es lo que usa Admin → Puestos para dar de alta una tarjeta: pulsas
-    "Capturar tag", vas al carro, la pasas por el lector y el campo se rellena.
-    Devuelve también la antigüedad en segundos para que Admin descarte lecturas
-    viejas y no asigne por error una tarjeta de hace una hora.
+    Devuelve también su antigüedad para que los consumidores antiguos descarten
+    lecturas viejas. Admin → Operarios usa ahora una captura ligada a un lector.
     """
     try:
         try:

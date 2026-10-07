@@ -1541,6 +1541,8 @@ def api_pick_to_light_orden():
     """
     try:
         device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+        from app.routes.operarios import _operario_tag_captura_para_device
+        captura_operario = _operario_tag_captura_para_device(device_id)
 
         # Un comando de prueba manda sobre la gaveta de trabajo: quien lo ha
         # pedido esta delante del armario mirando que LED se enciende.
@@ -1564,14 +1566,17 @@ def api_pick_to_light_orden():
 
         pendiente = (_test_cargar().get(device_id) or {})
         if pendiente.get('cmd'):
-            return jsonify({'success': True,
-                            'test': pendiente['cmd'],
-                            'micros': micros,
-                            'herramientas': _herramientas_del_puesto(puesto_id),
-                            'leds_por_gaveta': leds_por_gaveta,
-                            'brillo': brillo,
-                            'esperando_devolucion': esperando_devolucion,
-                            'test_seq': pendiente.get('seq')})
+            respuesta = {'success': True,
+                         'test': pendiente['cmd'],
+                         'micros': micros,
+                         'herramientas': _herramientas_del_puesto(puesto_id),
+                         'leds_por_gaveta': leds_por_gaveta,
+                         'brillo': brillo,
+                         'esperando_devolucion': esperando_devolucion,
+                         'test_seq': pendiente.get('seq')}
+            if captura_operario:
+                respuesta['operario_captura'] = captura_operario
+            return jsonify(respuesta)
 
         try:
             led_reportado = int(request.args.get('led') or 0)
@@ -1625,24 +1630,27 @@ def api_pick_to_light_orden():
 
         estado = estado_todo.get(puesto_id) if puesto_id else None
         led = (estado or {}).get('led')
-        return jsonify({'success': True,
-                        'apagar': not bool(led),
-                        'led': led,
-                        'terminal': (estado or {}).get('terminal') or '',
-                        'validas': (estado or {}).get('validas') or [],
-                        'herramientas': _herramientas_del_puesto(puesto_id),
-                        'micros': micros,
-                        'leds_por_gaveta': leds_por_gaveta,
-                        'brillo': brillo,
-                        'esperando_devolucion': esperando_devolucion,
-                        'parpadeo': bool((estado or {}).get('parpadeo')),
-                        'herramienta': ({'led': herr['led'], 'modo': herr['modo']}
-                                        if (herr := (estado or {}).get('herramienta')) else None),
-                        # Con un operario delante la placa sondea rapido; sin
-                        # nadie, vuelve sola a su ritmo lento en cuanto caduca
-                        # la marca (ver ATENCION_S y _atencion_marcar).
-                        'prisa': _atencion_viva(puesto_id),
-                        'rfid_modo': _rfid_modo_de(estado or {})})
+        respuesta = {'success': True,
+                     'apagar': not bool(led),
+                     'led': led,
+                     'terminal': (estado or {}).get('terminal') or '',
+                     'validas': (estado or {}).get('validas') or [],
+                     'herramientas': _herramientas_del_puesto(puesto_id),
+                     'micros': micros,
+                     'leds_por_gaveta': leds_por_gaveta,
+                     'brillo': brillo,
+                     'esperando_devolucion': esperando_devolucion,
+                     'parpadeo': bool((estado or {}).get('parpadeo')),
+                     'herramienta': ({'led': herr['led'], 'modo': herr['modo']}
+                                     if (herr := (estado or {}).get('herramienta')) else None),
+                     # Con un operario delante la placa sondea rapido; sin
+                     # nadie, vuelve sola a su ritmo lento en cuanto caduca
+                     # la marca (ver ATENCION_S y _atencion_marcar).
+                     'prisa': _atencion_viva(puesto_id),
+                     'rfid_modo': _rfid_modo_de(estado or {})}
+        if captura_operario:
+            respuesta['operario_captura'] = captura_operario
+        return jsonify(respuesta)
     except Exception as e:
         return error_interno(e, 'Error al consultar la orden de gaveta')
 

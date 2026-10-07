@@ -112,12 +112,12 @@ Tres avisos de montaje:
 
 ### Alta de tarjetas
 
-No hay que escribir nada en la tarjeta: se usa su UID de fábrica. La captura se
-hace con el lector RFID dedicado de la entrada (`esp32/main.py`), no con este
-lector del carro: en Admin → Operarios, pulsa **Capturar** y acerca la tarjeta
-a cualquier lector de entrada; el UID aparece solo (Admin sondea
-`/api/esp32/ultimo-tag`). Solo se aceptan lecturas de los últimos 30 segundos,
-para no asignar por error una tarjeta que alguien pasó antes.
+No hay que escribir nada en la tarjeta: se usa su UID de fábrica. En Admin →
+Operarios, pulsa la antenita, elige un lector RFID de entrada conectado y pulsa
+**Preparar lector**. La pantalla de esa placa pide pasar la tarjeta y la asigna
+al operario seleccionado. Solo aparecen lectores con el firmware publicado en
+el servidor; si uno no sale, espera a que complete su actualización OTA. El
+lector NFC del carro no participa en el alta.
 
 Una tarjeta sin asignar leída en un carro (en modo trabajo, sin nada pendiente
 para ese UID en ese carro) muestra `TARJETA SIN TRABAJO AQUI` con su UID en

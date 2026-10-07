@@ -1,13 +1,12 @@
-"""Normalización de UID de tarjeta NFC y captura de tarjetas nuevas (para Admin).
+"""Normalización NFC y compatibilidad del antiguo endpoint de última lectura.
 
 La tarjeta identifica al OPERARIO, no al puesto (ver tests/test_operarios_tag.py
-para la asignación); aquí solo queda lo genérico: la función de normalización
-y la ruta de captura /api/esp32/ultimo-tag que usa Admin → Operarios.
+para la asignación); aquí se prueba la función de normalización y se conserva
+cobertura de /api/esp32/ultimo-tag, usado por flujos legacy.
 
-La captura SOLO viene de los lectores RFID dedicados de la entrada del puesto
-(POST /api/puestos/engastado_v3/entrada) -- el lector NFC de la pantalla del
-carro no contribuye a esto, solo identifica en modo trabajo para confirmar
-recoger/devolver (ver tests/test_esp32_confirmacion.py).
+La captura nueva de Admin está dirigida a un lector de entrada concreto. El
+lector NFC de la pantalla del carro no participa, solo identifica en modo
+trabajo para confirmar recoger/devolver (ver tests/test_esp32_confirmacion.py).
 """
 import pytest
 

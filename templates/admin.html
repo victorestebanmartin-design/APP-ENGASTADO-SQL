@@ -1229,8 +1229,9 @@
                         </td>
                         <td>
                             <span id="op-tag-${op.id}" style="font-family:monospace;color:${op.tag_uid ? '#f1f5f9' : '#64748b'};">${op.tag_uid ? '🏷️ ' + op.tag_uid : 'Sin tarjeta'}</span>
-                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Asignar tarjeta: acércala a cualquier lector RFID de la entrada" style="margin-left:6px;">📡</button>
+                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Elegir lector RFID para asignar la tarjeta" style="margin-left:6px;">📡</button>
                             ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta" style="margin-left:4px;">🗑️</button>` : ''}
+                            <div id="op-rfid-captura-${op.id}" style="margin-top:6px;"></div>
                         </td>
                         <td>
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
@@ -1416,59 +1417,140 @@
         setTimeout(() => { el.style.display = 'none'; }, 3000);
     }
 
-    // ── Asignar tarjeta NFC a un operario acercándola a CUALQUIER lector: un
-    // lector RFID de puesto (más lógico: no hace falta ir hasta el carro) o
-    // el lector del carro, da igual -- ambos escriben la última tarjeta
-    // vista en el mismo sitio (ver /api/esp32/ultimo-tag). ──
+    // ── Asignar tarjeta NFC a un operario mediante un lector RFID elegido.
+    // El lector entra en modo de captura temporal y envía el UID al servidor. ──
     let _opCapturaTimer = null;
-    function _pararCapturaTagOperario() {
-        if (_opCapturaTimer) { clearInterval(_opCapturaTimer); _opCapturaTimer = null; }
+    let _opCapturaActual = null;
+    function _pararCapturaTagOperario(cancelarServidor) {
+        if (_opCapturaTimer) { clearTimeout(_opCapturaTimer); _opCapturaTimer = null; }
+        const anterior = _opCapturaActual;
+        _opCapturaActual = null;
+        if (cancelarServidor && anterior && anterior.token) {
+            fetch(`/api/operarios/${anterior.id}/rfid/captura/${anterior.token}`, { method: 'DELETE' })
+                .catch(() => {});
+        }
+    }
+
+    function _opBotonCaptura(texto, clase, alPulsar) {
+        const boton = document.createElement('button');
+        boton.type = 'button';
+        boton.className = clase;
+        boton.textContent = texto;
+        boton.style.cssText = 'padding:4px 9px;font-size:0.8em;margin-left:5px;';
+        boton.onclick = alPulsar;
+        return boton;
     }
 
     async function capturarTagOperario(id) {
-        _pararCapturaTagOperario();
-        const span = document.getElementById('op-tag-' + id);
-        if (span) { span.textContent = '📡 Acerca la tarjeta a un lector RFID de la entrada...'; span.style.color = '#3b82f6'; }
-        // Solo valen lecturas posteriores a este momento.
-        let ignorar = null;
+        _pararCapturaTagOperario(true);
+        const control = document.getElementById('op-rfid-captura-' + id);
+        if (!control) return;
+        control.textContent = 'Buscando lectores conectados...';
+        control.style.color = '#94a3b8';
         try {
-            const d = await (await fetch('/api/esp32/ultimo-tag')).json();
-            if (d.success && d.tag) ignorar = d.tag.ts;
-        } catch (e) { /* si falla, se acepta la primera lectura */ }
-        let restantes = 30;
-        _opCapturaTimer = setInterval(async () => {
-            restantes -= 2;
-            if (restantes <= 0) {
-                _pararCapturaTagOperario();
-                _opMsg('No se leyó ninguna tarjeta. Vuelve a intentarlo.', 'error');
+            const resp = await fetch('/api/esp32/rfid/devices');
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'No se pudieron cargar los lectores');
+            const conectados = (data.devices || []).filter(d => d.online);
+            const lectores = conectados.filter(d => d.fw === data.firmware_version);
+            control.innerHTML = '';
+            if (!lectores.length) {
+                control.textContent = conectados.length
+                    ? 'Los lectores conectados necesitan actualizarse antes de registrar tarjetas.'
+                    : 'No hay lectores RFID conectados.';
+                control.style.color = '#f87171';
+                return;
+            }
+
+            const selector = document.createElement('select');
+            selector.style.cssText = 'padding:5px 8px;background:#0f172a;border:1px solid #475569;color:#f1f5f9;border-radius:5px;max-width:240px;';
+            const opcionInicial = document.createElement('option');
+            opcionInicial.value = '';
+            opcionInicial.textContent = 'Elige un lector conectado';
+            selector.appendChild(opcionInicial);
+            lectores.forEach(lector => {
+                const opcion = document.createElement('option');
+                opcion.value = lector.id;
+                opcion.textContent = `${lector.nombre || lector.id}${lector.puesto_nombre ? ' · ' + lector.puesto_nombre : ''}`;
+                selector.appendChild(opcion);
+            });
+            control.appendChild(selector);
+            control.appendChild(_opBoton('Preparar lector', 'btn-secondary', () => {
+                if (!selector.value) {
+                    control.style.color = '#fbbf24';
+                    return;
+                }
+                _iniciarCapturaTagOperario(id, selector.value, control);
+            }));
+            control.appendChild(_opBoton('Cancelar', 'btn-secondary', () => { control.innerHTML = ''; }));
+        } catch (error) {
+            control.textContent = error.message || 'No se pudieron cargar los lectores.';
+            control.style.color = '#f87171';
+        }
+    }
+
+    async function _iniciarCapturaTagOperario(id, deviceId, control) {
+        control.textContent = 'Enviando orden al lector...';
+        control.style.color = '#60a5fa';
+        try {
+            const resp = await fetch(`/api/operarios/${id}/rfid/captura`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: deviceId })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'No se pudo preparar el lector');
+            const captura = { id, token: data.token, deviceId, vence: Date.now() + data.segundos * 1000 };
+            _opCapturaActual = captura;
+            _opMostrarCapturaArmada(control, captura);
+        } catch (error) {
+            control.textContent = error.message || 'No se pudo preparar el lector.';
+            control.style.color = '#f87171';
+        }
+    }
+
+    function _opMostrarCapturaArmada(control, captura) {
+        if (_opCapturaActual !== captura) return;
+        const restantes = Math.max(0, Math.ceil((captura.vence - Date.now()) / 1000));
+        control.innerHTML = '';
+        const texto = document.createElement('span');
+        texto.textContent = `Lector preparado. Pasa la tarjeta (${restantes} s)`;
+        texto.style.color = '#60a5fa';
+        control.appendChild(texto);
+        control.appendChild(_opBoton('Cancelar', 'btn-secondary', () => {
+            _pararCapturaTagOperario(true);
+            control.textContent = 'Captura cancelada.';
+            control.style.color = '#94a3b8';
+        }));
+        _opCapturaTimer = setTimeout(() => _sondearCapturaTagOperario(control, captura), 1000);
+    }
+
+    async function _sondearCapturaTagOperario(control, captura) {
+        if (_opCapturaActual !== captura) return;
+        try {
+            const resp = await fetch(`/api/operarios/${captura.id}/rfid/captura/${captura.token}`);
+            const data = await resp.json();
+            if (resp.ok && data.success && data.estado !== 'armada') {
+                _pararCapturaTagOperario(false);
+                control.textContent = data.mensaje || (data.estado === 'asignada' ? 'Tarjeta asignada.' : 'Captura finalizada.');
+                control.style.color = data.estado === 'asignada' ? '#4ade80' : '#f87171';
+                if (data.estado === 'asignada') _opMsg(`Tarjeta ${data.uid} asignada.`, 'ok');
+                else _opMsg(data.mensaje || 'No se pudo asignar la tarjeta.', 'error');
                 cargarOperariosAdmin();
                 return;
             }
-            try {
-                const d = await (await fetch('/api/esp32/ultimo-tag')).json();
-                if (d.success && d.tag && d.tag.uid && d.tag.ts !== ignorar) {
-                    _pararCapturaTagOperario();
-                    _guardarTagOperario(id, d.tag.uid);
-                }
-            } catch (e) { /* red intermitente: se reintenta */ }
-        }, 2000);
-    }
-
-    function _guardarTagOperario(id, uid) {
-        fetch(`/api/operarios/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tag_uid: uid })
-        }).then(r => r.json()).then(data => {
-            if (data.success) { _opMsg(`Tarjeta ${uid} asignada.`, 'ok'); }
-            else _opMsg(data.error || 'Error al asignar la tarjeta.', 'error');
-            cargarOperariosAdmin();
-        });
+        } catch (e) { /* Un corte breve no cancela la captura; se vuelve a consultar. */ }
+        if (Date.now() >= captura.vence) {
+            _pararCapturaTagOperario(false);
+            control.textContent = 'Se agotó el tiempo. Vuelve a intentarlo.';
+            control.style.color = '#f87171';
+            return;
+        }
+        _opMostrarCapturaArmada(control, captura);
     }
 
     function quitarTagOperario(id) {
         if (!confirm('¿Quitar la tarjeta de este operario?')) return;
-        _pararCapturaTagOperario();
+        _pararCapturaTagOperario(true);
         fetch(`/api/operarios/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },

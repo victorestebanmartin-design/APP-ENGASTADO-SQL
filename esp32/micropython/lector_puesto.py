@@ -28,7 +28,7 @@ except ImportError:
 
 from pn532_i2c import PN532
 
-FW_VERSION = "2026-10-06a"
+FW_VERSION = "2026-10-07a"
 
 # Todas las cajas se montan en la misma posicion (ver
 # esp32/HARDWARE_LECTOR_PUESTO_GEN4.md): no es una opcion por placa, a
@@ -51,6 +51,7 @@ PORT = 5001
 USE_SSL = False
 
 ENTRADA_PATH = "/api/puestos/engastado_v3/entrada"
+CAPTURA_OPERARIO_PATH = "/api/esp32/rfid/operario/captura"
 
 # gen4-Breakout: PN532 en I2C, zumbador y siete lineas DB9 de expansion.
 NFC_SDA_PIN = 6
@@ -73,6 +74,8 @@ NFC_REINTENTO_S = 10
 GAVETA_POLL_MS = 750
 GAVETA_POLL_IDLE_MS = 4000
 GAVETA_POLL_MAX_MS = 15000
+CAPTURA_POLL_IDLE_MS = 4000
+CAPTURA_POLL_ACTIVE_MS = 1000
 # El modo de verificacion RFID de una orden productiva se refresca en cada
 # sondeo (cada 750 ms); este margen solo cubre saltarse uno o dos sin
 # desarmarse de golpe (un handshake lento, un paquete perdido).
@@ -846,7 +849,46 @@ def _ptl_rfid_iniciar(test, seq):
         print("PTL RFID: no se pudo confirmar el armado:", error)
 
 
+def _operario_captura_actualizar(nueva, now):
+    global _operario_rfid_captura
+    if nueva:
+        if (_operario_rfid_captura is None or
+                _operario_rfid_captura.get("token") != nueva.get("token")):
+            _operario_rfid_captura = {
+                "token": nueva.get("token"),
+                "hasta_ms": time.ticks_add(
+                    now, max(1, int(nueva.get("segundos") or 1)) * 1000),
+            }
+            draw_result("REGISTRO RFID", "PASA TARJETA", BLUE)
+    elif _operario_rfid_captura is not None:
+        _operario_rfid_captura = None
+        actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+
+
 def procesar_tarjeta(uid):
+    global _operario_rfid_captura
+    captura = _operario_rfid_captura
+    if captura is not None:
+        _operario_rfid_captura = None
+        status, response = None, None
+        if http_client is not None and backend_cfg is not None:
+            status, response = http_client.post_json(
+                backend_cfg.BACKEND_HOST, CAPTURA_OPERARIO_PATH,
+                {"device_id": DEVICE_ID, "token": captura.get("token"), "uid": uid},
+                port=backend_cfg.BACKEND_PORT, use_ssl=backend_cfg.BACKEND_USE_SSL, timeout=5)
+        if status == 200 and response and response.get("success"):
+            draw_result("TARJETA ASIGNADA", response.get("operario") or "REGISTRO OK", GREEN)
+            beep_ok()
+        elif status and 400 <= status < 500:
+            draw_result("REGISTRO RECHAZADO", (response or {}).get("error") or "NO VALIDA", RED)
+            beep_rechazo()
+        else:
+            draw_result("ERROR TECNICO", "SIN CONEXION", YELLOW)
+            beep_error()
+        time.sleep_ms(1500)
+        actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+        return
+
     global _ptl_rfid_modo
     if _ptl_rfid_modo is not None:
         modo = _ptl_rfid_modo
@@ -901,9 +943,11 @@ uid_anterior_ts = 0
 # lectura con lo mismo. "hasta_ms" es la red de seguridad si nadie acerca
 # nada: sin ella un armado olvidado interceptaria el primer login de verdad.
 _ptl_rfid_modo = None
+_operario_rfid_captura = None
 ultimo_wifi = 0
 ultimo_latido = 0
 ultima_orden_gavetas = 0
+ultimo_sondeo_captura = 0
 gaveta_fallos = 0
 # Lo ultimo que dijo el servidor sobre si hay un operario atendiendo el puesto
 # (ver 'prisa' en pick_to_light.py). Arranca en False: una placa recien
@@ -950,6 +994,25 @@ while True:
             ultimo_latido = now
             registrar_dispositivo()
 
+        pausa_captura = (CAPTURA_POLL_ACTIVE_MS if _operario_rfid_captura is not None
+                         else CAPTURA_POLL_IDLE_MS)
+        if (gav is None and wifi_ip and http_client is not None and backend_cfg is not None and
+                time.ticks_diff(now, ultimo_sondeo_captura) > pausa_captura):
+            ultimo_sondeo_captura = now
+            captura = http_client.get_json(
+                backend_cfg.BACKEND_HOST,
+                CAPTURA_OPERARIO_PATH + "?device_id=" + DEVICE_ID,
+                port=backend_cfg.BACKEND_PORT,
+                use_ssl=backend_cfg.BACKEND_USE_SSL,
+                timeout=3)
+            if captura and captura.get("success"):
+                _operario_captura_actualizar(captura.get("captura"), now)
+
+        if (_operario_rfid_captura is not None and
+                time.ticks_diff(now, _operario_rfid_captura["hasta_ms"]) >= 0):
+            _operario_rfid_captura = None
+            actualizar_pantalla_gavetas(forzar=True) if gav else draw_idle()
+
         if gav:
             try:
                 gav.actualizar()
@@ -969,7 +1032,8 @@ while True:
         # autocorrige sin depender de que un unico intento llegue.
         _pausa_gaveta = GAVETA_POLL_MS
         if (gav is not None and gav.objetivo is None and _ptl_rfid_modo is None
-                and not _gaveta_prisa and gav.herr is None):
+            and _operario_rfid_captura is None and not _gaveta_prisa
+            and gav.herr is None):
             _pausa_gaveta = GAVETA_POLL_IDLE_MS
         if gaveta_fallos:
             _pausa_gaveta = min(GAVETA_POLL_MAX_MS, _pausa_gaveta * (1 + gaveta_fallos))
@@ -994,6 +1058,7 @@ while True:
                 timeout=2)
             gaveta_fallos = 0 if orden is not None else min(gaveta_fallos + 1, 8)
             if orden and orden.get("success"):
+                _operario_captura_actualizar(orden.get("operario_captura"), now)
                 # Logica de los micros (normalmente cerrado/abierto y canales
                 # sin cablear que hay que ignorar). Va en CADA respuesta del
                 # sondeo, no en un comando suelto: asi una placa que se

@@ -62,6 +62,180 @@ def _operario_por_tag(conn, tag_uid):
     ), {'t': tag_uid}).fetchone()
 
 
+def _captura_tag_expirada(fila, ahora=None):
+    try:
+        return datetime.fromisoformat(fila['expira_at']) <= (ahora or datetime.now())
+    except (TypeError, ValueError):
+        return True
+
+
+def _captura_tag_resultado(conn, fila, estado, mensaje, uid=None):
+    conn.execute(text("""
+        UPDATE operario_tag_capturas
+        SET estado = :estado, mensaje = :mensaje, uid = :uid
+        WHERE device_id = :device_id AND token = :token
+    """), {'estado': estado, 'mensaje': mensaje, 'uid': uid,
+          'device_id': fila['device_id'], 'token': fila['token']})
+
+
+def _operario_tag_captura_para_device(device_id):
+    """Devuelve la captura activa del lector y la cierra si ya no es válida."""
+    with db.engine.begin() as conn:
+        fila = conn.execute(text("""
+            SELECT c.device_id, c.operario_id, c.token, c.estado, c.expira_at,
+                   o.nombre, o.activo
+            FROM operario_tag_capturas c
+            LEFT JOIN operarios o ON o.id = c.operario_id
+            WHERE c.device_id = :device_id
+        """), {'device_id': device_id}).mappings().first()
+        if not fila or fila['estado'] != 'armada':
+            return None
+        if not fila['nombre'] or not fila['activo']:
+            _captura_tag_resultado(conn, fila, 'error', 'El operario ya no está activo')
+            return None
+        if _captura_tag_expirada(fila):
+            _captura_tag_resultado(conn, fila, 'caducada', 'La captura ha caducado')
+            return None
+        return {'token': fila['token'], 'operario': fila['nombre'],
+                'segundos': max(1, int((datetime.fromisoformat(fila['expira_at'])
+                                        - datetime.now()).total_seconds()))}
+
+
+@bp.route('/api/operarios/<op_id>/rfid/captura', methods=['POST'])
+@requiere_pin_admin
+def api_operario_rfid_captura_iniciar(op_id):
+    """Arma en un lector online la captura NFC de un operario concreto."""
+    datos = request.get_json(silent=True) or {}
+    device_id = (datos.get('device_id') or '').strip().lower()[:64]
+    if not device_id:
+        return jsonify({'success': False, 'error': 'Selecciona un lector RFID'}), 400
+
+    try:
+        from app.routes.sistema import _rfid_load_devices
+        lector = (_rfid_load_devices() or {}).get(device_id)
+        from app.routes.sistema import _rfid_firmware_version
+        version_requerida = _rfid_firmware_version()
+        try:
+            online = (datetime.now() - datetime.fromisoformat(lector.get('last_seen', ''))).total_seconds() < 90
+        except (AttributeError, TypeError, ValueError):
+            online = False
+        if not online:
+            return jsonify({'success': False, 'error': 'El lector no está conectado'}), 409
+        if not version_requerida or lector.get('fw') != version_requerida:
+            return jsonify({'success': False,
+                            'error': 'Actualiza el firmware del lector antes de registrar tarjetas'}), 409
+
+        import uuid
+        token = uuid.uuid4().hex
+        expira_at = (datetime.now() + timedelta(seconds=45)).isoformat()
+        with db.engine.begin() as conn:
+            op = conn.execute(text(
+                "SELECT id FROM operarios WHERE id = :id AND activo = 1"
+            ), {'id': op_id}).fetchone()
+            if not op:
+                return jsonify({'success': False, 'error': 'Operario no encontrado o inactivo'}), 404
+            conn.execute(text("""
+                INSERT INTO operario_tag_capturas
+                    (device_id, operario_id, token, estado, uid, mensaje, expira_at)
+                VALUES (:device_id, :operario_id, :token, 'armada', NULL, NULL, :expira_at)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    operario_id = excluded.operario_id,
+                    token = excluded.token,
+                    estado = 'armada', uid = NULL, mensaje = NULL,
+                    expira_at = excluded.expira_at,
+                    created_at = datetime('now')
+            """), {'device_id': device_id, 'operario_id': op_id,
+                  'token': token, 'expira_at': expira_at})
+        return jsonify({'success': True, 'device_id': device_id, 'token': token,
+                        'segundos': 45})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/operarios/<op_id>/rfid/captura/<token>', methods=['GET', 'DELETE'])
+@requiere_pin_admin
+def api_operario_rfid_captura_estado(op_id, token):
+    """Consulta o cancela una captura temporal desde Admin."""
+    try:
+        with db.engine.begin() as conn:
+            fila = conn.execute(text("""
+                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at
+                FROM operario_tag_capturas
+                WHERE operario_id = :op_id AND token = :token
+            """), {'op_id': op_id, 'token': token}).mappings().first()
+            if not fila:
+                return jsonify({'success': False, 'error': 'Captura no encontrada'}), 404
+            estado = fila['estado']
+            mensaje = fila['mensaje']
+            if request.method == 'DELETE' and estado == 'armada':
+                estado, mensaje = 'cancelada', 'Captura cancelada'
+                _captura_tag_resultado(conn, fila, estado, mensaje)
+            elif estado == 'armada' and _captura_tag_expirada(fila):
+                estado, mensaje = 'caducada', 'Se agotó el tiempo para pasar la tarjeta'
+                _captura_tag_resultado(conn, fila, estado, mensaje)
+            return jsonify({'success': True, 'estado': estado, 'uid': fila['uid'],
+                            'mensaje': mensaje, 'device_id': fila['device_id']})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/operario/captura', methods=['GET'])
+def api_esp32_operario_captura_orden():
+    """Orden de captura dirigida que sondea cada lector RFID."""
+    device_id = (request.args.get('device_id') or '').strip().lower()[:64]
+    if not device_id:
+        return jsonify({'success': False, 'error': 'Falta device_id'}), 400
+    try:
+        return jsonify({'success': True,
+                        'captura': _operario_tag_captura_para_device(device_id)})
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/esp32/rfid/operario/captura', methods=['POST'])
+def api_esp32_operario_captura_resultado():
+    """Asigna el UID leído por el lector que tiene una captura armada."""
+    datos = request.get_json(silent=True) or {}
+    device_id = (datos.get('device_id') or '').strip().lower()[:64]
+    token = (datos.get('token') or '').strip()[:64]
+    try:
+        from app.routes.puestos import normalizar_tag_uid
+        uid = normalizar_tag_uid(datos.get('uid'))
+        if not device_id or not token or not uid:
+            return jsonify({'success': False, 'error': 'Datos de captura no válidos'}), 400
+        with db.engine.begin() as conn:
+            fila = conn.execute(text("""
+                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at
+                FROM operario_tag_capturas
+                WHERE device_id = :device_id AND token = :token
+            """), {'device_id': device_id, 'token': token}).mappings().first()
+            if not fila or fila['estado'] != 'armada':
+                return jsonify({'success': False, 'error': 'La captura ya no está activa'}), 409
+            if _captura_tag_expirada(fila):
+                _captura_tag_resultado(conn, fila, 'caducada', 'La captura ha caducado')
+                return jsonify({'success': False, 'error': 'La captura ha caducado'}), 409
+            op = conn.execute(text(
+                "SELECT id, nombre FROM operarios WHERE id = :id AND activo = 1"
+            ), {'id': fila['operario_id']}).fetchone()
+            if not op:
+                _captura_tag_resultado(conn, fila, 'error', 'El operario ya no está activo')
+                return jsonify({'success': False, 'error': 'El operario ya no está activo'}), 409
+            ocupado = _operario_por_tag(conn, uid)
+            if ocupado and ocupado[0] != fila['operario_id']:
+                mensaje = f'Esa tarjeta ya está asignada a "{ocupado[1]}"'
+                _captura_tag_resultado(conn, fila, 'error', mensaje, uid)
+                return jsonify({'success': False, 'error': mensaje}), 409
+            conn.execute(text(
+                "UPDATE operarios SET tag_uid = :uid WHERE id = :id AND activo = 1"
+            ), {'uid': uid, 'id': fila['operario_id']})
+            _captura_tag_resultado(conn, fila, 'asignada', 'Tarjeta asignada', uid)
+        return jsonify({'success': True, 'uid': uid, 'operario': op[1]})
+    except IntegrityError:
+        return jsonify({'success': False, 'error': 'Esa tarjeta ya está asignada a otro operario'}), 409
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/operarios', methods=['GET'])
 def api_operarios_get():
     """Listar operarios activos"""
@@ -704,11 +878,9 @@ def api_engastado_v3_entrada():
                                    device_id=device_id, tag_uid=tag_uid)
             return jsonify({'success': False, 'error': 'tag_uid es obligatorio'}), 400
 
-        # Registrar como "ultima tarjeta vista": es lo que sondea Admin ->
-        # Operarios al pulsar "Capturar tag" (ver /api/esp32/ultimo-tag). El
-        # lector NFC del carro ya NO contribuye a esto -- solo identifica en
-        # modo trabajo para confirmar recoger/devolver -- asi que la captura
-        # de tarjetas nuevas depende solo de los lectores RFID de la entrada.
+        # Mantener el ultimo-tag para compatibilidad con flujos legacy de Admin.
+        # La asignacion nueva usa una captura armada por device_id y no consume
+        # esta bandeja global.
         try:
             from app.routes.sistema import _esp32_tags_file
             _json_guardar(_esp32_tags_file(), {'uid': tag_uid, 'device_id': device_id,

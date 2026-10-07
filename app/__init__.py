@@ -123,6 +123,23 @@ def _apply_migrations(db_path):
         """)
         conn.commit()
 
+    # Capturas RFID dirigidas: una captura temporal, de un solo uso, por lector.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS operario_tag_capturas (
+            device_id TEXT PRIMARY KEY,
+            operario_id TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            estado TEXT NOT NULL DEFAULT 'armada',
+            uid TEXT,
+            mensaje TEXT,
+            expira_at TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_operario_tag_capturas_operario "
+                "ON operario_tag_capturas(operario_id, created_at)")
+    conn.commit()
+
     # Migración: permisos por operario (que módulos puede ver en /modules).
     # NULL = todos los modulos permitidos (asi nadie se queda fuera justo
     # tras esta migracion); '[]' explicito = ninguno. Ver
