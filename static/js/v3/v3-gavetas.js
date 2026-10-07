@@ -89,7 +89,7 @@ async function verificarMaquinaPtl(maquina) {
     // Misma máquina que ya se está usando: ya está confirmada y en azul.
     if (herramientaEnUso && herramientaEnUso.codigo === nombreMaq) return;
     // Otra máquina: la anterior hay que devolverla (azul parpadeando).
-    if (herramientaEnUso) await devolverHerramientaMaquina(false);
+    if (herramientaEnUso) await devolverHerramientaMaquina(true);
 
     await cargarHerramientasDelPuesto();
     const censada = herramientasDelPuesto.find(h => h.codigo === nombreMaq);
@@ -122,8 +122,7 @@ async function verificarMaquinaPtl(maquina) {
  * Pide devolver la herramienta de la máquina: su luz pasa a azul parpadeando
  * hasta que vuelve a su sitio. Se llama al acabar la máquina, al cambiar de
  * máquina o puesto y al cerrar sesión. Con 'bloquear' además espera en una
- * pantalla a que la devuelvan (solo al acabar la máquina: en los demás casos
- * el operario ya se está yendo y la luz roja sigue avisando sola).
+ * pantalla a que la devuelvan antes de continuar.
  */
 async function devolverHerramientaMaquina(bloquear) {
     if (!herramientaEnUso) return;
@@ -158,7 +157,7 @@ async function _esperarDevolucionHerramienta(herramienta) {
                 🔧 ${herramienta.nombre || herramienta.codigo}
             </div>
             <div style="color:#6c757d; margin-bottom:18px;">
-                Has terminado con esta máquina. Su luz parpadea en azul hasta que la
+                Vas a dejar de usar esta herramienta. Su luz parpadea en azul hasta que la
                 vuelvas a dejar en su sitio.
             </div>
             <button id="herramienta-continuar" type="button"
@@ -215,18 +214,25 @@ function _hayPtlPendiente() {
 async function cerrarPtlAlSalir() {
     detenerVigilanciaGaveta();
     const hayAlgo = _hayPtlPendiente();
+    const herramienta = herramientaEnUso;
     const puestoId = (herramientaEnUso && herramientaEnUso.puesto_id)
                   || (puestoSeleccionado && puestoSeleccionado.id);
-    herramientaEnUso = null;
-    gavetaLuzActual = null;
     if (!hayAlgo || !puestoId) return;
     try {
-        await fetch('/api/pick-to-light/cierre', {
+        const r = await fetch('/api/pick-to-light/cierre', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ puesto_id: puestoId })
         });
+        const d = await r.json();
+        if (!d || !d.success) return;
+        if (d.gaveta && gavetaLuzActual) await esperarDevolucionGaveta(true);
+        if (d.herramienta && herramienta) await _esperarDevolucionHerramienta(herramienta);
     } catch (e) { /* sin luz, nada que comprobar */ }
+    finally {
+        herramientaEnUso = null;
+        gavetaLuzActual = null;
+    }
 }
 
 
@@ -487,9 +493,9 @@ function _avisarIncidenciaGaveta(tipo) {
  * al lado es un riesgo real, no una comodidad). El primer click solo avisa;
  * hace falta un segundo click para saltarse la comprobacion.
  */
-async function esperarDevolucionGaveta() {
+async function esperarDevolucionGaveta(cierre = false) {
     detenerVigilanciaGaveta();
-    if (!gavetaLuzActual || !gavetaLuzActual.activo) return;
+    if (!gavetaLuzActual || (!gavetaLuzActual.activo && !gavetaLuzActual.pendiente)) return true;
 
     try {
         await fetch('/api/pick-to-light/devolucion/iniciar', {
@@ -506,14 +512,14 @@ async function esperarDevolucionGaveta() {
     const boton = overlay.querySelector('#gaveta-continuar');
 
     try {
-        await new Promise(resolve => {
+        return await new Promise(resolve => {
             let terminado = false;
             let insistiendo = false;
-            const acabar = () => {
+            const acabar = (devuelta) => {
                 if (terminado) return;
                 terminado = true;
                 clearInterval(temporizador);
-                resolve();
+                resolve(devuelta);
             };
 
             boton.onclick = () => {
@@ -523,7 +529,7 @@ async function esperarDevolucionGaveta() {
                     boton.style.background = '#dc3545';
                     return;
                 }
-                acabar();
+                acabar(false);
             };
 
             const temporizador = setInterval(async () => {
@@ -542,13 +548,28 @@ async function esperarDevolucionGaveta() {
                         avisoError.style.display = 'none';
                     }
 
-                    if (d.devuelta) acabar();
+                    if (d.devuelta || (cierre && !d.led)) acabar(true);
                 } catch (e) { /* un sondeo perdido no rompe nada */ }
             }, GAVETA_SONDEO_MS);
         });
     } finally {
         overlay.remove();
     }
+}
+
+async function devolverGavetaAlCambiarTerminal() {
+    if (!gavetaLuzActual || gavetaLuzActual.tipo === 'herramienta') return;
+    if (!puestoSeleccionado || !puestoSeleccionado.id) return;
+    try {
+        const r = await fetch('/api/pick-to-light/estado?puesto_id='
+                              + encodeURIComponent(puestoSeleccionado.id));
+        const d = await r.json();
+        if (d && d.success && (!d.recogida || d.devuelta)) {
+            await apagarGavetas();
+            return;
+        }
+    } catch (e) { /* conservar la comprobacion si el sondeo falla */ }
+    if (await esperarDevolucionGaveta()) await apagarGavetas();
 }
 
 
@@ -689,7 +710,7 @@ function _crearPanelDevolucion(luz) {
                 📦 ${luz.gaveta || ('Gaveta ' + luz.led)}
             </div>
             <div style="color:#6c757d; margin-bottom:18px;">
-                Terminal terminado. La luz de la gaveta parpadeará en azul hasta que la
+                Vas a dejar de usar esta gaveta. La luz parpadeará en azul hasta que la
                 metas, y se pondrá en verde al confirmarlo. Ciérrala antes de seguir.
             </div>
             <div id="gaveta-aviso-error" style="display:none; background:#f8d7da; color:#842029;

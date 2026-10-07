@@ -470,6 +470,7 @@ function verInstruccionesMaquina() {
 }
 
 async function abrirModalTerminal() {
+    await devolverGavetaAlCambiarTerminal();
     _mostrarModalWizard('modal-terminal');
 
     // Igual que en la pantalla de seleccion: avisar antes de que elija, para

@@ -442,8 +442,8 @@ async function terminarTerminal() {
     }
     // Devolver la gaveta: el trabajo de este terminal se ha acabado y el
     // cajon no puede quedarse fuera para el siguiente terminal/operario.
-    await esperarDevolucionGaveta();
-    await apagarGavetas();
+    if (await esperarDevolucionGaveta()) await apagarGavetas();
+    gavetaLuzActual = null;
 
     // El progreso ya se guardó en paqueteCompletado() para cada carro procesado
     console.log(`✅ Terminal ${terminalActual} completado en todos sus carros`);

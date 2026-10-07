@@ -540,12 +540,12 @@ async function cargarAreaTrabajoV2() {
  * Navegación - Volver a selección de puestos
  */
 async function volverAPuestos() {
-    await cerrarPtlAlSalir();
     if (puestoBloqueadoPorRfid) {
         mostrarMensaje('Este puesto está fijado automáticamente (lector/PC). Para cambiarlo, libera el puesto del PC en Admin y reasigna.', 'error');
         await abrirModalMaquina();
         return;
     }
+    await cerrarPtlAlSalir();
 
     document.getElementById('paso-trabajo').classList.add('hidden');
     document.getElementById('workspace-v3').classList.add('hidden');
