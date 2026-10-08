@@ -555,6 +555,16 @@
         }
         .mt-row:hover { border-color: #3b82f6; }
         .mt-code { font-family: 'DM Mono', monospace; font-size: 0.84rem; font-weight: 600; color: #f1f5f9; }
+        #modal-maquinas-puesto .p-modal-box { width: min(560px, 95vw); }
+        .mt-row-maq { padding: 9px 12px; }
+        .mt-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+        .mt-info .mt-sub { margin-top: 0; }
+        .mt-acciones { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .maquina-card.resaltada { animation: maqResalta 2.2s ease-out; }
+        @keyframes maqResalta {
+            0%, 60% { box-shadow: 0 0 0 2px #3b82f6, 0 0 18px rgba(59,130,246,.55); }
+            100%    { box-shadow: none; }
+        }
         .mt-vacio { text-align: center; padding: 22px 8px; color: #64748b; font-size: 0.86rem; }
 
         /* Filtros sección terminales */
@@ -984,6 +994,26 @@
         <div class="p-modal-footer">
             <button class="btn btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
             <button class="btn btn-primary" onclick="guardarMaquina()">💾 Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MODAL: Máquinas de un puesto ═════════════════════════════ -->
+<div id="modal-maquinas-puesto" class="p-modal">
+    <div class="p-modal-box">
+        <div class="p-modal-header">
+            <div>
+                <h3 id="modal-maquinas-titulo">Máquinas</h3>
+                <div id="modal-maquinas-sub" class="mt-sub"></div>
+            </div>
+            <button class="p-modal-close" onclick="cerrarModal('modal-maquinas-puesto')">&times;</button>
+        </div>
+        <div class="p-modal-body">
+            <div id="modal-maquinas-lista" class="mt-lista"></div>
+        </div>
+        <div class="p-modal-footer">
+            <button class="btn btn-secondary" onclick="cerrarModal('modal-maquinas-puesto')">Cerrar</button>
+            <button class="btn btn-primary" onclick="anadirMaquinaAPuesto()">➕ Añadir máquina</button>
         </div>
     </div>
 </div>

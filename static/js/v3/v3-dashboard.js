@@ -60,26 +60,37 @@ async function cargarGruposEtiquetas() {
  * Si se pasa `archivoExcel`, se busca primero dentro de ese archivo
  * (garantiza el número correcto cuando el bono tiene varios cortes).
  */
-function obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas, archivoExcel) {
-    if (!gruposEtiquetas || gruposEtiquetas.length === 0) {
-        return null;
-    }
+/**
+ * Etiqueta de un paquete (cable + elemento [+ serie]).
+ * grupoSerie: undefined = no mirar la serie (comportamiento anterior);
+ * '' = el paquete va suelto; 'XXX' = hijo de esa serie. El mismo elemento
+ * puede estar en una serie y suelto, y cada uno lleva su propia etiqueta.
+ * soloMismaSerie: no aceptar una etiqueta de otra serie como fallback.
+ */
+function buscarGrupoEtiqueta(codCable, elemento, gruposEtiquetas, archivoExcel, grupoSerie, soloMismaSerie) {
+    if (!gruposEtiquetas || gruposEtiquetas.length === 0) return null;
 
-    // Intentar match exacto en el archivo del carro actual
-    let grupo = null;
-    if (archivoExcel) {
-        grupo = gruposEtiquetas.find(g =>
-            g.cod_cable === codCable && g.elemento === elemento &&
-            (g.archivo === archivoExcel || g.archivo_excel === archivoExcel)
-        );
-    }
-    // Fallback: cualquier archivo (comportamiento anterior)
-    if (!grupo) {
-        grupo = gruposEtiquetas.find(g =>
-            g.cod_cable === codCable && g.elemento === elemento
-        );
-    }
+    const mismoCable = g => g.cod_cable === codCable && g.elemento === elemento;
+    const mismoArchivo = g => g.archivo === archivoExcel || g.archivo_excel === archivoExcel;
+    const mismaSerie = g => (g.grupo_serie || '') === (grupoSerie || '');
+    const miraSerie = grupoSerie !== undefined;
 
+    const filtros = [];
+    if (archivoExcel) filtros.push(g => mismoArchivo(g) && (!miraSerie || mismaSerie(g)));
+    filtros.push(g => !miraSerie || mismaSerie(g));
+    if (miraSerie && !soloMismaSerie) {
+        if (archivoExcel) filtros.push(mismoArchivo);
+        filtros.push(() => true);
+    }
+    for (const f of filtros) {
+        const grupo = gruposEtiquetas.find(g => mismoCable(g) && f(g));
+        if (grupo) return grupo;
+    }
+    return null;
+}
+
+function obtenerNumeroEtiqueta(codCable, elemento, gruposEtiquetas, archivoExcel, grupoSerie) {
+    const grupo = buscarGrupoEtiqueta(codCable, elemento, gruposEtiquetas, archivoExcel, grupoSerie);
     if (!grupo) return null;
 
     // Si es un hijo de serie (sub_numero > 0), devolver "25.01", "25.02", etc.

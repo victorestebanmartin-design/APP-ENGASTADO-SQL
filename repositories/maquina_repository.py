@@ -5,6 +5,15 @@ from typing import List, Dict, Optional
 from .base_repository import BaseRepository
 
 
+class TerminalYaAsignadoError(Exception):
+    """El terminal ya esta en otra maquina activa."""
+
+    def __init__(self, terminal: str, maquina_nombre: str):
+        self.terminal = terminal
+        self.maquina_nombre = maquina_nombre
+        super().__init__(f'El terminal {terminal} ya está asignado a {maquina_nombre}')
+
+
 class MaquinaRepository(BaseRepository):
     """Repositorio para máquinas de producción"""
     
@@ -190,6 +199,14 @@ class MaquinaRepository(BaseRepository):
             'maquina_id': maquina_id,
             'terminal_codigo': terminal_codigo
         }
+        # Regla de negocio: un terminal solo puede estar en UNA maquina activa.
+        # Se comprueba aqui (y no solo en el endpoint) para que ningun camino
+        # que asigne pueda duplicarlo.
+        otra = self.verificar_terminal_asignado(terminal_codigo)
+        if otra:
+            if otra['maquina_id'] == maquina_id:
+                return True   # ya estaba ahi: idempotente
+            raise TerminalYaAsignadoError(terminal_codigo, otra['maquina_nombre'])
         try:
             # Limpia asignaciones huerfanas: filas de maquinas desactivadas
             # (borrado suave) o inactivas de este mismo terminal. Sin esto el

@@ -120,7 +120,14 @@ def init_db(app):
                 ), {'i': _m['id'], 'p': _m['puesto_id'], 'n': _m['nombre'], 'm': _m['modelo']})
             for _mt in _seed.get('maquinas_terminales', []):
                 _conn.execute(_text(
-                    "INSERT OR IGNORE INTO maquinas_terminales (maquina_id, terminal_codigo) VALUES (:m,:t)"
+                    # Solo si la maquina sigue activa y el terminal no esta ya en
+                    # ninguna maquina activa: el seed corre en cada arranque y no
+                    # debe duplicar un terminal que el admin movio de maquina.
+                    "INSERT OR IGNORE INTO maquinas_terminales (maquina_id, terminal_codigo) "
+                    "SELECT :m, :t WHERE EXISTS (SELECT 1 FROM maquinas WHERE id = :m AND activo = 1) "
+                    "AND NOT EXISTS (SELECT 1 FROM maquinas_terminales mt "
+                    "JOIN maquinas mq ON mq.id = mt.maquina_id "
+                    "WHERE mt.terminal_codigo = :t AND mt.activo = 1 AND mq.activo = 1)"
                 ), {'m': _mt['maquina_id'], 't': _mt['terminal_codigo']})
             _conn.commit()
     else:

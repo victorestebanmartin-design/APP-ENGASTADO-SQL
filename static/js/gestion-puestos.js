@@ -77,7 +77,7 @@ function mostrarListaPuestos(puestos) {
                     </div>
                     <p class="puesto-descripcion">${puesto.descripcion || 'Sin descripción'}</p>
                     <div class="puesto-stats">
-                        <span class="stat">⚙️ ${puesto.maquinas ? puesto.maquinas.length : 0} máq.</span>
+                        ${chipMaquinas(puesto)}
                         <span class="stat" title="Identificación en pantalla del carro">
                             ${puesto.boton ? `🔘 B${puesto.boton}` : '⚪ sin botón'}
                         </span>
@@ -90,6 +90,82 @@ function mostrarListaPuestos(puestos) {
             }).join('')}
         </div>
     `;
+}
+
+// ================================
+// MÁQUINAS DE UN PUESTO (chip + modal)
+// ================================
+
+let _puestoMaquinasId = null;   // puesto abierto en el modal
+
+/** Recarga puestos y máquinas (chips) y repinta los modales abiertos. */
+async function refrescarChips() {
+    await Promise.all([cargarPuestos(), cargarMaquinas()]);
+    if (document.getElementById('modal-terminales-maquina').classList.contains('active')) pintarTerminalesMaquina();
+    if (document.getElementById('modal-maquinas-puesto').classList.contains('active')) pintarMaquinasPuesto();
+}
+
+/** Chip clicable con el nº de máquinas del puesto. */
+function chipMaquinas(puesto) {
+    const n = puesto.maquinas ? puesto.maquinas.length : 0;
+    return `<button type="button" class="chip-terminales ${n ? '' : 'vacio'}"
+                onclick="event.stopPropagation();abrirMaquinasPuesto('${puesto.id}')"
+                title="${n ? 'Ver las máquinas de este puesto' : 'Sin máquinas — clic para añadir'}">⚙️ ${n} máq.</button>`;
+}
+
+function abrirMaquinasPuesto(puestoId) {
+    _puestoMaquinasId = puestoId;
+    pintarMaquinasPuesto();
+    document.getElementById('modal-maquinas-puesto').classList.add('active');
+}
+
+function pintarMaquinasPuesto() {
+    const puesto = (dataPuestos || []).find(p => p.id === _puestoMaquinasId);
+    if (!puesto) { cerrarModal('modal-maquinas-puesto'); return; }
+    const maquinas = puesto.maquinas || [];
+    document.getElementById('modal-maquinas-titulo').textContent = `Máquinas de ${puesto.nombre}`;
+    document.getElementById('modal-maquinas-sub').textContent =
+        `${maquinas.length} máquina${maquinas.length !== 1 ? 's' : ''}`;
+    const cont = document.getElementById('modal-maquinas-lista');
+    cont.innerHTML = maquinas.length ? maquinas.map(m => {
+        const tipo = m.tipo_operacion || 'MANUAL';
+        const cls = tipo === 'AUTOMATICA' ? 'automatica' : tipo === 'SEMI-AUTOMATICA' ? 'semi' : 'manual';
+        const icon = tipo === 'AUTOMATICA' ? '🤖' : tipo === 'SEMI-AUTOMATICA' ? '⚡' : '🤚';
+        const n = (m.terminales_asignados || []).length;
+        return `
+        <div class="mt-row mt-row-maq">
+            <div class="mt-info">
+                <span class="mt-code">${m.nombre}</span>
+                <span class="mt-sub">${m.modelo || 'Sin modelo'} · <span class="badge-tipo ${cls}" style="font-size:0.62rem;padding:1px 6px;">${icon} ${tipo}</span></span>
+            </div>
+            <div class="mt-acciones">
+                <button type="button" class="chip-terminales ${n ? '' : 'vacio'}" title="Ver los terminales de esta máquina"
+                        onclick="abrirTerminalesMaquina('${m.id}')">🔗 ${n} terminal${n !== 1 ? 'es' : ''}</button>
+                <button type="button" class="btn-icon" title="Ir a la máquina" onclick="irAMaquina('${m.id}')">➡️</button>
+                <button type="button" class="btn-icon" title="Editar" onclick="cerrarModal('modal-maquinas-puesto');editarMaquina('${m.id}')">✏️</button>
+            </div>
+        </div>`;
+    }).join('') : '<div class="mt-vacio">Este puesto todavía no tiene máquinas.</div>';
+}
+
+/** Cierra el modal y salta a la tarjeta de la máquina en la sección Máquinas. */
+function irAMaquina(maquinaId) {
+    cerrarModal('modal-maquinas-puesto');
+    gpNav('maquinas');
+    const card = document.querySelector(`.maquina-card[data-id="${maquinaId}"]`);
+    if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('resaltada');
+        setTimeout(() => card.classList.remove('resaltada'), 2200);
+    }
+}
+
+/** Añade una máquina con el puesto ya elegido. */
+function anadirMaquinaAPuesto() {
+    const puestoId = _puestoMaquinasId;
+    cerrarModal('modal-maquinas-puesto');
+    mostrarModalMaquina();
+    document.getElementById('maquina-puesto').value = puestoId || '';
 }
 
 /**
@@ -364,8 +440,7 @@ async function quitarTerminalDeMaquina(terminal) {
         });
         const data = await resp.json();
         if (!data.success) { alert('Error: ' + data.message); return; }
-        await cargarMaquinas();          // refresca chips y dataMaquinas
-        pintarTerminalesMaquina();
+        await refrescarChips();          // chips y dataMaquinas/dataPuestos
         cargarAsignaciones();            // la pestaña Terminales también cambia
     } catch (e) {
         console.error(e);
@@ -574,7 +649,7 @@ async function guardarMaquina() {
         }
 
         cerrarModal('modal-maquina');
-        cargarMaquinas();
+        refrescarChips();
         mostrarNotificacion(editId ? 'Máquina actualizada correctamente' : 'Máquina creada correctamente', 'success');
 
     } catch (error) {
@@ -609,7 +684,7 @@ async function eliminarMaquina(maquinaId) {
         const data = await response.json();
         
         if (data.success) {
-            cargarMaquinas();
+            refrescarChips();
             mostrarNotificacion('Máquina eliminada correctamente', 'success');
         } else {
             alert('Error: ' + data.message);
@@ -963,7 +1038,7 @@ async function asignarSeleccionados() {
             alert('No se pudieron asignar:\n' + fallos.join('\n'));
         }
         cargarAsignaciones();
-        cargarMaquinas();   // el chip de cada máquina cuenta sus terminales
+        refrescarChips();   // chips de máquinas y de puestos
 
     } catch (error) {
         console.error('Error:', error);
@@ -991,7 +1066,7 @@ async function desasignarTerminal(terminal) {
         if (data.success) {
             mostrarNotificacion(data.message, 'success');
             cargarAsignaciones();
-            cargarMaquinas();
+            refrescarChips();
         } else {
             alert('Error: ' + data.message);
         }

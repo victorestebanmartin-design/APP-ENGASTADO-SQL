@@ -47,7 +47,7 @@ async function mostrarPaqueteExpandido() {
     
     // Cargar grupos de etiquetas y obtener número
     const gruposEtiquetas = await cargarGruposEtiquetas();
-    const numeroEtiqueta = obtenerNumeroEtiqueta(paquete.cod_cable, paquete.elemento, gruposEtiquetas, paquete.archivo_excel);
+    const numeroEtiqueta = obtenerNumeroEtiqueta(paquete.cod_cable, paquete.elemento, gruposEtiquetas, paquete.archivo_excel, paquete.serie_col || '');
     const _etq = getCodCableColor(paquete.cod_cable);
     const etiquetaHtml = numeroEtiqueta 
         ? `<span style="display: inline-block; background: ${_etq.bg}; color: ${_etq.text}; padding: 10px 20px; border-radius: 10px; font-weight: bold; font-size: 1.2em; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🏷️ #${numeroEtiqueta}</span>`
@@ -88,13 +88,24 @@ async function mostrarPaqueteExpandido() {
                 <span style="font-size:0.92em;color:#856404;"><strong>Orden de ${cantidadOrdenSerie} unidades:</strong> repite cada cable de abajo <strong>${cantidadOrdenSerie} veces</strong> (una vez por unidad).</span>
             </div>` : '';
         const gruposEtiquetas2 = await cargarGruposEtiquetas();
-        const numPadre = (gruposEtiquetas2.find(g => g.es_grupo_padre && g.elemento === grupoSerie))?.numero_etiqueta ?? '';
+        const archivoSerie = (paquete.sub_paquetes || [])[0]?.archivo_excel;
+        const padres = gruposEtiquetas2.filter(g => g.es_grupo_padre && g.elemento === grupoSerie);
+        const numPadre = (padres.find(g => g.archivo === archivoSerie || g.archivo_excel === archivoSerie) || padres[0])?.numero_etiqueta ?? '';
+        // El sub-número tiene que ser el de la etiqueta impresa: la serie tiene
+        // hijos que no llevan este terminal, así que contar los de pantalla
+        // (1, 2, 3...) no coincide con lo que pone en el paquete.
+        const subEtiquetado = sub => {
+            const g = buscarGrupoEtiqueta(sub.cod_cable, sub.elemento, gruposEtiquetas2, sub.archivo_excel, grupoSerie, true);
+            return g && g.sub_numero > 0 ? g.sub_numero : null;
+        };
+        (paquete.sub_paquetes || []).sort((a, b) =>
+            (subEtiquetado(a) ?? 1e9 + (a.sub_numero || 0)) - (subEtiquetado(b) ?? 1e9 + (b.sub_numero || 0)));
         const etiquetaPadreHtml = numPadre
             ? `<span style="display:inline-block;background:#f59e0b;color:white;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:1.2em;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">&#127991;&#65039; Etiqueta ${grupoSerie} — #${numPadre}</span>`
             : `<span style="display:inline-block;background:#6c757d;color:white;padding:8px 16px;border-radius:8px;font-weight:bold;font-size:1.1em;margin-bottom:10px;">&#128230; ${grupoSerie}</span>`;
 
         const subPaquetesHtml = (paquete.sub_paquetes || []).map((sub, i) => {
-            const numSub = numPadre ? `${numPadre}.${String(sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
+            const numSub = numPadre ? `${numPadre}.${String(subEtiquetado(sub) || sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
             const _sub = getCodCableColor(sub.cod_cable);
             const cablesDe   = sub.cables_de_terminal   || [];
             const cablesPara = sub.cables_para_terminal || [];

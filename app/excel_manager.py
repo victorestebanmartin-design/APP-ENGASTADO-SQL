@@ -281,9 +281,14 @@ class ExcelManager:
             de_no_poner   = str(row.get('De Elemento', '')).strip().endswith('*')
             para_no_poner = str(row.get('Para Elemento', '')).strip().endswith('*')
             
-            # Clave del grupo: Cable + Elemento
-            clave = f"{cod_cable}|{de_elemento}"
-            
+            # Clave del grupo: Cable + Elemento (+ Serie). Igual que las etiquetas
+            # (_regenerar_etiquetas_archivo): el mismo elemento puede estar en
+            # varias series, o en una serie y suelto. Si la serie no entra en la
+            # clave, todos sus cables acaban en el paquete de la primera fila y
+            # engastado enseña en una serie cables que no son suyos.
+            serie = _serie_str(row.get('Series'))
+            clave = f"{cod_cable}|{de_elemento}" + (f"|{serie}" if serie else '')
+
             if clave not in grupos:
                 # Buscar descripción y sección con normalización
                 descripcion_val = row.get('Descripción Cable', row.get('Descripcion Cable', ''))
@@ -301,7 +306,7 @@ class ExcelManager:
                     'cables_de_terminal': [],     # AZUL: terminal solo en "De Terminal"
                     'cables_para_terminal': [],   # VERDE: terminal solo en "Para Terminal"
                     'num_terminales': 0,
-                    'serie_col': _serie_str(row.get('Series')),
+                    'serie_col': serie,
                 }
 
             if cable_marca:

@@ -24,7 +24,7 @@ from repositories.orden_repository import OrdenRepository
 from repositories.codigo_corte_repository import CodigoCorteRepository
 from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
-from repositories.maquina_repository import MaquinaRepository
+from repositories.maquina_repository import MaquinaRepository, TerminalYaAsignadoError
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, leer_excel_cacheado
 from app.auth import (
@@ -1160,9 +1160,19 @@ def api_asignar_terminal():
                 'success': False,
                 'message': f'El terminal ya está asignado a {asignacion_actual["maquina_nombre"]}'
             }), 400
-        
-        # Asignar terminal
-        if maquina_repo.asignar_terminal(maquina_id, terminal):
+
+        if not maquina_repo.obtener_maquina(maquina_id):
+            return jsonify({'success': False, 'message': 'Máquina no encontrada'}), 404
+
+        # Asignar terminal (el repositorio vuelve a comprobar la regla)
+        try:
+            asignado = maquina_repo.asignar_terminal(maquina_id, terminal)
+        except TerminalYaAsignadoError as dup:
+            return jsonify({
+                'success': False,
+                'message': f'El terminal ya está asignado a {dup.maquina_nombre}'
+            }), 400
+        if asignado:
             return jsonify({
                 'success': True,
                 'message': f'Terminal {terminal} asignado correctamente'

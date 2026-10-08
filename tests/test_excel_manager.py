@@ -113,6 +113,24 @@ class TestAgrupacion:
         assert g_tb1['num_cables'] == 2
         assert g_tb1['todos_cables'] == ['1', '2']
 
+    def test_mismo_elemento_en_varias_series_no_se_mezcla(self):
+        # K3.1 tiene un cable en la serie 202, otro en la 408 y otro suelto.
+        # Antes se agrupaba solo por cable+elemento y la serie salía de la
+        # primera fila: los tres cables aparecían dentro de la serie 202.
+        filas = [
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '202', 'Series': 202.0,
+                     'De Elemento Etiquetas': 'K3.1'}),
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '408', 'Series': '408',
+                     'De Elemento Etiquetas': 'K3.1'}),
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '1202', 'Series': float('nan'),
+                     'De Elemento Etiquetas': 'K3.1'}),
+        ]
+        grupos = self.em.agrupar_por_cable_elemento(filas, '640204')
+        por_serie = {g['serie_col']: g['cables_de_terminal'] for g in grupos.values()}
+        assert por_serie == {'202': ['202'], '408': ['408'], '': ['1202']}
+        # Sin serie, la clave sigue siendo cable|elemento
+        assert '640C10023|K3.1' in grupos
+
     def test_cables_numericos_ordenados_antes_que_texto(self):
         filas = [
             _fila(**{'De Terminal': '640204', 'Cable / Marca': 'A1'}),
@@ -190,6 +208,29 @@ class TestCargaExcel:
         paquetes = {p['elemento']: p for p in d['paquetes']}
         assert paquetes['TB1']['cables_de_terminal'] == ['1', '2']
         assert paquetes['TB9']['cables_para_terminal'] == ['5']
+
+    def test_serie_solo_muestra_sus_cables(self, admin_client, app):
+        """Engastado: la serie 202 no puede traer cables de K3.1 que van en
+        otra serie o sueltos."""
+        import os
+        df = pd.DataFrame([
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '202', 'Series': 202,
+                     'De Elemento Etiquetas': 'K3.1'}),
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '408', 'Series': 408,
+                     'De Elemento Etiquetas': 'K3.1'}),
+            _fila(**{'De Terminal': '640204', 'Cable / Marca': '1202', 'Series': None,
+                     'De Elemento Etiquetas': 'K3.1'}),
+        ])
+        ruta = os.path.join(app.config['UPLOAD_FOLDER'], 'series.xlsx')
+        df.to_excel(ruta, sheet_name='Format', index=False)
+
+        d = admin_client.get('/api/datos_trabajo_v3?archivo=series.xlsx&terminal=640204').get_json()
+        assert d['success'], d
+        series = {p['grupo_serie']: p for p in d['paquetes'] if p.get('es_grupo')}
+        assert series['202']['cables_de_terminal'] == ['202']
+        assert series['408']['cables_de_terminal'] == ['408']
+        sueltos = [p for p in d['paquetes'] if not p.get('es_grupo')]
+        assert [p['cables_de_terminal'] for p in sueltos] == [['1202']]
 
     def test_archivo_inexistente_devuelve_false(self):
         em = ExcelManager('/tmp')
