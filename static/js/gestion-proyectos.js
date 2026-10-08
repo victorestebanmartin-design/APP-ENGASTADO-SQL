@@ -818,8 +818,14 @@ async function guardarEdicionBono() {
         return;
     }
     
+    if (nuevoNombre !== nombreOriginal && !confirm(
+            `Vas a renombrar el bono "${nombreOriginal}" a "${nuevoNombre}".\n\n` +
+            'El progreso se conserva, pero ningún puesto debe estar trabajando con él. ¿Continuar?')) {
+        return;
+    }
+
     try {
-        const response = await fetch(`/api/bonos/${nombreOriginal}`, {
+        const response = await fetch(`/api/bonos/${encodeURIComponent(nombreOriginal)}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -838,7 +844,7 @@ async function guardarEdicionBono() {
             cargarListaBonos();
             cargarBonosParaReporte();
         } else {
-            mostrarMensaje(`Error: ${data.error}`, 'error');
+            mostrarMensaje(`Error: ${data.error || data.message || 'no se pudo actualizar el bono'}`, 'error');
         }
     } catch (error) {
         mostrarMensaje('Error al actualizar el bono', 'error');

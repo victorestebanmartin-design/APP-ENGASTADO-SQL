@@ -20,7 +20,7 @@ from datetime import datetime
 import pandas as pd
 
 from repositories.proyecto_repository import ProyectoRepository
-from repositories.orden_repository import OrdenRepository
+from repositories.orden_repository import OrdenRepository, NumeroOrdenDuplicado
 from repositories.codigo_corte_repository import CodigoCorteRepository
 from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
@@ -161,17 +161,33 @@ def api_actualizar_orden(orden_id):
                 'message': 'Orden no encontrada'
             }), 404
         
+        numero = data.get('numero')
+        if numero is not None:
+            numero = str(numero).strip()
+            if not numero:
+                return jsonify({
+                    'success': False,
+                    'message': 'El número de orden no puede estar vacío'
+                }), 400
+
         # Actualizar la orden
-        if orden_repo.actualizar_orden(
-            orden_id=orden_id,
-            codigo_corte=data.get('codigo_corte'),
-            numero=data.get('numero'),
-            descripcion=data.get('descripcion'),
-            cantidad=data.get('cantidad'),
-            fecha_entrega=data.get('fecha_entrega'),
-            prioridad=data.get('prioridad'),
-            proyecto=data.get('proyecto')
-        ):
+        try:
+            actualizada = orden_repo.actualizar_orden(
+                orden_id=orden_id,
+                codigo_corte=data.get('codigo_corte'),
+                numero=numero,
+                descripcion=data.get('descripcion'),
+                cantidad=data.get('cantidad'),
+                fecha_entrega=data.get('fecha_entrega'),
+                prioridad=data.get('prioridad'),
+                proyecto=data.get('proyecto')
+            )
+        except NumeroOrdenDuplicado:
+            return jsonify({
+                'success': False,
+                'message': f'Ya existe otra orden con el número {numero}'
+            }), 409
+        if actualizada:
             orden_actualizada = orden_repo.obtener_orden(orden_id)
             return jsonify({
                 'success': True,

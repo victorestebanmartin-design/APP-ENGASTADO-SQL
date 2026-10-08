@@ -142,6 +142,87 @@ def api_eliminar_bono(nombre):
         return error_interno(e)
 
 
+_NOMBRE_BONO_VALIDO = re.compile(r'^[\w.\- ]+$')
+_ESTADOS_BONO = ('activo', 'completado', 'pausado')
+
+
+@bp.route('/api/bonos/<nombre>', methods=['PUT'])
+def api_actualizar_bono(nombre):
+    """Cambiar nombre y/o estado de un bono.
+
+    El progreso vive en progreso_bono_<nombre>.json, así que renombrar mueve
+    ese fichero a la vez que la fila de la BD: si una de las dos cosas falla,
+    no se queda ninguna a medias. No se permite renombrar con un puesto
+    trabajando en el bono (seguiría escribiendo el progreso con el nombre viejo).
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        bono_repo = BonoRepository(db)
+        bono = bono_repo.obtener_bono_por_nombre(nombre)
+        if not bono:
+            return jsonify({'success': False, 'error': 'Bono no encontrado'}), 404
+
+        nuevo_nombre = str(data.get('nombre', nombre)).strip()
+        estado = data.get('estado', bono['estado'])
+        if not nuevo_nombre or not _NOMBRE_BONO_VALIDO.match(nuevo_nombre) \
+                or nuevo_nombre.strip('. ') != nuevo_nombre:
+            return jsonify({
+                'success': False,
+                'error': 'El nombre solo puede llevar letras, números, espacios, '
+                         'guion, guion bajo y punto'
+            }), 400
+        if estado not in _ESTADOS_BONO:
+            return jsonify({
+                'success': False,
+                'error': f"Estado no válido. Usa: {', '.join(_ESTADOS_BONO)}"
+            }), 400
+
+        renombrar = nuevo_nombre != nombre
+        if renombrar:
+            archivos = {o.get('archivo_excel')
+                        for o in OrdenRepository(db).obtener_ordenes_por_bono(bono['id'])
+                        if o.get('archivo_excel')}
+            trabajando = [s for s in SesionTrabajoRepository(db).obtener_sesiones_activas()
+                          if s.get('archivo_excel') in archivos]
+            if trabajando:
+                return jsonify({
+                    'success': False,
+                    'error': 'Hay un puesto trabajando con este bono. Termina o libera '
+                             'su sesión antes de cambiarle el nombre.'
+                }), 409
+
+        from app.routes.progreso import _obtener_lock_progreso
+        ruta_vieja = _ruta_progreso_bono(nombre)
+        ruta_nueva = _ruta_progreso_bono(nuevo_nombre)
+        with _obtener_lock_progreso(nombre):
+            if renombrar and os.path.exists(ruta_vieja) and os.path.exists(ruta_nueva):
+                return jsonify({
+                    'success': False,
+                    'error': 'Ya existe un fichero de progreso con ese nombre'
+                }), 409
+            movido = False
+            try:
+                with db.engine.begin() as conn:
+                    conn.execute(
+                        text("UPDATE bonos SET nombre = :n, estado = :e WHERE id = :id"),
+                        {'n': nuevo_nombre, 'e': estado, 'id': bono['id']})
+                    if renombrar and os.path.exists(ruta_vieja):
+                        os.replace(ruta_vieja, ruta_nueva)
+                        movido = True
+            except Exception:
+                if movido and os.path.exists(ruta_nueva) and not os.path.exists(ruta_vieja):
+                    os.replace(ruta_nueva, ruta_vieja)
+                raise
+
+        return jsonify({'success': True, 'nombre': nuevo_nombre, 'estado': estado})
+    except IntegrityError as e:
+        if _es_error_nombre_bono_duplicado(e):
+            return jsonify({'success': False, 'error': 'Ya existe un bono con ese nombre'}), 409
+        return error_interno(e)
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/bonos', methods=['POST'])
 def api_crear_bono():
     """Crear nuevo bono"""

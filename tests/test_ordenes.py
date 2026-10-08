@@ -59,3 +59,45 @@ def test_orden_hereda_archivo_del_codigo_corte(admin_client, app):
     d = r.get_json()
     assert d['archivo_encontrado'] is True
     assert d['orden']['archivo_excel'] == 'corte_test.xlsx'
+
+
+def test_cambiar_numero_renombra_proyecto_y_mantiene_vinculos(client, app):
+    """Cambiar el número de una orden en un bono no rompe bono, progreso ni proyecto."""
+    import app.routes.ordenes as mod
+    from sqlalchemy import text
+    from repositories.proyecto_repository import ProyectoRepository
+
+    orden = client.post('/api/ordenes', json={
+        'codigo_corte': 'COD_R', 'numero': 'ORD_R1', 'cantidad': 1}).get_json()['orden']
+    with mod.db.engine.begin() as conn:
+        conn.execute(text("UPDATE ordenes_produccion SET archivo_excel='r.xlsx' WHERE id=:i"),
+                     {'i': orden['id']})
+    client.post('/api/bonos', json={'nombre': 'B_RENUM', 'ordenes_ids': ['ORD_R1']})
+    repo = ProyectoRepository(mod.db)
+    pid = repo.crear_proyecto('ORD_R1 - COD_R', 'r.xlsx')
+    otro = repo.crear_proyecto('ORD_R1 - COD_R', 'otro.xlsx')  # otra orden con mismo número viejo
+
+    r = client.put(f"/api/ordenes/actualizar/{orden['id']}", json={'numero': ' ORD_R2 '})
+    assert r.get_json()['success']
+    assert r.get_json()['orden']['numero'] == 'ORD_R2'
+    assert repo.obtener_proyecto(pid)['nombre'] == 'ORD_R2 - COD_R'
+    assert repo.obtener_proyecto(otro)['nombre'] == 'ORD_R1 - COD_R'
+
+    # La orden sigue dentro del bono y el bono la muestra con el número nuevo
+    d = client.get('/api/bonos/B_RENUM').get_json()['bono']
+    assert [o['numero'] for o in d['ordenes']] == ['ORD_R2']
+    assert d['ordenes'][0]['bono_id'] == d['id']
+    assert d['carros'][0]['proyecto_nombre'] == 'ORD_R2'
+
+
+def test_numero_duplicado_o_vacio_se_rechaza(client):
+    a = client.post('/api/ordenes', json={'codigo_corte': 'C', 'numero': 'ORD_D1'}).get_json()['orden']
+    client.post('/api/ordenes', json={'codigo_corte': 'C', 'numero': 'ORD_D2'})
+
+    r = client.put(f"/api/ordenes/actualizar/{a['id']}", json={'numero': 'ORD_D2'})
+    assert r.status_code == 409
+    r = client.put(f"/api/ordenes/actualizar/{a['id']}", json={'numero': '  '})
+    assert r.status_code == 400
+    # Mismo número que ya tiene: no es duplicado
+    r = client.put(f"/api/ordenes/actualizar/{a['id']}", json={'numero': 'ORD_D1', 'cantidad': 4})
+    assert r.get_json()['success']

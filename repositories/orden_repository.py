@@ -7,6 +7,10 @@ from sqlalchemy import text
 from .base_repository import BaseRepository
 
 
+class NumeroOrdenDuplicado(ValueError):
+    """Ya existe otra orden con ese número."""
+
+
 class OrdenRepository(BaseRepository):
     """Repositorio para gestión de órdenes de producción"""
     
@@ -268,10 +272,46 @@ class OrdenRepository(BaseRepository):
             return False  # Nada que actualizar
         
         query = f"""
-            UPDATE ordenes_produccion 
+            UPDATE ordenes_produccion
             SET {', '.join(campos)}
             WHERE id = :orden_id
         """
-        rows = self.execute_update(query, params)
+        # Una sola transacción: si el número cambia, el nombre del proyecto
+        # ("NUMERO - codigo") tiene que cambiar con él o se pierde el vínculo.
+        with self.db.engine.begin() as conn:
+            if numero is not None:
+                actual = conn.execute(
+                    text("SELECT numero, archivo_excel FROM ordenes_produccion WHERE id = :id"),
+                    {'id': orden_id}).fetchone()
+                if actual is None:
+                    return False
+                numero_viejo, archivo = actual[0], actual[1]
+                if numero != numero_viejo:
+                    repetida = conn.execute(
+                        text("SELECT 1 FROM ordenes_produccion "
+                             "WHERE numero = :numero AND id != :id LIMIT 1"),
+                        {'numero': numero, 'id': orden_id}).fetchone()
+                    if repetida:
+                        raise NumeroOrdenDuplicado(numero)
+                    self._renombrar_proyectos(conn, numero_viejo, numero, archivo)
+            rows = conn.execute(text(query), params).rowcount
         return rows > 0
+
+    @staticmethod
+    def _renombrar_proyectos(conn, numero_viejo: str, numero_nuevo: str,
+                             archivo: Optional[str]) -> None:
+        """Cambia el prefijo del nombre de los proyectos de esta orden."""
+        sql = ("UPDATE proyectos SET nombre = :nuevo || substr(nombre, :corte) "
+               "WHERE (nombre = :viejo OR nombre LIKE :patron ESCAPE '\\')")
+        params = {
+            'nuevo': numero_nuevo,
+            'viejo': numero_viejo,
+            'corte': len(numero_viejo) + 1,
+            'patron': (numero_viejo.replace('\\', '\\\\').replace('%', '\\%')
+                       .replace('_', '\\_') + ' - %'),
+        }
+        if archivo:
+            sql += " AND archivo = :archivo"
+            params['archivo'] = archivo
+        conn.execute(text(sql), params)
 

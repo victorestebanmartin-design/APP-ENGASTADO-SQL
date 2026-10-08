@@ -91,3 +91,44 @@ def test_nombre_sugerido_incrementa(client):
     client.post('/api/bonos', json={'nombre': nombre1, 'ordenes_ids': []})
     r = client.get('/api/bonos/nombre-sugerido')
     assert r.get_json()['nombre'].endswith('_2')
+
+
+def _bono(client, nombre):
+    r = client.post('/api/bonos', json={'nombre': nombre, 'ordenes_ids': []})
+    assert r.get_json()['success']
+
+
+def test_editar_bono_estado(client):
+    _bono(client, 'B_EST')
+    r = client.put('/api/bonos/B_EST', json={'nombre': 'B_EST', 'estado': 'pausado'})
+    assert r.get_json()['success']
+    assert client.get('/api/bonos/B_EST').get_json()['bono']['estado'] == 'pausado'
+
+
+def test_renombrar_bono_mueve_el_progreso(client, app):
+    import json, os
+    _bono(client, 'B_VIEJO')
+    cuerpo = {'terminal': 'T1', 'carro': 1}
+    assert client.post('/api/bonos/B_VIEJO/progreso', json=cuerpo).get_json()['success']
+    datos = app.config['DATA_DIR']
+    viejo = os.path.join(datos, 'progreso_bono_B_VIEJO.json')
+    assert os.path.exists(viejo)
+    antes = json.load(open(viejo, encoding='utf-8'))
+
+    r = client.put('/api/bonos/B_VIEJO', json={'nombre': 'B_NUEVO', 'estado': 'activo'})
+    assert r.get_json()['success']
+    assert not os.path.exists(viejo)
+    nuevo = os.path.join(datos, 'progreso_bono_B_NUEVO.json')
+    assert json.load(open(nuevo, encoding='utf-8')) == antes
+    assert client.get('/api/bonos/B_NUEVO/progreso').get_json()['success']
+    assert client.get('/api/bonos/B_VIEJO').status_code == 404
+
+
+def test_renombrar_bono_rechaza_duplicado_y_nombres_raros(client):
+    _bono(client, 'B_A')
+    _bono(client, 'B_B')
+    assert client.put('/api/bonos/B_A', json={'nombre': 'B_B', 'estado': 'activo'}).status_code == 409
+    assert client.put('/api/bonos/B_A', json={'nombre': '../x', 'estado': 'activo'}).status_code == 400
+    assert client.put('/api/bonos/B_A', json={'nombre': 'B_A', 'estado': 'en_proceso'}).status_code == 400
+    assert client.put('/api/bonos/NO_EXISTE', json={'nombre': 'X'}).status_code == 404
+    assert client.get('/api/bonos/B_A').status_code == 200

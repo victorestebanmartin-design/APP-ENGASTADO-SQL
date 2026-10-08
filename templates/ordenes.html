@@ -308,7 +308,8 @@ function renderTabla(ordenes) {
             : '<span style="color:var(--text-dim);">—</span>';
         const acciones = (estado === 'pendiente'
             ? `<button class="btn-sm btn-sm-secondary" style="margin-right:4px;" onclick="abrirEditar('${o.id}')">Editar</button>`
-            : '') +
+            : (estado === 'cancelado' ? ''
+                : `<button class="btn-sm btn-sm-secondary" style="margin-right:4px;" title="Cambia solo el número; el bono y el progreso se conservan" onclick="cambiarNumeroOrden('${o.id}','${(o.numero||'').replace(/'/g,"\\'")}')">Cambiar nº</button>`)) +
             `<button class="btn-sm btn-sm-danger" onclick="eliminarOrden('${o.id}','${estado}','${(o.numero||'').replace(/'/g,"\\'")}')">Eliminar</button>`;
         return `<tr>
             <td><span style="font-family:'DM Mono',monospace;font-size:.79rem;color:var(--accent);">${o.codigo_corte||'—'}</span></td>
@@ -345,6 +346,24 @@ function abrirEditar(id) {
     document.getElementById('edit-msg').className  = 'ord-msg';
     document.getElementById('edit-msg').style.display = 'none';
     document.getElementById('modal-editar').classList.add('open');
+}
+// Orden ya en marcha (en bono / en proceso): solo se corrige el número.
+async function cambiarNumeroOrden(id, actual) {
+    const nuevo = prompt(
+        `Número actual: ${actual}\n\nNuevo número de orden.\n` +
+        'Solo cambia el número: el bono, el progreso y los carros se conservan.', actual);
+    if (nuevo === null || nuevo.trim() === '' || nuevo.trim() === actual) return;
+    try {
+        const r = await fetch(`/api/ordenes/actualizar/${id}`, {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ numero: nuevo.trim() })
+        });
+        const d = await r.json();
+        if (d.success) cargarOrdenes();
+        else alert(d.message || 'No se pudo cambiar el número');
+    } catch (e) {
+        alert('Error de conexión');
+    }
 }
 function cerrarModalEditar() {
     document.getElementById('modal-editar').classList.remove('open');
