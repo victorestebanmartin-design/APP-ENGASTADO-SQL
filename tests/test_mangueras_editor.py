@@ -568,6 +568,58 @@ def test_renfe_referencia_mang_admite_cable_adicional_tras_sufijo():
     assert datos['filas'][0]['vinculacion']['activos'][0]['cable_marca'] == '813(1)'
 
 
+def test_renfe_kit_de_envio_vincula_activos_por_grupo_y_elemento():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cable / Marca', 'Sección', 'Longitud', 'Cod. cable', 'De Elemento',
+                 'De Elemento Etiquetas', 'De Terminal', 'Para Elemento', 'Para Terminal',
+                 'Observaciones'])
+    hoja.append(['EFM1-1', '3X0.5', 2.5, '640D10002', 'TB2/K3.4', 'TB2/K3.4',
+                 'S/T', 'X19', 'S/T', 'MANG. EFM1-1 PELAR 400 mm.'])
+    hoja.append(['EFM1-1', '3X0.5', 0.7, '640D10002', 'X19', 'X19',
+                 'S/T', 'X19', 'S/T', 'KIT DE ENVÍO'])
+    for posicion, marca in enumerate(('1009-1(1)', '1010-1(2)', '1011-1(3)'), start=1):
+        hoja.append([marca, '3X0.5', 0, '640D10002', 'X19', 'X19',
+                     f'T{posicion}', 'X19', 'T4', 'KIT DE ENVÍO'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'renfe.xlsx')
+    padre_kit = next(fila for fila in datos['filas'] if fila['fila'] == 3)
+    padre_otro_elemento = next(fila for fila in datos['filas'] if fila['fila'] == 2)
+
+    assert padre_kit['vinculacion']['confirmados']
+    assert [activo['cable_marca'] for activo in padre_kit['vinculacion']['activos']] == [
+        '1009-1(1)', '1010-1(2)', '1011-1(3)',
+    ]
+    assert padre_otro_elemento['vinculacion']['confirmados'] is False
+    salida = exportar_preparacion(buffer.getvalue(), 'renfe.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Sheet1']
+    assert [hoja[f'E{fila}'].value for fila in (4, 5, 6)] == ['X19*'] * 3
+    assert [hoja[f'H{fila}'].value for fila in (4, 5, 6)] == ['X19*'] * 3
+
+
+def test_renfe_kit_de_envio_no_asocia_si_hay_dos_padres_iguales():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cable / Marca', 'Sección', 'Longitud', 'Cod. cable', 'De Elemento',
+                 'De Elemento Etiquetas', 'De Terminal', 'Para Elemento', 'Para Terminal',
+                 'Observaciones'])
+    for marca in ('EFM1-A', 'EFM1-B'):
+        hoja.append([marca, '3X0.5', 0.7, '640D10002', 'X19', 'X19', 'S/T', 'X19', 'S/T', 'KIT DE ENVÍO'])
+    hoja.append(['1009-1(1)', '3X0.5', 0, '640D10002', 'X19', 'X19', 'T1', 'X19', 'T2', 'KIT DE ENVÍO'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'renfe.xlsx')
+
+    assert all(fila['vinculacion']['confirmados'] is False for fila in datos['filas'][:2])
+    hijo = next(fila for fila in datos['filas'] if fila['fila'] == 4)
+    assert hijo['vinculacion']['confirmados'] is False
+
+
 def test_legacy_y_pm_cero_habilitan_lados():
     libro = load_workbook(io.BytesIO(excel_con_activos()))
     hoja = libro['Format']

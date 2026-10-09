@@ -88,6 +88,13 @@ def _manguera_referenciada(observaciones):
     return coincidencia.group(1).strip().upper(), coincidencia.group(2).upper()
 
 
+def _clave_paquete_renfe(codigo, elemento, serie, seccion, observaciones):
+    grupo = re.sub(r'\s+', ' ', (observaciones or '').strip()).casefold()
+    if not grupo:
+        return None
+    return (codigo, elemento, serie, re.sub(r'\s+', '', seccion).upper(), grupo)
+
+
 def _abrir(contenido, nombre):
     if not nombre.lower().endswith(('.xlsx', '.xlsm')):
         raise ValueError('Selecciona un Excel .xlsx o .xlsm. Convierte los .xls antes de abrirlos.')
@@ -99,7 +106,10 @@ def _abrir(contenido, nombre):
 def _vinculos_mangueras(hoja, columnas):
     padres = {}
     candidatos = {}
+    padres_paquete = {}
     activos = {}
+    activos_marca = {}
+    activos_paquete = {}
     for fila in range(2, hoja.max_row + 1):
         marca = (_valor(hoja, columnas, fila, 'Cable / Marca') or
                  _valor(hoja, columnas, fila, 'De Marca'))
@@ -117,22 +127,56 @@ def _vinculos_mangueras(hoja, columnas):
             clave = (base, codigo, elemento, serie)
             padres[fila] = clave
             candidatos.setdefault(clave, []).append(fila)
+            clave_paquete = _clave_paquete_renfe(
+                codigo, elemento, serie, seccion, _valor(hoja, columnas, fila, 'Observaciones'))
+            if clave_paquete:
+                padres_paquete.setdefault(clave_paquete, []).append(fila)
         elif longitud == 0 and elemento and codigo:
             observaciones = _valor(hoja, columnas, fila, 'Observaciones')
             base, activo = _manguera_referenciada(observaciones)
-            if base is None and marca:
+            if base is not None:
+                clave = (base, codigo, elemento, serie)
+                activos.setdefault(clave, []).append((fila, activo))
+            elif marca and _marca_base_asociada(marca)[0] is not None:
                 base, activo = _marca_base_asociada(marca)
-            if base is None:
+                clave = (base, codigo, elemento, serie)
+                clave_paquete = _clave_paquete_renfe(
+                    codigo, elemento, serie, seccion, observaciones)
+                activos_marca.setdefault(clave, []).append((fila, activo, clave_paquete))
+            else:
                 numero = re.search(r'\(\s*(\d+)\s*\)', observaciones)
-                if not numero or not marca:
-                    continue
-                base, activo = marca.upper(), numero.group(1)
-            clave = (base, codigo, elemento, serie)
-            activos.setdefault(clave, []).append((fila, activo))
+                if numero and marca:
+                    base, activo = marca.upper(), numero.group(1)
+                    clave = (base, codigo, elemento, serie)
+                    activos.setdefault(clave, []).append((fila, activo))
+                else:
+                    numero = re.search(r'\(\s*(\d+|S)\s*\)\s*$', marca or '', re.I)
+                    clave_paquete = _clave_paquete_renfe(
+                        codigo, elemento, serie, seccion, observaciones)
+                    if numero and clave_paquete:
+                        activos_paquete.setdefault(clave_paquete, []).append(
+                            (fila, numero.group(1).upper()))
+    for clave, hijos in activos_marca.items():
+        if candidatos.get(clave):
+            activos.setdefault(clave, []).extend((fila, numero) for fila, numero, _ in hijos)
+        else:
+            for fila, numero, clave_paquete in hijos:
+                if clave_paquete:
+                    activos_paquete.setdefault(clave_paquete, []).append((fila, numero))
     resultado = {}
     for fila, clave in padres.items():
         encontrados = activos.get(clave, [])
         ambiguo = len(candidatos[clave]) != 1
+        clave_paquete = _clave_paquete_renfe(
+            clave[1], clave[2], clave[3],
+            _valor(hoja, columnas, fila, 'Sección'),
+            _valor(hoja, columnas, fila, 'Observaciones'))
+        padres_grupo = padres_paquete.get(clave_paquete, []) if clave_paquete else []
+        if not encontrados and padres_grupo:
+            if len(padres_grupo) == 1:
+                encontrados = activos_paquete.get(clave_paquete, [])
+            elif activos_paquete.get(clave_paquete):
+                ambiguo = True
         resultado[fila] = {'confirmados': bool(encontrados) and not ambiguo,
                            'ambiguo': ambiguo, 'activos': [], 'mallas': []}
         for fila_activo, numero in encontrados:
@@ -219,7 +263,7 @@ def leer_preparacion(contenido, nombre):
         if _normalizar_texto_columna('Sección') not in columnas:
             raise ValueError('El Excel no contiene la columna Sección.')
         vinculos = _vinculos_mangueras(hoja, columnas)
-        filas_activos = {activo['fila'] for vinculo in vinculos.values()
+        filas_activos = {activo['fila'] for vinculo in vinculos.values() if vinculo['confirmados']
                 for activo in vinculo['activos'] + vinculo.get('mallas', [])}
         biblioteca_retractiles = set()
         for fila in range(2, hoja.max_row + 1):
