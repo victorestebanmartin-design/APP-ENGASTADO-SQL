@@ -96,6 +96,11 @@ Si se abrió un Excel local, hay que seleccionar el corte de destino con ese
 mismo Excel de origen. Para un corte nuevo, primero se registra por el flujo habitual.
 Si la aplicación falla, la copia descargada y el borrador siguen disponibles.
 
+Cada manguera admite **Observaciones de la manguera**. El texto se conserva en
+el borrador y se escribe en la columna `Observaciones Mangueras` del Excel:
+columna W si queda después de las columnas existentes, o al final si la hoja
+ya llega más allá. Las observaciones originales del Excel no se modifican.
+
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
 y `1502-2`), mismo código de cable, elemento de etiquetas (o el de origen si no

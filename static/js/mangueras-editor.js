@@ -78,7 +78,7 @@
         borrador.forEach(function (fila) {
           var posicion = datos.filas.findIndex(function (actual) { return actual.fila === fila.fila; });
           if (posicion >= 0) {
-            ['de', 'para', 'retractil_de', 'retractil_para'].forEach(function (campo) {
+            ['de', 'para', 'retractil_de', 'retractil_para', 'observaciones_mangueras'].forEach(function (campo) {
               datos.filas[posicion][campo] = fila[campo];
             });
             cambios.set(fila.fila, datos.filas[posicion]);
@@ -219,6 +219,7 @@
     document.getElementById('me-prev').disabled = indice === 0;
     document.getElementById('me-next').disabled = indice === datos.filas.length - 1;
     document.getElementById('me-sides').innerHTML = ladoHtml(fila, 'de') + ladoHtml(fila, 'para');
+    document.getElementById('me-observaciones').value = fila.observaciones_mangueras || '';
     document.getElementById('me-fields').innerHTML = Object.keys(fila.campos).map(function (cabecera) {
       return '<dt>' + esc(cabecera) + '</dt><dd>' + esc(fila.campos[cabecera]) + '</dd>';
     }).join('');
@@ -285,6 +286,7 @@
         fila[lado] = valor.inst;
         fila['retractil_' + lado] = valor.retractiles;
       });
+      fila.observaciones_mangueras = document.getElementById('me-observaciones').value;
       cambios.set(fila.fila, structuredClone(fila));
       pendiente = false;
       persistir();

@@ -100,6 +100,7 @@ def test_editor_y_descarga_http(client):
     datos = respuesta.get_json()
     cambio = datos['filas'][1]
     cambio['de']['pm'] = 80
+    cambio['observaciones_mangueras'] = '  Nota de taller\nsegunda línea  '
     descarga = client.post('/api/mangueras/editor/descargar', data={
         'excel': (io.BytesIO(original), 'corte.xlsx'), 'revision': datos['revision'],
         'cambios': json.dumps([cambio]),
@@ -108,6 +109,9 @@ def test_editor_y_descarga_http(client):
     assert 'corte_preparacion.xlsx' in descarga.headers['Content-Disposition']
     libro = load_workbook(io.BytesIO(descarga.data))
     assert libro['Format']['G3'].value == 'PM80'
+    assert libro['Format']['W1'].value == 'Observaciones Mangueras'
+    assert libro['Format']['W3'].value == cambio['observaciones_mangueras']
+    assert libro['Format']['E3'].value == 'Nota'
 
 
 def test_corte_registrado_no_se_sobrescribe(client, app):
@@ -204,6 +208,44 @@ def test_exportacion_normaliza_cabeceras_de_preparacion(tmp_path):
     assert ExcelManager(str(tmp_path)).get_mangueras('editado.xlsx')[1]['de']['pm'] == 50
 
 
+@pytest.mark.parametrize(('ultima_columna', 'columna_esperada'), [(17, 23), (25, 30)])
+def test_observaciones_mangueras_se_guarda_en_columna_w_o_al_final(ultima_columna, columna_esperada):
+    libro = load_workbook(io.BytesIO(excel_original()))
+    hoja = libro['Format']
+    for columna in range(7, ultima_columna + 1):
+        hoja.cell(1, columna, f'Campo {columna}')
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    original = buffer.getvalue()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = datos['filas'][0]
+    cambio['observaciones_mangueras'] = '  Revisar color y longitud\nNo cortar todavía.  '
+
+    salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'])
+
+    hoja = load_workbook(salida)['Format']
+    assert hoja.cell(1, columna_esperada).value == 'Observaciones Mangueras'
+    assert hoja.cell(2, columna_esperada).value == cambio['observaciones_mangueras']
+    assert hoja.cell(2, columna_esperada).data_type == 's'
+
+
+def test_observaciones_mangueras_reutiliza_columna_y_se_recargan():
+    libro = load_workbook(io.BytesIO(excel_original()))
+    hoja = libro['Format']
+    hoja['W1'] = 'Observaciones Mangueras'
+    hoja['W2'] = 'Nota anterior'
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    original = buffer.getvalue()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    assert datos['filas'][0]['observaciones_mangueras'] == 'Nota anterior'
+    cambio = datos['filas'][0]
+    cambio['observaciones_mangueras'] = 'Nota nueva'
+    salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'])
+    recargadas = leer_preparacion(salida.getvalue(), 'corte.xlsx')
+    assert recargadas['filas'][0]['observaciones_mangueras'] == 'Nota nueva'
+
+
 def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
     ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
     original = excel_original()
@@ -213,6 +255,7 @@ def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
     datos = leer_preparacion(original, 'corte.xlsx')
     cambio = datos['filas'][0]
     cambio['de']['pm'] = 180
+    cambio['observaciones_mangueras'] = 'Aplicar con cuidado.'
     with sqlite3.connect(app.config['DB_PATH']) as conexion:
         bd_antes = list(conexion.iterdump())
     respuesta = admin_client.post('/api/mangueras/editor/aplicar', data={
@@ -223,6 +266,7 @@ def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
     assert resultado['archivo'] == 'corte.xlsx'
     assert resultado['datos']['revision'] != datos['revision']
     assert manager.get_mangueras('corte.xlsx')[0]['de']['pm'] == 180
+    assert leer_preparacion(ruta.read_bytes(), 'corte.xlsx')['filas'][0]['observaciones_mangueras'] == 'Aplicar con cuidado.'
     assert (ruta.parent / resultado['backup']).read_bytes() == original
     libro = load_workbook(ruta)
     assert libro['Format']['F2'].value == '=10+20'

@@ -40,6 +40,14 @@ def _valor(hoja, columnas, fila, *nombres):
     return ''
 
 
+def _valor_texto(hoja, columnas, fila, nombre):
+    indice = columnas.get(_normalizar_texto_columna(nombre))
+    if not indice:
+        return ''
+    valor = hoja.cell(fila, indice).value
+    return '' if valor is None else str(valor)
+
+
 def _marca_base_asociada(marca):
     numero = re.fullmatch(r'(.+?)\(\s*([A-Za-z]+|\d+)\s*\)', marca, flags=re.I)
     if numero:
@@ -121,6 +129,21 @@ def _columna_escritura(hoja, columnas, cabecera):
         columnas[clave] = indice
     hoja.cell(1, columnas[clave]).value = cabecera
     return columnas[clave]
+
+
+def _columna_observaciones_mangueras(hoja, columnas):
+    cabecera = 'Observaciones Mangueras'
+    clave = _normalizar_texto_columna(cabecera)
+    if clave in columnas:
+        hoja.cell(1, columnas[clave]).value = cabecera
+        return columnas[clave]
+    indice = max(23, hoja.max_column + 1)
+    nueva = hoja.cell(1, indice, cabecera)
+    if indice > 1:
+        nueva._style = copy(hoja.cell(1, indice - 1)._style)
+    hoja.column_dimensions[nueva.column_letter].width = 42
+    columnas[clave] = indice
+    return indice
 
 
 def _lados_preparados(hoja, columnas, fila):
@@ -207,6 +230,7 @@ def leer_preparacion(contenido, nombre):
                 'retractil_de': _parse_retractiles(ret_de),
                 'retractil_para': _parse_retractiles(ret_para),
                 'retractil_de_raw': ret_de, 'retractil_para_raw': ret_para,
+                'observaciones_mangueras': _valor_texto(hoja, columnas, fila, 'Observaciones Mangueras'),
                 'vinculacion': vinculos.get(fila, {'confirmados': False, 'ambiguo': False, 'activos': []}),
                 'campos': {str(hoja.cell(1, indice).value): _texto(hoja.cell(fila, indice).value)
                            for indice in columnas.values()},
@@ -297,6 +321,9 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
             if type(fila) is not int or fila not in disponibles or fila in vistos:
                 raise ValueError('Fila de manguera no válida o repetida.')
             vistos.add(fila)
+            observaciones = cambio.get('observaciones_mangueras', '')
+            if not isinstance(observaciones, str):
+                raise ValueError('Las observaciones de mangueras deben ser texto.')
             valores = (
                 serializar_instrucciones(cambio.get('de')),
                 serializar_instrucciones(cambio.get('para')),
@@ -312,6 +339,9 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
                 celda = hoja.cell(fila, _columna_escritura(hoja, columnas, cabecera))
                 celda.value = valor or None
                 celda.data_type = 's'
+            celda_observaciones = hoja.cell(fila, _columna_observaciones_mangueras(hoja, columnas))
+            celda_observaciones.value = observaciones or None
+            celda_observaciones.data_type = 's'
             if not any(valores[:2]):
                 indice_obs = columnas.get(_normalizar_texto_columna('Observaciones'))
                 if indice_obs:

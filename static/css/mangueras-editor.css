@@ -9,7 +9,7 @@
 .me-source { display: flex; align-items: end; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid #d4dde2; flex-wrap: wrap; }
 .me-source label { flex: 1; min-width: 200px; }
 .me-app label { display: block; font-size: 13px; font-weight: 600; }
-.me-app input, .me-app select { display: block; width: 100%; min-width: 0; margin-top: 6px; border: 1px solid #becbd3; border-radius: 4px; padding: 10px; font: inherit; background: white; color: #26323b; }
+.me-app input, .me-app select, .me-app textarea { display: block; width: 100%; min-width: 0; margin-top: 6px; border: 1px solid #becbd3; border-radius: 4px; padding: 10px; font: inherit; background: white; color: #26323b; }
 .me-app input[type=file] { padding: 8px; }
 .me-app button { cursor: pointer; border: 1px solid #b6c6ce; border-radius: 4px; background: white; color: #26323b; padding: 10px 14px; font: inherit; font-size: 14px; font-weight: 600; }
 .me-app button:disabled { opacity: .45; cursor: default; }
@@ -58,6 +58,8 @@
 .me-add span { font-size: 12px; }
 .me-raw { font: 12px monospace; color: #536675; overflow-wrap: anywhere; min-height: 16px; margin-top: 12px; }
 .me-row-actions { display: flex; gap: 12px; margin: 18px 0; flex-wrap: wrap; }
+.me-observaciones-label { display: block; margin: 18px 0; font-size: 14px; font-weight: 600; }
+.me-observaciones-label textarea { min-height: 100px; resize: vertical; line-height: 1.5; }
 .me-fields { border-top: 1px solid #d4dde2; padding: 16px 0; }
 .me-fields summary { cursor: pointer; font-size: 14px; font-weight: 600; }
 .me-fields dl { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(0, 2fr); font-size: 13px; gap: 8px 16px; }
