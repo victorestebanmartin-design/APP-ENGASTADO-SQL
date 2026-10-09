@@ -1,5 +1,6 @@
 import io
 import json
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
 
@@ -201,3 +202,73 @@ def test_exportacion_normaliza_cabeceras_de_preparacion(tmp_path):
     destino = tmp_path / 'editado.xlsx'
     destino.write_bytes(salida.getvalue())
     assert ExcelManager(str(tmp_path)).get_mangueras('editado.xlsx')[1]['de']['pm'] == 50
+
+
+def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    original = excel_original()
+    ruta.write_bytes(original)
+    manager = ExcelManager(str(ruta.parent))
+    assert manager.get_mangueras('corte.xlsx')[0]['de']['pm'] == 100
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = datos['filas'][0]
+    cambio['de']['pm'] = 180
+    with sqlite3.connect(app.config['DB_PATH']) as conexion:
+        bd_antes = list(conexion.iterdump())
+    respuesta = admin_client.post('/api/mangueras/editor/aplicar', data={
+        'destino': 'corte.xlsx', 'revision': datos['revision'], 'cambios': json.dumps([cambio]),
+    })
+    assert respuesta.status_code == 200
+    resultado = respuesta.get_json()
+    assert resultado['archivo'] == 'corte.xlsx'
+    assert resultado['datos']['revision'] != datos['revision']
+    assert manager.get_mangueras('corte.xlsx')[0]['de']['pm'] == 180
+    assert (ruta.parent / resultado['backup']).read_bytes() == original
+    libro = load_workbook(ruta)
+    assert libro['Format']['F2'].value == '=10+20'
+    assert libro['Otra']['A1'].value == 'No modificar'
+    with sqlite3.connect(app.config['DB_PATH']) as conexion:
+        assert list(conexion.iterdump()) == bd_antes
+
+
+def test_aplicar_exige_administracion(client, app):
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    original = excel_original()
+    ruta.write_bytes(original)
+    assert client.post('/api/mangueras/editor/aplicar', data={'destino': 'corte.xlsx'}).status_code == 401
+    assert ruta.read_bytes() == original
+
+
+@pytest.mark.parametrize('tipo', ['revision', 'medida', 'destino', 'json'])
+def test_aplicar_error_no_modifica_original(admin_client, app, tipo):
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    original = excel_original()
+    ruta.write_bytes(original)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = datos['filas'][0]
+    cambio['de']['pm'] = -1 if tipo == 'medida' else 180
+    respuesta = admin_client.post('/api/mangueras/editor/aplicar', data={
+        'destino': '../fuera.xlsx' if tipo == 'destino' else 'corte.xlsx',
+        'revision': 'vieja' if tipo == 'revision' else datos['revision'],
+        'cambios': '{' if tipo == 'json' else json.dumps([cambio]),
+    })
+    assert respuesta.status_code == 400
+    assert ruta.read_bytes() == original
+    assert list(ruta.parent.iterdir()) == [ruta]
+
+
+def test_aplicar_fallo_de_escritura_no_modifica_original(admin_client, app, monkeypatch):
+    from app.routes import manguitos
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    original = excel_original()
+    ruta.write_bytes(original)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    def fallar(*args):
+        raise OSError('Error de escritura simulado')
+    monkeypatch.setattr(manguitos.os, 'replace', fallar)
+    respuesta = admin_client.post('/api/mangueras/editor/aplicar', data={
+        'destino': 'corte.xlsx', 'revision': datos['revision'], 'cambios': '[]',
+    })
+    assert respuesta.status_code == 500
+    assert ruta.read_bytes() == original
+    assert not any(fichero.name.startswith('tmp') for fichero in ruta.parent.iterdir())

@@ -24,7 +24,7 @@
     <div class="me-toolbar">
       <span id="me-name">Ning&uacute;n Excel abierto</span>
       <span id="me-draft"></span>
-      <button id="me-download" type="button" disabled>Descargar Excel</button>
+      <button id="me-download" type="button" disabled>Guardar Excel...</button>
     </div>
     <p id="me-status" role="status" aria-live="polite">Selecciona un Excel o un corte.</p>
     <div id="me-workspace" class="me-workspace" hidden>
@@ -47,6 +47,21 @@
       </section>
     </div>
   </main>
+  <dialog id="me-save-dialog" aria-labelledby="me-save-title">
+    <h2 id="me-save-title">Guardar Excel</h2>
+    <p id="me-save-summary"></p>
+    <label for="me-destino">Aplicar al corte<select id="me-destino"><option value="">Seleccionar corte</option></select></label>
+    <p id="me-save-status" role="status" aria-live="polite"></p>
+    <form id="me-pin-form" hidden>
+      <label for="me-pin">PIN de administraci&oacute;n<input id="me-pin" type="password" inputmode="numeric" autocomplete="current-password" required></label>
+      <button type="submit">Validar PIN y aplicar</button>
+    </form>
+    <div class="me-dialog-actions">
+      <button id="me-save-cancel" type="button">Cancelar</button>
+      <button id="me-save-download" type="button">Solo descargar</button>
+      <button id="me-save-apply" type="button">Descargar y aplicar</button>
+    </div>
+  </dialog>
   <script src="{{ url_for('static', filename='js/mangueras-editor.js') }}"></script>
 </body>
 </html>

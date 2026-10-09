@@ -8,9 +8,20 @@
   var indice = 0;
   var ocupado = false;
   var pendiente = false;
+  var cortesDisponibles = [];
+  var copiaDescargada = false;
   var form = document.getElementById('me-form');
   var status = document.getElementById('me-status');
   var download = document.getElementById('me-download');
+  var dialogo = document.getElementById('me-save-dialog');
+  var destino = document.getElementById('me-destino');
+  var estadoGuardado = document.getElementById('me-save-status');
+  var pinForm = document.getElementById('me-pin-form');
+
+  function mensajeGuardado(texto, error) {
+    estadoGuardado.textContent = texto;
+    estadoGuardado.classList.toggle('me-error', !!error);
+  }
 
   function esc(valor) {
     return String(valor == null ? '' : valor).replace(/[&<>"']/g, function (caracter) {
@@ -45,6 +56,8 @@
     document.getElementById('me-load').disabled = activo;
     document.getElementById('me-corte').disabled = activo;
     document.getElementById('me-workspace').inert = activo;
+    dialogo.querySelectorAll('button, input, select').forEach(function (elemento) { elemento.disabled = activo; });
+    document.getElementById('me-save-apply').disabled = activo || !destino.value;
   }
 
   async function cargar(nuevaFuente) {
@@ -234,7 +247,7 @@
     renderLista();
   }
 
-  form.addEventListener('submit', function (event) { event.preventDefault(); guardarActual(); });
+  form.addEventListener('submit', function (event) { event.preventDefault(); abrirGuardado(); });
   form.addEventListener('input', function () { pendiente = true; previsualizar(); });
   form.addEventListener('change', function (event) {
     pendiente = true;
@@ -275,34 +288,127 @@
     if (archivo) cargar({ archivo: archivo });
     else mensaje('Selecciona un corte registrado.', true);
   });
-  download.addEventListener('click', async function () {
+  function abrirGuardado() {
     if (ocupado || !datos || !guardarActual()) return;
+    copiaDescargada = false;
+    pinForm.hidden = true;
+    document.getElementById('me-pin').value = '';
+    destino.innerHTML = '<option value="">Seleccionar corte</option>' + cortesDisponibles.map(function (corte) {
+      return '<option value="' + esc(corte.archivo) + '">' + esc(corte.codigo + ' · ' + (corte.descripcion || corte.archivo)) + '</option>';
+    }).join('');
+    destino.value = fuente.archivo || (cortesDisponibles.some(function (corte) { return corte.archivo === datos.nombre; }) ? datos.nombre : '');
+    document.getElementById('me-save-summary').textContent = datos.nombre + ' · ' + cambios.size + ' mangueras modificadas.';
+    mensajeGuardado(destino.value ? 'Se actualizará el mismo archivo del corte y se conservará una copia anterior.' : 'Solo se puede aplicar sobre un corte existente con el mismo Excel de origen.');
+    document.getElementById('me-save-apply').disabled = !destino.value;
+    dialogo.showModal();
+  }
+
+  function descargarBlob(blob) {
+    var url = URL.createObjectURL(blob);
+    var enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = datos.nombre.replace(/\.(xlsx|xlsm)$/i, '_preparacion.$1');
+    document.body.appendChild(enlace); enlace.click(); enlace.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+
+  async function obtenerCopia() {
     var body = cuerpo();
     body.append('cambios', JSON.stringify(Array.from(cambios.values())));
     body.append('revision', datos.revision);
+    var respuesta = await fetch('/api/mangueras/editor/descargar', { method: 'POST', body: body });
+    if (respuesta.redirected) throw new Error('La sesión ha caducado. Vuelve a entrar en mangueras.');
+    if (!respuesta.ok) { var error = await respuesta.json(); throw new Error(error.error || error.message || 'No se pudo generar el Excel.'); }
+    return respuesta.blob();
+  }
+
+  async function guardarExcel(aplicar) {
+    if (ocupado || !datos || (aplicar && !destino.value)) return;
     bloquear(true);
-    mensaje('Generando Excel...');
+    mensajeGuardado('Guardando Excel...');
     try {
-      var respuesta = await fetch('/api/mangueras/editor/descargar', { method: 'POST', body: body });
+      if (!copiaDescargada) {
+        descargarBlob(await obtenerCopia());
+        copiaDescargada = true;
+      }
+      if (!aplicar) {
+        dialogo.close();
+        mensaje('Excel descargado. Los cambios no se han aplicado al corte.');
+        return;
+      }
+      var body = new FormData();
+      body.append('destino', destino.value);
+      body.append('revision', datos.revision);
+      body.append('cambios', JSON.stringify(Array.from(cambios.values())));
+      var respuesta = await fetch('/api/mangueras/editor/aplicar', { method: 'POST', body: body });
       if (respuesta.redirected) throw new Error('La sesión ha caducado. Vuelve a entrar en mangueras.');
-      if (!respuesta.ok) { var error = await respuesta.json(); throw new Error(error.error || 'No se pudo generar el Excel.'); }
-      var blob = await respuesta.blob();
-      var url = URL.createObjectURL(blob);
-      var enlace = document.createElement('a');
-      enlace.href = url;
-      enlace.download = datos.nombre.replace(/\.(xlsx|xlsm)$/i, '_preparacion.$1');
-      document.body.appendChild(enlace); enlace.click(); enlace.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
-      mensaje('Excel descargado. El original no se ha modificado.');
-    } catch (error) { mensaje(error.message, true); }
+      var resultado = await respuesta.json();
+      if (respuesta.status === 401) {
+        pinForm.hidden = false;
+        mensajeGuardado('Excel descargado. ' + (resultado.error || resultado.message) + '.', true);
+        return;
+      }
+      if (!respuesta.ok || !resultado.success) throw new Error(resultado.error || resultado.message || 'No se pudo aplicar la preparación.');
+      try { localStorage.removeItem(claveBorrador()); } catch (error) { mensaje(error.message, true); }
+      datos = resultado.datos;
+      fuente = { archivo: resultado.archivo };
+      originales = structuredClone(datos.filas);
+      cambios = new Map();
+      pendiente = false;
+      indice = Math.min(indice, Math.max(0, datos.filas.length - 1));
+      document.getElementById('me-file').value = '';
+      document.getElementById('me-corte').value = resultado.archivo;
+      document.getElementById('me-name').textContent = datos.nombre + ' / ' + datos.hoja;
+      document.getElementById('me-workspace').hidden = !datos.filas.length;
+      persistir(); renderLista(); renderActual();
+      dialogo.close();
+      mensaje('Excel descargado y preparación aplicada a ' + resultado.archivo + '.');
+    } catch (error) {
+      mensajeGuardado((copiaDescargada ? 'La copia está descargada, pero no se ha aplicado. ' : '') + error.message, true);
+    }
     finally { bloquear(false); }
+  }
+
+  download.addEventListener('click', abrirGuardado);
+  document.getElementById('me-save-download').addEventListener('click', function () { guardarExcel(false); });
+  document.getElementById('me-save-apply').addEventListener('click', function () { guardarExcel(true); });
+  document.getElementById('me-save-cancel').addEventListener('click', function () { if (!ocupado) dialogo.close(); });
+  destino.addEventListener('change', function () {
+    document.getElementById('me-save-apply').disabled = !destino.value;
+    pinForm.hidden = true;
+    document.getElementById('me-pin').value = '';
+  });
+  dialogo.addEventListener('cancel', function (event) { if (ocupado) event.preventDefault(); });
+  dialogo.addEventListener('close', function () { document.getElementById('me-pin').value = ''; });
+  pinForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (ocupado) return;
+    var body = new FormData();
+    body.append('pin', document.getElementById('me-pin').value);
+    body.append('next', '/mangueras/editor');
+    document.getElementById('me-pin').value = '';
+    bloquear(true);
+    mensajeGuardado('Validando acceso de administración...');
+    var validado = false;
+    try {
+      var respuesta = await fetch('/admin/pin', { method: 'POST', body: body });
+      validado = respuesta.ok && respuesta.redirected && new URL(respuesta.url).pathname === '/mangueras/editor';
+      if (!validado) {
+        var pagina = new DOMParser().parseFromString(await respuesta.text(), 'text/html');
+        var errorPin = pagina.querySelector('.pin-error');
+        throw new Error(errorPin ? errorPin.textContent.trim() : 'No se pudo validar el PIN de administración.');
+      }
+    } catch (error) { mensajeGuardado(error.message, true); }
+    finally { bloquear(false); }
+    if (validado) await guardarExcel(true);
   });
   window.addEventListener('beforeunload', function (event) {
-    if (pendiente) { event.preventDefault(); event.returnValue = ''; }
+    if (pendiente || cambios.size || ocupado) { event.preventDefault(); event.returnValue = ''; }
   });
   fetch('/api/codigos_cortes/listar').then(function (respuesta) { return respuesta.json(); }).then(function (resultado) {
     if (!resultado.success) throw new Error('No se pudo cargar la lista de cortes.');
-    document.getElementById('me-corte').innerHTML += (resultado.codigos || []).filter(function (corte) { return corte.archivo; }).map(function (corte) {
+    cortesDisponibles = (resultado.codigos || []).filter(function (corte) { return corte.archivo; });
+    document.getElementById('me-corte').innerHTML += cortesDisponibles.map(function (corte) {
       return '<option value="' + esc(corte.archivo) + '">' + esc(corte.codigo + ' · ' + (corte.descripcion || corte.proyecto || corte.archivo)) + '</option>';
     }).join('');
   }).catch(function () { mensaje('No se pudieron listar los cortes. Puedes abrir un Excel local.', true); });

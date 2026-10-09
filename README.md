@@ -83,13 +83,18 @@ de malla, malla hacia atrás con/sin retráctil, medidas comunes e individuales
 de activos y varios retráctiles con código y medida. También se pueden consultar
 todos los campos originales de la fila.
 
-**Guardar preparación** conserva un borrador en ese navegador. Se recupera al
-volver a abrir el mismo Excel, y también se guarda al cambiar de manguera o
-descargar. **Descargar Excel** genera una copia con las columnas de preparación
-compatibles con la app, manteniendo las otras hojas, fórmulas y formato.
-No sobrescribe el archivo original ni el corte registrado: para usar la nueva
-preparación en planta, sube después el Excel descargado por el flujo habitual.
-Si el corte registrado ha cambiado mientras se editaba, se pide volver a cargarlo.
+Los cambios conservan un borrador en ese navegador, que se recupera al volver
+a abrir el mismo Excel. **Guardar preparación** y **Guardar Excel** abren un
+diálogo con dos opciones: **Solo descargar**, para obtener la copia completa
+sin cambiar el servidor, y **Descargar y aplicar**, para descargarla y actualizar
+el mismo archivo del corte. La copia mantiene las otras hojas, fórmulas y formato.
+
+Aplicar exige una sesión de administración (el diálogo permite validar el PIN),
+comprueba que el Excel del corte sigue siendo el mismo y guarda un backup antes
+de sustituirlo. No cambia las asociaciones, etiquetas ni progreso del corte.
+Si se abrió un Excel local, hay que seleccionar el corte de destino con ese
+mismo Excel de origen. Para un corte nuevo, primero se registra por el flujo habitual.
+Si la aplicación falla, la copia descargada y el borrador siguen disponibles.
 
 ## Administración
 

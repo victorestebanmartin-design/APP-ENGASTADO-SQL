@@ -15,6 +15,8 @@ import sys
 import time
 import hmac
 import hashlib
+import tempfile
+import threading
 import traceback
 from datetime import datetime
 import pandas as pd
@@ -183,6 +185,53 @@ def api_mangueras_editor_descargar():
         return jsonify(success=False, error=str(exc)), 400
     except Exception as exc:
         return error_interno(exc)
+
+
+_MANGUERAS_EDITOR_LOCK = threading.Lock()
+
+
+@bp.route('/api/mangueras/editor/aplicar', methods=['POST'])
+@requiere_modulo('mangueras')
+@requiere_pin_admin
+def api_mangueras_editor_aplicar():
+    temporal = None
+    try:
+        archivo = request.form.get('destino', '').strip()
+        ruta = _ruta_upload_segura(archivo)
+        if not ruta or not os.path.isfile(ruta):
+            raise ValueError('Selecciona un corte existente al que aplicar la preparación.')
+        cambios = json.loads(request.form.get('cambios', '[]'))
+        revision = request.form.get('revision', '')
+        with _MANGUERAS_EDITOR_LOCK:
+            with open(ruta, 'rb') as fichero:
+                original = fichero.read()
+            salida = exportar_preparacion(original, os.path.basename(ruta), cambios, revision)
+            contenido = salida.getvalue()
+            nuevos_datos = leer_preparacion(contenido, os.path.basename(ruta))
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
+                temporal = fichero.name
+                fichero.write(contenido)
+                fichero.flush()
+                os.fsync(fichero.fileno())
+            with open(ruta, 'rb') as fichero:
+                if hashlib.sha256(fichero.read()).hexdigest() != revision:
+                    raise ValueError('El Excel ha cambiado. Vuelve a cargarlo antes de aplicar.')
+            backup = ruta + '.backup_mangueras_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            with open(backup, 'xb') as fichero:
+                fichero.write(original)
+            os.replace(temporal, ruta)
+            temporal = None
+            from app.excel_manager import invalidar_cache_excel
+            invalidar_cache_excel(ruta)
+        return jsonify(success=True, archivo=archivo, datos=nuevos_datos,
+                       backup=os.path.basename(backup))
+    except (ValueError, _zipfile.BadZipFile) as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    except Exception as exc:
+        return error_interno(exc)
+    finally:
+        if temporal and os.path.exists(temporal):
+            os.unlink(temporal)
 
 
 @bp.route('/api/mangueras/datos', methods=['POST'])
