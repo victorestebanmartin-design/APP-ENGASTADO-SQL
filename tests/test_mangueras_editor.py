@@ -458,3 +458,34 @@ def test_parentesis_bloquea_y_reactiva_malla_y_activos():
     assert hoja['D3'].value == 'RACK'
     assert hoja['D4'].value == 'MCMIFB/P2'
     assert hoja['E4'].value == 'X3*'
+
+
+def test_hri_manguera_l_asocia_l1_l2_l3_y_malla():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cod. cable', 'Sección', 'Longitud', 'Cable / Marca', 'De Elemento',
+                 'De Terminal', 'Para Elemento', 'Para Terminal', 'De Elemento Etiquetas'])
+    hoja.append(['640D10019', '3X2,5+P', 0, 'L1(1)', 'K5', '640205', 'TB5', '641H10058', 'K5'])
+    hoja.append(['640D10019', '3X2,5+P', 0, 'L2(2)', 'K5', '640205', 'TB5', '641H10058', 'K5'])
+    hoja.append(['640D10019', '3X2,5+P', 0, 'L3(3)', 'K5', '640205', 'TB5', '641H10058', 'K5'])
+    hoja.append(['640D10019', '3X2,5+P', 0, 'L(S)', 'K5', 'S/T', 'CARRIL-EMC', 'S/T', 'K5'])
+    hoja.append(['640D10019', '3X2,5+P', 1, 'L', 'K5', 'S/T', 'TB5', 'S/T', 'K5'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'corte.xlsx')
+
+    assert [fila['fila'] for fila in datos['filas']] == [6]
+    padre = datos['filas'][0]
+    assert padre['cable_marca'] == 'L'
+    assert padre['vinculacion']['confirmados'] is True
+    assert [activo['cable_marca'] for activo in padre['vinculacion']['activos']] == [
+        'L1(1)', 'L2(2)', 'L3(3)',
+    ]
+    assert [malla['cable_marca'] for malla in padre['vinculacion']['mallas']] == ['L(S)']
+    salida = exportar_preparacion(buffer.getvalue(), 'corte.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Sheet1']
+    assert [hoja[f'E{fila}'].value for fila in (2, 3, 4)] == ['K5*'] * 3
+    assert hoja['E5'].value == 'K5'
+    assert hoja['E6'].value == 'K5'

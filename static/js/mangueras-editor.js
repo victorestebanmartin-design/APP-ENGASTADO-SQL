@@ -158,27 +158,28 @@
   }
 
   function virtualesHtml(fila, lado) {
-    var vinculo = fila.vinculacion || { confirmados: false, activos: [] };
+    var vinculo = fila.vinculacion || { confirmados: false, activos: [], mallas: [] };
     var terminales = [{ fila: fila.fila, cable_marca: fila.cable_marca,
-      etiqueta: 'Manguera / malla', de_elemento: fila.de_elemento_original || fila.de_elemento,
+      etiqueta: 'Línea de manguera', de_elemento: fila.de_elemento_original || fila.de_elemento,
       para_elemento: fila.para_elemento, de_terminal: fila.de_terminal, para_terminal: fila.para_terminal,
       bloqueo_automatico_de: fila.bloqueo_automatico_de, bloqueo_automatico_para: fila.bloqueo_automatico_para }]
       .concat((vinculo.activos || []).map(function (activo) {
         return Object.assign({ etiqueta: 'Activo ' + activo.numero }, activo);
       })).concat((vinculo.mallas || []).map(function (malla) {
-        return Object.assign({ etiqueta: 'Malla' }, malla);
+        return Object.assign({ etiqueta: 'Pantalla · malla' }, malla);
       }));
-    var lista = terminales.filter(function (terminal) {
-      return terminal[lado + '_terminal'] && !/^(S\/T|nan|none)$/i.test(terminal[lado + '_terminal']);
-    }).map(function (terminal) {
+    var lista = terminales.map(function (terminal) {
       var elemento = terminal[lado + '_elemento'] || '';
+      var terminalLado = terminal[lado + '_terminal'] || '';
       var manual = /\*$/.test(elemento) && (!terminal['bloqueo_automatico_' + lado] || /\*\*$/.test(elemento));
-      return '<li data-terminal-manual="' + manual + '"><strong>' + esc(terminal.etiqueta + ' · ' + terminal.cable_marca) + '</strong>' +
-        '<span>' + esc(terminal[lado + '_terminal'] + ' · ' + elemento.replace(/\*$/, '') + ' · Fila ' + terminal.fila) + '</span>' +
-        '<span data-terminal-estado></span></li>';
+      var tieneTerminal = !!terminalLado && !/^(S\/T|nan|none)$/i.test(terminalLado);
+      return '<li data-terminal-manual="' + manual + '" data-has-terminal="' + tieneTerminal + '"><strong>' + esc(terminal.etiqueta + ' · ' + terminal.cable_marca) + '</strong>' +
+        '<span>' + esc((terminalLado && !/^(S\/T|nan|none)$/i.test(terminalLado) ? terminalLado : 'Sin terminal') +
+          ' · ' + elemento.replace(/\*$/, '') + ' · Fila ' + terminal.fila) + '</span>' +
+        '<span data-terminal-estado>' + (tieneTerminal ? '' : 'Sin terminal que engastar en este lado') + '</span></li>';
     }).join('');
-    return '<section class="me-virtuales"><h3>Terminales de esta manguera</h3><p data-terminal-aviso></p>' +
-      '<ul>' + lista + '</ul>' + (!lista ? '<p>Sin terminales en este lado.</p>' : '') + '</section>';
+    return '<section class="me-virtuales"><h3>Composición y terminales de esta manguera</h3><p data-terminal-aviso></p>' +
+      '<ul>' + lista + '</ul></section>';
   }
 
   function actualizarVirtuales(lado) {
@@ -193,10 +194,12 @@
     aviso.classList.toggle('me-bloqueado', !vinculo.confirmados || !preparado);
     fieldset.querySelectorAll('[data-terminal-manual]').forEach(function (terminal) {
       var manual = terminal.dataset.terminalManual === 'true';
-      terminal.querySelector('[data-terminal-estado]').textContent = manual ? 'Bloqueado manualmente (*)'
+      var tieneTerminal = terminal.dataset.hasTerminal === 'true';
+      terminal.querySelector('[data-terminal-estado]').textContent = !tieneTerminal ? 'Sin terminal que engastar en este lado'
+        : manual ? 'Bloqueado manualmente (*)'
         : !vinculo.confirmados ? 'Sin cambio automático'
           : preparado ? 'Habilitado al aplicar' : 'Excluido al aplicar: falta PM';
-      terminal.classList.toggle('me-bloqueado', manual || (vinculo.confirmados && !preparado));
+      terminal.classList.toggle('me-bloqueado', tieneTerminal && (manual || (vinculo.confirmados && !preparado)));
     });
   }
 

@@ -103,6 +103,10 @@ hay columna de etiquetas) y serie. También reconoce `2705(1)`/`2705(2)` como
 activos de `2705` y `2705(S)` como su malla, aunque tenga un elemento físico
 distinto como `RACK`. Admite además el número de activo en Observaciones cuando
 coincide la marca. Activos y malla asociados no se ofrecen como mangueras separadas.
+También admite el índice antes del paréntesis: `L1(1)`, `L2(2)` y `L3(3)` se
+asocian a `L`; `L(S)` se identifica como su pantalla/malla. La vista previa
+muestra línea, activos y malla por separado aunque la fila tenga `S/T`, e indica
+que no hay terminal que engastar en ese lado.
 Las asociaciones ambiguas o no identificadas se avisan y no se bloquean automáticamente.
 
 Los nombres de los lados coinciden con engastado: **De = liso (sin guion)**,

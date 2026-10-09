@@ -40,6 +40,18 @@ def _valor(hoja, columnas, fila, *nombres):
     return ''
 
 
+def _marca_base_asociada(marca):
+    numero = re.fullmatch(r'(.+?)\(\s*(\d+|S)\s*\)', marca, flags=re.I)
+    if numero:
+        base = numero.group(1).strip()
+        base_sin_numero = re.sub(r'(?<=[A-Za-z])\d+$', '', base)
+        return base_sin_numero.upper(), numero.group(2).upper()
+    numero = re.fullmatch(r'(.+)-(\d+)', marca)
+    if numero:
+        return numero.group(1).strip().upper(), numero.group(2)
+    return None, None
+
+
 def _abrir(contenido, nombre):
     if not nombre.lower().endswith(('.xlsx', '.xlsm')):
         raise ValueError('Selecciona un Excel .xlsx o .xlsm. Convierte los .xls antes de abrirlos.')
@@ -70,12 +82,8 @@ def _vinculos_mangueras(hoja, columnas):
             padres[fila] = clave
             candidatos.setdefault(clave, []).append(fila)
         elif longitud == 0 and marca and elemento and codigo:
-            numero = re.fullmatch(r'(.+?)\(\s*(\d+|S)\s*\)', marca, flags=re.I)
-            if not numero:
-                numero = re.fullmatch(r'(.+)-(\d+)', marca)
-            if numero:
-                base, activo = numero.group(1).strip().upper(), numero.group(2).upper()
-            else:
+            base, activo = _marca_base_asociada(marca)
+            if base is None:
                 numero = re.search(r'\(\s*(\d+)\s*\)', _valor(hoja, columnas, fila, 'Observaciones'))
                 if not numero:
                     continue
