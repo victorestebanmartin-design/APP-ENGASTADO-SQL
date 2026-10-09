@@ -29,7 +29,9 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, leer_excel_cacheado, _serie_str
-from app.mangueras_editor import leer_preparacion, exportar_preparacion
+from app.mangueras_editor import (
+    leer_preparacion, exportar_preparacion, listar_biblioteca_retractiles,
+)
 from app.colisiones_etiquetas import detectar_colisiones, etiqueta_texto
 from app.auth import (
     requiere_pin_admin,
@@ -164,6 +166,16 @@ def api_mangueras_editor_leer():
         return jsonify(success=True, **datos)
     except (ValueError, _zipfile.BadZipFile) as exc:
         return jsonify(success=False, error=str(exc)), 400
+    except Exception as exc:
+        return error_interno(exc)
+
+
+@bp.route('/api/mangueras/editor/biblioteca', methods=['GET'])
+@requiere_modulo('mangueras')
+def api_mangueras_editor_biblioteca():
+    try:
+        carpeta = current_app.config.get('UPLOAD_FOLDER', 'data/cortes')
+        return jsonify(success=True, codigos=listar_biblioteca_retractiles(carpeta))
     except Exception as exc:
         return error_interno(exc)
 

@@ -101,6 +101,11 @@ el borrador y se escribe en la columna `Observaciones Mangueras` del Excel:
 columna W si queda después de las columnas existentes, o al final si la hoja
 ya llega más allá. Las observaciones originales del Excel no se modifican.
 
+Los retráctiles se pueden elegir en la biblioteca de cada lado. El catálogo se
+forma con los códigos que ya aparecen en los cortes Excel subidos; también se
+puede escribir un código nuevo. Al añadirlo se propone una longitud de `30 mm`,
+que se puede cambiar antes de guardar.
+
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
 y `1502-2`), mismo código de cable, elemento de etiquetas (o el de origen si no

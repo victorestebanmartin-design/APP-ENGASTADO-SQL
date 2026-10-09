@@ -1,12 +1,13 @@
 import hashlib
 import io
+import os
 import re
 from copy import copy
 
 from openpyxl import load_workbook
 
 from app.excel_manager import (
-    _normalizar_texto_columna, _parse_instrucciones, _parse_pelado,
+    ExcelManager, _normalizar_texto_columna, _parse_instrucciones, _parse_pelado,
     _parse_retractiles, _tokens_invalidos_instrucciones, _serie_str,
 )
 
@@ -15,6 +16,23 @@ PREPARACION_COLUMNAS = (
     'Instrucciones Mangueras DE', 'Instrucciones Mangueras PARA',
     'Retractil DE', 'Retractil PARA',
 )
+
+
+def listar_biblioteca_retractiles(carpeta):
+    codigos = set()
+    if not os.path.isdir(carpeta):
+        return []
+    manager = ExcelManager(carpeta)
+    for nombre in os.listdir(carpeta):
+        if not nombre.lower().endswith(('.xlsx', '.xlsm', '.xls')):
+            continue
+        try:
+            for fila in manager.get_mangueras(nombre):
+                for lado in ('retractil_de', 'retractil_para'):
+                    codigos.update(retractil['codigo'] for retractil in fila[lado])
+        except Exception:
+            continue
+    return sorted(codigos, key=str.casefold)
 
 
 def _texto(valor):
@@ -190,6 +208,13 @@ def leer_preparacion(contenido, nombre):
         vinculos = _vinculos_mangueras(hoja, columnas)
         filas_activos = {activo['fila'] for vinculo in vinculos.values()
                 for activo in vinculo['activos'] + vinculo.get('mallas', [])}
+        biblioteca_retractiles = set()
+        for fila in range(2, hoja.max_row + 1):
+            for cabecera in ('Retractil DE', 'Retráctil DE', 'Retractil PARA', 'Retráctil PARA'):
+                valor = _valor(hoja, columnas, fila, cabecera)
+                biblioteca_retractiles.update(
+                    retractil['codigo'] for retractil in _parse_retractiles(valor)
+                )
         filas = []
         for fila in range(2, hoja.max_row + 1):
             if fila in filas_activos:
@@ -236,6 +261,7 @@ def leer_preparacion(contenido, nombre):
                            for indice in columnas.values()},
             })
         return {'nombre': nombre, 'hoja': hoja.title, 'filas': filas,
+            'biblioteca_retractiles': sorted(biblioteca_retractiles, key=str.casefold),
                 'revision': hashlib.sha256(contenido).hexdigest()}
     finally:
         libro.close()

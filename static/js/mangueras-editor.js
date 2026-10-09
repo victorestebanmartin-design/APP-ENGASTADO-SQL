@@ -9,6 +9,7 @@
   var ocupado = false;
   var pendiente = false;
   var cortesDisponibles = [];
+  var retractilesCompartidos = [];
   var copiaDescargada = false;
   var form = document.getElementById('me-form');
   var status = document.getElementById('me-status');
@@ -135,6 +136,34 @@
     return lado === 'de' ? 'Lado De · liso (sin guion)' : 'Lado Para · guion';
   }
 
+  function codigosRetractiles() {
+    var codigos = new Set(retractilesCompartidos.concat(datos.biblioteca_retractiles || []));
+    function incorporar(filas) {
+      filas.forEach(function (fila) {
+        ['retractil_de', 'retractil_para'].forEach(function (lado) {
+          (fila[lado] || []).forEach(function (retractil) { codigos.add(retractil.codigo); });
+        });
+      });
+    }
+    incorporar(datos.filas);
+    incorporar(Array.from(cambios.values()));
+    form.querySelectorAll('[data-par=retractil] [data-par-clave]').forEach(function (input) {
+      if (input.value.trim()) codigos.add(input.value.trim());
+    });
+    return Array.from(codigos).filter(Boolean).sort(function (a, b) { return a.localeCompare(b); });
+  }
+
+  function actualizarSelectoresRetractiles() {
+    form.querySelectorAll('[data-biblioteca]').forEach(function (select) {
+      var elegido = select.value;
+      select.innerHTML = '<option value="">Elige un código o añade uno nuevo</option>' +
+        codigosRetractiles().map(function (codigo) {
+          return '<option value="' + esc(codigo) + '">' + esc(codigo) + '</option>';
+        }).join('');
+      select.value = elegido;
+    });
+  }
+
   function ladoHtml(fila, lado) {
     var inst = fila[lado];
     var modo = inst.m_cortar ? 'cortar' : inst.m_mrs ? 'mrs' : inst.m_mrc ? 'mrc' : inst.m != null ? 'medida' : 'igual';
@@ -151,7 +180,9 @@
       '<h3>Activos individuales</h3><div data-pares="activo">' + Object.keys(inst.a_especificos).map(function (activo) {
         return par('activo', activo, inst.a_especificos[activo]);
       }).join('') + '</div><div class="me-add"><button type="button" data-add="activo" title="Añadir activo" aria-label="Añadir activo">+</button><span>Activo</span></div>' +
-      '<h3>Retráctiles</h3><div data-pares="retractil">' + fila['retractil_' + lado].map(function (ret) {
+      '<h3>Retráctiles</h3><label>Biblioteca de retráctiles<select data-biblioteca><option value="">Elige un código o añade uno nuevo</option>' +
+      codigosRetractiles().map(function (codigo) { return '<option value="' + esc(codigo) + '">' + esc(codigo) + '</option>'; }).join('') +
+      '</select></label><div data-pares="retractil">' + fila['retractil_' + lado].map(function (ret) {
         return par('retractil', ret.codigo, ret.medida);
       }).join('') + '</div><div class="me-add"><button type="button" data-add="retractil" title="Añadir retráctil" aria-label="Añadir retráctil">+</button><span>Retráctil</span></div>' +
       '<div class="me-raw" data-preview></div></fieldset>';
@@ -290,6 +321,7 @@
       cambios.set(fila.fila, structuredClone(fila));
       pendiente = false;
       persistir();
+      actualizarSelectoresRetractiles();
       renderLista();
       mensaje('Preparación guardada en el borrador.');
       return true;
@@ -307,6 +339,7 @@
   form.addEventListener('input', function () { pendiente = true; previsualizar(); });
   form.addEventListener('change', function (event) {
     pendiente = true;
+    if (event.target.matches('[data-par-clave]')) actualizarSelectoresRetractiles();
     if (event.target.matches('[data-campo=modo]')) ajustarMalla(event.target.closest('[data-lado]'));
     previsualizar();
   });
@@ -315,9 +348,14 @@
     var borrar = event.target.closest('[data-borrar]');
     if (add) {
       var lista = add.closest('[data-lado]').querySelector('[data-pares=' + add.dataset.add + ']');
-      lista.insertAdjacentHTML('beforeend', par(add.dataset.add, '', ''));
+      var retractilSeleccionado = add.dataset.add === 'retractil'
+        ? add.closest('[data-lado]').querySelector('[data-biblioteca]').value : '';
+      lista.insertAdjacentHTML('beforeend', par(add.dataset.add, retractilSeleccionado,
+        add.dataset.add === 'retractil' ? '30' : ''));
+      if (retractilSeleccionado) add.closest('[data-lado]').querySelector('[data-biblioteca]').value = '';
       lista.lastElementChild.querySelector('input').focus();
       pendiente = true;
+      actualizarSelectoresRetractiles();
     }
     if (borrar) { borrar.closest('[data-par]').remove(); pendiente = true; previsualizar(); }
   });
@@ -469,4 +507,10 @@
       return '<option value="' + esc(corte.archivo) + '">' + esc(corte.codigo + ' · ' + (corte.descripcion || corte.proyecto || corte.archivo)) + '</option>';
     }).join('');
   }).catch(function () { mensaje('No se pudieron listar los cortes. Puedes abrir un Excel local.', true); });
+  fetch('/api/mangueras/editor/biblioteca').then(function (respuesta) { return respuesta.json(); }).then(function (resultado) {
+    if (resultado.success) {
+      retractilesCompartidos = resultado.codigos || [];
+      actualizarSelectoresRetractiles();
+    }
+  }).catch(function () {});
 })();

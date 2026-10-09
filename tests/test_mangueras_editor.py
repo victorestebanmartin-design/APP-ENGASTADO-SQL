@@ -9,7 +9,10 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
 from app.excel_manager import ExcelManager, _parse_instrucciones
-from app.mangueras_editor import leer_preparacion, exportar_preparacion, serializar_instrucciones
+from app.mangueras_editor import (
+    leer_preparacion, exportar_preparacion, listar_biblioteca_retractiles,
+    serializar_instrucciones,
+)
 
 
 def excel_original():
@@ -165,8 +168,9 @@ def test_editor_respeta_permisos_mangueras(client, monkeypatch):
     monkeypatch.setattr(auth, '_operario_en_sesion_valido', lambda: 'Sin permiso')
     monkeypatch.setattr(base, 'operario_puede', lambda *args: False)
     assert client.get('/mangueras/editor').status_code == 403
-    for accion in ('leer', 'descargar'):
-        respuesta = client.post(f'/api/mangueras/editor/{accion}')
+    for accion in ('leer', 'biblioteca', 'descargar'):
+        respuesta = (client.get('/api/mangueras/editor/biblioteca') if accion == 'biblioteca'
+                     else client.post(f'/api/mangueras/editor/{accion}'))
         assert respuesta.status_code == 403
         assert respuesta.get_json()['success'] is False
 
@@ -244,6 +248,34 @@ def test_observaciones_mangueras_reutiliza_columna_y_se_recargan():
     salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'])
     recargadas = leer_preparacion(salida.getvalue(), 'corte.xlsx')
     assert recargadas['filas'][0]['observaciones_mangueras'] == 'Nota nueva'
+
+
+def test_biblioteca_retractiles_reune_codigos_de_todos_los_cortes(tmp_path):
+    for nombre, columna, valores in (
+        ('corte-a.xlsx', 'Retractil DE', ['649255_40/649251_30', None, None, None]),
+        ('corte-b.xlsx', 'Retráctil PARA', [None, None, '649700_25', None]),
+    ):
+        libro = load_workbook(io.BytesIO(excel_original()))
+        hoja = libro['Format']
+        hoja['G1'] = columna
+        for fila, valor in enumerate(valores, start=2):
+            hoja.cell(fila, 7, valor)
+        libro.save(tmp_path / nombre)
+
+    assert listar_biblioteca_retractiles(str(tmp_path)) == ['649251', '649255', '649700']
+
+
+def test_api_biblioteca_retractiles(client, app):
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    libro = load_workbook(io.BytesIO(excel_original()))
+    libro['Format']['G1'] = 'Retractil DE'
+    libro['Format']['G2'] = '649255_30'
+    libro.save(ruta)
+
+    respuesta = client.get('/api/mangueras/editor/biblioteca')
+
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()['codigos'] == ['649255']
 
 
 def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
