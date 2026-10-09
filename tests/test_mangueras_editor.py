@@ -489,3 +489,32 @@ def test_hri_manguera_l_asocia_l1_l2_l3_y_malla():
     assert [hoja[f'E{fila}'].value for fila in (2, 3, 4)] == ['K5*'] * 3
     assert hoja['E5'].value == 'K5'
     assert hoja['E6'].value == 'K5'
+
+
+def test_zefiro_j_asocia_colores_y_pantalla_sin_mezclar_n():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cod. cable', 'Sección', 'Longitud', 'Cable / Marca', 'De Elemento',
+                 'De Terminal', 'Para Elemento', 'Para Terminal', 'De Elemento Etiquetas'])
+    hoja.append(['H0211195', '2X0,5 S', 1.6, 'J', 'X3', 'S/T', 'CAN1 IN', 'S/T', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 0, 'J (RED)', 'X3', '641M644', 'CAN1 IN', '641M937', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 0, 'J (WHITE)', 'X3', '641M644', 'CAN1 IN', '641M937', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 0, 'J (BLUE)', 'X3', '641M644', 'CAN1 IN', '641M937', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 0, 'J(S)', 'X3 P.MASAS', 'S/T', 'CAN1 IN', 'S/T', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 1.6, 'N', 'X3', 'S/T', 'CAN2 IN', 'S/T', 'X3'])
+    hoja.append(['H0211195', '2X0,5 S', 0, 'N (BLUE)', 'X3', '641M576', 'CAN2 IN', '641M937', 'X3'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'corte.xlsx')
+    padre_j = next(fila for fila in datos['filas'] if fila['cable_marca'] == 'J')
+    padre_n = next(fila for fila in datos['filas'] if fila['cable_marca'] == 'N')
+
+    assert padre_j['vinculacion']['confirmados'] is True
+    assert [activo['cable_marca'] for activo in padre_j['vinculacion']['activos']] == [
+        'J (RED)', 'J (WHITE)', 'J (BLUE)',
+    ]
+    assert [malla['cable_marca'] for malla in padre_j['vinculacion']['mallas']] == ['J(S)']
+    assert padre_n['vinculacion']['confirmados'] is True
+    assert [activo['cable_marca'] for activo in padre_n['vinculacion']['activos']] == ['N (BLUE)']

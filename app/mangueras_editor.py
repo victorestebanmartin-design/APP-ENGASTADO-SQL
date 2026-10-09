@@ -41,7 +41,7 @@ def _valor(hoja, columnas, fila, *nombres):
 
 
 def _marca_base_asociada(marca):
-    numero = re.fullmatch(r'(.+?)\(\s*(\d+|S)\s*\)', marca, flags=re.I)
+    numero = re.fullmatch(r'(.+?)\(\s*([A-Za-z]+|\d+)\s*\)', marca, flags=re.I)
     if numero:
         base = numero.group(1).strip()
         base_sin_numero = re.sub(r'(?<=[A-Za-z])\d+$', '', base)

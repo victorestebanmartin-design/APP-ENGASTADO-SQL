@@ -107,6 +107,8 @@ También admite el índice antes del paréntesis: `L1(1)`, `L2(2)` y `L3(3)` se
 asocian a `L`; `L(S)` se identifica como su pantalla/malla. La vista previa
 muestra línea, activos y malla por separado aunque la fila tenga `S/T`, e indica
 que no hay terminal que engastar en ese lado.
+En Zefiro, `J (RED)`, `J (WHITE)` y `J (BLUE)` se asocian a `J` como activos
+por color, junto con `J(S)` como pantalla, sin mezclarlos con la manguera `N`.
 Las asociaciones ambiguas o no identificadas se avisan y no se bloquean automáticamente.
 
 Los nombres de los lados coinciden con engastado: **De = liso (sin guion)**,
