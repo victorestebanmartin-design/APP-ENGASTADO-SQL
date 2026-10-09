@@ -131,12 +131,16 @@
       '<button type="button" data-borrar title="Eliminar ' + (activo ? 'activo' : 'retráctil') + '" aria-label="Eliminar ' + (activo ? 'activo' : 'retráctil') + '">&times;</button></div>';
   }
 
+  function nombreLado(lado) {
+    return lado === 'de' ? 'Lado De · liso (sin guion)' : 'Lado Para · guion';
+  }
+
   function ladoHtml(fila, lado) {
     var inst = fila[lado];
     var modo = inst.m_cortar ? 'cortar' : inst.m_mrs ? 'mrs' : inst.m_mrc ? 'mrc' : inst.m != null ? 'medida' : 'igual';
     var medida = modo === 'mrs' ? inst.m_mrs_medida : modo === 'mrc' ? inst.m_mrc_medida : inst.m;
     var opciones = [['igual', 'Igual que pelado de manguera'], ['medida', 'Pelado de malla'], ['cortar', 'Cortar malla'], ['mrs', 'Hacia atrás sin retráctil'], ['mrc', 'Hacia atrás con retráctil']];
-    return '<fieldset class="me-side me-' + lado + '" data-lado="' + lado + '"><legend>Lado ' + (lado === 'de' ? 'De' : 'Para') + '</legend>' +
+    return '<fieldset class="me-side me-' + lado + '" data-lado="' + lado + '"><legend>' + nombreLado(lado) + '</legend>' +
       '<div class="me-terminal">' + esc(fila[lado + '_elemento'] + ' · ' + (fila[lado + '_terminal'] || 'Sin terminal')) + '</div>' +
       virtualesHtml(fila, lado) +
       numero('pm', 'Pelado manguera (mm)', inst.pm) +
@@ -161,6 +165,8 @@
       bloqueo_automatico_de: fila.bloqueo_automatico_de, bloqueo_automatico_para: fila.bloqueo_automatico_para }]
       .concat((vinculo.activos || []).map(function (activo) {
         return Object.assign({ etiqueta: 'Activo ' + activo.numero }, activo);
+      })).concat((vinculo.mallas || []).map(function (malla) {
+        return Object.assign({ etiqueta: 'Malla' }, malla);
       }));
     var lista = terminales.filter(function (terminal) {
       return terminal[lado + '_terminal'] && !/^(S\/T|nan|none)$/i.test(terminal[lado + '_terminal']);
@@ -232,12 +238,12 @@
       a_todos: valor('a_todos'), a_especificos: {}, otros_tokens: datos.filas[indice][lado].otros_tokens || [] };
     fieldset.querySelectorAll('[data-par=activo]').forEach(function (row) {
       var activo = row.querySelector('[data-par-clave]').value;
-      if (Object.prototype.hasOwnProperty.call(inst.a_especificos, activo)) throw new Error('El activo ' + activo + ' está repetido en el lado ' + lado + '.');
+      if (Object.prototype.hasOwnProperty.call(inst.a_especificos, activo)) throw new Error('El activo ' + activo + ' está repetido en ' + nombreLado(lado) + '.');
       inst.a_especificos[activo] = Number(row.querySelector('[data-par-medida]').value);
     });
     var retractiles = Array.from(fieldset.querySelectorAll('[data-par=retractil]')).map(function (row) {
       var codigo = row.querySelector('[data-par-clave]').value.trim();
-      if (!codigo || /[/\r\n]/.test(codigo) || /^[=+@-]/.test(codigo)) throw new Error('Código de retráctil no válido en el lado ' + lado + '.');
+      if (!codigo || /[/\r\n]/.test(codigo) || /^[=+@-]/.test(codigo)) throw new Error('Código de retráctil no válido en ' + nombreLado(lado) + '.');
       return { codigo: codigo, medida: Number(row.querySelector('[data-par-medida]').value) };
     });
     return { inst: inst, retractiles: retractiles };

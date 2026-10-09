@@ -135,6 +135,13 @@
     @media (max-width: 600px) {
       .corte-banner { flex-wrap: wrap; padding: 16px 18px; }
       .corte-banner-codigo { font-size: 22px; }
+      .corte-banner-cambiar { flex-basis: 100%; }
+      .nav-manguera { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .mg-nav-center { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
+      .mg-nav-trio { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+      .mg-nav-marca, .mg-nav-elemento { overflow-wrap: anywhere; }
+      .nav-btn { min-width: 0; padding: 10px 6px; white-space: normal; }
+      .lado-title { overflow-wrap: anywhere; }
     }
   </style>
 </head>

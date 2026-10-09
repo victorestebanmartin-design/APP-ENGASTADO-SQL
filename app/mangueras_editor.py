@@ -55,8 +55,8 @@ def _vinculos_mangueras(hoja, columnas):
     for fila in range(2, hoja.max_row + 1):
         marca = (_valor(hoja, columnas, fila, 'Cable / Marca') or
                  _valor(hoja, columnas, fila, 'De Marca'))
-        elemento = (_valor(hoja, columnas, fila, 'De Elemento') or
-                    _valor(hoja, columnas, fila, 'De Elemento Etiquetas')).rstrip('*').strip().upper()
+        elemento = (_valor(hoja, columnas, fila, 'De Elemento Etiquetas') or
+                _valor(hoja, columnas, fila, 'De Elemento')).rstrip('*').strip().upper()
         codigo = _valor(hoja, columnas, fila, 'Cod. cable').upper()
         serie = _serie_str(_valor(hoja, columnas, fila, 'Series'))
         try:
@@ -70,9 +70,11 @@ def _vinculos_mangueras(hoja, columnas):
             padres[fila] = clave
             candidatos.setdefault(clave, []).append(fila)
         elif longitud == 0 and marca and elemento and codigo:
-            numero = re.fullmatch(r'(.+)-(\d+)', marca)
+            numero = re.fullmatch(r'(.+?)\(\s*(\d+|S)\s*\)', marca, flags=re.I)
+            if not numero:
+                numero = re.fullmatch(r'(.+)-(\d+)', marca)
             if numero:
-                base, activo = numero.group(1).upper(), numero.group(2)
+                base, activo = numero.group(1).strip().upper(), numero.group(2).upper()
             else:
                 numero = re.search(r'\(\s*(\d+)\s*\)', _valor(hoja, columnas, fila, 'Observaciones'))
                 if not numero:
@@ -85,9 +87,10 @@ def _vinculos_mangueras(hoja, columnas):
         encontrados = activos.get(clave, [])
         ambiguo = len(candidatos[clave]) != 1
         resultado[fila] = {'confirmados': bool(encontrados) and not ambiguo,
-                           'ambiguo': ambiguo, 'activos': []}
+                           'ambiguo': ambiguo, 'activos': [], 'mallas': []}
         for fila_activo, numero in encontrados:
-            resultado[fila]['activos'].append({
+            grupo = 'mallas' if numero == 'S' else 'activos'
+            resultado[fila][grupo].append({
                 'fila': fila_activo, 'numero': numero,
                 'cable_marca': _valor(hoja, columnas, fila_activo, 'Cable / Marca'),
                 'de_elemento': _valor(hoja, columnas, fila_activo, 'De Elemento', 'De Elemento Etiquetas'),
@@ -130,7 +133,8 @@ def _actualizar_bloqueos(hoja, columnas, fila, vinculacion):
             ('de', 'De Elemento', 'De Terminal'), ('para', 'Para Elemento', 'Para Terminal')):
         bloquear = not preparados[lado]
         marca_bloqueo = 'Bloqueo Mangueras ' + lado.upper()
-        for fila_destino in [fila] + [activo['fila'] for activo in vinculacion['activos']]:
+        asociados = vinculacion['activos'] + vinculacion.get('mallas', [])
+        for fila_destino in [fila] + [activo['fila'] for activo in asociados]:
             terminal = _valor(hoja, columnas, fila_destino, cabecera_terminal)
             if terminal.upper() in ('', 'S/T', 'NAN', 'NONE'):
                 continue
@@ -153,7 +157,8 @@ def leer_preparacion(contenido, nombre):
         if _normalizar_texto_columna('Sección') not in columnas:
             raise ValueError('El Excel no contiene la columna Sección.')
         vinculos = _vinculos_mangueras(hoja, columnas)
-        filas_activos = {activo['fila'] for vinculo in vinculos.values() for activo in vinculo['activos']}
+        filas_activos = {activo['fila'] for vinculo in vinculos.values()
+                for activo in vinculo['activos'] + vinculo.get('mallas', [])}
         filas = []
         for fila in range(2, hoja.max_row + 1):
             if fila in filas_activos:

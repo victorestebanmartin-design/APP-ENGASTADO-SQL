@@ -98,9 +98,15 @@ Si la aplicación falla, la copia descargada y el borrador siguen disponibles.
 
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
-y `1502-2`), mismo código de cable, elemento de origen y serie. También admite
-un número de activo entre paréntesis en Observaciones cuando coincide la marca.
+y `1502-2`), mismo código de cable, elemento de etiquetas (o el de origen si no
+hay columna de etiquetas) y serie. También reconoce `2705(1)`/`2705(2)` como
+activos de `2705` y `2705(S)` como su malla, aunque tenga un elemento físico
+distinto como `RACK`. Admite además el número de activo en Observaciones cuando
+coincide la marca. Activos y malla asociados no se ofrecen como mangueras separadas.
 Las asociaciones ambiguas o no identificadas se avisan y no se bloquean automáticamente.
+
+Los nombres de los lados coinciden con engastado: **De = liso (sin guion)**,
+**Para = lado del guion**. Aparecen tanto en el editor como en el guiado de preparación.
 
 Al generar el Excel se revisan todas las mangueras asociadas con seguridad:
 un lado sin **PM (pelado de manguera)** marca con `*` el elemento de ese lado

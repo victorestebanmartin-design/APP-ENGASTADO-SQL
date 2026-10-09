@@ -412,3 +412,49 @@ def test_legacy_y_pm_cero_habilitan_lados():
     assert hoja['D3'].value == 'X1'
     assert hoja['E3'].value == 'X2'
     assert hoja['D4'].value == 'X1*'
+
+
+def excel_con_parentesis():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cable / Marca', 'Sección', 'Cod. cable', 'De Elemento', 'Para Elemento',
+                 'De Elemento Etiquetas', 'Longitud', 'De Terminal', 'Para Terminal', 'Series'])
+    hoja.append(['2705', '2X0,5+P', '640D10009A', 'MCMIFB/P2', 'X3', 'MCMIFB/P2', 1.6, 'S/T', 'S/T', None])
+    hoja.append(['2705(S)', '2X0,5+P', '640D10009A', 'RACK', 'X3', 'MCMIFB/P2', 0, '641H039', 'S/T', None])
+    hoja.append(['2705(2)', '2X0,5+P', '640D10009A', 'MCMIFB/P2', 'X3', 'MCMIFB/P2', 0, '641M10100', '641M644', None])
+    hoja.append(['2705(1)', '2X0,5+P', '640D10009A', 'MCMIFB/P2', 'X3', 'MCMIFB/P2', 0, '641M10100', '641M644', None])
+    hoja.append(['2706(1)', '2X0,5+P', '640D10009A', 'MCMIFB/P2', 'X3', 'MCMIFB/P2', 0, '641M10100', '641M644', None])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    return buffer.getvalue()
+
+
+def test_parentesis_identifica_activos_y_malla_con_elemento_distinto():
+    datos = leer_preparacion(excel_con_parentesis(), 'corte.xlsx')
+    padre = datos['filas'][0]
+    assert padre['cable_marca'] == '2705'
+    assert padre['vinculacion']['confirmados']
+    assert [activo['cable_marca'] for activo in padre['vinculacion']['activos']] == ['2705(2)', '2705(1)']
+    assert padre['vinculacion']['mallas'][0]['cable_marca'] == '2705(S)'
+    assert padre['vinculacion']['mallas'][0]['de_elemento'] == 'RACK'
+    assert [fila['fila'] for fila in datos['filas']] == [2, 6]
+
+
+def test_parentesis_bloquea_y_reactiva_malla_y_activos():
+    original = excel_con_parentesis()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    salida = exportar_preparacion(original, 'corte.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Sheet1']
+    assert hoja['D3'].value == 'RACK*'
+    assert hoja['D4'].value == 'MCMIFB/P2*'
+    assert hoja['E4'].value == 'X3*'
+    assert hoja['D6'].value == 'MCMIFB/P2'
+    nuevos = leer_preparacion(salida.getvalue(), 'corte.xlsx')
+    cambio = nuevos['filas'][0]
+    cambio['de'] = _parse_instrucciones('PM100')
+    siguiente = exportar_preparacion(salida.getvalue(), 'corte.xlsx', [cambio], nuevos['revision'])
+    hoja = load_workbook(siguiente)['Sheet1']
+    assert hoja['D3'].value == 'RACK'
+    assert hoja['D4'].value == 'MCMIFB/P2'
+    assert hoja['E4'].value == 'X3*'

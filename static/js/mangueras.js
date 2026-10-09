@@ -260,8 +260,8 @@
 
   function instruccionesHtml(mg) {
     var html = '';
-    html += ladoHtml(mg.de,   '← Lado De',   'lado-de',   mg.retractil_de   || []);
-    html += ladoHtml(mg.para, 'Lado Para →', 'lado-para', mg.retractil_para || []);
+    html += ladoHtml(mg.de,   '← Lado De · liso (sin guion)',   'lado-de',   mg.retractil_de   || []);
+    html += ladoHtml(mg.para, 'Lado Para · guion →', 'lado-para', mg.retractil_para || []);
     return html;
   }
 
