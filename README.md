@@ -96,6 +96,20 @@ Si se abrió un Excel local, hay que seleccionar el corte de destino con ese
 mismo Excel de origen. Para un corte nuevo, primero se registra por el flujo habitual.
 Si la aplicación falla, la copia descargada y el borrador siguen disponibles.
 
+El editor muestra los activos asociados y sus terminales por lado. La asociación
+exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
+y `1502-2`), mismo código de cable, elemento de origen y serie. También admite
+un número de activo entre paréntesis en Observaciones cuando coincide la marca.
+Las asociaciones ambiguas o no identificadas se avisan y no se bloquean automáticamente.
+
+Al generar el Excel se revisan todas las mangueras asociadas con seguridad:
+un lado sin **PM (pelado de manguera)** marca con `*` el elemento de ese lado
+en los activos y en la propia manguera/malla. Es la misma regla que excluye
+terminales de engastado y de sus conteos. Al añadir PM se retiran únicamente
+los asteriscos automáticos del editor, nunca los manuales. Las columnas
+`Bloqueo Mangueras DE/PARA` registran esa procedencia y deben conservarse.
+Los cambios entran en vigor al aplicar el Excel al corte, no al editar el borrador.
+
 ## Administración
 
 El panel de administración se protege con un PIN. Generar el hash e instalarlo:

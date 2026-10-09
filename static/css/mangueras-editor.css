@@ -41,6 +41,14 @@
 .me-side legend { font-size: 17px; font-weight: 700; color: #1d4ed8; padding: 0 8px; }
 .me-para legend { color: #15803d; }
 .me-terminal { min-height: 20px; font-size: 12px; margin-bottom: 14px; overflow-wrap: anywhere; }
+.me-virtuales { border-bottom: 1px solid #cfdae0; padding-bottom: 12px; margin-bottom: 18px; }
+.me-virtuales h3 { border: 0; padding: 0; margin: 0 0 8px; }
+.me-virtuales p { font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.me-virtuales ul { list-style: none; margin: 0; padding: 0; }
+.me-virtuales li { padding: 8px 0; border-top: 1px solid #cfdae0; font-size: 12px; overflow-wrap: anywhere; }
+.me-virtuales li strong, .me-virtuales li span { display: block; margin: 3px 0; }
+.me-virtuales [data-terminal-estado] { font-weight: 600; color: #15803d; }
+.me-virtuales .me-bloqueado, .me-virtuales .me-bloqueado [data-terminal-estado] { color: #b42318; }
 .me-side > label { margin-top: 16px; }
 .me-side h3 { margin: 20px 0 8px; padding-top: 14px; border-top: 1px solid #cfdae0; font-size: 14px; }
 .me-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 8px; align-items: end; margin: 10px 0; }

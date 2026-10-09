@@ -272,3 +272,143 @@ def test_aplicar_fallo_de_escritura_no_modifica_original(admin_client, app, monk
     assert respuesta.status_code == 500
     assert ruta.read_bytes() == original
     assert not any(fichero.name.startswith('tmp') for fichero in ruta.parent.iterdir())
+
+
+def excel_con_activos():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Format'
+    hoja.append(['Cable / Marca', 'Sección', 'Cod. cable', 'De Elemento', 'Para Elemento',
+                 'De Elemento Etiquetas', 'Longitud', 'De Terminal', 'Para Terminal', 'Series'])
+    hoja.append(['1502-P', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 4, 'TM', 'TM', None])
+    hoja.append(['1502-1', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 0, 'TA', 'TA', None])
+    hoja.append(['1502-2', '2X0,5+P', 'C1', 'X1*', 'X2', 'X1', 0, 'TA', 'TA', None])
+    hoja.append(['1503-P', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 5, 'TM', 'TM', None])
+    hoja.append(['1503-1', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 0, 'TA', 'TA', None])
+    hoja.append(['1502-3', '2X0,5+P', 'OTRO', 'X1', 'X2', 'X1', 0, 'TA', 'TA', None])
+    hoja.append(['1502-4', '2X0,5+P', 'C1', 'X9', 'X2', 'X9', 0, 'TA', 'TA', None])
+    hoja.append(['1502-5', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 0, 'TA', 'TA', 'Serie2'])
+    hoja['K1'] = 'Instrucciones Mangueras DE'
+    hoja['L1'] = 'Instrucciones Mangueras PARA'
+    hoja['K5'] = 'PM50'
+    hoja['L5'] = 'PM60'
+    salida = io.BytesIO()
+    libro.save(salida)
+    return salida.getvalue()
+
+
+def test_identifica_activos_sin_mezclar_otras_mangueras():
+    datos = leer_preparacion(excel_con_activos(), 'corte.xlsx')
+    padre = next(fila for fila in datos['filas'] if fila['fila'] == 2)
+    assert padre['vinculacion']['confirmados'] is True
+    assert [activo['cable_marca'] for activo in padre['vinculacion']['activos']] == ['1502-1', '1502-2']
+    assert not any(fila['fila'] in (3, 4, 6) for fila in datos['filas'])
+
+
+def test_pm_bloquea_solo_lado_sin_preparar_y_se_reactiva(tmp_path):
+    original = excel_con_activos()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = datos['filas'][0]
+    cambio['de'] = _parse_instrucciones('PM100')
+    cambio['para'] = _parse_instrucciones('A20/MRC')
+    salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'])
+    hoja = load_workbook(salida)['Format']
+    assert hoja['D2'].value == 'X1'
+    assert hoja['D4'].value == 'X1*'
+    assert [hoja[f'E{fila}'].value for fila in (2, 3, 4)] == ['X2*'] * 3
+    assert hoja['E5'].value == 'X2'
+    assert hoja['E7'].value == 'X2'
+    destino = tmp_path / 'corte.xlsx'
+    destino.write_bytes(salida.getvalue())
+    manager = ExcelManager(str(tmp_path))
+    assert manager.cargar_excel_directo('corte.xlsx')
+    grupos = manager.agrupar_por_cable_elemento(manager.buscar_terminal('TA'), 'TA')
+    assert sum(grupo['num_terminales'] for grupo in grupos.values()) == 9
+    assert '1502-1' in grupos['C1|X1']['cables_de_terminal']
+    assert '1502-1' not in grupos['C1|X1']['cables_para_terminal']
+    assert '1502-2' not in grupos['C1|X1']['cables_doble_terminal']
+    datos = leer_preparacion(salida.getvalue(), 'corte.xlsx')
+    cambio = datos['filas'][0]
+    cambio['para'] = _parse_instrucciones('PM200')
+    siguiente = exportar_preparacion(salida.getvalue(), 'corte.xlsx', [cambio], datos['revision'])
+    hoja = load_workbook(siguiente)['Format']
+    assert [hoja[f'E{fila}'].value for fila in (2, 3, 4)] == ['X2'] * 3
+    assert hoja['D4'].value == 'X1*'
+    columna_bloqueo = next(celda.column for celda in hoja[1] if celda.value == 'Bloqueo Mangueras PARA')
+    assert all(hoja.cell(fila, columna_bloqueo).value is None for fila in (2, 3, 4))
+
+
+def test_no_bloquea_identificacion_ambigua():
+    libro = load_workbook(io.BytesIO(excel_con_activos()))
+    libro['Format'].append(['1502-P', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 6, 'TM', 'TM', None])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    datos = leer_preparacion(buffer.getvalue(), 'corte.xlsx')
+    cambio = datos['filas'][0]
+    assert cambio['vinculacion']['ambiguo'] is True
+    assert cambio['vinculacion']['confirmados'] is False
+    salida = exportar_preparacion(buffer.getvalue(), 'corte.xlsx', [cambio], datos['revision'])
+    assert load_workbook(salida)['Format']['E3'].value == 'X2'
+
+
+def test_sin_pm_bloquea_ambos_lados_incluso_sin_editar():
+    original = excel_con_activos()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    salida = exportar_preparacion(original, 'corte.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Format']
+    assert [hoja[f'D{fila}'].value for fila in (2, 3, 4)] == ['X1*'] * 3
+    assert [hoja[f'E{fila}'].value for fila in (2, 3, 4)] == ['X2*'] * 3
+    assert hoja['D5'].value == 'X1'
+    assert hoja['D6'].value == 'X1'
+
+
+def test_bloqueo_coherente_con_selector_y_conteos(app, client, monkeypatch):
+    from app.routes import progreso
+    libro = load_workbook(io.BytesIO(excel_con_activos()))
+    hoja = libro['Format']
+    hoja['H2'] = 'TBLOQUEADO'
+    hoja['I2'] = 'TBLOQUEADO'
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    original = buffer.getvalue()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    salida = exportar_preparacion(original, 'corte.xlsx', [], datos['revision'])
+    (Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx').write_bytes(salida.getvalue())
+    monkeypatch.setattr(progreso.BonoRepository, 'obtener_bono_por_nombre', lambda *args: {'id': 1})
+    monkeypatch.setattr(progreso.OrdenRepository, 'obtener_ordenes_por_bono',
+                        lambda *args: [{'archivo_excel': 'corte.xlsx'}])
+    respuesta = client.get('/api/bonos/BPRUEBA/terminales-disponibles').get_json()
+    assert 'TBLOQUEADO' not in respuesta['terminales']
+    assert 'TA' in respuesta['terminales']
+    with app.app_context():
+        conteos = progreso._crimps_por_terminal_archivo('corte.xlsx')
+    assert 'TBLOQUEADO' not in conteos
+    assert conteos['TA'] == 8
+
+
+def test_identifica_activo_por_observaciones():
+    libro = load_workbook(io.BytesIO(excel_con_activos()))
+    hoja = libro['Format']
+    hoja['A3'] = '1502'
+    hoja['M1'] = 'Observaciones'
+    hoja['M3'] = '(1)'
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    datos = leer_preparacion(buffer.getvalue(), 'corte.xlsx')
+    assert datos['filas'][0]['vinculacion']['confirmados']
+    assert datos['filas'][0]['vinculacion']['activos'][0]['numero'] == '1'
+
+
+def test_legacy_y_pm_cero_habilitan_lados():
+    libro = load_workbook(io.BytesIO(excel_con_activos()))
+    hoja = libro['Format']
+    hoja['M1'] = 'Observaciones'
+    hoja['M2'] = '<-PM0 // PM200->'
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    datos = leer_preparacion(buffer.getvalue(), 'corte.xlsx')
+    salida = exportar_preparacion(buffer.getvalue(), 'corte.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Format']
+    assert hoja['D3'].value == 'X1'
+    assert hoja['E3'].value == 'X2'
+    assert hoja['D4'].value == 'X1*'

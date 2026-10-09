@@ -78,8 +78,10 @@
         borrador.forEach(function (fila) {
           var posicion = datos.filas.findIndex(function (actual) { return actual.fila === fila.fila; });
           if (posicion >= 0) {
-            datos.filas[posicion] = Object.assign(datos.filas[posicion], fila);
-            cambios.set(fila.fila, fila);
+            ['de', 'para', 'retractil_de', 'retractil_para'].forEach(function (campo) {
+              datos.filas[posicion][campo] = fila[campo];
+            });
+            cambios.set(fila.fila, datos.filas[posicion]);
           }
         });
       } catch (error) { mensaje('No se pudo recuperar el borrador local.', true); }
@@ -136,6 +138,7 @@
     var opciones = [['igual', 'Igual que pelado de manguera'], ['medida', 'Pelado de malla'], ['cortar', 'Cortar malla'], ['mrs', 'Hacia atrás sin retráctil'], ['mrc', 'Hacia atrás con retráctil']];
     return '<fieldset class="me-side me-' + lado + '" data-lado="' + lado + '"><legend>Lado ' + (lado === 'de' ? 'De' : 'Para') + '</legend>' +
       '<div class="me-terminal">' + esc(fila[lado + '_elemento'] + ' · ' + (fila[lado + '_terminal'] || 'Sin terminal')) + '</div>' +
+      virtualesHtml(fila, lado) +
       numero('pm', 'Pelado manguera (mm)', inst.pm) +
       '<label>Malla<select data-campo="modo">' + opciones.map(function (opcion) {
         return '<option value="' + opcion[0] + '"' + (modo === opcion[0] ? ' selected' : '') + '>' + opcion[1] + '</option>';
@@ -148,6 +151,47 @@
         return par('retractil', ret.codigo, ret.medida);
       }).join('') + '</div><div class="me-add"><button type="button" data-add="retractil" title="Añadir retráctil" aria-label="Añadir retráctil">+</button><span>Retráctil</span></div>' +
       '<div class="me-raw" data-preview></div></fieldset>';
+  }
+
+  function virtualesHtml(fila, lado) {
+    var vinculo = fila.vinculacion || { confirmados: false, activos: [] };
+    var terminales = [{ fila: fila.fila, cable_marca: fila.cable_marca,
+      etiqueta: 'Manguera / malla', de_elemento: fila.de_elemento_original || fila.de_elemento,
+      para_elemento: fila.para_elemento, de_terminal: fila.de_terminal, para_terminal: fila.para_terminal,
+      bloqueo_automatico_de: fila.bloqueo_automatico_de, bloqueo_automatico_para: fila.bloqueo_automatico_para }]
+      .concat((vinculo.activos || []).map(function (activo) {
+        return Object.assign({ etiqueta: 'Activo ' + activo.numero }, activo);
+      }));
+    var lista = terminales.filter(function (terminal) {
+      return terminal[lado + '_terminal'] && !/^(S\/T|nan|none)$/i.test(terminal[lado + '_terminal']);
+    }).map(function (terminal) {
+      var elemento = terminal[lado + '_elemento'] || '';
+      var manual = /\*$/.test(elemento) && (!terminal['bloqueo_automatico_' + lado] || /\*\*$/.test(elemento));
+      return '<li data-terminal-manual="' + manual + '"><strong>' + esc(terminal.etiqueta + ' · ' + terminal.cable_marca) + '</strong>' +
+        '<span>' + esc(terminal[lado + '_terminal'] + ' · ' + elemento.replace(/\*$/, '') + ' · Fila ' + terminal.fila) + '</span>' +
+        '<span data-terminal-estado></span></li>';
+    }).join('');
+    return '<section class="me-virtuales"><h3>Terminales de esta manguera</h3><p data-terminal-aviso></p>' +
+      '<ul>' + lista + '</ul>' + (!lista ? '<p>Sin terminales en este lado.</p>' : '') + '</section>';
+  }
+
+  function actualizarVirtuales(lado) {
+    var fieldset = form.querySelector('[data-lado=' + lado + ']');
+    var vinculo = datos.filas[indice].vinculacion || {};
+    var preparado = fieldset.querySelector('[data-campo=pm]').value !== '';
+    var aviso = fieldset.querySelector('[data-terminal-aviso]');
+    aviso.textContent = !vinculo.confirmados
+      ? (vinculo.ambiguo ? 'Asociación ambigua.' : 'Activos no identificados con seguridad.') + ' No se aplicará bloqueo automático.'
+      : preparado ? 'Con PM: terminales habilitados al aplicar, salvo bloqueos manuales.'
+        : 'Sin PM: estos terminales no aparecerán en engastado al aplicar.';
+    aviso.classList.toggle('me-bloqueado', !vinculo.confirmados || !preparado);
+    fieldset.querySelectorAll('[data-terminal-manual]').forEach(function (terminal) {
+      var manual = terminal.dataset.terminalManual === 'true';
+      terminal.querySelector('[data-terminal-estado]').textContent = manual ? 'Bloqueado manualmente (*)'
+        : !vinculo.confirmados ? 'Sin cambio automático'
+          : preparado ? 'Habilitado al aplicar' : 'Excluido al aplicar: falta PM';
+      terminal.classList.toggle('me-bloqueado', manual || (vinculo.confirmados && !preparado));
+    });
   }
 
   function ajustarMalla(fieldset) {
@@ -213,6 +257,7 @@
 
   function previsualizar() {
     ['de', 'para'].forEach(function (lado) {
+      actualizarVirtuales(lado);
       try {
         var valor = leerLado(lado);
         form.querySelector('[data-lado=' + lado + '] [data-preview]').textContent = tokens(valor.inst);
@@ -298,7 +343,8 @@
     }).join('');
     destino.value = fuente.archivo || (cortesDisponibles.some(function (corte) { return corte.archivo === datos.nombre; }) ? datos.nombre : '');
     document.getElementById('me-save-summary').textContent = datos.nombre + ' · ' + cambios.size + ' mangueras modificadas.';
-    mensajeGuardado(destino.value ? 'Se actualizará el mismo archivo del corte y se conservará una copia anterior.' : 'Solo se puede aplicar sobre un corte existente con el mismo Excel de origen.');
+    mensajeGuardado((destino.value ? 'Se actualizará el mismo archivo del corte y se conservará una copia anterior.' : 'Solo se puede aplicar sobre un corte existente con el mismo Excel de origen.') +
+      ' Se revisan todas las mangueras identificadas: los lados sin PM quedarán excluidos de engastado.');
     document.getElementById('me-save-apply').disabled = !destino.value;
     dialogo.showModal();
   }

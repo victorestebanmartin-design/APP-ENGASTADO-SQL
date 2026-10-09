@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 
 from app.excel_manager import (
     _normalizar_texto_columna, _parse_instrucciones, _parse_pelado,
-    _parse_retractiles, _tokens_invalidos_instrucciones,
+    _parse_retractiles, _tokens_invalidos_instrucciones, _serie_str,
 )
 
 
@@ -48,13 +48,116 @@ def _abrir(contenido, nombre):
     return libro, hoja, _columnas(hoja)
 
 
+def _vinculos_mangueras(hoja, columnas):
+    padres = {}
+    candidatos = {}
+    activos = {}
+    for fila in range(2, hoja.max_row + 1):
+        marca = (_valor(hoja, columnas, fila, 'Cable / Marca') or
+                 _valor(hoja, columnas, fila, 'De Marca'))
+        elemento = (_valor(hoja, columnas, fila, 'De Elemento') or
+                    _valor(hoja, columnas, fila, 'De Elemento Etiquetas')).rstrip('*').strip().upper()
+        codigo = _valor(hoja, columnas, fila, 'Cod. cable').upper()
+        serie = _serie_str(_valor(hoja, columnas, fila, 'Series'))
+        try:
+            longitud = float(_valor(hoja, columnas, fila, 'Longitud').replace(',', '.'))
+        except ValueError:
+            continue
+        seccion = _valor(hoja, columnas, fila, 'Sección')
+        if longitud > 0 and re.match(r'^\s*\d+\s*[xX\u00d7]', seccion) and marca and elemento and codigo:
+            base = re.sub(r'-P$', '', marca, flags=re.I).upper()
+            clave = (base, codigo, elemento, serie)
+            padres[fila] = clave
+            candidatos.setdefault(clave, []).append(fila)
+        elif longitud == 0 and marca and elemento and codigo:
+            numero = re.fullmatch(r'(.+)-(\d+)', marca)
+            if numero:
+                base, activo = numero.group(1).upper(), numero.group(2)
+            else:
+                numero = re.search(r'\(\s*(\d+)\s*\)', _valor(hoja, columnas, fila, 'Observaciones'))
+                if not numero:
+                    continue
+                base, activo = marca.upper(), numero.group(1)
+            clave = (base, codigo, elemento, serie)
+            activos.setdefault(clave, []).append((fila, activo))
+    resultado = {}
+    for fila, clave in padres.items():
+        encontrados = activos.get(clave, [])
+        ambiguo = len(candidatos[clave]) != 1
+        resultado[fila] = {'confirmados': bool(encontrados) and not ambiguo,
+                           'ambiguo': ambiguo, 'activos': []}
+        for fila_activo, numero in encontrados:
+            resultado[fila]['activos'].append({
+                'fila': fila_activo, 'numero': numero,
+                'cable_marca': _valor(hoja, columnas, fila_activo, 'Cable / Marca'),
+                'de_elemento': _valor(hoja, columnas, fila_activo, 'De Elemento', 'De Elemento Etiquetas'),
+                'para_elemento': _valor(hoja, columnas, fila_activo, 'Para Elemento'),
+                'de_terminal': _valor(hoja, columnas, fila_activo, 'De Terminal'),
+                'para_terminal': _valor(hoja, columnas, fila_activo, 'Para Terminal'),
+                'bloqueo_automatico_de': _valor(hoja, columnas, fila_activo, 'Bloqueo Mangueras DE') in ('1', '1.0'),
+                'bloqueo_automatico_para': _valor(hoja, columnas, fila_activo, 'Bloqueo Mangueras PARA') in ('1', '1.0'),
+            })
+    return resultado
+
+
+def _columna_escritura(hoja, columnas, cabecera):
+    clave = _normalizar_texto_columna(cabecera)
+    if clave not in columnas:
+        indice = hoja.max_column + 1
+        nueva = hoja.cell(1, indice, cabecera)
+        nueva._style = copy(hoja.cell(1, indice - 1)._style)
+        hoja.column_dimensions[nueva.column_letter].width = 32
+        columnas[clave] = indice
+    hoja.cell(1, columnas[clave]).value = cabecera
+    return columnas[clave]
+
+
+def _lados_preparados(hoja, columnas, fila):
+    de = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[0])
+    para = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[1])
+    if de or para:
+        instrucciones = {'de': _parse_instrucciones(de), 'para': _parse_instrucciones(para)}
+    else:
+        instrucciones = _parse_pelado(_valor(hoja, columnas, fila, 'Observaciones'))
+    return {lado: (instrucciones[lado] or {}).get('pm') is not None for lado in ('de', 'para')}
+
+
+def _actualizar_bloqueos(hoja, columnas, fila, vinculacion):
+    if not vinculacion.get('confirmados'):
+        return
+    preparados = _lados_preparados(hoja, columnas, fila)
+    for lado, cabecera_elemento, cabecera_terminal in (
+            ('de', 'De Elemento', 'De Terminal'), ('para', 'Para Elemento', 'Para Terminal')):
+        bloquear = not preparados[lado]
+        marca_bloqueo = 'Bloqueo Mangueras ' + lado.upper()
+        for fila_destino in [fila] + [activo['fila'] for activo in vinculacion['activos']]:
+            terminal = _valor(hoja, columnas, fila_destino, cabecera_terminal)
+            if terminal.upper() in ('', 'S/T', 'NAN', 'NONE'):
+                continue
+            elemento = _valor(hoja, columnas, fila_destino, cabecera_elemento)
+            automatico = _valor(hoja, columnas, fila_destino, marca_bloqueo) in ('1', '1.0')
+            if bloquear and not elemento.endswith('*'):
+                if lado == 'de' and not elemento:
+                    elemento = _valor(hoja, columnas, fila_destino, 'De Elemento Etiquetas')
+                hoja.cell(fila_destino, _columna_escritura(hoja, columnas, cabecera_elemento), elemento + '*')
+                hoja.cell(fila_destino, _columna_escritura(hoja, columnas, marca_bloqueo), '1')
+            elif not bloquear and automatico:
+                hoja.cell(fila_destino, _columna_escritura(hoja, columnas, cabecera_elemento),
+                          elemento[:-1] if elemento.endswith('*') else elemento)
+                hoja.cell(fila_destino, _columna_escritura(hoja, columnas, marca_bloqueo)).value = None
+
+
 def leer_preparacion(contenido, nombre):
     libro, hoja, columnas = _abrir(contenido, nombre)
     try:
         if _normalizar_texto_columna('Sección') not in columnas:
             raise ValueError('El Excel no contiene la columna Sección.')
+        vinculos = _vinculos_mangueras(hoja, columnas)
+        filas_activos = {activo['fila'] for vinculo in vinculos.values() for activo in vinculo['activos']}
         filas = []
         for fila in range(2, hoja.max_row + 1):
+            if fila in filas_activos:
+                continue
             seccion = _valor(hoja, columnas, fila, 'Sección')
             inst_de = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[0])
             inst_para = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[1])
@@ -81,13 +184,17 @@ def leer_preparacion(contenido, nombre):
                 'cable_marca': _valor(hoja, columnas, fila, 'Cable / Marca', 'De Marca'),
                 'cod_cable': _valor(hoja, columnas, fila, 'Cod. cable'),
                 'de_elemento': _valor(hoja, columnas, fila, 'De Elemento Etiquetas', 'De Elemento'),
+                'de_elemento_original': _valor(hoja, columnas, fila, 'De Elemento', 'De Elemento Etiquetas'),
                 'para_elemento': _valor(hoja, columnas, fila, 'Para Elemento'),
                 'de_terminal': _valor(hoja, columnas, fila, 'De Terminal'),
                 'para_terminal': _valor(hoja, columnas, fila, 'Para Terminal'),
+                'bloqueo_automatico_de': _valor(hoja, columnas, fila, 'Bloqueo Mangueras DE') in ('1', '1.0'),
+                'bloqueo_automatico_para': _valor(hoja, columnas, fila, 'Bloqueo Mangueras PARA') in ('1', '1.0'),
                 'de': de, 'para': para,
                 'retractil_de': _parse_retractiles(ret_de),
                 'retractil_para': _parse_retractiles(ret_para),
                 'retractil_de_raw': ret_de, 'retractil_para_raw': ret_para,
+                'vinculacion': vinculos.get(fila, {'confirmados': False, 'ambiguo': False, 'activos': []}),
                 'campos': {str(hoja.cell(1, indice).value): _texto(hoja.cell(fila, indice).value)
                            for indice in columnas.values()},
             })
@@ -168,6 +275,7 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
     disponibles = {fila['fila'] for fila in leer_preparacion(contenido, nombre)['filas']}
     libro, hoja, columnas = _abrir(contenido, nombre)
     try:
+        vinculos = _vinculos_mangueras(hoja, columnas)
         vistos = set()
         for cambio in cambios:
             if not isinstance(cambio, dict):
@@ -188,15 +296,7 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
                 if cambio.get('retractil_' + lado) == _parse_retractiles(raw):
                     valores[posicion] = raw
             for cabecera, valor in zip(PREPARACION_COLUMNAS, valores):
-                clave = _normalizar_texto_columna(cabecera)
-                if clave not in columnas:
-                    indice = hoja.max_column + 1
-                    nueva = hoja.cell(1, indice, cabecera)
-                    nueva._style = copy(hoja.cell(1, indice - 1)._style)
-                    hoja.column_dimensions[nueva.column_letter].width = 32
-                    columnas[clave] = indice
-                hoja.cell(1, columnas[clave]).value = cabecera
-                celda = hoja.cell(fila, columnas[clave])
+                celda = hoja.cell(fila, _columna_escritura(hoja, columnas, cabecera))
                 celda.value = valor or None
                 celda.data_type = 's'
             if not any(valores[:2]):
@@ -207,6 +307,8 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
                     if '<-' in obs or '->' in obs:
                         celda.value = ' // '.join(parte.strip() for parte in re.split(r'//|\$', obs)
                                                  if '<-' not in parte and '->' not in parte) or None
+        for fila, vinculacion in vinculos.items():
+            _actualizar_bloqueos(hoja, columnas, fila, vinculacion)
         salida = io.BytesIO()
         libro.save(salida)
         salida.seek(0)
