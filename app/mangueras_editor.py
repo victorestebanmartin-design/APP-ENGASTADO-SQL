@@ -78,6 +78,16 @@ def _marca_base_asociada(marca):
     return None, None
 
 
+def _manguera_referenciada(observaciones):
+    coincidencia = re.search(
+        r'\bMANG(?:UERA)?\.?\s*(.+?)\s*\(\s*(\d+|S)\s*\)(?=\s|$)',
+        observaciones or '', re.I,
+    )
+    if not coincidencia:
+        return None, None
+    return coincidencia.group(1).strip().upper(), coincidencia.group(2).upper()
+
+
 def _abrir(contenido, nombre):
     if not nombre.lower().endswith(('.xlsx', '.xlsm')):
         raise ValueError('Selecciona un Excel .xlsx o .xlsm. Convierte los .xls antes de abrirlos.')
@@ -107,11 +117,14 @@ def _vinculos_mangueras(hoja, columnas):
             clave = (base, codigo, elemento, serie)
             padres[fila] = clave
             candidatos.setdefault(clave, []).append(fila)
-        elif longitud == 0 and marca and elemento and codigo:
-            base, activo = _marca_base_asociada(marca)
+        elif longitud == 0 and elemento and codigo:
+            observaciones = _valor(hoja, columnas, fila, 'Observaciones')
+            base, activo = _manguera_referenciada(observaciones)
+            if base is None and marca:
+                base, activo = _marca_base_asociada(marca)
             if base is None:
-                numero = re.search(r'\(\s*(\d+)\s*\)', _valor(hoja, columnas, fila, 'Observaciones'))
-                if not numero:
+                numero = re.search(r'\(\s*(\d+)\s*\)', observaciones)
+                if not numero or not marca:
                     continue
                 base, activo = marca.upper(), numero.group(1)
             clave = (base, codigo, elemento, serie)

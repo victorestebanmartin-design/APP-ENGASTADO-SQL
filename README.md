@@ -116,6 +116,12 @@ ordena los paquetes por número de etiqueta y conserva el orden de filas del Exc
 dentro de cada paquete. Si una fila no tiene etiqueta, agrupa por código de cable,
 elemento y serie.
 
+En RENFE HC, una observación `MANG. <padre>(1/2/3/S)` identifica al padre aunque
+la marca del hijo sea distinta o esté vacía. Se confirma solo si código de cable,
+elemento etiquetado y serie coinciden con un único padre; `(S)` identifica la
+pantalla. En el ED09 observado, las 87 referencias enlazan con 24 padres; las
+filas `KIT DE ENVÍO` sin hijos coincidentes no se enlazan.
+
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
 y `1502-2`), mismo código de cable, elemento de etiquetas (o el de origen si no

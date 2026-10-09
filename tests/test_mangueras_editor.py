@@ -512,6 +512,62 @@ def test_identifica_activo_por_observaciones():
     assert datos['filas'][0]['vinculacion']['activos'][0]['numero'] == '1'
 
 
+def test_renfe_vincula_hijos_por_referencia_mang_aunque_cambie_o_falte_marca():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Posición', 'Cable / Marca', 'Sección', 'Longitud', 'Cod. cable',
+                 'De Elemento', 'De Elemento Etiquetas', 'De Terminal', 'Para Elemento',
+                 'Para Terminal', 'Observaciones'])
+    hoja.append([317, 'EFM2-2', '2X0,5', 3.4, '640D10009A', 'LEM/P1/TB2',
+                 'LEMIO1/P1', 'S/T', 'X21', 'S/T', 'MANG. EFM2-2(PELAR 500 mm)'])
+    hoja.append([318, '1116(1)', '2X0,5', 0, '640D10009A', 'LEMIO1/P1',
+                 'LEMIO1/P1', '641M10100', 'X21', '641H10055', 'MANG. EFM2-2(1)'])
+    hoja.append([319, '203-6(2)', '2X0,5', 0, '640D10009A', 'TB2',
+                 'LEMIO1/P1', '641H10055', 'X21', '641H10055', 'MANG. EFM2-2(2)'])
+    hoja.append([320, None, '2X0,5', 0, '640D10009A', 'CORTAR',
+                 'LEMIO1/P1', 'S/T', 'CORTAR', 'S/T', 'MANG. EFM2-2(S)'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'renfe.xlsx')
+    padre = datos['filas'][0]
+
+    assert padre['cable_marca'] == 'EFM2-2'
+    assert padre['vinculacion']['confirmados']
+    assert [activo['cable_marca'] for activo in padre['vinculacion']['activos']] == [
+        '1116(1)', '203-6(2)',
+    ]
+    assert [malla['cable_marca'] for malla in padre['vinculacion']['mallas']] == ['']
+    salida = exportar_preparacion(buffer.getvalue(), 'renfe.xlsx', [], datos['revision'])
+    hoja = load_workbook(salida)['Sheet1']
+    assert hoja['F3'].value == 'LEMIO1/P1*'
+    assert hoja['I3'].value == 'X21*'
+    assert hoja['F4'].value == 'TB2*'
+    assert hoja['I4'].value == 'X21*'
+    assert hoja['F5'].value == 'CORTAR'
+
+
+def test_renfe_referencia_mang_admite_cable_adicional_tras_sufijo():
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Sheet1'
+    hoja.append(['Cable / Marca', 'Sección', 'Longitud', 'Cod. cable', 'De Elemento',
+                 'De Elemento Etiquetas', 'De Terminal', 'Para Elemento', 'Para Terminal',
+                 'Observaciones'])
+    hoja.append(['CFM1-1', '2X1+P', 5.5, '640D10029A', 'MCM/P2/TB1',
+                 'MCM/P2/TB1', 'S/T', 'CFM1-1', 'S/T', 'MANG. CFM1-1(PELAR 500 mm)'])
+    hoja.append(['813(1)', '2X1+P', 0, '640D10029A', 'MCMIFB/P2',
+                 'MCM/P2/TB1', '641M155', 'CFM1-1', 'S/T', 'MANG. CFM1-1(1) 813(1)'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    datos = leer_preparacion(buffer.getvalue(), 'renfe.xlsx')
+
+    assert datos['filas'][0]['vinculacion']['confirmados']
+    assert datos['filas'][0]['vinculacion']['activos'][0]['cable_marca'] == '813(1)'
+
+
 def test_legacy_y_pm_cero_habilitan_lados():
     libro = load_workbook(io.BytesIO(excel_con_activos()))
     hoja = libro['Format']
