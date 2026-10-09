@@ -106,6 +106,10 @@ forma con los códigos que ya aparecen en los cortes Excel subidos; también se
 puede escribir un código nuevo. Al añadirlo se propone una longitud de `30 mm`,
 que se puede cambiar antes de guardar.
 
+Los campos numéricos del editor no muestran flechas de incremento y pierden el
+foco al girar la rueda del ratón sobre ellos, para evitar cambiar una medida al
+desplazarse por la página.
+
 En Preparación de Mangueras se muestra también la columna `Observaciones
 Mangueras`. La lista agrupa las mangueras con el mismo paquete consecutivamente,
 ordena los paquetes por número de etiqueta y conserva el orden de filas del Excel

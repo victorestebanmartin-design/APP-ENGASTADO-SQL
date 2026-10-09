@@ -337,6 +337,9 @@
 
   form.addEventListener('submit', function (event) { event.preventDefault(); abrirGuardado(); });
   form.addEventListener('input', function () { pendiente = true; previsualizar(); });
+  form.addEventListener('wheel', function (event) {
+    if (event.target.matches('input[type="number"]')) event.target.blur();
+  }, { passive: true });
   form.addEventListener('change', function (event) {
     pendiente = true;
     if (event.target.matches('[data-par-clave]')) actualizarSelectoresRetractiles();
