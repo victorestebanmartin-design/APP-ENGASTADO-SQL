@@ -246,6 +246,20 @@ def api_mangueras_editor_aplicar():
             os.unlink(temporal)
 
 
+def _ordenar_mangueras_por_paquete(mangueras):
+    def clave(item):
+        posicion, manguera = item
+        etiqueta = str(manguera.get('numero_etiqueta') or '')
+        coincidencia = re.fullmatch(r'(\d+)(?:\.(\d+))?', etiqueta)
+        if coincidencia:
+            return (0, int(coincidencia.group(1)), int(coincidencia.group(2) or 0), '', '', '', posicion)
+        return (1, 0, 0, str(manguera.get('cod_cable') or '').upper(),
+                str(manguera.get('de_elemento') or '').upper(),
+                str(manguera.get('serie') or '').upper(), posicion)
+
+    return [manguera for _, manguera in sorted(enumerate(mangueras), key=clave)]
+
+
 @bp.route('/api/mangueras/datos', methods=['POST'])
 def api_mangueras_datos():
     """Carga las filas del Excel con instrucciones de pelado en Observaciones"""
@@ -284,6 +298,7 @@ def api_mangueras_datos():
         except Exception:
             pass  # Si no hay etiquetas cargadas, no es crítico
 
+        resultado = _ordenar_mangueras_por_paquete(resultado)
         return jsonify({'success': True, 'mangueras': resultado})
     except Exception as e:
         return error_interno(e)

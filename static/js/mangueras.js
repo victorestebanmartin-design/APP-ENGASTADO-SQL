@@ -226,6 +226,11 @@
 
     // Obs raw
     divObsRaw.textContent = mg.observaciones_raw || '';
+    var obsMangueras = document.getElementById('mg-obs-mangueras');
+    if (obsMangueras) {
+      obsMangueras.textContent = mg.observaciones_mangueras || '';
+      obsMangueras.style.display = obsMangueras.textContent ? 'block' : 'none';
+    }
 
     // Instrucciones
     divInst.innerHTML = instruccionesHtml(mg);

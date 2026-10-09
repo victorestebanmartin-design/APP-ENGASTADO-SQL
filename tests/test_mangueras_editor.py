@@ -9,6 +9,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
 from app.excel_manager import ExcelManager, _parse_instrucciones
+from app.routes.manguitos import _ordenar_mangueras_por_paquete
 from app.mangueras_editor import (
     leer_preparacion, exportar_preparacion, listar_biblioteca_retractiles,
     serializar_instrucciones,
@@ -248,6 +249,42 @@ def test_observaciones_mangueras_reutiliza_columna_y_se_recargan():
     salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'])
     recargadas = leer_preparacion(salida.getvalue(), 'corte.xlsx')
     assert recargadas['filas'][0]['observaciones_mangueras'] == 'Nota nueva'
+
+
+def test_mangueras_lee_observacion_sola_y_conserva_saltos(tmp_path):
+    libro = load_workbook(io.BytesIO(excel_original()))
+    hoja = libro['Format']
+    hoja['W1'] = 'Observaciones Mangueras'
+    hoja['W3'] = '  Nota de taller\nsegunda línea  '
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    ruta = tmp_path / 'corte.xlsx'
+    ruta.write_bytes(buffer.getvalue())
+
+    resultado = ExcelManager(str(tmp_path)).get_mangueras('corte.xlsx')
+
+    observacion = next(manguera for manguera in resultado
+                       if manguera['cable_marca'] == 'MG1' and manguera['de_elemento'] == 'X1'
+                       and manguera['de'] is None)
+    assert observacion['observaciones_mangueras'] == '  Nota de taller\nsegunda línea  '
+
+
+def test_orden_mangueras_agrupa_paquetes_y_conserva_orden_de_fila():
+    mangueras = [
+        {'cable_marca': 'P2-B', 'numero_etiqueta': '2', 'cod_cable': 'C2', 'de_elemento': 'E'},
+        {'cable_marca': 'P1-A', 'numero_etiqueta': '1', 'cod_cable': 'C1', 'de_elemento': 'E'},
+        {'cable_marca': 'P2-C', 'numero_etiqueta': '2', 'cod_cable': 'C2', 'de_elemento': 'E'},
+        {'cable_marca': 'P1-02', 'numero_etiqueta': '1.02', 'cod_cable': 'C1', 'de_elemento': 'E'},
+        {'cable_marca': 'SIN-ETQ-B', 'numero_etiqueta': None, 'cod_cable': 'C3', 'de_elemento': 'B'},
+        {'cable_marca': 'SIN-ETQ-A', 'numero_etiqueta': None, 'cod_cable': 'C3', 'de_elemento': 'A'},
+        {'cable_marca': 'SIN-ETQ-A2', 'numero_etiqueta': None, 'cod_cable': 'C3', 'de_elemento': 'A'},
+    ]
+
+    resultado = _ordenar_mangueras_por_paquete(mangueras)
+
+    assert [manguera['cable_marca'] for manguera in resultado] == [
+        'P1-A', 'P1-02', 'P2-B', 'P2-C', 'SIN-ETQ-A', 'SIN-ETQ-A2', 'SIN-ETQ-B',
+    ]
 
 
 def test_biblioteca_retractiles_reune_codigos_de_todos_los_cortes(tmp_path):

@@ -106,6 +106,12 @@ forma con los códigos que ya aparecen en los cortes Excel subidos; también se
 puede escribir un código nuevo. Al añadirlo se propone una longitud de `30 mm`,
 que se puede cambiar antes de guardar.
 
+En Preparación de Mangueras se muestra también la columna `Observaciones
+Mangueras`. La lista agrupa las mangueras con el mismo paquete consecutivamente,
+ordena los paquetes por número de etiqueta y conserva el orden de filas del Excel
+dentro de cada paquete. Si una fila no tiene etiqueta, agrupa por código de cable,
+elemento y serie.
+
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
 y `1502-2`), mismo código de cable, elemento de etiquetas (o el de origen si no
