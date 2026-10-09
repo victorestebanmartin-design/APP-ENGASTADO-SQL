@@ -143,6 +143,7 @@
   <div class="mg-topbar">
     <div class="mg-topbar-inner">
       <div class="mg-topbar-title">🛠️ Preparación de Mangueras</div>
+      <a href="{{ url_for('main.mangueras_editor') }}" class="mg-back-btn">Editar preparación</a>
       {% if pc_dedicado %}
       <a href="#" class="mg-back-btn" title="Cerrar sesión y volver al lector de tarjetas"
          onclick="salirModulo('Preparación de Mangueras'); return false;">🚪 Cerrar sesión</a>
@@ -211,6 +212,7 @@
           <div class="modal-operario-icon">🔌</div>
           <h2>Cargar Corte de cable a trabajar</h2>
           <p>Elige cómo quieres cargarlo</p>
+          <a href="{{ url_for('main.mangueras_editor') }}">Editar preparación y descargar Excel</a>
         </div>
         <div class="modal-bono-opciones">
           <button type="button" id="btn-corte-input" class="modal-bono-opcion">

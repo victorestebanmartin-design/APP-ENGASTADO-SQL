@@ -27,6 +27,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, leer_excel_cacheado, _serie_str
+from app.mangueras_editor import leer_preparacion, exportar_preparacion
 from app.colisiones_etiquetas import detectar_colisiones, etiqueta_texto
 from app.auth import (
     requiere_pin_admin,
@@ -132,6 +133,56 @@ def mangueras():
     return render_template('mangueras.html', puesto_id=puesto_id,
                            puesto_nombre=puesto_nombre,
                            pc_dedicado=pc_dedicado_a('mangueras'))
+
+
+@bp.route('/mangueras/editor')
+@requiere_modulo('mangueras')
+def mangueras_editor():
+    return render_template('mangueras-editor.html')
+
+
+def _excel_editor_solicitud():
+    fichero = request.files.get('excel')
+    if fichero and fichero.filename:
+        return fichero.read(), os.path.basename(fichero.filename)
+    archivo = request.form.get('archivo', '')
+    ruta = _ruta_upload_segura(archivo)
+    if not ruta or not os.path.isfile(ruta):
+        raise ValueError('Selecciona un Excel válido o un corte registrado.')
+    with open(ruta, 'rb') as fichero:
+        return fichero.read(), os.path.basename(ruta)
+
+
+@bp.route('/api/mangueras/editor/leer', methods=['POST'])
+@requiere_modulo('mangueras')
+def api_mangueras_editor_leer():
+    try:
+        contenido, nombre = _excel_editor_solicitud()
+        datos = leer_preparacion(contenido, nombre)
+        return jsonify(success=True, **datos)
+    except (ValueError, _zipfile.BadZipFile) as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    except Exception as exc:
+        return error_interno(exc)
+
+
+@bp.route('/api/mangueras/editor/descargar', methods=['POST'])
+@requiere_modulo('mangueras')
+def api_mangueras_editor_descargar():
+    try:
+        contenido, nombre = _excel_editor_solicitud()
+        cambios = json.loads(request.form.get('cambios', '[]'))
+        salida = exportar_preparacion(contenido, nombre, cambios,
+                                      request.form.get('revision', ''))
+        base, extension = os.path.splitext(nombre)
+        mimetype = ('application/vnd.ms-excel.sheet.macroEnabled.12' if extension.lower() == '.xlsm'
+                    else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return send_file(salida, mimetype=mimetype, as_attachment=True,
+                         download_name=f'{base}_preparacion{extension}')
+    except (ValueError, _zipfile.BadZipFile) as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    except Exception as exc:
+        return error_interno(exc)
 
 
 @bp.route('/api/mangueras/datos', methods=['POST'])

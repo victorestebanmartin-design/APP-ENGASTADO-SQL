@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+  <title>Editor de preparaci&oacute;n de mangueras</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-editor.css') }}">
+</head>
+<body class="me-app">
+{% include '_version_badge.html' %}
+  <header class="me-topbar">
+    <div><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" alt="" width="36" height="36"><h1>Editar preparaci&oacute;n de mangueras</h1></div>
+    <a href="{{ url_for('main.mangueras') }}">Volver a mangueras</a>
+  </header>
+  <main class="me-main">
+    <section class="me-source" aria-label="Excel de origen">
+      <label>Excel<input id="me-file" type="file" accept=".xlsx,.xlsm"></label>
+      <span class="me-or">o</span>
+      <label>Corte registrado<select id="me-corte"><option value="">Seleccionar corte</option></select></label>
+      <button id="me-load" type="button">Abrir corte</button>
+    </section>
+    <div class="me-toolbar">
+      <span id="me-name">Ning&uacute;n Excel abierto</span>
+      <span id="me-draft"></span>
+      <button id="me-download" type="button" disabled>Descargar Excel</button>
+    </div>
+    <p id="me-status" role="status" aria-live="polite">Selecciona un Excel o un corte.</p>
+    <div id="me-workspace" class="me-workspace" hidden>
+      <aside class="me-sidebar">
+        <label for="me-search">Mangueras <span id="me-total"></span></label>
+        <input id="me-search" type="search" placeholder="Marca, elemento, secci&oacute;n...">
+        <div id="me-list" class="me-list"></div>
+      </aside>
+      <section class="me-editor" aria-label="Preparaci&oacute;n de la manguera">
+        <nav class="me-nav" aria-label="Navegaci&oacute;n de mangueras">
+          <button id="me-prev" type="button" title="Manguera anterior" aria-label="Manguera anterior">&larr;</button>
+          <div><h2 id="me-marca"></h2><span id="me-identity"></span><span id="me-counter"></span></div>
+          <button id="me-next" type="button" title="Manguera siguiente" aria-label="Manguera siguiente">&rarr;</button>
+        </nav>
+        <form id="me-form">
+          <div class="me-sides" id="me-sides"></div>
+          <div class="me-row-actions"><button type="submit" id="me-save">Guardar preparaci&oacute;n</button><button type="button" id="me-reset">Deshacer cambios de esta manguera</button></div>
+        </form>
+        <details class="me-fields"><summary>Todos los campos del Excel</summary><dl id="me-fields"></dl></details>
+      </section>
+    </div>
+  </main>
+  <script src="{{ url_for('static', filename='js/mangueras-editor.js') }}"></script>
+</body>
+</html>

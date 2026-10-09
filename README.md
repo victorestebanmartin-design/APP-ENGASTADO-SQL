@@ -70,6 +70,27 @@ nueva se inicializa sola: esquema desde `schema_sqlite.sql` + datos de
 `seed_inicial.json` (solo inserta lo que falte; lo gestionado desde el panel
 de administración nunca se pisa).
 
+## Editor de preparación de mangueras
+
+Desde **Preparación Mangueras → Editar preparación**, abre un Excel `.xlsx` o
+`.xlsm`, o selecciona un corte registrado. El editor propone las filas cuya
+sección empieza por un número seguido de `x` (también `X` o `×`), y muestra
+además las que ya contienen preparación. Cada entrada se identifica por su
+fila del Excel, aunque coincidan marca y elemento.
+
+Los lados **De** y **Para** permiten indicar pelado de manguera, pelado o corte
+de malla, malla hacia atrás con/sin retráctil, medidas comunes e individuales
+de activos y varios retráctiles con código y medida. También se pueden consultar
+todos los campos originales de la fila.
+
+**Guardar preparación** conserva un borrador en ese navegador. Se recupera al
+volver a abrir el mismo Excel, y también se guarda al cambiar de manguera o
+descargar. **Descargar Excel** genera una copia con las columnas de preparación
+compatibles con la app, manteniendo las otras hojas, fórmulas y formato.
+No sobrescribe el archivo original ni el corte registrado: para usar la nueva
+preparación en planta, sube después el Excel descargado por el flujo habitual.
+Si el corte registrado ha cambiado mientras se editaba, se pide volver a cargarlo.
+
 ## Administración
 
 El panel de administración se protege con un PIN. Generar el hash e instalarlo:
