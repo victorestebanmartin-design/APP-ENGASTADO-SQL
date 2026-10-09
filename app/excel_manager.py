@@ -632,7 +632,7 @@ def _get_mangueras(self, filename: str) -> list:
         )
 
     resultado = []
-    for _, row in df.iterrows():
+    for indice_fila, row in df.iterrows():
         val_de   = _safe(row[col_inst_de])   if col_inst_de   else ''
         val_para = _safe(row[col_inst_para]) if col_inst_para else ''
         obs      = _safe(row[col_obs])       if col_obs       else ''
@@ -673,6 +673,7 @@ def _get_mangueras(self, filename: str) -> list:
             obs_raw   = obs
 
         resultado.append({
+            'fila_excel': int(indice_fila) + 2,
             'cable_marca':       cable_marca,
             'cod_cable':         _safe(row[col_cod_cable])    if col_cod_cable    else '',
             'de_elemento':       _safe(row[col_de_elemento])  if col_de_elemento  else '',

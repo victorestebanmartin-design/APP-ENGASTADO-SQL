@@ -739,3 +739,27 @@ def test_zefiro_j_asocia_colores_y_pantalla_sin_mezclar_n():
     assert [malla['cable_marca'] for malla in padre_j['vinculacion']['mallas']] == ['J(S)']
     assert padre_n['vinculacion']['confirmados'] is True
     assert [activo['cable_marca'] for activo in padre_n['vinculacion']['activos']] == ['N (BLUE)']
+
+
+def test_api_mangueras_oculta_hijos_confirmados_y_conserva_padres(client, tmp_path):
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Format'
+    hoja.append(['Cable / Marca', 'Sección', 'Cod. cable', 'De Elemento', 'Para Elemento',
+                 'De Elemento Etiquetas', 'Longitud', 'De Terminal', 'Para Terminal',
+                 'Series', 'Instrucciones Mangueras DE', 'Instrucciones Mangueras PARA'])
+    hoja.append(['2705', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 1.6, 'S/T', 'S/T', None, 'PM100', 'PM200'])
+    hoja.append(['2705(1)', '2X0,5+P', 'C1', 'X1', 'X2', 'X1', 0, 'T1', 'T2', None, 'PM100', 'PM200'])
+    hoja.append(['2705(S)', '2X0,5+P', 'C1', 'RACK', 'X2', 'X1', 0, 'S/T', 'S/T', None, 'M_CORTAR', 'PM200'])
+    hoja.append(['2706', '2X0,5+P', 'C2', 'X3', 'X4', 'X3', 1.6, 'S/T', 'S/T', None, 'PM80', 'PM90'])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+    (tmp_path / 'corte.xlsx').write_bytes(buffer.getvalue())
+    client.application.config['UPLOAD_FOLDER'] = str(tmp_path)
+
+    respuesta = client.post('/api/mangueras/datos', json={'archivo': 'corte.xlsx'})
+
+    assert respuesta.status_code == 200
+    mangueras = respuesta.get_json()['mangueras']
+    assert [manguera['cable_marca'] for manguera in mangueras] == ['2705', '2706']
+    assert all(manguera['fila_excel'] in (2, 5) for manguera in mangueras)

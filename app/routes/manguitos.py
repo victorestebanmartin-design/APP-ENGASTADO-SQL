@@ -272,6 +272,20 @@ def api_mangueras_datos():
         em = ExcelManager(upload_folder)
         resultado = em.get_mangueras(archivo)
 
+        if archivo.lower().endswith(('.xlsx', '.xlsm')):
+            ruta = _ruta_upload_segura(archivo)
+            if ruta and os.path.isfile(ruta):
+                with open(ruta, 'rb') as fichero:
+                    datos_preparacion = leer_preparacion(fichero.read(), os.path.basename(ruta))
+                filas_hijas_confirmadas = {
+                    hijo['fila']
+                    for manguera in datos_preparacion['filas']
+                    if manguera['vinculacion'].get('confirmados')
+                    for hijo in manguera['vinculacion']['activos'] + manguera['vinculacion'].get('mallas', [])
+                }
+                resultado = [manguera for manguera in resultado
+                             if manguera.get('fila_excel') not in filas_hijas_confirmadas]
+
         # Enriquecer con numero_etiqueta desde la BD (mismo patrón que manguitos)
         try:
             with db.engine.connect() as conn:

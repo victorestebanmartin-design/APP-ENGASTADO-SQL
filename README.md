@@ -125,6 +125,8 @@ filas `KIT DE ENVÍO` sin hijos coincidentes no se enlazan.
 En filas `KIT DE ENVÍO` sin referencia `MANG`, también se vinculan los activos
 de longitud cero al único padre con la misma sección, código, elemento etiquetado,
 serie y observación. Si hay más de un padre candidato, no se asocian.
+El módulo Preparación de Mangueras también oculta esos hijos confirmados y deja
+como entradas navegables solo las líneas padre; las asociaciones dudosas permanecen visibles.
 
 El editor muestra los activos asociados y sus terminales por lado. La asociación
 exige longitud cero en el activo, marca común (por ejemplo, `1502-P` con `1502-1`
