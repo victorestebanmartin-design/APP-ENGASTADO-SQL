@@ -337,6 +337,13 @@ async function subirArchivo(e) {
             if (data.etiquetas_regeneradas) {
                 msg += ` — ${data.etiquetas_total} etiquetas regeneradas automáticamente`;
             }
+            const preparacion = data.preparacion_migrada || {};
+            if (preparacion.heredadas || preparacion.avisos || preparacion.ambiguas) {
+                const revisar = (preparacion.avisos || 0) + (preparacion.ambiguas || 0);
+                msg += ` — Preparación heredada en ${preparacion.heredadas || 0} mangueras`;
+                if (revisar) msg += `; ${revisar} para revisar en Preparación de Mangueras`;
+                if (data.respaldo_preparacion) msg += ` (respaldo: ${data.respaldo_preparacion})`;
+            }
 
             // Auto-rellenar formulario de asociación si se extrajo código de la hoja
             if (data.codigo) {
@@ -440,7 +447,7 @@ async function asociarCorte(e, forzar) {
         }
 
         if (data.success) {
-            mostrarMensaje('asociar-mensaje', 'Corte asociado correctamente', 'success');
+            mostrarMensaje('asociar-mensaje', data.message || 'Corte asociado correctamente', 'success');
             
             // Limpiar formulario y quitar readonly de campos auto-rellenados
             ['codigo-barras', 'descripcion', 'proyecto'].forEach(id => {

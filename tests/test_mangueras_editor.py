@@ -12,7 +12,7 @@ from app.excel_manager import ExcelManager, _parse_instrucciones
 from app.routes.manguitos import _ordenar_mangueras_por_paquete
 from app.mangueras_editor import (
     leer_preparacion, exportar_preparacion, listar_biblioteca_retractiles,
-    serializar_instrucciones,
+    serializar_instrucciones, transferir_preparacion_edicion,
 )
 
 
@@ -98,6 +98,7 @@ def test_editor_y_descarga_http(client):
     pagina = client.get('/mangueras/editor')
     assert pagina.status_code == 200
     assert b'\x00' not in pagina.data
+    assert b'id="me-save-apply-only"' in pagina.data
     original = excel_original()
     respuesta = client.post('/api/mangueras/editor/leer', data={'excel': (io.BytesIO(original), 'corte.xlsx')})
     assert respuesta.status_code == 200
@@ -269,6 +270,18 @@ def test_mangueras_lee_observacion_sola_y_conserva_saltos(tmp_path):
     assert observacion['observaciones_mangueras'] == '  Nota de taller\nsegunda línea  '
 
 
+def test_mangueras_lee_aviso_de_conflicto_sin_otra_observacion(tmp_path):
+    libro = load_workbook(io.BytesIO(excel_edicion_manguera('3X0,5')))
+    libro['Format']['O1'] = 'Aviso Mangueras'
+    libro['Format']['O2'] = 'La ED nueva difiere en Lado DE. Revisar.'
+    libro.save(tmp_path / 'corte.xlsx')
+
+    resultado = ExcelManager(str(tmp_path)).get_mangueras('corte.xlsx')
+
+    assert len(resultado) == 1
+    assert resultado[0]['aviso_mangueras'] == 'La ED nueva difiere en Lado DE. Revisar.'
+
+
 def test_orden_mangueras_agrupa_paquetes_y_conserva_orden_de_fila():
     mangueras = [
         {'cable_marca': 'P2-B', 'numero_etiqueta': '2', 'cod_cable': 'C2', 'de_elemento': 'E'},
@@ -315,6 +328,135 @@ def test_api_biblioteca_retractiles(client, app):
     assert respuesta.get_json()['codigos'] == ['649255']
 
 
+def excel_edicion_manguera(seccion, de='', para='', observaciones=''):
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Format'
+    hoja.append(['Cable / Marca', 'Sección', 'Cod. cable', 'De Elemento Etiquetas',
+                 'Series', 'Longitud', 'De Terminal', 'Para Elemento', 'Para Terminal',
+                 'Instrucciones Mangueras DE', 'Instrucciones Mangueras PARA',
+                 'Retractil DE', 'Retractil PARA', 'Observaciones Mangueras'])
+    hoja.append(['M1', seccion, 'C1', 'X1', 'S1', 2, 'T1', 'X2', 'T2', de, para,
+                 'R1_25' if de else None, None, observaciones or None])
+    salida = io.BytesIO()
+    libro.save(salida)
+    return salida.getvalue()
+
+
+def test_transferir_preparacion_edicion_copia_solo_a_destino_vacio():
+    origen = excel_edicion_manguera('2X0,5', 'PM100/M20', 'PM200', 'Nota anterior')
+    nuevo = excel_edicion_manguera('3X0,5')
+
+    salida, resumen = transferir_preparacion_edicion(origen, 'corte_ED01.xlsx', nuevo, 'corte_ED02.xlsx')
+
+    fila = leer_preparacion(salida.getvalue(), 'corte_ED02.xlsx')['filas'][0]
+    assert fila['de']['pm'] == 100
+    assert fila['para']['pm'] == 200
+    assert fila['retractil_de'] == [{'codigo': 'R1', 'medida': 25}]
+    assert fila['observaciones_mangueras'] == 'Nota anterior'
+    assert fila['aviso_mangueras'] == ''
+    assert resumen == {'heredadas': 1, 'avisos': 0, 'ambiguas': 0}
+
+
+def test_transferir_preparacion_edicion_conserva_diferencia_y_avisa():
+    origen = excel_edicion_manguera('2X0,5', 'PM100', 'PM200')
+    nuevo = excel_edicion_manguera('3X0,5', 'PM999')
+
+    salida, resumen = transferir_preparacion_edicion(origen, 'corte_ED01.xlsx', nuevo, 'corte_ED02.xlsx')
+
+    fila = leer_preparacion(salida.getvalue(), 'corte_ED02.xlsx')['filas'][0]
+    assert fila['de']['pm'] == 999
+    assert fila['para']['pm'] == 200
+    assert 'Lado DE' in fila['aviso_mangueras']
+    assert 'corte_ED01.xlsx' in fila['aviso_mangueras']
+    assert resumen == {'heredadas': 0, 'avisos': 1, 'ambiguas': 0}
+
+
+def test_transferir_preparacion_edicion_no_asocia_identidad_duplicada():
+    origen = excel_edicion_manguera('2X0,5', 'PM100')
+    libro = load_workbook(io.BytesIO(excel_edicion_manguera('3X0,5')))
+    libro['Format'].append(['M1', '3X0,5', 'C1', 'X1', 'S1', 3, 'T1', 'X2', 'T2', None, None, None, None, None])
+    buffer = io.BytesIO()
+    libro.save(buffer)
+
+    salida, resumen = transferir_preparacion_edicion(origen, 'corte_ED01.xlsx', buffer.getvalue(), 'corte_ED02.xlsx')
+
+    datos = leer_preparacion(salida.getvalue(), 'corte_ED02.xlsx')['filas']
+    assert all(serializar_instrucciones(fila['de']) == '' for fila in datos)
+    assert all('identidad de esta manguera no es única' in fila['aviso_mangueras'] for fila in datos)
+    assert resumen == {'heredadas': 0, 'avisos': 0, 'ambiguas': 1}
+
+
+def test_reemplazar_codigo_corte_hereda_preparacion_y_conserva_respaldo(admin_client, app):
+    carpeta = Path(app.config['UPLOAD_FOLDER'])
+    anterior = carpeta / 'proyecto_ED01.xlsx'
+    nuevo = carpeta / 'proyecto_ED02.xlsx'
+    bytes_anterior = excel_edicion_manguera('2X0,5', 'PM100/M20', 'PM200', 'Nota anterior')
+    bytes_nuevo = excel_edicion_manguera('3X0,5')
+    anterior.write_bytes(bytes_anterior)
+    nuevo.write_bytes(bytes_nuevo)
+    assert admin_client.post('/api/add_corte', json={
+        'codigo_barras': 'CORTE-ED', 'archivo': anterior.name,
+    }).get_json()['success']
+
+    respuesta = admin_client.post('/api/add_corte', json={
+        'codigo_barras': 'CORTE-ED', 'archivo': nuevo.name, 'forzar': True,
+    })
+
+    assert respuesta.status_code == 200
+    resultado = respuesta.get_json()
+    assert resultado['preparacion_migrada']['heredadas'] == 1
+    assert (carpeta / resultado['respaldo_preparacion']).read_bytes() == bytes_nuevo
+    manguera = ExcelManager(str(carpeta)).get_mangueras(nuevo.name)[0]
+    assert manguera['de']['pm'] == 100
+    assert manguera['para']['pm'] == 200
+    assert manguera['observaciones_mangueras'] == 'Nota anterior'
+
+
+def test_subir_misma_ruta_aplica_preparacion_a_nueva_edicion(admin_client, app):
+    carpeta = Path(app.config['UPLOAD_FOLDER'])
+    ruta = carpeta / 'mismo_nombre.xlsx'
+    anterior = excel_edicion_manguera('2X0,5', 'PM100', 'PM200', 'Nota antigua')
+    nueva = excel_edicion_manguera('3X0,5')
+    ruta.write_bytes(anterior)
+
+    respuesta = admin_client.post('/api/upload', data={
+        'file': (io.BytesIO(nueva), ruta.name),
+    }, content_type='multipart/form-data')
+
+    assert respuesta.status_code == 200
+    resultado = respuesta.get_json()
+    assert resultado['preparacion_migrada']['heredadas'] == 1
+    assert (carpeta / resultado['respaldo_preparacion']).read_bytes() == anterior
+    manguera = ExcelManager(str(carpeta)).get_mangueras(ruta.name)[0]
+    assert manguera['de']['pm'] == 100
+    assert manguera['para']['pm'] == 200
+    assert manguera['observaciones_mangueras'] == 'Nota antigua'
+
+
+def test_reemplazar_ed_con_instruccion_distinta_avisa_en_modulo(admin_client, app, client):
+    carpeta = Path(app.config['UPLOAD_FOLDER'])
+    anterior = carpeta / 'conflicto_ED01.xlsx'
+    nuevo = carpeta / 'conflicto_ED02.xlsx'
+    anterior.write_bytes(excel_edicion_manguera('2X0,5', 'PM100', 'PM200'))
+    nuevo.write_bytes(excel_edicion_manguera('3X0,5', 'PM999'))
+    admin_client.post('/api/add_corte', json={
+        'codigo_barras': 'CORTE-CONFLICTO', 'archivo': anterior.name,
+    })
+
+    reemplazo = admin_client.post('/api/add_corte', json={
+        'codigo_barras': 'CORTE-CONFLICTO', 'archivo': nuevo.name, 'forzar': True,
+    }).get_json()
+    manguera = ExcelManager(str(carpeta)).get_mangueras(nuevo.name)[0]
+    vista = client.post('/api/mangueras/datos', json={'archivo': nuevo.name}).get_json()
+
+    assert reemplazo['preparacion_migrada']['avisos'] == 1
+    assert manguera['de']['pm'] == 999
+    assert manguera['para']['pm'] == 200
+    assert 'Lado DE' in manguera['aviso_mangueras']
+    assert vista['mangueras'][0]['aviso_mangueras'] == manguera['aviso_mangueras']
+
+
 def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
     ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
     original = excel_original()
@@ -331,6 +473,7 @@ def test_aplicar_actualiza_mismo_excel_y_conserva_backup(admin_client, app):
         'destino': 'corte.xlsx', 'revision': datos['revision'], 'cambios': json.dumps([cambio]),
     })
     assert respuesta.status_code == 200
+    assert respuesta.mimetype == 'application/json'
     resultado = respuesta.get_json()
     assert resultado['archivo'] == 'corte.xlsx'
     assert resultado['datos']['revision'] != datos['revision']

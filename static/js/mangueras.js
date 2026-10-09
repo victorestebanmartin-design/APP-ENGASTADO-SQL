@@ -231,6 +231,11 @@
       obsMangueras.textContent = mg.observaciones_mangueras || '';
       obsMangueras.style.display = obsMangueras.textContent ? 'block' : 'none';
     }
+    var avisoMangueras = document.getElementById('mg-aviso-mangueras');
+    if (avisoMangueras) {
+      avisoMangueras.textContent = mg.aviso_mangueras || '';
+      avisoMangueras.style.display = avisoMangueras.textContent ? 'block' : 'none';
+    }
 
     // Instrucciones
     divInst.innerHTML = instruccionesHtml(mg);

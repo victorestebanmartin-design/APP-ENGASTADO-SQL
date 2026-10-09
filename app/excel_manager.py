@@ -615,6 +615,7 @@ def _get_mangueras(self, filename: str) -> list:
     col_ret_para      = _col(['Retractil PARA', 'Retráctil PARA'])
     col_obs           = _col(['Observaciones'])
     col_obs_mangueras = _col(['Observaciones Mangueras'])
+    col_aviso_mangueras = _col(['Aviso Mangueras'])
     col_serie         = _col(['Series'])
     col_cable_marca   = _col(['Cable / Marca'])
     col_de_marca      = _col(['De Marca'])
@@ -643,6 +644,7 @@ def _get_mangueras(self, filename: str) -> list:
                 obs_mangueras = '' if pd.isna(valor_obs_mangueras) else str(valor_obs_mangueras)
             except Exception:
                 obs_mangueras = '' if valor_obs_mangueras is None else str(valor_obs_mangueras)
+        aviso_mangueras = _safe(row[col_aviso_mangueras]) if col_aviso_mangueras else ''
 
         # Determinar si esta fila tiene instrucciones de manguera
         val_ret_de   = _safe(row[col_ret_de])   if col_ret_de   else ''
@@ -651,7 +653,7 @@ def _get_mangueras(self, filename: str) -> list:
         tiene_legacy    = '<-' in obs or '->' in obs
         tiene_retractil = bool(val_ret_de or val_ret_para)
 
-        if not tiene_nuevas and not tiene_legacy and not tiene_retractil and not obs_mangueras.strip():
+        if not tiene_nuevas and not tiene_legacy and not tiene_retractil and not obs_mangueras.strip() and not aviso_mangueras:
             continue
 
         cm_raw = _safe(row[col_cable_marca]) if col_cable_marca else ''
@@ -681,6 +683,7 @@ def _get_mangueras(self, filename: str) -> list:
             'para_terminal':     _safe(row[col_para_terminal]) if col_para_terminal else '',
             'observaciones_raw': obs_raw,
             'observaciones_mangueras': obs_mangueras,
+            'aviso_mangueras': aviso_mangueras,
             'serie': _serie_str(row[col_serie]) if col_serie else '',
             'de':                inst_de,
             'para':              inst_para,

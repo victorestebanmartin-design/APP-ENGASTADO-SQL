@@ -15,6 +15,7 @@ import sys
 import time
 import hmac
 import hashlib
+import tempfile
 import traceback
 from datetime import datetime
 import pandas as pd
@@ -39,6 +40,32 @@ from app.routes.base import (
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
 from app.routes.etiquetas import _regenerar_etiquetas_archivo
+from app.mangueras_editor import transferir_preparacion_edicion
+
+
+def _guardar_excel_migrado(filepath, contenido, respaldo):
+    """Reemplaza el Excel de forma atómica y conserva el fichero que se iba a sobrescribir."""
+    respaldo_path = filepath + '.backup_mangueras_ed_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    temporal = None
+    try:
+        with open(respaldo_path, 'xb') as fichero:
+            fichero.write(respaldo)
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(filepath), delete=False) as fichero:
+            temporal = fichero.name
+            fichero.write(contenido)
+            fichero.flush()
+            os.fsync(fichero.fileno())
+        os.replace(temporal, filepath)
+        temporal = None
+        invalidar_cache_excel(filepath)
+        return os.path.basename(respaldo_path)
+    except Exception:
+        if os.path.exists(respaldo_path):
+            os.unlink(respaldo_path)
+        raise
+    finally:
+        if temporal and os.path.exists(temporal):
+            os.unlink(temporal)
 
 
 # ==================== CÓDIGOS DE CORTES ====================
@@ -111,9 +138,33 @@ def upload_file():
             upload_folder = current_app.config['UPLOAD_FOLDER']
             os.makedirs(upload_folder, exist_ok=True)
             
-            # Guardar archivo
             filepath = os.path.join(upload_folder, filename)
-            file.save(filepath)
+            contenido_anterior = None
+            if os.path.isfile(filepath):
+                with open(filepath, 'rb') as anterior:
+                    contenido_anterior = anterior.read()
+            contenido_subido = file.read()
+            preparacion_migrada = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+            contenido_final = contenido_subido
+            if (contenido_anterior and filename.lower().endswith(('.xlsx', '.xlsm'))):
+                try:
+                    contenido_migrado, preparacion_migrada = transferir_preparacion_edicion(
+                        contenido_anterior, filename, contenido_subido, filename)
+                    contenido_final = contenido_migrado.getvalue()
+                except Exception as error_migracion:
+                    return jsonify({
+                        'success': False,
+                        'message': 'No se sustituyó el Excel: no se pudo analizar y conservar '
+                                   f'la preparación anterior ({error_migracion}).',
+                    }), 400
+            if contenido_final != contenido_subido and contenido_anterior:
+                respaldo_migracion = _guardar_excel_migrado(
+                    filepath, contenido_final, contenido_anterior)
+            else:
+                file.stream.seek(0)
+                file.save(filepath)
+                invalidar_cache_excel(filepath)
+                respaldo_migracion = None
 
             # Validar columnas de mangueras
             validacion = validar_excel_columnas(filepath)
@@ -161,6 +212,8 @@ def upload_file():
                 'etiquetas_regeneradas': etiquetas_regeneradas,
                 'etiquetas_total': etiquetas_total,
                 'validacion': validacion,
+                'preparacion_migrada': preparacion_migrada,
+                'respaldo_preparacion': respaldo_migracion,
             })
         else:
             return jsonify({
@@ -247,6 +300,25 @@ def add_corte():
                 'message': f'El código {codigo_barras} ya está asociado al archivo "{existe["archivo_excel"]}". ¿Deseas sobreescribirlo?'
             }), 409
 
+        preparacion_migrada = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+        respaldo_preparacion = None
+        archivo_anterior = existe.get('archivo_excel') if existe else None
+        if (existe and forzar and archivo_anterior and archivo_anterior != archivo
+                and archivo_anterior.lower().endswith(('.xlsx', '.xlsm'))
+                and archivo.lower().endswith(('.xlsx', '.xlsm'))):
+            ruta_anterior = _ruta_upload_segura(archivo_anterior)
+            if ruta_anterior and os.path.isfile(ruta_anterior):
+                with open(ruta_anterior, 'rb') as fichero:
+                    contenido_anterior = fichero.read()
+                with open(filepath, 'rb') as fichero:
+                    contenido_nuevo = fichero.read()
+                contenido_migrado, preparacion_migrada = transferir_preparacion_edicion(
+                    contenido_anterior, archivo_anterior, contenido_nuevo, archivo)
+                contenido_final = contenido_migrado.getvalue()
+                if contenido_final != contenido_nuevo:
+                    respaldo_preparacion = _guardar_excel_migrado(
+                        filepath, contenido_final, contenido_nuevo)
+
         # Agregar/sobreescribir código
         success = codigo_repo.agregar_codigo(
             codigo=codigo_barras,
@@ -255,9 +327,15 @@ def add_corte():
         )
         
         if success:
+            mensaje = 'Corte agregado correctamente'
+            if preparacion_migrada['heredadas'] or preparacion_migrada['avisos']:
+                mensaje += (f" Preparación heredada en {preparacion_migrada['heredadas']} mangueras; "
+                            f"{preparacion_migrada['avisos']} con diferencias para revisar en Preparación de Mangueras.")
             return jsonify({
                 'success': True,
-                'message': 'Corte agregado correctamente'
+                'message': mensaje,
+                'preparacion_migrada': preparacion_migrada,
+                'respaldo_preparacion': respaldo_preparacion,
             })
         else:
             return jsonify({

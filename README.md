@@ -110,6 +110,17 @@ Los campos numéricos del editor no muestran flechas de incremento y pierden el
 foco al girar la rueda del ratón sobre ellos, para evitar cambiar una medida al
 desplazarse por la página.
 
+Al guardar una preparación se puede elegir **Aplicar sin descargar** para
+actualizar directamente el corte registrado, o descargar una copia antes de
+aplicarla. El editor renueva el latido del login del operario mientras está
+abierto para evitar que caduque durante la edición.
+
+Al reemplazar una edición con otra del mismo código de corte, se heredan
+instrucciones y observaciones cuando marca, código, elemento etiquetado y serie
+dan una coincidencia única. Si la nueva ED ya trae instrucciones distintas, se
+conservan y se registra un aviso en `Aviso Mangueras` para revisión en el editor
+y el módulo. Los casos ambiguos no se copian automáticamente.
+
 En Preparación de Mangueras se muestra también la columna `Observaciones
 Mangueras`. La lista agrupa las mangueras con el mismo paquete consecutivamente,
 ordena los paquetes por número de etiqueta y conserva el orden de filas del Excel

@@ -2,7 +2,7 @@ import hashlib
 import io
 import os
 import re
-from copy import copy
+from copy import copy, deepcopy
 
 from openpyxl import load_workbook
 
@@ -221,6 +221,107 @@ def _columna_observaciones_mangueras(hoja, columnas):
     return indice
 
 
+def _identidad_manguera_edicion(manguera):
+    def normalizar(valor):
+        texto = _texto(valor)
+        return '' if texto.lower() in ('nan', 'none') else re.sub(r'\s+', ' ', texto).strip().casefold()
+
+    identidad = tuple(normalizar(manguera.get(campo)) for campo in (
+        'cable_marca', 'cod_cable', 'de_elemento', 'serie'))
+    return identidad if all(identidad) else None
+
+
+def _firma_lado(manguera, lado):
+    instrucciones = manguera.get(lado)
+    return (serializar_instrucciones(instrucciones) if instrucciones else '',
+            _serializar_retractiles(manguera.get('retractil_' + lado) or []))
+
+
+def _hay_preparacion(firma):
+    return bool(firma[0] or firma[1])
+
+
+def _anadir_aviso(manguera, aviso):
+    actual = _texto(manguera.get('aviso_mangueras'))
+    manguera['aviso_mangueras'] = f'{actual}\n{aviso}' if actual else aviso
+
+
+def transferir_preparacion_edicion(contenido_origen, nombre_origen, contenido_nuevo, nombre_nuevo):
+    """Hereda preparaciones al cambiar ED solo cuando marca/código/elemento/serie identifican una pareja única."""
+    origen = leer_preparacion(contenido_origen, nombre_origen)['filas']
+    destino = leer_preparacion(contenido_nuevo, nombre_nuevo)
+    nuevos = destino['filas']
+    origen_por_id = {}
+    nuevos_por_id = {}
+    for manguera in origen:
+        identidad = _identidad_manguera_edicion(manguera)
+        if identidad:
+            origen_por_id.setdefault(identidad, []).append(manguera)
+    for manguera in nuevos:
+        identidad = _identidad_manguera_edicion(manguera)
+        if identidad:
+            nuevos_por_id.setdefault(identidad, []).append(manguera)
+
+    cambios = []
+    resumen = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+    for identidad, anteriores in origen_por_id.items():
+        anteriores_con_preparacion = [m for m in anteriores if any(
+            _hay_preparacion(_firma_lado(m, lado)) for lado in ('de', 'para'))
+            or m.get('observaciones_mangueras')]
+        if not anteriores_con_preparacion:
+            continue
+        actuales = nuevos_por_id.get(identidad, [])
+        if len(anteriores) != 1 or len(actuales) != 1:
+            if actuales:
+                aviso = (f'No se heredó la preparación de {nombre_origen}: '
+                         'hay varias mangueras con la misma identidad. Revisar manualmente.')
+                for actual in actuales:
+                    _anadir_aviso(actual, aviso)
+                    cambios.append(actual)
+                resumen['ambiguas'] += 1
+            continue
+
+        anterior = anteriores_con_preparacion[0]
+        actual = actuales[0]
+        conflictos = []
+        hubo_cambios = False
+        for lado in ('de', 'para'):
+            firma_anterior = _firma_lado(anterior, lado)
+            firma_actual = _firma_lado(actual, lado)
+            if not _hay_preparacion(firma_anterior):
+                continue
+            if not _hay_preparacion(firma_actual):
+                actual[lado] = deepcopy(anterior[lado]) if anterior[lado] else None
+                actual['retractil_' + lado] = deepcopy(anterior['retractil_' + lado])
+                hubo_cambios = True
+            elif firma_actual != firma_anterior:
+                conflictos.append(f'Lado {lado.upper()}')
+
+        observacion_anterior = anterior.get('observaciones_mangueras') or ''
+        observacion_actual = actual.get('observaciones_mangueras') or ''
+        if observacion_anterior and not observacion_actual:
+            actual['observaciones_mangueras'] = observacion_anterior
+            hubo_cambios = True
+        elif observacion_anterior and observacion_actual != observacion_anterior:
+            conflictos.append('observaciones')
+
+        if conflictos:
+            _anadir_aviso(actual,
+                f'La ED nueva difiere de {nombre_origen} en {", ".join(conflictos)}. '
+                'Se conservó la preparación nueva; revisar antes de aplicar.')
+            resumen['avisos'] += 1
+            hubo_cambios = True
+        if hubo_cambios:
+            cambios.append(actual)
+            if not conflictos:
+                resumen['heredadas'] += 1
+
+    if not cambios:
+        return io.BytesIO(contenido_nuevo), resumen
+    resultado = exportar_preparacion(contenido_nuevo, nombre_nuevo, cambios, destino['revision'])
+    return resultado, resumen
+
+
 def _lados_preparados(hoja, columnas, fila):
     de = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[0])
     para = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[1])
@@ -301,6 +402,7 @@ def leer_preparacion(contenido, nombre):
                 'fila': fila, 'sugerida': sugerida, 'seccion': seccion,
                 'cable_marca': _valor(hoja, columnas, fila, 'Cable / Marca', 'De Marca'),
                 'cod_cable': _valor(hoja, columnas, fila, 'Cod. cable'),
+                'serie': _serie_str(_valor(hoja, columnas, fila, 'Series')),
                 'de_elemento': _valor(hoja, columnas, fila, 'De Elemento Etiquetas', 'De Elemento'),
                 'de_elemento_original': _valor(hoja, columnas, fila, 'De Elemento', 'De Elemento Etiquetas'),
                 'para_elemento': _valor(hoja, columnas, fila, 'Para Elemento'),
@@ -313,6 +415,7 @@ def leer_preparacion(contenido, nombre):
                 'retractil_para': _parse_retractiles(ret_para),
                 'retractil_de_raw': ret_de, 'retractil_para_raw': ret_para,
                 'observaciones_mangueras': _valor_texto(hoja, columnas, fila, 'Observaciones Mangueras'),
+                'aviso_mangueras': _valor_texto(hoja, columnas, fila, 'Aviso Mangueras'),
                 'vinculacion': vinculos.get(fila, {'confirmados': False, 'ambiguo': False, 'activos': []}),
                 'campos': {str(hoja.cell(1, indice).value): _texto(hoja.cell(fila, indice).value)
                            for indice in columnas.values()},
@@ -407,6 +510,9 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
             observaciones = cambio.get('observaciones_mangueras', '')
             if not isinstance(observaciones, str):
                 raise ValueError('Las observaciones de mangueras deben ser texto.')
+            aviso = cambio.get('aviso_mangueras', '')
+            if not isinstance(aviso, str):
+                raise ValueError('El aviso de mangueras debe ser texto.')
             valores = (
                 serializar_instrucciones(cambio.get('de')),
                 serializar_instrucciones(cambio.get('para')),
@@ -425,6 +531,11 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
             celda_observaciones = hoja.cell(fila, _columna_observaciones_mangueras(hoja, columnas))
             celda_observaciones.value = observaciones or None
             celda_observaciones.data_type = 's'
+            clave_aviso = _normalizar_texto_columna('Aviso Mangueras')
+            if aviso or clave_aviso in columnas:
+                celda_aviso = hoja.cell(fila, _columna_escritura(hoja, columnas, 'Aviso Mangueras'))
+                celda_aviso.value = aviso or None
+                celda_aviso.data_type = 's'
             if not any(valores[:2]):
                 indice_obs = columnas.get(_normalizar_texto_columna('Observaciones'))
                 if indice_obs:
@@ -441,3 +552,114 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
         return salida
     finally:
         libro.close()
+
+
+def _identidad_edicion_manguera(manguera):
+    def normalizar(valor):
+        texto = _texto(valor)
+        if texto.lower() in ('nan', 'none'):
+            return ''
+        return re.sub(r'\s+', ' ', texto).strip().casefold()
+
+    identidad = tuple(normalizar(manguera.get(campo)) for campo in (
+        'cable_marca', 'cod_cable', 'de_elemento', 'serie'))
+    return identidad if all(identidad) else None
+
+
+def _firma_preparacion_lado(manguera, lado):
+    instrucciones = manguera.get(lado)
+    return (serializar_instrucciones(instrucciones) if instrucciones else '',
+            _serializar_retractiles(manguera.get('retractil_' + lado) or []))
+
+
+def _preparacion_lado_presente(firma):
+    return bool(firma[0] or firma[1])
+
+
+def _agregar_aviso(manguera, texto):
+    aviso = manguera.get('aviso_mangueras') or ''
+    if texto not in aviso:
+        manguera['aviso_mangueras'] = (aviso + '\n' + texto).strip()
+
+
+def transferir_preparacion_edicion(contenido_anterior, nombre_anterior,
+                                   contenido_nuevo, nombre_nuevo):
+    """Hereda preparación entre ED solo si la identidad de manguera es única en ambos Excels."""
+    anteriores = leer_preparacion(contenido_anterior, nombre_anterior)['filas']
+    nuevo = leer_preparacion(contenido_nuevo, nombre_nuevo)
+    actuales = nuevo['filas']
+    anteriores_por_identidad = {}
+    actuales_por_identidad = {}
+    for manguera in anteriores:
+        identidad = _identidad_edicion_manguera(manguera)
+        if identidad:
+            anteriores_por_identidad.setdefault(identidad, []).append(manguera)
+    for manguera in actuales:
+        identidad = _identidad_edicion_manguera(manguera)
+        if identidad:
+            actuales_por_identidad.setdefault(identidad, []).append(manguera)
+
+    cambios = []
+    resumen = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+    for identidad, grupo_anterior in anteriores_por_identidad.items():
+        con_preparacion = [fila for fila in grupo_anterior if any(
+            _preparacion_lado_presente(_firma_preparacion_lado(fila, lado))
+            for lado in ('de', 'para')) or fila.get('observaciones_mangueras')]
+        if not con_preparacion:
+            continue
+        grupo_nuevo = actuales_por_identidad.get(identidad, [])
+        if len(grupo_anterior) != 1 or len(grupo_nuevo) != 1:
+            if grupo_nuevo:
+                aviso = (f'No se heredó la preparación de {nombre_anterior}: '
+                         'la identidad de esta manguera no es única. Revisar manualmente.')
+                for fila in grupo_nuevo:
+                    _agregar_aviso(fila, aviso)
+                    cambios.append(fila)
+                resumen['ambiguas'] += 1
+            continue
+
+        fila_anterior = con_preparacion[0]
+        fila_nueva = grupo_nuevo[0]
+        conflictos = []
+        hubo_cambios = False
+        for lado in ('de', 'para'):
+            anterior = _firma_preparacion_lado(fila_anterior, lado)
+            actual = _firma_preparacion_lado(fila_nueva, lado)
+            if not _preparacion_lado_presente(anterior):
+                continue
+            if not _preparacion_lado_presente(actual):
+                fila_nueva[lado] = deepcopy(fila_anterior[lado]) if fila_anterior[lado] else None
+                fila_nueva['retractil_' + lado] = deepcopy(fila_anterior['retractil_' + lado])
+                hubo_cambios = True
+            elif anterior != actual:
+                conflictos.append('Lado ' + lado.upper())
+
+        observaciones_anteriores = fila_anterior.get('observaciones_mangueras') or ''
+        observaciones_nuevas = fila_nueva.get('observaciones_mangueras') or ''
+        if observaciones_anteriores and not observaciones_nuevas:
+            fila_nueva['observaciones_mangueras'] = observaciones_anteriores
+            hubo_cambios = True
+        elif observaciones_anteriores and observaciones_nuevas != observaciones_anteriores:
+            conflictos.append('Observaciones')
+
+        aviso_anterior = fila_anterior.get('aviso_mangueras') or ''
+        if aviso_anterior and not fila_nueva.get('aviso_mangueras'):
+            fila_nueva['aviso_mangueras'] = aviso_anterior
+            hubo_cambios = True
+        if conflictos:
+            _agregar_aviso(
+                fila_nueva,
+                f'La ED nueva difiere de {nombre_anterior} en {", ".join(conflictos)}. '
+                'Se conservaron los valores nuevos; revisar antes de aplicar.',
+            )
+            resumen['avisos'] += 1
+            hubo_cambios = True
+        if hubo_cambios:
+            cambios.append(fila_nueva)
+            if not conflictos:
+                resumen['heredadas'] += 1
+
+    if not cambios:
+        return io.BytesIO(contenido_nuevo), resumen
+    salida = exportar_preparacion(contenido_nuevo, nombre_nuevo, cambios, nuevo['revision'])
+    return salida, resumen

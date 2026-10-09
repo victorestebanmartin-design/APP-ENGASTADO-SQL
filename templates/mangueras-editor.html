@@ -39,6 +39,10 @@
           <div><h2 id="me-marca"></h2><span id="me-identity"></span><span id="me-counter"></span></div>
           <button id="me-next" type="button" title="Manguera siguiente" aria-label="Manguera siguiente">&rarr;</button>
         </nav>
+        <div id="me-aviso-edicion" class="me-edition-warning" hidden role="alert">
+          <p id="me-aviso-edicion-texto"></p>
+          <button id="me-aviso-edicion-revisado" type="button">Marcar revisado</button>
+        </div>
         <form id="me-form">
           <div class="me-sides" id="me-sides"></div>
           <label class="me-observaciones-label" for="me-observaciones">Observaciones de la manguera<textarea id="me-observaciones" rows="4" placeholder="Escribe cualquier observaci&oacute;n de esta manguera..."></textarea></label>
@@ -60,6 +64,7 @@
     <div class="me-dialog-actions">
       <button id="me-save-cancel" type="button">Cancelar</button>
       <button id="me-save-download" type="button">Solo descargar</button>
+      <button id="me-save-apply-only" type="button">Aplicar sin descargar</button>
       <button id="me-save-apply" type="button">Descargar y aplicar</button>
     </div>
   </dialog>

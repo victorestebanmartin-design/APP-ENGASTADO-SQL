@@ -11,6 +11,7 @@
   var cortesDisponibles = [];
   var retractilesCompartidos = [];
   var copiaDescargada = false;
+  var descargarAlReintentarAplicacion = true;
   var form = document.getElementById('me-form');
   var status = document.getElementById('me-status');
   var download = document.getElementById('me-download');
@@ -18,6 +19,7 @@
   var destino = document.getElementById('me-destino');
   var estadoGuardado = document.getElementById('me-save-status');
   var pinForm = document.getElementById('me-pin-form');
+  var botonAplicarSinDescargar = document.getElementById('me-save-apply-only');
 
   function mensajeGuardado(texto, error) {
     estadoGuardado.textContent = texto;
@@ -59,6 +61,7 @@
     document.getElementById('me-workspace').inert = activo;
     dialogo.querySelectorAll('button, input, select').forEach(function (elemento) { elemento.disabled = activo; });
     document.getElementById('me-save-apply').disabled = activo || !destino.value;
+    if (botonAplicarSinDescargar) botonAplicarSinDescargar.disabled = activo || !destino.value;
   }
 
   async function cargar(nuevaFuente) {
@@ -79,7 +82,7 @@
         borrador.forEach(function (fila) {
           var posicion = datos.filas.findIndex(function (actual) { return actual.fila === fila.fila; });
           if (posicion >= 0) {
-            ['de', 'para', 'retractil_de', 'retractil_para', 'observaciones_mangueras'].forEach(function (campo) {
+            ['de', 'para', 'retractil_de', 'retractil_para', 'observaciones_mangueras', 'aviso_mangueras'].forEach(function (campo) {
               datos.filas[posicion][campo] = fila[campo];
             });
             cambios.set(fila.fila, datos.filas[posicion]);
@@ -249,6 +252,13 @@
     document.getElementById('me-counter').textContent = (indice + 1) + ' / ' + datos.filas.length;
     document.getElementById('me-prev').disabled = indice === 0;
     document.getElementById('me-next').disabled = indice === datos.filas.length - 1;
+    var aviso = fila.aviso_mangueras || '';
+    var avisoEdicion = document.getElementById('me-aviso-edicion');
+    var avisoEdicionTexto = document.getElementById('me-aviso-edicion-texto');
+    if (avisoEdicion && avisoEdicionTexto) {
+      avisoEdicionTexto.textContent = aviso;
+      avisoEdicion.hidden = !aviso;
+    }
     document.getElementById('me-sides').innerHTML = ladoHtml(fila, 'de') + ladoHtml(fila, 'para');
     document.getElementById('me-observaciones').value = fila.observaciones_mangueras || '';
     document.getElementById('me-fields').innerHTML = Object.keys(fila.campos).map(function (cabecera) {
@@ -376,6 +386,17 @@
     persistir(); renderActual(); renderLista();
     mensaje('Preparación original restaurada.');
   });
+  var botonAvisoRevisado = document.getElementById('me-aviso-edicion-revisado');
+  if (botonAvisoRevisado) botonAvisoRevisado.addEventListener('click', function () {
+    var fila = datos && datos.filas[indice];
+    if (!fila || !fila.aviso_mangueras) return;
+    fila.aviso_mangueras = '';
+    cambios.set(fila.fila, structuredClone(fila));
+    persistir();
+    renderActual();
+    renderLista();
+    mensaje('Aviso marcado como revisado. Guarda y aplica para actualizar el Excel.');
+  });
   document.getElementById('me-file').addEventListener('change', function (event) {
     var file = event.target.files[0];
     if (file) cargar({ file: file });
@@ -388,6 +409,7 @@
   function abrirGuardado() {
     if (ocupado || !datos || !guardarActual()) return;
     copiaDescargada = false;
+    descargarAlReintentarAplicacion = true;
     pinForm.hidden = true;
     document.getElementById('me-pin').value = '';
     destino.innerHTML = '<option value="">Seleccionar corte</option>' + cortesDisponibles.map(function (corte) {
@@ -398,6 +420,7 @@
     mensajeGuardado((destino.value ? 'Se actualizará el mismo archivo del corte y se conservará una copia anterior.' : 'Solo se puede aplicar sobre un corte existente con el mismo Excel de origen.') +
       ' Se revisan todas las mangueras identificadas: los lados sin PM quedarán excluidos de engastado.');
     document.getElementById('me-save-apply').disabled = !destino.value;
+    if (botonAplicarSinDescargar) botonAplicarSinDescargar.disabled = !destino.value;
     dialogo.showModal();
   }
 
@@ -420,12 +443,14 @@
     return respuesta.blob();
   }
 
-  async function guardarExcel(aplicar) {
+  async function guardarExcel(aplicar, descargar) {
     if (ocupado || !datos || (aplicar && !destino.value)) return;
+    descargar = descargar === true;
+    descargarAlReintentarAplicacion = descargar;
     bloquear(true);
     mensajeGuardado('Guardando Excel...');
     try {
-      if (!copiaDescargada) {
+      if (descargar && !copiaDescargada) {
         descargarBlob(await obtenerCopia());
         copiaDescargada = true;
       }
@@ -443,7 +468,8 @@
       var resultado = await respuesta.json();
       if (respuesta.status === 401) {
         pinForm.hidden = false;
-        mensajeGuardado('Excel descargado. ' + (resultado.error || resultado.message) + '.', true);
+        mensajeGuardado((copiaDescargada ? 'Excel descargado. ' : '') +
+          (resultado.error || resultado.message) + '.', true);
         return;
       }
       if (!respuesta.ok || !resultado.success) throw new Error(resultado.error || resultado.message || 'No se pudo aplicar la preparación.');
@@ -460,7 +486,8 @@
       document.getElementById('me-workspace').hidden = !datos.filas.length;
       persistir(); renderLista(); renderActual();
       dialogo.close();
-      mensaje('Excel descargado y preparación aplicada a ' + resultado.archivo + '.');
+      mensaje((copiaDescargada ? 'Excel descargado y ' : '') +
+        'preparación aplicada a ' + resultado.archivo + '.');
     } catch (error) {
       mensajeGuardado((copiaDescargada ? 'La copia está descargada, pero no se ha aplicado. ' : '') + error.message, true);
     }
@@ -468,11 +495,13 @@
   }
 
   download.addEventListener('click', abrirGuardado);
-  document.getElementById('me-save-download').addEventListener('click', function () { guardarExcel(false); });
-  document.getElementById('me-save-apply').addEventListener('click', function () { guardarExcel(true); });
+  document.getElementById('me-save-download').addEventListener('click', function () { guardarExcel(false, true); });
+  if (botonAplicarSinDescargar) botonAplicarSinDescargar.addEventListener('click', function () { guardarExcel(true, false); });
+  document.getElementById('me-save-apply').addEventListener('click', function () { guardarExcel(true, true); });
   document.getElementById('me-save-cancel').addEventListener('click', function () { if (!ocupado) dialogo.close(); });
   destino.addEventListener('change', function () {
     document.getElementById('me-save-apply').disabled = !destino.value;
+    if (botonAplicarSinDescargar) botonAplicarSinDescargar.disabled = !destino.value;
     pinForm.hidden = true;
     document.getElementById('me-pin').value = '';
   });
@@ -498,7 +527,7 @@
       }
     } catch (error) { mensajeGuardado(error.message, true); }
     finally { bloquear(false); }
-    if (validado) await guardarExcel(true);
+    if (validado) await guardarExcel(true, descargarAlReintentarAplicacion);
   });
   window.addEventListener('beforeunload', function (event) {
     if (pendiente || cambios.size || ocupado) { event.preventDefault(); event.returnValue = ''; }
@@ -516,4 +545,22 @@
       actualizarSelectoresRetractiles();
     }
   }).catch(function () {});
+
+  var latidoOperarioTimer = setInterval(async function () {
+    if (document.visibilityState === 'hidden') return;
+    try {
+      var respuesta = await fetch('/api/sesion/operario/latido', { method: 'POST' });
+      if (!respuesta.ok) return;
+      var resultado = await respuesta.json();
+      if (!resultado.expirado) return;
+      clearInterval(latidoOperarioTimer);
+      if (pendiente) guardarActual();
+      mensaje('La sesión del operario ha caducado. El borrador queda guardado; vuelve a identificarte para aplicar cambios.', true);
+    } catch (error) { /* Un fallo de red puntual no debe interrumpir la edición. */ }
+  }, 60000);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(function () {});
+    }
+  });
 })();

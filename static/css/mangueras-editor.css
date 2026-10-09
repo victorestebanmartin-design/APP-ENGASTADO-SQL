@@ -38,6 +38,10 @@
 .me-nav h2 { margin: 0 0 4px; font-size: 25px; color: white; }
 .me-nav span { display: block; font-size: 13px; line-height: 1.5; }
 .me-nav button { width: 42px; height: 42px; padding: 0; flex-shrink: 0; font-size: 23px; }
+.me-edition-warning { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px 14px; border-left: 4px solid #b42318; border-radius: 4px; background: #fef2f2; color: #7f1d1d; }
+.me-edition-warning[hidden] { display: none; }
+.me-edition-warning p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.me-edition-warning button { flex-shrink: 0; }
 .me-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
 .me-side { margin: 0; min-width: 0; border: 2px solid #93c5fd; border-radius: 6px; background: #eff6ff; padding: 18px; }
 .me-side.me-para { border-color: #86efac; background: #f0fdf4; }
@@ -74,6 +78,8 @@
 .me-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 #me-save-apply { background: #15803d; border-color: #15803d; color: white; }
 #me-save-apply:hover:not(:disabled) { background: #166534; }
+#me-save-apply-only { background: #0e7490; border-color: #0e7490; color: white; }
+#me-save-apply-only:hover:not(:disabled) { background: #155e75; }
 #me-save-status.me-error { color: #b42318; }
 #me-pin-form { border-top: 1px solid #d4dde2; padding-top: 14px; }
 #me-pin-form button { margin-top: 10px; }
