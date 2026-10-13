@@ -18,12 +18,20 @@ def _apply_migrations(db_path):
     cur = conn.cursor()
 
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS agrupacion_series_excepciones (
-            archivo_excel TEXT NOT NULL,
-            cod_cable TEXT NOT NULL,
-            PRIMARY KEY (archivo_excel, cod_cable)
+        CREATE TABLE IF NOT EXISTS agrupacion_series_config (
+            archivo_excel TEXT PRIMARY KEY,
+            series_activas INTEGER NOT NULL DEFAULT 1 CHECK (series_activas IN (0, 1))
         )
     """)
+    cur.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agrupacion_series_excepciones'"
+    )
+    if cur.fetchone():
+        cur.execute("""
+            INSERT OR IGNORE INTO agrupacion_series_config (archivo_excel, series_activas)
+            SELECT archivo_excel, 0 FROM agrupacion_series_excepciones GROUP BY archivo_excel
+        """)
+        cur.execute("DROP TABLE agrupacion_series_excepciones")
     conn.commit()
 
     # Obtener columnas actuales de etiquetas_elementos

@@ -131,7 +131,7 @@ class TestAgrupacion:
         # Sin serie, la clave sigue siendo cable|elemento
         assert '640C10023|K3.1' in grupos
 
-    def test_codigo_excluido_se_agrupa_sin_separar_series(self):
+    def test_desactivar_series_agrupa_todos_los_codigos_sin_separarlas(self):
         filas = [
             _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
                      'Cable / Marca': '1', 'Series': 'S01'}),
@@ -144,13 +144,13 @@ class TestAgrupacion:
         ]
 
         grupos = self.em.agrupar_por_cable_elemento(
-            filas, '640204', cables_sin_agrupar_series={'CABLE-1'}
+            filas, '640204', agrupar_series=False
         )
 
         assert grupos['CABLE-1|TB1']['cables_de_terminal'] == ['1', '2']
         assert grupos['CABLE-1|TB1']['serie_col'] == ''
-        assert grupos['CABLE-2|TB1|S01']['cables_de_terminal'] == ['3']
-        assert grupos['CABLE-2|TB1|S02']['cables_de_terminal'] == ['4']
+        assert grupos['CABLE-2|TB1']['cables_de_terminal'] == ['3', '4']
+        assert grupos['CABLE-2|TB1']['serie_col'] == ''
 
     def test_cables_numericos_ordenados_antes_que_texto(self):
         filas = [
@@ -243,6 +243,39 @@ class TestParseObservaciones:
 
 
 class TestCargaExcel:
+    def test_migra_excepciones_antiguas_a_series_desactivadas(self, app):
+        import sqlite3
+        from app import _apply_migrations
+
+        conn = sqlite3.connect(app.config['DB_PATH'])
+        conn.execute("""
+            CREATE TABLE agrupacion_series_excepciones (
+                archivo_excel TEXT NOT NULL,
+                cod_cable TEXT NOT NULL,
+                PRIMARY KEY (archivo_excel, cod_cable)
+            )
+        """)
+        conn.executemany(
+            "INSERT INTO agrupacion_series_excepciones (archivo_excel, cod_cable) VALUES (?, ?)",
+            [('corte.xlsx', 'CABLE-1'), ('corte.xlsx', 'CABLE-2')],
+        )
+        conn.commit()
+        conn.close()
+
+        _apply_migrations(app.config['DB_PATH'])
+
+        conn = sqlite3.connect(app.config['DB_PATH'])
+        configuracion = conn.execute(
+            "SELECT series_activas FROM agrupacion_series_config WHERE archivo_excel = ?",
+            ('corte.xlsx',),
+        ).fetchone()
+        tabla_antigua = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agrupacion_series_excepciones'"
+        ).fetchone()
+        conn.close()
+        assert configuracion == (0,)
+        assert tabla_antigua is None
+
     def test_carga_y_flujo_completo_datos_trabajo(self, admin_client, app):
         """Extremo a extremo: Excel real -> datos_trabajo_v3 agrupa bien."""
         import os
@@ -289,7 +322,7 @@ class TestCargaExcel:
         sueltos = [p for p in d['paquetes'] if not p.get('es_grupo')]
         assert [p['cables_de_terminal'] for p in sueltos] == [['1202']]
 
-    def test_excepcion_de_series_se_aplica_a_engastado_y_etiquetas(self, client, app):
+    def test_activar_desactivar_series_se_aplica_a_engastado_y_etiquetas(self, client, app):
         import os
         df = pd.DataFrame([
             _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
@@ -304,13 +337,13 @@ class TestCargaExcel:
         ruta = os.path.join(app.config['UPLOAD_FOLDER'], 'excepciones.xlsx')
         df.to_excel(ruta, sheet_name='Format', index=False)
 
-        disponibles = client.get(
-            '/api/etiquetas/series_excepciones?archivo=excepciones.xlsx'
+        configuracion = client.get(
+            '/api/etiquetas/configuracion_series?archivo=excepciones.xlsx'
         ).get_json()
-        assert disponibles['codigos'] == ['CABLE-1', 'CABLE-2']
+        assert configuracion['agrupar_series'] is True
 
-        guardado = client.post('/api/etiquetas/series_excepciones', json={
-            'archivo': 'excepciones.xlsx', 'excepciones': ['CABLE-1'],
+        guardado = client.post('/api/etiquetas/configuracion_series', json={
+            'archivo': 'excepciones.xlsx', 'agrupar_series': False,
         }).get_json()
         assert guardado['success'], guardado
 
@@ -319,17 +352,34 @@ class TestCargaExcel:
         ).get_json()
         sueltos = [p for p in datos['paquetes'] if not p.get('es_grupo')]
         series = [p for p in datos['paquetes'] if p.get('es_grupo')]
-        assert [p['cables_de_terminal'] for p in sueltos] == [['1', '2']]
-        assert all(sub['cod_cable'] == 'CABLE-2'
-                   for grupo in series for sub in grupo['sub_paquetes'])
+        assert not series
+        paquetes_por_codigo = {p['cod_cable']: p['cables_de_terminal'] for p in sueltos}
+        assert paquetes_por_codigo == {'CABLE-1': ['1', '2'], 'CABLE-2': ['3', '4']}
 
         etiquetas = client.post('/api/etiquetas/cargar_grupos', json={
             'archivo': 'excepciones.xlsx',
         }).get_json()
-        etiquetas_excepcion = [g for g in etiquetas['grupos'] if g['cod_cable'] == 'CABLE-1']
-        assert len(etiquetas_excepcion) == 1
-        assert etiquetas_excepcion[0]['grupo_serie'] is None
-        assert etiquetas_excepcion[0]['num_cables'] == 2
+        etiquetas_cable = [g for g in etiquetas['grupos'] if g['cod_cable'] in ('CABLE-1', 'CABLE-2')]
+        assert len(etiquetas_cable) == 2
+        assert all(g['grupo_serie'] is None and g['num_cables'] == 2 for g in etiquetas_cable)
+
+        guardado = client.post('/api/etiquetas/configuracion_series', json={
+            'archivo': 'excepciones.xlsx', 'agrupar_series': True,
+        }).get_json()
+        assert guardado['success'], guardado
+
+        datos = client.get(
+            '/api/datos_trabajo_v3?archivo=excepciones.xlsx&terminal=640204'
+        ).get_json()
+        series = {p['grupo_serie']: p for p in datos['paquetes'] if p.get('es_grupo')}
+        assert set(series) == {'S01', 'S02'}
+        assert all(len(grupo['sub_paquetes']) == 2 for grupo in series.values())
+
+        etiquetas = client.post('/api/etiquetas/cargar_grupos', json={
+            'archivo': 'excepciones.xlsx',
+        }).get_json()
+        padres = [g for g in etiquetas['grupos'] if g['es_grupo_padre']]
+        assert {g['grupo_serie'] for g in padres} == {'S01', 'S02'}
 
     def test_archivo_inexistente_devuelve_false(self):
         em = ExcelManager('/tmp')

@@ -163,10 +163,9 @@ CREATE TABLE codigos_cortes (
 CREATE INDEX idx_codigos_archivo ON codigos_cortes(archivo_excel);
 CREATE INDEX idx_codigos_activo ON codigos_cortes(activo) WHERE activo = 1;
 
-CREATE TABLE IF NOT EXISTS agrupacion_series_excepciones (
-    archivo_excel TEXT NOT NULL,
-    cod_cable TEXT NOT NULL,
-    PRIMARY KEY (archivo_excel, cod_cable)
+CREATE TABLE IF NOT EXISTS agrupacion_series_config (
+    archivo_excel TEXT PRIMARY KEY,
+    series_activas INTEGER NOT NULL DEFAULT 1 CHECK (series_activas IN (0, 1))
 );
 
 -- =====================================================

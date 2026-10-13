@@ -714,17 +714,17 @@ def api_etiquetas_grupos_bono(nombre_bono):
         return error_interno(e, 'Error al cargar etiquetas del bono', status=200)
 
 
-def _cables_sin_agrupar_series(archivo: str) -> set:
+def _series_activas(archivo: str) -> bool:
     with db.engine.connect() as conn:
-        filas = conn.execute(text(
-            "SELECT cod_cable FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
-        ), {'archivo': archivo}).fetchall()
-    return {str(fila[0]).strip() for fila in filas}
+        fila = conn.execute(text(
+            "SELECT series_activas FROM agrupacion_series_config WHERE archivo_excel = :archivo"
+        ), {'archivo': archivo}).fetchone()
+    return True if fila is None else bool(fila[0])
 
 
-@bp.route('/api/etiquetas/series_excepciones', methods=['GET', 'POST'])
-def api_etiquetas_series_excepciones():
-    """Consultar o guardar los códigos que no se agrupan por series en un Excel."""
+@bp.route('/api/etiquetas/configuracion_series', methods=['GET', 'POST'])
+def api_etiquetas_configuracion_series():
+    """Consultar o guardar si se agrupan series en un archivo Excel."""
     try:
         data = request.get_json(silent=True) or {}
         archivo = (request.args.get('archivo') if request.method == 'GET'
@@ -736,58 +736,42 @@ def api_etiquetas_series_excepciones():
         if not excel_path or not os.path.isfile(excel_path):
             return jsonify({'success': False, 'message': 'Archivo no encontrado'}), 404
 
-        df = leer_excel_cacheado(excel_path)
-        if 'Cod. cable' not in df.columns:
-            return jsonify({'success': False, 'message': 'El archivo no tiene la columna Cod. cable'}), 400
-
-        codigos = sorted({str(valor).strip() for valor in df['Cod. cable'].dropna()
-                          if str(valor).strip() and str(valor).strip().lower() != 'nan'})
-
         if request.method == 'GET':
-            guardados = _cables_sin_agrupar_series(archivo)
-            return jsonify({
-                'success': True,
-                'codigos': codigos,
-                'excepciones': sorted(guardados.intersection(codigos)),
-            })
+            return jsonify({'success': True, 'agrupar_series': _series_activas(archivo)})
 
-        excepciones = data.get('excepciones')
-        if not isinstance(excepciones, list):
-            return jsonify({'success': False, 'message': 'La selección de códigos no es válida'}), 400
-        seleccionados = {str(valor).strip() for valor in excepciones}
-        if not seleccionados.issubset(set(codigos)):
-            return jsonify({'success': False, 'message': 'La selección contiene códigos que no pertenecen al archivo'}), 400
+        agrupar_series = data.get('agrupar_series')
+        if not isinstance(agrupar_series, bool):
+            return jsonify({'success': False, 'message': 'Indica si se agrupan las series'}), 400
 
-        anteriores = _cables_sin_agrupar_series(archivo)
+        anterior = _series_activas(archivo)
         with db.engine.begin() as conn:
             conn.execute(text(
-                "DELETE FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
+                "DELETE FROM agrupacion_series_config WHERE archivo_excel = :archivo"
             ), {'archivo': archivo})
-            for cod_cable in sorted(seleccionados):
-                conn.execute(text(
-                    "INSERT INTO agrupacion_series_excepciones (archivo_excel, cod_cable) "
-                    "VALUES (:archivo, :cod_cable)"
-                ), {'archivo': archivo, 'cod_cable': cod_cable})
+            conn.execute(text(
+                "INSERT INTO agrupacion_series_config (archivo_excel, series_activas) "
+                "VALUES (:archivo, :activas)"
+            ), {'archivo': archivo, 'activas': int(agrupar_series)})
 
         try:
             total = _regenerar_etiquetas_archivo(archivo, excel_path)
         except Exception:
             with db.engine.begin() as conn:
                 conn.execute(text(
-                    "DELETE FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
-                ), {'archivo': archivo})
-                for cod_cable in sorted(anteriores):
-                    conn.execute(text(
-                        "INSERT INTO agrupacion_series_excepciones (archivo_excel, cod_cable) "
-                        "VALUES (:archivo, :cod_cable)"
-                    ), {'archivo': archivo, 'cod_cable': cod_cable})
+                    "UPDATE agrupacion_series_config SET series_activas = :activas "
+                    "WHERE archivo_excel = :archivo"
+                ), {'archivo': archivo, 'activas': int(anterior)})
             raise
 
-        return jsonify({'success': True, 'excepciones': sorted(seleccionados), 'total_etiquetas': total})
+        return jsonify({
+            'success': True,
+            'agrupar_series': agrupar_series,
+            'total_etiquetas': total,
+        })
     except ValueError as e:
         return jsonify({'success': False, 'message': str(e)}), 400
     except Exception as e:
-        return error_interno(e, 'Error al guardar la agrupación por series')
+        return error_interno(e, 'Error al guardar la configuración de series')
 
 
 @bp.route('/api/etiquetas/regenerar', methods=['POST'])
@@ -843,7 +827,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     #    dejaba el archivo sin ninguna etiqueta, y engastado daba el terminal
     #    por completado porque no encontraba paquetes.)
     df = leer_excel_cacheado(excel_path)
-    cables_sin_agrupar_series = _cables_sin_agrupar_series(archivo)
+    series_activas = _series_activas(archivo)
 
     if 'Cod. cable' not in df.columns or 'De Elemento Etiquetas' not in df.columns:
         raise ValueError('El archivo no tiene las columnas requeridas (Cod. cable, De Elemento Etiquetas)')
@@ -886,7 +870,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
         sc        = str(row['_sc']).strip()
-        if sc and cod_cable not in cables_sin_agrupar_series:
+        if sc and series_activas:
             if sc not in series_dict_r:
                 series_dict_r[sc] = []
                 series_orden_r.append(sc)
@@ -945,7 +929,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     for cod_cable, elemento, row_data in individuales_r.values():
         mask = ((df['Cod. cable'].astype(str) == cod_cable) &
                 (df['De Elemento Etiquetas'].astype(str).str.strip() == elemento))
-        if cod_cable not in cables_sin_agrupar_series:
+        if series_activas:
             mask &= df['_sc'] == ''
         nc = int(mask.sum())
         desc, sec, lon, det = _get_cols_r(row_data)

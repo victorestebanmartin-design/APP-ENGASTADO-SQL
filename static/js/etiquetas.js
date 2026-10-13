@@ -6,8 +6,6 @@
 let gruposCargados = [];
 let archivoSeleccionado = null;
 let codigoCorteActual = "";
-let codigosSeries = [];
-let excepcionesSeries = new Set();
 
 /**
  * Inicialización al cargar la página
@@ -17,83 +15,49 @@ document.addEventListener('DOMContentLoaded', function() {
     cargarListaArchivos();
     document.getElementById('archivo_excel').addEventListener('change', function() {
         if (this.value) {
-            cargarExcepcionesSeries(this.value);
+            cargarConfiguracionSeries(this.value);
         } else {
-            document.getElementById('series_excepciones_config').style.display = 'none';
+            document.getElementById('configuracion_series').style.display = 'none';
         }
     });
-    document.getElementById('filtro_codigos_series').addEventListener('input', mostrarCodigosSeries);
 });
 
-async function cargarExcepcionesSeries(archivo) {
-    const info = document.getElementById('series_excepciones_info');
+async function cargarConfiguracionSeries(archivo) {
+    const info = document.getElementById('series_config_info');
     const boton = document.getElementById('btn_guardar_series');
-    document.getElementById('series_excepciones_config').style.display = 'block';
+    document.getElementById('configuracion_series').style.display = 'block';
     boton.disabled = true;
-    info.textContent = 'Cargando códigos...';
+    info.textContent = 'Cargando opción...';
     try {
-        const response = await fetch(`/api/etiquetas/series_excepciones?archivo=${encodeURIComponent(archivo)}`);
+        const response = await fetch(`/api/etiquetas/configuracion_series?archivo=${encodeURIComponent(archivo)}`);
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'No se pudieron cargar los códigos');
-        codigosSeries = data.codigos || [];
-        excepcionesSeries = new Set(data.excepciones || []);
-        mostrarCodigosSeries();
+        if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo cargar la opción');
+        document.getElementById('agrupar_series').checked = data.agrupar_series;
+        info.textContent = data.agrupar_series ? 'Series activas' : 'Series desactivadas';
         boton.disabled = false;
-        info.textContent = `${excepcionesSeries.size} códigos seleccionados`;
+        info.textContent = '';
     } catch (error) {
-        codigosSeries = [];
-        mostrarCodigosSeries();
         info.textContent = error.message;
     }
 }
 
-function mostrarCodigosSeries() {
-    const lista = document.getElementById('lista_codigos_series');
-    const filtro = document.getElementById('filtro_codigos_series').value.trim().toLowerCase();
-    lista.replaceChildren();
-    const visibles = codigosSeries.filter(codigo => codigo.toLowerCase().includes(filtro));
-    if (!visibles.length) {
-        const vacio = document.createElement('small');
-        vacio.textContent = codigosSeries.length ? 'No hay coincidencias.' : 'No se encontraron códigos en este archivo.';
-        lista.appendChild(vacio);
-        return;
-    }
-    visibles.forEach((codigo, indice) => {
-        const etiqueta = document.createElement('label');
-        etiqueta.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 2px;cursor:pointer;';
-        const casilla = document.createElement('input');
-        casilla.type = 'checkbox';
-        casilla.value = codigo;
-        casilla.checked = excepcionesSeries.has(codigo);
-        casilla.id = `codigo_serie_${indice}`;
-        casilla.addEventListener('change', function() {
-            if (this.checked) excepcionesSeries.add(codigo);
-            else excepcionesSeries.delete(codigo);
-            document.getElementById('series_excepciones_info').textContent =
-                `${excepcionesSeries.size} códigos seleccionados`;
-        });
-        const texto = document.createElement('span');
-        texto.textContent = codigo;
-        etiqueta.htmlFor = casilla.id;
-        etiqueta.append(casilla, texto);
-        lista.appendChild(etiqueta);
-    });
-}
-
-async function guardarExcepcionesSeries() {
+async function guardarConfiguracionSeries() {
     const archivo = document.getElementById('archivo_excel').value;
     const boton = document.getElementById('btn_guardar_series');
-    const info = document.getElementById('series_excepciones_info');
+    const info = document.getElementById('series_config_info');
     boton.disabled = true;
     info.textContent = 'Guardando y actualizando etiquetas...';
     try {
-        const response = await fetch('/api/etiquetas/series_excepciones', {
+        const response = await fetch('/api/etiquetas/configuracion_series', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ archivo, excepciones: [...excepcionesSeries] })
+            body: JSON.stringify({
+                archivo,
+                agrupar_series: document.getElementById('agrupar_series').checked,
+            })
         });
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo guardar la selección');
+        if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo guardar la opción');
         info.textContent = `Guardado. ${data.total_etiquetas} etiquetas actualizadas.`;
         await cargarGrupos();
     } catch (error) {
