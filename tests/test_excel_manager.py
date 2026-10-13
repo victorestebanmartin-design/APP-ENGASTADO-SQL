@@ -131,6 +131,27 @@ class TestAgrupacion:
         # Sin serie, la clave sigue siendo cable|elemento
         assert '640C10023|K3.1' in grupos
 
+    def test_codigo_excluido_se_agrupa_sin_separar_series(self):
+        filas = [
+            _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
+                     'Cable / Marca': '1', 'Series': 'S01'}),
+            _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
+                     'Cable / Marca': '2', 'Series': 'S02'}),
+            _fila(**{'Cod. cable': 'CABLE-2', 'De Terminal': '640204',
+                     'Cable / Marca': '3', 'Series': 'S01'}),
+            _fila(**{'Cod. cable': 'CABLE-2', 'De Terminal': '640204',
+                     'Cable / Marca': '4', 'Series': 'S02'}),
+        ]
+
+        grupos = self.em.agrupar_por_cable_elemento(
+            filas, '640204', cables_sin_agrupar_series={'CABLE-1'}
+        )
+
+        assert grupos['CABLE-1|TB1']['cables_de_terminal'] == ['1', '2']
+        assert grupos['CABLE-1|TB1']['serie_col'] == ''
+        assert grupos['CABLE-2|TB1|S01']['cables_de_terminal'] == ['3']
+        assert grupos['CABLE-2|TB1|S02']['cables_de_terminal'] == ['4']
+
     def test_cables_numericos_ordenados_antes_que_texto(self):
         filas = [
             _fila(**{'De Terminal': '640204', 'Cable / Marca': 'A1'}),
@@ -267,6 +288,48 @@ class TestCargaExcel:
         assert series['202']['sub_paquetes'][0]['detalles_cables']['de'][0]['longitud'] == 150
         sueltos = [p for p in d['paquetes'] if not p.get('es_grupo')]
         assert [p['cables_de_terminal'] for p in sueltos] == [['1202']]
+
+    def test_excepcion_de_series_se_aplica_a_engastado_y_etiquetas(self, client, app):
+        import os
+        df = pd.DataFrame([
+            _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
+                     'Cable / Marca': '1', 'Series': 'S01'}),
+            _fila(**{'Cod. cable': 'CABLE-1', 'De Terminal': '640204',
+                     'Cable / Marca': '2', 'Series': 'S02'}),
+            _fila(**{'Cod. cable': 'CABLE-2', 'De Terminal': '640204',
+                     'Cable / Marca': '3', 'Series': 'S01'}),
+            _fila(**{'Cod. cable': 'CABLE-2', 'De Terminal': '640204',
+                     'Cable / Marca': '4', 'Series': 'S02'}),
+        ])
+        ruta = os.path.join(app.config['UPLOAD_FOLDER'], 'excepciones.xlsx')
+        df.to_excel(ruta, sheet_name='Format', index=False)
+
+        disponibles = client.get(
+            '/api/etiquetas/series_excepciones?archivo=excepciones.xlsx'
+        ).get_json()
+        assert disponibles['codigos'] == ['CABLE-1', 'CABLE-2']
+
+        guardado = client.post('/api/etiquetas/series_excepciones', json={
+            'archivo': 'excepciones.xlsx', 'excepciones': ['CABLE-1'],
+        }).get_json()
+        assert guardado['success'], guardado
+
+        datos = client.get(
+            '/api/datos_trabajo_v3?archivo=excepciones.xlsx&terminal=640204'
+        ).get_json()
+        sueltos = [p for p in datos['paquetes'] if not p.get('es_grupo')]
+        series = [p for p in datos['paquetes'] if p.get('es_grupo')]
+        assert [p['cables_de_terminal'] for p in sueltos] == [['1', '2']]
+        assert all(sub['cod_cable'] == 'CABLE-2'
+                   for grupo in series for sub in grupo['sub_paquetes'])
+
+        etiquetas = client.post('/api/etiquetas/cargar_grupos', json={
+            'archivo': 'excepciones.xlsx',
+        }).get_json()
+        etiquetas_excepcion = [g for g in etiquetas['grupos'] if g['cod_cable'] == 'CABLE-1']
+        assert len(etiquetas_excepcion) == 1
+        assert etiquetas_excepcion[0]['grupo_serie'] is None
+        assert etiquetas_excepcion[0]['num_cables'] == 2
 
     def test_archivo_inexistente_devuelve_false(self):
         em = ExcelManager('/tmp')

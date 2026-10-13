@@ -211,7 +211,12 @@ class ExcelManager:
         
         return df.to_dict('records')
     
-    def agrupar_por_cable_elemento(self, resultados: List[Dict], terminal_buscado: str) -> Dict:
+    def agrupar_por_cable_elemento(
+        self,
+        resultados: List[Dict],
+        terminal_buscado: str,
+        cables_sin_agrupar_series: Optional[set] = None,
+    ) -> Dict:
         """
         Agrupar resultados por código de cable y elemento (De Elemento)
         
@@ -231,6 +236,7 @@ class ExcelManager:
         if not resultados:
             return {}
         
+        cables_sin_agrupar_series = cables_sin_agrupar_series or set()
         grupos = {}
         
         # Helper para evitar NaN/None
@@ -287,6 +293,8 @@ class ExcelManager:
             # clave, todos sus cables acaban en el paquete de la primera fila y
             # engastado enseña en una serie cables que no son suyos.
             serie = _serie_str(row.get('Series'))
+            if _safe_str(cod_cable).strip() in cables_sin_agrupar_series:
+                serie = ''
             clave = f"{cod_cable}|{de_elemento}" + (f"|{serie}" if serie else '')
 
             if clave not in grupos:

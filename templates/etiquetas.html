@@ -335,6 +335,17 @@
           </button>
         </div>
       </div>
+
+      <div id="series_excepciones_config" style="display: none; margin-top: 18px;">
+        <label for="filtro_codigos_series">Códigos que no se agrupan por series</label>
+        <p style="color: #666; margin: 6px 0 10px;">Los códigos seleccionados se agruparán por cable y elemento, como los cables sin serie. Al guardar se actualizarán las etiquetas de este archivo.</p>
+        <input id="filtro_codigos_series" type="search" placeholder="Filtrar Cod. cable..." autocomplete="off">
+        <div id="lista_codigos_series" style="max-height: 220px; overflow-y: auto; margin: 8px 0; padding: 8px; border: 1px solid #ccc;"></div>
+        <button class="btn-secondary btn-icon" id="btn_guardar_series" onclick="guardarExcepcionesSeries()" disabled>
+          <span>💾</span> Guardar selección
+        </button>
+        <small id="series_excepciones_info" style="margin-left: 10px;"></small>
+      </div>
     </div>
 
     <!-- Información de grupos cargados -->

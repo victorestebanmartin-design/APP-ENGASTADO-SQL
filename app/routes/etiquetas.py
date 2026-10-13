@@ -714,6 +714,82 @@ def api_etiquetas_grupos_bono(nombre_bono):
         return error_interno(e, 'Error al cargar etiquetas del bono', status=200)
 
 
+def _cables_sin_agrupar_series(archivo: str) -> set:
+    with db.engine.connect() as conn:
+        filas = conn.execute(text(
+            "SELECT cod_cable FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
+        ), {'archivo': archivo}).fetchall()
+    return {str(fila[0]).strip() for fila in filas}
+
+
+@bp.route('/api/etiquetas/series_excepciones', methods=['GET', 'POST'])
+def api_etiquetas_series_excepciones():
+    """Consultar o guardar los códigos que no se agrupan por series en un Excel."""
+    try:
+        data = request.get_json(silent=True) or {}
+        archivo = (request.args.get('archivo') if request.method == 'GET'
+                   else data.get('archivo', '')).strip()
+        if not archivo:
+            return jsonify({'success': False, 'message': 'Falta nombre de archivo'}), 400
+
+        excel_path = _ruta_upload_segura(archivo)
+        if not excel_path or not os.path.isfile(excel_path):
+            return jsonify({'success': False, 'message': 'Archivo no encontrado'}), 404
+
+        df = leer_excel_cacheado(excel_path)
+        if 'Cod. cable' not in df.columns:
+            return jsonify({'success': False, 'message': 'El archivo no tiene la columna Cod. cable'}), 400
+
+        codigos = sorted({str(valor).strip() for valor in df['Cod. cable'].dropna()
+                          if str(valor).strip() and str(valor).strip().lower() != 'nan'})
+
+        if request.method == 'GET':
+            guardados = _cables_sin_agrupar_series(archivo)
+            return jsonify({
+                'success': True,
+                'codigos': codigos,
+                'excepciones': sorted(guardados.intersection(codigos)),
+            })
+
+        excepciones = data.get('excepciones')
+        if not isinstance(excepciones, list):
+            return jsonify({'success': False, 'message': 'La selección de códigos no es válida'}), 400
+        seleccionados = {str(valor).strip() for valor in excepciones}
+        if not seleccionados.issubset(set(codigos)):
+            return jsonify({'success': False, 'message': 'La selección contiene códigos que no pertenecen al archivo'}), 400
+
+        anteriores = _cables_sin_agrupar_series(archivo)
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "DELETE FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
+            ), {'archivo': archivo})
+            for cod_cable in sorted(seleccionados):
+                conn.execute(text(
+                    "INSERT INTO agrupacion_series_excepciones (archivo_excel, cod_cable) "
+                    "VALUES (:archivo, :cod_cable)"
+                ), {'archivo': archivo, 'cod_cable': cod_cable})
+
+        try:
+            total = _regenerar_etiquetas_archivo(archivo, excel_path)
+        except Exception:
+            with db.engine.begin() as conn:
+                conn.execute(text(
+                    "DELETE FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
+                ), {'archivo': archivo})
+                for cod_cable in sorted(anteriores):
+                    conn.execute(text(
+                        "INSERT INTO agrupacion_series_excepciones (archivo_excel, cod_cable) "
+                        "VALUES (:archivo, :cod_cable)"
+                    ), {'archivo': archivo, 'cod_cable': cod_cable})
+            raise
+
+        return jsonify({'success': True, 'excepciones': sorted(seleccionados), 'total_etiquetas': total})
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except Exception as e:
+        return error_interno(e, 'Error al guardar la agrupación por series')
+
+
 @bp.route('/api/etiquetas/regenerar', methods=['POST'])
 @requiere_pin_admin
 def api_etiquetas_regenerar():
@@ -767,6 +843,7 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
     #    dejaba el archivo sin ninguna etiqueta, y engastado daba el terminal
     #    por completado porque no encontraba paquetes.)
     df = leer_excel_cacheado(excel_path)
+    cables_sin_agrupar_series = _cables_sin_agrupar_series(archivo)
 
     if 'Cod. cable' not in df.columns or 'De Elemento Etiquetas' not in df.columns:
         raise ValueError('El archivo no tiene las columnas requeridas (Cod. cable, De Elemento Etiquetas)')
@@ -803,19 +880,19 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
 
     series_dict_r = {}
     series_orden_r = []
-    individuales_r = []
+    individuales_r = {}
 
     for _, row in agrupados.iterrows():
         cod_cable = str(row['Cod. cable'])
         elemento  = str(row['De Elemento Etiquetas']).strip()
         sc        = str(row['_sc']).strip()
-        if sc:
+        if sc and cod_cable not in cables_sin_agrupar_series:
             if sc not in series_dict_r:
                 series_dict_r[sc] = []
                 series_orden_r.append(sc)
             series_dict_r[sc].append((cod_cable, elemento, row))
         else:
-            individuales_r.append((cod_cable, elemento, row))
+            individuales_r.setdefault((cod_cable, elemento), (cod_cable, elemento, row))
 
     def _get_cols_r(row_data):
         desc = str(row_data.get('Descripción Cable', row_data.get('Descripción', '')))
@@ -865,10 +942,11 @@ def _regenerar_etiquetas_archivo(archivo: str, excel_path: str) -> int:
             })
         numero_etiqueta += 1
 
-    for cod_cable, elemento, row_data in individuales_r:
-        mask = ((df['Cod. cable'] == cod_cable) &
-                (df['De Elemento Etiquetas'] == elemento) &
-                (df['_sc'] == ''))
+    for cod_cable, elemento, row_data in individuales_r.values():
+        mask = ((df['Cod. cable'].astype(str) == cod_cable) &
+                (df['De Elemento Etiquetas'].astype(str).str.strip() == elemento))
+        if cod_cable not in cables_sin_agrupar_series:
+            mask &= df['_sc'] == ''
         nc = int(mask.sum())
         desc, sec, lon, det = _get_cols_r(row_data)
         grupos_generados.append({

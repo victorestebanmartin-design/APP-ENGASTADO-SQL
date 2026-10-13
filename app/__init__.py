@@ -17,6 +17,15 @@ def _apply_migrations(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS agrupacion_series_excepciones (
+            archivo_excel TEXT NOT NULL,
+            cod_cable TEXT NOT NULL,
+            PRIMARY KEY (archivo_excel, cod_cable)
+        )
+    """)
+    conn.commit()
+
     # Obtener columnas actuales de etiquetas_elementos
     cur.execute("PRAGMA table_info(etiquetas_elementos)")
     cols = {row[1] for row in cur.fetchall()}

@@ -82,8 +82,16 @@ def datos_trabajo_v3():
                 'message': f'Terminal {terminal} no encontrado en el archivo'
             })
         
-        # Agrupar por cable y elemento
-        grupos = manager.agrupar_por_cable_elemento(resultados, terminal)
+        # Agrupar por cable y elemento, respetando las excepciones de series
+        # configuradas para este archivo.
+        with db.engine.connect() as conn:
+            filas_excepcion = conn.execute(text(
+                "SELECT cod_cable FROM agrupacion_series_excepciones WHERE archivo_excel = :archivo"
+            ), {'archivo': archivo}).fetchall()
+        cables_sin_agrupar_series = {str(fila[0]).strip() for fila in filas_excepcion}
+        grupos = manager.agrupar_por_cable_elemento(
+            resultados, terminal, cables_sin_agrupar_series=cables_sin_agrupar_series
+        )
 
         # La cantidad de la orden multiplica los cables/terminales por unidad:
         # el Excel de despiece describe UNA unidad del arnés, pero si la orden
