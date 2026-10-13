@@ -305,6 +305,7 @@ class ExcelManager:
                     'cables_doble_terminal': [],  # ROJO: terminal en ambos lados
                     'cables_de_terminal': [],     # AZUL: terminal solo en "De Terminal"
                     'cables_para_terminal': [],   # VERDE: terminal solo en "Para Terminal"
+                    'detalles_cables': {'de': [], 'para': [], 'doble': []},
                     'num_terminales': 0,
                     'serie_col': serie,
                 }
@@ -318,6 +319,18 @@ class ExcelManager:
                 tiene_origen = de_terminal_upper == terminal_buscado_upper
                 tiene_destino = para_terminal_upper == terminal_buscado_upper
                 es_doble_en_esta_fila = tiene_origen and tiene_destino
+                engastar_de = tiene_origen and not de_no_poner
+                engastar_para = tiene_destino and not para_no_poner
+                if engastar_de or engastar_para:
+                    lado = 'doble' if engastar_de and engastar_para else 'de' if engastar_de else 'para'
+                    grupos[clave]['detalles_cables'][lado].append({
+                        'cable': cable_marca,
+                        'origen': _safe_str(row.get('De Elemento', '')),
+                        'origen_punto': _safe_str(row.get('De Punto Conexión', row.get('De Punto Conexion', row.get('De Punto', '')))),
+                        'destino': _safe_str(row.get('Para Elemento', '')),
+                        'destino_punto': _safe_str(row.get('Para Punto Conexión', row.get('Para Punto Conexion', row.get('Para Punto', '')))),
+                        'longitud': _safe_num(row.get('Longitud', '')),
+                    })
                 
                 # Agregar cable a la lista
                 grupos[clave]['cables_lista'].append(cable_marca)

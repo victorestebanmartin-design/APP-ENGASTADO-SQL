@@ -123,6 +123,7 @@ def datos_trabajo_v3():
                 'cables_doble_terminal': grupo.get('cables_doble_terminal', []),
                 'cables_de_terminal': grupo.get('cables_de_terminal', []),
                 'cables_para_terminal': grupo.get('cables_para_terminal', []),
+                'detalles_cables': grupo.get('detalles_cables', {}),
                 'archivo_excel': archivo,  # para lookup de etiqueta correcto por archivo
                 'serie_col': grupo.get('serie_col', ''),
                 'cantidad_orden': cantidad_orden,

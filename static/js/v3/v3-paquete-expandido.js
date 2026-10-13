@@ -2,6 +2,15 @@
 // Parte del antiguo main-v3.js (troceado sin cambios de código).
 // Los ficheros v3-*.js comparten el ámbito global y se cargan en orden desde index-v3.html.
 
+function atributosIdentificacionCable(paquete, lado, indice, cable) {
+    const detalle = paquete.detalles_cables?.[lado]?.[indice];
+    if (!detalle || String(detalle.cable) !== String(cable)) return '';
+    const extremo = (elemento, punto) => [elemento, punto].filter(valor => valor !== '' && valor != null).join(' / ') || 'Sin dato';
+    const texto = `Origen: ${extremo(detalle.origen, detalle.origen_punto)}\nDestino: ${extremo(detalle.destino, detalle.destino_punto)}\nLongitud: ${detalle.longitud === '' || detalle.longitud == null ? 'Sin dato' : detalle.longitud}`;
+    const escapado = texto.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `title="${escapado}"`;
+}
+
 async function mostrarPaqueteExpandido() {
     // Asegurar que no hay fullscreen residual
     document.getElementById('area-trabajo')?.classList.remove('fullscreen-engaste');
@@ -119,7 +128,7 @@ async function mostrarPaqueteExpandido() {
                         <span style="background:#2196f3;color:white;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;">${cablesDe.length}</span>
                     </div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                        ${cablesDe.map(c => `<span style="background:#bbdefb;color:#0d2a4a;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #64b5f6;">${c}</span>`).join('')}
+                        ${cablesDe.map((c, indice) => `<span ${atributosIdentificacionCable(sub, 'de', indice, c)} style="background:#bbdefb;color:#0d2a4a;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #64b5f6;">${c}</span>`).join('')}
                     </div>
                     <div style="margin-top:8px;padding:6px 10px;background:rgba(33,150,243,0.12);border-radius:6px;display:flex;align-items:center;gap:6px;">
                         <span style="font-size:1em;">✅</span>
@@ -134,7 +143,7 @@ async function mostrarPaqueteExpandido() {
                         <span style="background:#c8e6c9;color:#1b5e20;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;border:1.5px solid #81c784;">${cablesPara.length}</span>
                     </div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                        ${cablesPara.map(c => `<span style="background:#c8e6c9;color:#1b5e20;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #81c784;">${c}</span>`).join('')}
+                        ${cablesPara.map((c, indice) => `<span ${atributosIdentificacionCable(sub, 'para', indice, c)} style="background:#c8e6c9;color:#1b5e20;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #81c784;">${c}</span>`).join('')}
                     </div>
                     <div style="margin-top:8px;padding:6px 10px;background:rgba(76,175,80,0.15);border-radius:6px;display:flex;align-items:center;gap:6px;">
                         <span style="font-size:1em;">✂️</span>
@@ -149,7 +158,7 @@ async function mostrarPaqueteExpandido() {
                         <span style="background:#ffcdd2;color:#7f0000;padding:2px 10px;border-radius:10px;font-size:0.9em;font-weight:bold;margin-left:auto;border:1.5px solid #e57373;">${cablesAmb.length}</span>
                     </div>
                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                        ${cablesAmb.map(c => `<span style="background:#ffcdd2;color:#7f0000;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #e57373;">${c}</span>`).join('')}
+                        ${cablesAmb.map((c, indice) => `<span ${atributosIdentificacionCable(sub, 'doble', indice, c)} style="background:#ffcdd2;color:#7f0000;padding:7px 14px;border-radius:8px;font-weight:900;font-size:1em;border:1.5px solid #e57373;">${c}</span>`).join('')}
                     </div>
                 </div>` : ''}
                 ${(!cablesDe.length && !cablesPara.length && !cablesAmb.length) ? '<span style="color:#6c757d;font-size:0.9em;">Sin cables clasificados</span>' : ''}
@@ -293,8 +302,8 @@ async function mostrarPaqueteExpandido() {
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            ${cablesDeTerminal.map(cable => 
-                                `<span class="cable-badge" style="background: #bbdefb; color: #0d2a4a; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #64b5f6;">${cable}</span>`
+                            ${cablesDeTerminal.map((cable, indice) =>
+                                `<span class="cable-badge" ${atributosIdentificacionCable(paquete, 'de', indice, cable)} style="background: #bbdefb; color: #0d2a4a; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #64b5f6;">${cable}</span>`
                             ).join('')}
                         </div>
                         <div style="margin-top: 10px; padding: 7px 12px; background: rgba(33,150,243,0.12); border-radius: 7px; display: flex; align-items: center; gap: 7px;">
@@ -314,8 +323,8 @@ async function mostrarPaqueteExpandido() {
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            ${cablesParaTerminal.map(cable => 
-                                `<span class="cable-badge" style="background: #c8e6c9; color: #1b5e20; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #81c784;">${cable}</span>`
+                            ${cablesParaTerminal.map((cable, indice) =>
+                                `<span class="cable-badge" ${atributosIdentificacionCable(paquete, 'para', indice, cable)} style="background: #c8e6c9; color: #1b5e20; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #81c784;">${cable}</span>`
                             ).join('')}
                         </div>
                         <div style="margin-top: 10px; padding: 7px 12px; background: rgba(76,175,80,0.15); border-radius: 7px; display: flex; align-items: center; gap: 7px;">
@@ -335,8 +344,8 @@ async function mostrarPaqueteExpandido() {
                             </span>
                         </div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            ${cablesAmbos.map(cable => 
-                                `<span class="cable-badge" style="background: #ffcdd2; color: #7f0000; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #e57373;">${cable}</span>`
+                            ${cablesAmbos.map((cable, indice) =>
+                                `<span class="cable-badge" ${atributosIdentificacionCable(paquete, 'doble', indice, cable)} style="background: #ffcdd2; color: #7f0000; padding: 9px 16px; border-radius: 8px; font-weight: 900; font-size: 1.1em; border: 1.5px solid #e57373;">${cable}</span>`
                             ).join('')}
                         </div>
                     </div>

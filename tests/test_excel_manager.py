@@ -141,6 +141,39 @@ class TestAgrupacion:
         g = list(grupos.values())[0]
         assert g['todos_cables'] == ['3', '20', 'A1']
 
+    def test_detalles_distinguen_cables_repetidos_en_la_misma_serie(self):
+        filas = [
+            _fila(**{'De Terminal': '640204', 'Series': 'S01', 'De Elemento': 'X1',
+                     'De Punto': '1', 'Para Elemento': 'X2', 'Para Punto': '2', 'Longitud': 150}),
+            _fila(**{'De Terminal': '640204', 'Series': 'S01', 'De Elemento': 'X3',
+                     'De Punto Conexión': '3', 'Para Elemento': 'X4',
+                     'Para Punto Conexión': '4', 'Longitud': 320}),
+        ]
+        grupo = self.em.agrupar_por_cable_elemento(filas, '640204')['640C10023|TB1|S01']
+        assert grupo['cables_de_terminal'] == ['101', '101']
+        assert grupo['detalles_cables']['de'] == [
+            {'cable': '101', 'origen': 'X1', 'origen_punto': '1',
+             'destino': 'X2', 'destino_punto': '2', 'longitud': 150},
+            {'cable': '101', 'origen': 'X3', 'origen_punto': '3',
+             'destino': 'X4', 'destino_punto': '4', 'longitud': 320},
+        ]
+        assert grupo['num_terminales'] == 2
+
+    @pytest.mark.parametrize('de,para,lado', [
+        ('TB1', 'X2', 'doble'), ('TB1*', 'X2', 'para'), ('TB1', 'X2*', 'de'),
+        ('TB1*', 'X2*', None),
+    ])
+    def test_detalles_respetan_lado_y_asteriscos(self, de, para, lado):
+        filas = [_fila(**{'De Terminal': '640204', 'Para Terminal': '640204',
+                         'De Elemento': de, 'Para Elemento': para,
+                         'De Punto': float('nan'), 'Longitud': float('nan')})]
+        grupo = next(iter(self.em.agrupar_por_cable_elemento(filas, '640204').values()))
+        for categoria, detalles in grupo['detalles_cables'].items():
+            assert len(detalles) == (1 if categoria == lado else 0)
+            if detalles:
+                assert detalles[0]['origen_punto'] == ''
+                assert detalles[0]['longitud'] == ''
+
 
 class TestBuscarTerminal:
     def test_encuentra_en_ambas_columnas_sin_distincion_de_mayusculas(self):
@@ -208,6 +241,8 @@ class TestCargaExcel:
         paquetes = {p['elemento']: p for p in d['paquetes']}
         assert paquetes['TB1']['cables_de_terminal'] == ['1', '2']
         assert paquetes['TB9']['cables_para_terminal'] == ['5']
+        assert [d['cable'] for d in paquetes['TB1']['detalles_cables']['de']] == ['1', '2']
+        assert paquetes['TB9']['detalles_cables']['para'][0]['origen'] == 'TB9'
 
     def test_serie_solo_muestra_sus_cables(self, admin_client, app):
         """Engastado: la serie 202 no puede traer cables de K3.1 que van en
@@ -229,6 +264,7 @@ class TestCargaExcel:
         series = {p['grupo_serie']: p for p in d['paquetes'] if p.get('es_grupo')}
         assert series['202']['cables_de_terminal'] == ['202']
         assert series['408']['cables_de_terminal'] == ['408']
+        assert series['202']['sub_paquetes'][0]['detalles_cables']['de'][0]['longitud'] == 150
         sueltos = [p for p in d['paquetes'] if not p.get('es_grupo')]
         assert [p['cables_de_terminal'] for p in sueltos] == [['1202']]
 
