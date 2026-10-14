@@ -1,5 +1,10 @@
 """
-Protección del módulo de administración mediante PIN.
+Protección de Administración mediante operario y contraseña personal.
+
+El permiso es el módulo 'admin' de cada operario. El PIN compartido queda
+como acceso de recuperación; no identifica un responsable para aprobar
+propuestas. Las sesiones personales se invalidan al cambiar la contraseña,
+desactivar al operario o retirar el permiso de Administración.
 
 La primera vez que se usa un PC, no hay PIN configurado todavía: en vez de
 dejar pasar (como antes), el decorador obliga a fijar uno en
@@ -15,10 +20,12 @@ import os
 import json
 import hashlib
 import hmac
+import time
 from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import session, redirect, url_for, request, jsonify, current_app
+from werkzeug.security import check_password_hash
 
 # Claves usadas dentro de la sesión de Flask
 SESSION_KEY = 'admin_verificado'
@@ -90,19 +97,72 @@ def sesion_admin_valida():
     horas = current_app.config.get('ADMIN_SESSION_HOURS', 8)
     if datetime.now() - inicio > timedelta(hours=horas):
         return False
+    if session.get('admin_operario_id') and not _administrador_guardado():
+        return False
     return True
 
 
-def marcar_sesion_admin():
+def _administrador_guardado():
+    from app.routes.base import db, modulos_permitidos_de
+    from sqlalchemy import text
+    with db.engine.connect() as conn:
+        operario = conn.execute(text(
+            'SELECT id, nombre, modulos_permitidos, clave_personal_hash FROM operarios WHERE id=:id AND activo=1'
+        ), {'id': session.get('admin_operario_id')}).mappings().first()
+    if not operario or 'admin' not in (modulos_permitidos_de(operario['modulos_permitidos']) or set()):
+        return None
+    clave_hash = operario['clave_personal_hash']
+    if not clave_hash or session.get('admin_credencial') != hashlib.sha256(clave_hash.encode()).hexdigest():
+        return None
+    return operario
+
+
+def administrador_actual():
+    if session.get('admin_operario_id') and sesion_admin_valida():
+        return _administrador_guardado()
+    return None
+
+
+def verificar_credenciales_personales(identificador, clave):
+    from app.routes.base import db
+    from sqlalchemy import text
+    if not isinstance(identificador, str) or len(identificador) > 128 or not isinstance(clave, str) or len(clave) > 256:
+        return None
+    with db.engine.begin() as conn:
+        conn.exec_driver_sql('BEGIN IMMEDIATE')
+        operario = conn.execute(text('SELECT * FROM operarios WHERE id=:id AND activo=1'),
+                                {'id': identificador}).mappings().first()
+        if not operario or operario['clave_bloqueada_hasta'] > time.time():
+            return None
+        if not operario['clave_personal_hash'] or not check_password_hash(operario['clave_personal_hash'], clave):
+            intentos = operario['clave_intentos'] + 1
+            conn.execute(text(
+                'UPDATE operarios SET clave_intentos=:intentos, clave_bloqueada_hasta=:hasta WHERE id=:id'
+            ), {'id': identificador, 'intentos': intentos % 5,
+                'hasta': time.time() + 300 if intentos >= 5 else 0})
+            return None
+        conn.execute(text('UPDATE operarios SET clave_intentos=0, clave_bloqueada_hasta=0 WHERE id=:id'),
+                     {'id': identificador})
+        return dict(operario)
+
+
+def marcar_sesion_admin(operario=None):
     """Marca la sesión actual como administración verificada."""
     session[SESSION_KEY] = True
     session[SESSION_TS] = datetime.now().timestamp()
+    session.pop('admin_operario_id', None)
+    session.pop('admin_credencial', None)
+    if operario:
+        session['admin_operario_id'] = operario['id']
+        session['admin_credencial'] = hashlib.sha256(operario['clave_personal_hash'].encode()).hexdigest()
 
 
 def cerrar_sesion_admin():
     """Cierra la sesión de administración."""
     session.pop(SESSION_KEY, None)
     session.pop(SESSION_TS, None)
+    session.pop('admin_operario_id', None)
+    session.pop('admin_credencial', None)
 
 
 def _es_peticion_api():
@@ -111,9 +171,9 @@ def _es_peticion_api():
 
 
 def requiere_pin_admin(f):
-    """Decorador: exige sesión de admin verificada.
+    """Decorador: exige sesión de admin verificada (personal o recuperación).
 
-    - Si esta instalación TODAVÍA no tiene PIN fijado, obliga a configurarlo
+    - Si no hay sesión personal y esta instalación no tiene PIN fijado, obliga a configurarlo
       primero (rutas de API -> 401 JSON; rutas de página -> redirige a
       /admin/pin/configurar). Ya no deja pasar sin más.
     - Si la sesión es válida, deja pasar.
@@ -121,6 +181,8 @@ def requiere_pin_admin(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if sesion_admin_valida():
+            return f(*args, **kwargs)
         if not proteccion_activa():
             if _es_peticion_api():
                 return jsonify({
@@ -128,14 +190,12 @@ def requiere_pin_admin(f):
                     'message': 'Este PC todavía no tiene PIN de administración: configúralo primero'
                 }), 401
             return redirect(url_for('main.admin_pin_configurar'))
-        if sesion_admin_valida():
-            return f(*args, **kwargs)
         if _es_peticion_api():
             return jsonify({
                 'success': False,
                 'message': 'Sesión de administración requerida'
             }), 401
-        return redirect(url_for('main.admin_pin'))
+        return redirect(url_for('main.admin_login'))
     return wrapper
 
 

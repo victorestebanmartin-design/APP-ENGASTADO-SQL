@@ -520,12 +520,14 @@
   document.getElementById('me-save-proposal').addEventListener('click', async function () {
     if (ocupado || !datos || !guardarActual()) return;
     var motivo = document.getElementById('me-motivo').value.trim();
-    if (motivo.length < 5) { mensajeGuardado('Escribe el motivo de la modificacion (al menos 5 caracteres).', true); return; }
+    var motivoCategoria = document.querySelector('[name=me-motivo-categoria]:checked');
+    if (!motivoCategoria) { mensajeGuardado('Selecciona el motivo de la propuesta.', true); return; }
+    if (motivoCategoria.value === 'Otros' && motivo.length < 5) { mensajeGuardado('En Otros escribe el motivo (al menos 5 caracteres).', true); return; }
     bloquear(true);
     try {
       var respuesta = await fetch('/api/mangueras/propuestas', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          archivo: fuente.archivo, revision: datos.revision, cambios: [datos.filas[0]], motivo: motivo
+          archivo: fuente.archivo, revision: datos.revision, cambios: [datos.filas[0]], motivo: motivo, motivo_categoria: motivoCategoria.value
         })
       });
       var resultado = await respuesta.json();
@@ -610,11 +612,14 @@
     document.querySelector('.me-source').hidden = true;
     document.getElementById('me-download').textContent = 'Enviar propuesta...';
     document.getElementById('me-save').textContent = 'Proponer modificacion';
-    fetch('/api/mangueras/identificacion').then(function (respuesta) { return respuesta.json(); }).then(async function (identidad) {
-      if (!identidad.success) identidad = await window.identificarMangueras();
-      if (!identidad) { window.location.href = '/mangueras'; return; }
+    window.identificarMangueras().then(async function (identidad) {
       nombreProponente = identidad.nombre;
       await cargar({ archivo: parametros.get('archivo') });
     }).catch(function (error) { mensaje(error.message, true); });
   }
+  document.querySelectorAll('[name=me-motivo-categoria]').forEach(function (opcion) {
+    opcion.addEventListener('change', function () {
+      document.getElementById('me-motivo').required = opcion.value === 'Otros';
+    });
+  });
 })();

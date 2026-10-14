@@ -5,7 +5,6 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[caracter];
     });
   }
-  var dialogo = document.getElementById('mp-identidad');
   var ultimoPendientes = null;
   async function actualizarContadores() {
     if (!document.querySelector('[data-mangueras-pendientes]')) return;
@@ -23,79 +22,69 @@
   }
   actualizarContadores();
   setInterval(function () { if (document.visibilityState === 'visible') actualizarContadores(); }, 60000);
-  if (!dialogo) return;
-  var promesaIdentidad = null;
-  var resolverIdentidad = null;
-  window.identificarMangueras = function () {
-    if (promesaIdentidad) return promesaIdentidad;
-    promesaIdentidad = new Promise(function (resolve) { resolverIdentidad = resolve; });
-    document.getElementById('mp-identidad-error').textContent = '';
-    document.getElementById('mp-clave').value = '';
-    dialogo.showModal();
-    fetch('/api/operarios').then(function (respuesta) { return respuesta.json(); }).then(function (datos) {
-      document.getElementById('mp-operario').innerHTML = '<option value="">Seleccionar operario</option>' +
-        (datos.operarios || []).filter(function (operario) { return operario.activo && operario.clave_personal_configurada; }).map(function (operario) {
-          return '<option value="' + esc(operario.id) + '">' + esc(operario.nombre) + '</option>';
-        }).join('');
-      if (!document.getElementById('mp-operario').options[1]) {
-        document.getElementById('mp-identidad-error').textContent = 'No hay claves personales configuradas en Admin > Operarios.';
-      }
-    }).catch(function () { document.getElementById('mp-identidad-error').textContent = 'No se pudo cargar la lista de operarios.'; });
-    return promesaIdentidad;
+  window.identificarMangueras = async function () {
+    var respuesta = await fetch('/api/mangueras/identificacion');
+    var datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || 'Entra al modulo con tu sesion de operario.');
+    return datos;
   };
-  dialogo.addEventListener('close', function () {
-    document.getElementById('mp-clave').value = '';
-    if (resolverIdentidad) resolverIdentidad(null);
-    resolverIdentidad = null;
-    promesaIdentidad = null;
-  });
-  document.getElementById('mp-identidad-cancelar').addEventListener('click', function () { dialogo.close(); });
-  document.getElementById('mp-identidad-form').addEventListener('submit', async function (evento) {
-    evento.preventDefault();
-    var boton = evento.target.querySelector('[type=submit]');
-    boton.disabled = true;
-    try {
-      var respuesta = await fetch('/api/mangueras/identificacion', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operario_id: document.getElementById('mp-operario').value, clave: document.getElementById('mp-clave').value })
-      });
-      document.getElementById('mp-clave').value = '';
-      var datos = await respuesta.json();
-      if (!respuesta.ok) throw new Error(datos.error || 'No se pudo identificar.');
-      resolverIdentidad(datos);
-      resolverIdentidad = null;
-      dialogo.close();
-    } catch (error) { document.getElementById('mp-identidad-error').textContent = error.message; }
-    finally { boton.disabled = false; }
-  });
 
-  function instrucciones(inst) {
-    if (!inst) return 'Sin instrucciones';
-    var partes = [];
-    if (inst.pm != null) partes.push('Pelado manguera: ' + inst.pm + ' mm');
-    if (inst.m_cortar) partes.push('Malla: cortar');
-    else if (inst.m_mrs || inst.m_mrc) partes.push('Malla hacia atr\u00e1s ' + (inst.m_mrc ? 'con' : 'sin') + ' retr\u00e1ctil: ' +
-      ((inst.m_mrc ? inst.m_mrc_medida : inst.m_mrs_medida) == null ? 'sin medida' : (inst.m_mrc ? inst.m_mrc_medida : inst.m_mrs_medida) + ' mm'));
-    else partes.push('Pelado malla: ' + (inst.m == null ? 'igual que manguera' : inst.m + ' mm'));
-    if (inst.a_todos != null || !Object.keys(inst.a_especificos || {}).length) {
-      partes.push('Activos: ' + (inst.a_todos == null ? 'igual que manguera' : inst.a_todos + ' mm'));
+  function medidas(inst, retractiles) {
+    inst = inst || {};
+    var malla = inst.m == null ? inst.pm : inst.m;
+    var unidadMalla = 'mm';
+    if (inst.m_cortar) { malla = 'Cortar'; unidadMalla = ''; }
+    else if (inst.m_mrs || inst.m_mrc) {
+      var longitud = inst.m_mrc ? inst.m_mrc_medida : inst.m_mrs_medida;
+      malla = (longitud == null ? 'Sin medida' : longitud + ' mm') + ' hacia atr\u00e1s ' + (inst.m_mrc ? 'con' : 'sin') + ' retr\u00e1ctil';
+      unidadMalla = '';
     }
-    Object.keys(inst.a_especificos || {}).forEach(function (activo) { partes.push('Activo ' + activo + ': ' + inst.a_especificos[activo] + ' mm'); });
-    return partes.concat(inst.otros_tokens || []).join('\n');
-  }
-  function retractiles(lista) { return (lista || []).map(function (item) { return item.codigo + ': ' + item.medida + ' mm'; }).join('\n') || 'Sin retr\u00e1ctiles'; }
-  window.comparacionMangueras = function (original, sugerido) {
-    var campos = [
-      ['Lado De (liso)', instrucciones(original.de), instrucciones(sugerido.de)],
-      ['Lado Para (guion)', instrucciones(original.para), instrucciones(sugerido.para)],
-      ['Retr\u00e1ctiles De', retractiles(original.retractil_de), retractiles(sugerido.retractil_de)],
-      ['Retr\u00e1ctiles Para', retractiles(original.retractil_para), retractiles(sugerido.retractil_para)],
-      ['Observaciones', original.observaciones_mangueras || '', sugerido.observaciones_mangueras || ''],
-      ['Aviso', original.aviso_mangueras || '', sugerido.aviso_mangueras || '']
+    var resultado = [
+      { clave: 'pm', etiqueta: 'Pelado manguera', valor: inst.pm, unidad: 'mm', clase: 'val-pm' },
+      { clave: 'malla', etiqueta: 'Malla', valor: malla, unidad: unidadMalla, clase: 'val-malla' },
+      { clave: 'activos', etiqueta: 'Activos', valor: inst.a_todos == null ? inst.pm : inst.a_todos, unidad: 'mm', clase: 'val-activo' }
     ];
-    return '<div class="mp-comparacion"><table><thead><tr><th>Preparaci\u00f3n</th><th>Original</th><th>Sugerido</th></tr></thead><tbody>' + campos.map(function (campo) {
-      return '<tr><th scope="row">' + esc(campo[0]) + '</th><td>' + esc(campo[1]) + '</td><td>' + esc(campo[2]) + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
+    Object.keys(inst.a_especificos || {}).sort(function (primero, segundo) { return Number(primero) - Number(segundo); }).forEach(function (activo) {
+      resultado.push({ clave: 'activo:' + activo, etiqueta: 'Activo ' + activo, valor: inst.a_especificos[activo], unidad: 'mm', clase: 'val-activo' });
+    });
+    (retractiles || []).forEach(function (retractil, posicion) {
+      resultado.push({ clave: 'retractil:' + posicion, etiqueta: 'Retr\u00e1ctil', valor: retractil.codigo + ' / ' + retractil.medida + ' mm', unidad: '', clase: 'val-retractil' });
+    });
+    if ((inst.otros_tokens || []).length) resultado.push({ clave: 'otros', etiqueta: 'Otras instrucciones', valor: inst.otros_tokens.join(' / '), unidad: '', clase: '' });
+    return resultado;
+  }
+  window.medidasMangueraHtml = function (original, sugerido, lado, soloCambios) {
+    var antes = medidas(original[lado], original['retractil_' + lado]);
+    var despues = medidas(sugerido[lado], sugerido['retractil_' + lado]);
+    var claves = Array.from(new Set(antes.concat(despues).map(function (campo) { return campo.clave; })));
+    return claves.map(function (clave) {
+      var actual = antes.find(function (campo) { return campo.clave === clave; });
+      var propuesto = despues.find(function (campo) { return campo.clave === clave; });
+      if (!actual && clave.indexOf('activo:') === 0) actual = Object.assign({}, propuesto, { valor: antes.find(function (campo) { return campo.clave === 'activos'; }).valor });
+      if (!propuesto && clave.indexOf('activo:') === 0) propuesto = Object.assign({}, actual, { valor: despues.find(function (campo) { return campo.clave === 'activos'; }).valor });
+      var cambio = !actual || !propuesto || actual.valor !== propuesto.valor || actual.unidad !== propuesto.unidad;
+      if (soloCambios && !cambio) return '';
+      var campo = actual || propuesto;
+      var vigente = actual && actual.valor != null ? actual.valor : 'Sin medida';
+      var sugerencia = propuesto && propuesto.valor != null ? propuesto.valor : 'Sin medida';
+      var unidadesIguales = actual && propuesto && actual.unidad === propuesto.unidad;
+      return '<div class="inst-row mp-line"><span class="inst-label">' + esc(campo.etiqueta) + '</span><span>' +
+        '<span class="inst-val ' + esc(campo.clase) + '">' + esc(vigente) + '</span>' +
+        (cambio ? '<span class="mp-sugerido"> (' + esc(sugerencia) + (!unidadesIguales && propuesto ? ' ' + esc(propuesto.unidad) : '') + ')</span>' : '') +
+        '<span class="inst-unit">' + esc(actual ? actual.unidad : '') + '</span></span></div>';
+    }).join('');
+  };
+  window.comparacionMangueras = function (original, sugerido) {
+    var lados = ['de', 'para'].map(function (lado) {
+      var cambios = window.medidasMangueraHtml(original, sugerido, lado, true);
+      return cambios ? '<section class="mp-side"><h3>' + (lado === 'de' ? 'Lado De (liso)' : 'Lado Para (guion)') + '</h3>' + cambios + '</section>' : '';
+    }).join('');
+    var notas = ['observaciones_mangueras', 'aviso_mangueras'].map(function (campo) {
+      if ((original[campo] || '') === (sugerido[campo] || '')) return '';
+      return '<p class="mp-notas"><strong>' + (campo === 'aviso_mangueras' ? 'Aviso' : 'Observaciones') + ':</strong> ' +
+        esc(original[campo] || 'Sin texto') + '<span class="mp-sugerido"> (' + esc(sugerido[campo] || 'Sin texto') + ')</span></p>';
+    }).join('');
+    return '<div class="mp-medidas">' + lados + '</div>' + notas;
   };
 
   var lista = document.getElementById('mp-lista');
@@ -127,13 +116,12 @@
       propuestas = datos.propuestas;
       puedeAprobar = datos.aprobar;
       identidadId = datos.operario_id;
-      document.getElementById('mp-entrar').textContent = datos.nombre + ' / Cambiar identidad';
+      document.getElementById('mp-identidad-actual').textContent = datos.nombre + (datos.aprobar ? ' / Administraci\u00f3n' : ' / Operario');
       document.getElementById('mp-contador').textContent = datos.pendientes + (datos.pendientes === 1 ? ' pendiente' : ' pendientes');
       estado.textContent = '';
       render();
     } catch (error) { estado.textContent = error.message; }
   }
-  document.getElementById('mp-entrar').addEventListener('click', async function () { if (await window.identificarMangueras()) await cargar(); });
   document.getElementById('mp-actualizar').addEventListener('click', cargar);
   document.getElementById('mp-filtro').addEventListener('change', render);
   var resolucion = document.getElementById('mp-resolucion');
@@ -143,13 +131,11 @@
     document.getElementById('mp-resolucion-form').dataset.id = boton.dataset.resolver;
     document.getElementById('mp-resolucion-form').dataset.accion = boton.dataset.accion;
     document.getElementById('mp-resolucion-titulo').textContent = (boton.dataset.accion === 'aprobar' ? 'Aprobar' : 'Rechazar') + ' propuesta #' + boton.dataset.resolver;
-    document.getElementById('mp-resolucion-clave').value = '';
     document.getElementById('mp-resolucion-motivo').value = '';
     document.getElementById('mp-resolucion-error').textContent = '';
     resolucion.showModal();
   });
   document.getElementById('mp-resolucion-cancelar').addEventListener('click', function () { resolucion.close(); });
-  resolucion.addEventListener('close', function () { document.getElementById('mp-resolucion-clave').value = ''; });
   document.getElementById('mp-resolucion-form').addEventListener('submit', async function (evento) {
     evento.preventDefault();
     var boton = evento.target.querySelector('[type=submit]');
@@ -157,11 +143,9 @@
     try {
       var respuesta = await fetch('/api/mangueras/propuestas/' + evento.target.dataset.id + '/resolver', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          operario_id: identidadId, clave: document.getElementById('mp-resolucion-clave').value,
           accion: evento.target.dataset.accion, motivo: document.getElementById('mp-resolucion-motivo').value
         })
       });
-      document.getElementById('mp-resolucion-clave').value = '';
       var datos = await respuesta.json();
       if (!respuesta.ok) throw new Error(datos.error);
       resolucion.close();

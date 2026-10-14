@@ -27,8 +27,9 @@
         <header class="admin-topbar">
             <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
             <div class="admin-topbar-title">Panel de Administración</div>
+            <span>{{ administrador.nombre if administrador else 'Acceso de recuperación' }}</span>
             <div class="admin-topbar-spacer"></div>
-            {% if pin_activo %}
+            {% if pin_activo or administrador %}
             <a href="{{ url_for('main.admin_logout') }}" class="admin-back" style="margin-right:14px;">🔒 Cerrar sesión admin</a>
             {% endif %}
             <a href="{{ url_for('main.modules') }}" class="admin-back">← Volver al inicio</a>
@@ -1101,9 +1102,8 @@
         <!-- Modales -->
         <dialog id="op-credencial-dialog" class="mp-dialog" aria-labelledby="op-credencial-titulo">
             <form id="op-credencial-form">
-                <h2 id="op-credencial-titulo">Clave personal de mangueras</h2>
-                <label>Nueva clave personal<input id="op-credencial-clave" type="password" autocomplete="new-password" minlength="8" maxlength="128"></label>
-                <label><input id="op-credencial-aprobar" type="checkbox"> Aprobar mangueras</label>
+                <h2 id="op-credencial-titulo">Contrase&ntilde;a de Administraci&oacute;n</h2>
+                <label>Nueva contrase&ntilde;a<input id="op-credencial-clave" type="password" autocomplete="new-password" minlength="8" maxlength="128"></label>
                 <p id="op-credencial-error" class="mp-error" role="alert"></p>
                 <div class="mp-actions"><button type="button" onclick="document.getElementById('op-credencial-dialog').close()">Cancelar</button><button type="submit">Guardar</button></div>
             </form>
@@ -1210,11 +1210,10 @@
         });
     }
 
-    function configurarClaveMangueras(id, aprobar) {
+    function configurarClaveMangueras(id) {
         const formulario = document.getElementById('op-credencial-form');
         formulario.dataset.id = id;
         document.getElementById('op-credencial-clave').value = '';
-        document.getElementById('op-credencial-aprobar').checked = aprobar;
         document.getElementById('op-credencial-error').textContent = '';
         document.getElementById('op-credencial-dialog').showModal();
     }
@@ -1226,10 +1225,9 @@
         const boton = evento.target.querySelector('[type=submit]');
         boton.disabled = true;
         try {
-            const respuesta = await fetch('/api/operarios/' + evento.target.dataset.id + '/credencial-mangueras', {
+            const respuesta = await fetch('/api/operarios/' + evento.target.dataset.id + '/credencial-admin', {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                    clave: document.getElementById('op-credencial-clave').value,
-                    aprobar_mangueras: document.getElementById('op-credencial-aprobar').checked
+                    clave: document.getElementById('op-credencial-clave').value
                 })
             });
             document.getElementById('op-credencial-clave').value = '';
@@ -1279,8 +1277,8 @@
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
                         </td>
                         <td>
-                            <span>${op.clave_personal_configurada ? 'Clave configurada' : 'Sin clave personal'}${op.aprobar_mangueras ? ' / Puede aprobar' : ''}</span>
-                            <button class="btn-secondary" type="button" onclick="configurarClaveMangueras('${op.id}', ${op.aprobar_mangueras})">Clave y aprobaci&oacute;n</button>
+                            <span>${op.clave_personal_configurada ? 'Configurada' : 'Sin contrase&ntilde;a'}</span>
+                            <button class="btn-secondary" type="button" onclick="configurarClaveMangueras('${op.id}')">Contrase&ntilde;a</button>
                         </td>
                         <td>
                             <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">${casillasModulos}</div>
@@ -1310,7 +1308,7 @@
                                     <th>Nombre</th>
                                     <th>Tarjeta NFC</th>
                                     <th>Estado</th>
-                                    <th>Mangueras</th>
+                                    <th>Contrase&ntilde;a Admin</th>
                                     <th>Módulos permitidos</th>
                                     <th>Acciones</th>
                                 </tr>

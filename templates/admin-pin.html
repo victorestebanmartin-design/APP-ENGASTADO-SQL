@@ -24,7 +24,8 @@
             border: 1px solid rgba(148,163,184,.18);
             border-radius: 16px;
             padding: 38px 34px;
-            width: 100%;
+            width: calc(100% - 32px);
+            box-sizing: border-box;
             max-width: 360px;
             box-shadow: 0 18px 50px rgba(0,0,0,.45);
             text-align: center;
@@ -61,6 +62,8 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59,130,246,.25);
         }
+        .pin-personal { font-size: 1em; letter-spacing: 0; text-align: left; border-radius: 6px; }
+        .pin-label { display: block; margin-bottom: 8px; text-align: left; font-size: 14px; }
         .pin-btn {
             width: 100%;
             background: #3b82f6;
@@ -98,19 +101,33 @@
 {% include '_version_badge.html' %}
     <div class="pin-card">
         <div class="pin-logo">COJO<span class="sw">sw</span></div>
-        <div class="pin-sub">Introduce el PIN de administración</div>
+        <div class="pin-sub">{{ 'Acceso a Administración' if personal else 'Recuperación por PIN' }}</div>
 
         {% if error %}
         <div class="pin-error">{{ error }}</div>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('main.admin_pin') }}">
+        <form method="POST" action="{{ url_for('main.admin_login') if personal else url_for('main.admin_pin') }}">
             {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
             {% if force %}<input type="hidden" name="force" value="1">{% endif %}
-            <input type="password" name="pin" class="pin-input" inputmode="numeric"
-                   autocomplete="off" autofocus required>
+            {% if personal %}
+            <label class="pin-label" for="admin-operario">Operario</label>
+            <select id="admin-operario" name="operario_id" class="pin-input pin-personal" required>
+                <option value="">Seleccionar administrador</option>
+                {% for operario in operarios %}<option value="{{ operario.id }}">{{ operario.nombre }}</option>{% endfor %}
+            </select>
+            <label class="pin-label" for="admin-clave">Contrase&ntilde;a</label>
+            <input id="admin-clave" type="password" name="clave" class="pin-input pin-personal" autocomplete="current-password" maxlength="128" required>
+            {% else %}
+            <input type="password" name="pin" class="pin-input" inputmode="numeric" autocomplete="off" autofocus required>
+            {% endif %}
             <button type="submit" class="pin-btn">Entrar</button>
         </form>
+        {% if personal %}
+        <a href="{{ url_for('main.admin_pin', next=next) }}" class="pin-back">Acceso de recuperaci&oacute;n por PIN</a>
+        {% else %}
+        <a href="{{ url_for('main.admin_login', next=next) }}" class="pin-back">Entrar con operario y contrase&ntilde;a</a>
+        {% endif %}
 
         <a href="{{ url_for('main.modules') }}" class="pin-back">← Volver al inicio</a>
     </div>

@@ -212,7 +212,8 @@
       if (await window.identificarMangueras()) {
         window.location.href = '/mangueras/editor?' + new URLSearchParams({ proponer: '1', archivo: archivo, fila: fila });
       }
-    } finally { btnEditar.disabled = false; }
+    } catch (error) { alert(error.message); }
+    finally { btnEditar.disabled = false; }
   });
 
   // Wiring botones modal
@@ -270,12 +271,20 @@
     }
 
     // Instrucciones
-    divInst.innerHTML = instruccionesHtml(mg);
+    var propuestaPendiente = (mg.propuestas || [])[0];
+    divInst.innerHTML = propuestaPendiente ? ['de', 'para'].map(function (lado) {
+      return '<div class="lado-card lado-' + lado + '"><div class="lado-title">' +
+        (lado === 'de' ? 'Lado De · liso (sin guion)' : 'Lado Para · guion') + '</div>' +
+        window.medidasMangueraHtml(mg, propuestaPendiente.sugerido, lado, false) + '</div>';
+    }).join('') : instruccionesHtml(mg);
     document.getElementById('mg-propuestas').innerHTML = (mg.propuestas || []).map(function (propuesta) {
-      return '<section class="mp-pendiente"><strong>Propuesta #' + propuesta.id + ' pendiente de aprobacion</strong>' +
-        '<p>' + esc(propuesta.autor + ' · ' + propuesta.fecha) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p>' +
-        window.comparacionMangueras(propuesta.original, propuesta.sugerido) + '</section>';
+      return '<section class="mp-pendiente"><strong>Manguera pendiente de confirmar. Entre () medidas sugeridas.</strong>' +
+        '<p>' + esc(propuesta.autor + ' · ' + propuesta.fecha) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p></section>';
     }).join('');
+    if (propuestaPendiente && obsMangueras && (mg.observaciones_mangueras || '') !== (propuestaPendiente.sugerido.observaciones_mangueras || '')) {
+      obsMangueras.textContent = (mg.observaciones_mangueras || 'Sin observaciones') + ' (' + (propuestaPendiente.sugerido.observaciones_mangueras || 'Sin observaciones') + ')';
+      obsMangueras.style.display = 'block';
+    }
 
     // Botones nav
     btnPrev.disabled = (idx === 0);
@@ -444,5 +453,10 @@
   if (typeof initCableColors === 'function') initCableColors();
   cargarListaCortes();
   abrirModalCorte();
+  setInterval(function () {
+    if (document.visibilityState === 'visible') {
+      fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(function () {});
+    }
+  }, 60000);
 
 })();

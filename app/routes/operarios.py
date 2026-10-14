@@ -243,14 +243,14 @@ def api_operarios_get():
         with db.engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, nombre, activo, created_at, tag_uid, modulos_permitidos, "
-                "clave_personal_hash IS NOT NULL, aprobar_mangueras "
+                "clave_personal_hash IS NOT NULL "
                 "FROM operarios ORDER BY nombre"
             )).fetchall()
         return jsonify({'success': True, 'operarios': [
             {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3], 'tag_uid': r[4],
              # null = todos los modulos; lista = justo esos (ver base.py:modulos_permitidos_de)
              'modulos_permitidos': json.loads(r[5]) if r[5] else None,
-             'clave_personal_configurada': bool(r[6]), 'aprobar_mangueras': bool(r[7])}
+             'clave_personal_configurada': bool(r[6])}
             for r in rows
         ]})
     except Exception as e:
@@ -304,6 +304,8 @@ def api_operarios_update(op_id):
         # MODULOS_APP para no guardar slugs inventados.
         modulos_json, tocar_modulos = None, False
         if 'modulos_permitidos' in data:
+            if not sesion_admin_valida():
+                return jsonify(success=False, error='Sesión de administración requerida para cambiar permisos'), 401
             tocar_modulos = True
             crudo_mod = data.get('modulos_permitidos')
             if crudo_mod is None:

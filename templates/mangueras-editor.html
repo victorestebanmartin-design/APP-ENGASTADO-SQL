@@ -57,7 +57,13 @@
   <dialog id="me-save-dialog" aria-labelledby="me-save-title">
     <h2 id="me-save-title">Guardar Excel</h2>
     <p id="me-save-summary"></p>
-    <label id="me-motivo-label" hidden>Motivo de la modificaci&oacute;n<textarea id="me-motivo" minlength="5" maxlength="2000" rows="3"></textarea></label>
+    <fieldset id="me-motivo-label" class="mp-motivos" hidden>
+      <legend>Motivo de la modificaci&oacute;n</legend>
+      <label><input type="radio" name="me-motivo-categoria" value="Informacion de nave cliente"> Informaci&oacute;n de nave cliente</label>
+      <label><input type="radio" name="me-motivo-categoria" value="Fallo en documentacion"> Fallo en documentaci&oacute;n</label>
+      <label><input type="radio" name="me-motivo-categoria" value="Otros"> Otros</label>
+      <label>Detalle<textarea id="me-motivo" maxlength="1900" rows="3"></textarea></label>
+    </fieldset>
     <div id="me-propuesta-comparacion" hidden></div>
     <label for="me-destino">Aplicar al corte<select id="me-destino"><option value="">Seleccionar corte</option></select></label>
     <p id="me-save-status" role="status" aria-live="polite"></p>
@@ -73,7 +79,6 @@
       <button id="me-save-apply" type="button">Descargar y aplicar</button>
     </div>
   </dialog>
-  {% include '_mangueras_identidad.html' %}
   <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
   <script src="{{ url_for('static', filename='js/mangueras-editor.js') }}"></script>
 </body>

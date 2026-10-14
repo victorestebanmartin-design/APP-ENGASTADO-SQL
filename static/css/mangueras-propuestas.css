@@ -20,3 +20,15 @@
 .mp-propuesta p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mp-filtros { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
 .mp-filtros label { max-width: 320px; }
+.mp-medidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.mp-side { min-width: 0; }
+.mp-side h3 { font-size: 15px; margin: 12px 0; }
+.mp-line { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #d4dde2; font-size: 14px; }
+.mp-line > span { min-width: 0; overflow-wrap: anywhere; }
+.mp-line > span:last-child { text-align: right; }
+.mp-sugerido { color: #9a3412; font-weight: 700; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mp-notas { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mp-motivos { margin: 16px 0; border: 1px solid #becbd3; padding: 12px; }
+.mp-motivos input[type=radio] { display: inline-block; width: auto; margin: 0 8px 0 0; }
+.mp-motivos > label { padding: 10px 0; }
+@media (max-width: 760px) { .mp-medidas { grid-template-columns: 1fr; } }

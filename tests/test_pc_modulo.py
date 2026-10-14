@@ -28,18 +28,20 @@ def _activar_gate(app, activo=True):
 def _operario_dentro(app, client, nombre, modulos=None, modulo_login=None, puesto_id=None):
     """Crea el operario, le fija permisos y le mete un login vivo adoptado."""
     import uuid
+    import json
     from datetime import datetime
     from sqlalchemy import text
 
     op = client.post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
-    if modulos is not None:
-        client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': modulos})
 
     login_id = str(uuid.uuid4())
     ahora = datetime.now().isoformat()
     with app.app_context():
         db = app.extensions['db']
         with db.engine.connect() as conn:
+            if modulos is not None:
+                conn.execute(text('UPDATE operarios SET modulos_permitidos=:modulos WHERE id=:id'),
+                             {'id': op['id'], 'modulos': json.dumps(modulos)})
             conn.execute(text(
                 "INSERT INTO operario_logins "
                 "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id, modulo) "
@@ -411,7 +413,7 @@ def test_lector_compartido_login_rfid(app, client, admin_client, permitidos):
         'puesto_id': 'modulo:manguitos_mangueras',
     }).get_json()['success']
     operario = client.post('/api/operarios', json={'nombre': 'Tarjeta compartida'}).get_json()['operario']
-    client.put(f"/api/operarios/{operario['id']}", json={
+    admin_client.put(f"/api/operarios/{operario['id']}", json={
         'tag_uid': 'A1B2C3D4', 'modulos_permitidos': permitidos,
     })
     respuesta = client.post('/api/puestos/engastado_v3/entrada', json={
@@ -508,12 +510,12 @@ def test_lector_sin_asignar_avisa_en_todas_las_pantallas(app, client):
     assert 'Lectores RFID' in avisos[-1]['consejo']
 
 
-def test_sin_permiso_se_rechaza_en_el_lector_con_su_motivo(app, client):
+def test_sin_permiso_se_rechaza_en_el_lector_con_su_motivo(app, client, admin_client):
     """Mejor rechazar en el lector que crear un login y rebotarlo después."""
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
     op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
-    client.put(f"/api/operarios/{op['id']}",
+    admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
 
     r = _pasar_tarjeta(client, 'AABBCCDD')
@@ -578,7 +580,7 @@ def _simular_windows(monkeypatch, *modulos):
         monkeypatch.setattr(mod, 'open', open_cp1252, raising=False)
 
 
-def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, monkeypatch):
+def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, admin_client, monkeypatch):
     """El motivo y el consejo llevan acentos y '→'. Si el fichero de estado se
     escribe con la codificacion por defecto del sistema, en Windows peta al
     registrar el rechazo y el operario ve un fallo del servidor en vez de
@@ -590,7 +592,7 @@ def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, mo
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
     op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
-    client.put(f"/api/operarios/{op['id']}",
+    admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
 
     _simular_windows(monkeypatch, mod_auth, mod_op, mod_sis)
@@ -610,11 +612,11 @@ def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, mo
     assert '→' in ev['consejo']
 
 
-def test_con_permiso_si_entra(app, client):
+def test_con_permiso_si_entra(app, client, admin_client):
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
     op = client.post('/api/operarios', json={'nombre': 'Pau'}).get_json()['operario']
-    client.put(f"/api/operarios/{op['id']}",
+    admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['manguitos']})
 
     r = _pasar_tarjeta(client, 'AABBCCDD')

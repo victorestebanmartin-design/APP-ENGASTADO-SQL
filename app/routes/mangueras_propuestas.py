@@ -2,15 +2,14 @@ import hashlib
 import json
 import os
 import tempfile
-import time
 from zipfile import BadZipFile
 from urllib.parse import urlsplit
 
-from flask import current_app, jsonify, render_template, request, session
+from flask import jsonify, render_template, request, session
 from sqlalchemy import text
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash
 
-from app.auth import requiere_pin_admin
+from app.auth import requiere_pin_admin, administrador_actual
 from app.excel_manager import invalidar_cache_excel
 from app.mangueras_editor import exportar_preparacion, leer_preparacion
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
@@ -28,51 +27,21 @@ def _json_peticion():
 
 
 def _identidad():
-    if time.time() - session.get('mangueras_identidad_ts', 0) > 900:
-        return None
     with db.engine.connect() as conn:
         identidad = conn.execute(text(
-            'SELECT id, nombre, aprobar_mangueras, clave_personal_hash FROM operarios '
-            'WHERE id=:id AND activo=1 AND clave_personal_hash IS NOT NULL'
-        ), {'id': session.get('mangueras_identidad_id')}).mappings().first()
-    if identidad and session.get('mangueras_credencial') == hashlib.sha256(identidad['clave_personal_hash'].encode()).hexdigest():
-        return identidad
-    return None
-
-
-def _credenciales(datos):
-    identificador = datos.get('operario_id')
-    clave = datos.get('clave')
-    if not isinstance(identificador, str) or len(identificador) > 128 or not isinstance(clave, str) or len(clave) > 256:
-        return None
-    with db.engine.begin() as conn:
-        conn.exec_driver_sql('BEGIN IMMEDIATE')
-        operario = conn.execute(text(
-            'SELECT * FROM operarios WHERE id=:id AND activo=1'
-        ), {'id': identificador}).mappings().first()
-        if not operario or operario['clave_bloqueada_hasta'] > time.time():
-            return None
-        if not operario['clave_personal_hash'] or not check_password_hash(operario['clave_personal_hash'], clave):
-            intentos = operario['clave_intentos'] + 1
-            conn.execute(text(
-                'UPDATE operarios SET clave_intentos=:intentos, clave_bloqueada_hasta=:hasta WHERE id=:id'
-            ), {'id': identificador, 'intentos': intentos % 5,
-                'hasta': time.time() + 300 if intentos >= 5 else 0})
-            return None
-        conn.execute(text('UPDATE operarios SET clave_intentos=0, clave_bloqueada_hasta=0 WHERE id=:id'),
-                     {'id': identificador})
-        return dict(operario)
+            'SELECT o.id, o.nombre FROM operarios o JOIN operario_logins l ON l.operario_nombre=o.nombre '
+            'WHERE l.id=:login AND l.activo=1 AND o.activo=1 AND o.nombre=:nombre'
+        ), {'login': session.get('operario_login_id'), 'nombre': session.get('operario_actual')}).mappings().first()
+    return identidad
 
 
 @bp.route('/api/operarios/<op_id>/credencial-mangueras', methods=['PUT'])
+@bp.route('/api/operarios/<op_id>/credencial-admin', methods=['PUT'])
 @requiere_pin_admin
 def configurar_credencial_mangueras(op_id):
     try:
         datos = _json_peticion()
         clave = datos.get('clave', '')
-        permiso = datos.get('aprobar_mangueras')
-        if not isinstance(permiso, bool):
-            raise ValueError('Indica el permiso de aprobacion.')
         if not isinstance(clave, str) or (clave and not 8 <= len(clave) <= 128):
             raise ValueError('La clave personal debe tener entre 8 y 128 caracteres.')
         with db.engine.begin() as conn:
@@ -81,12 +50,10 @@ def configurar_credencial_mangueras(op_id):
             if not operario:
                 return jsonify(success=False, error='Operario no encontrado.'), 404
             clave_hash = generate_password_hash(clave) if clave else operario[0]
-            if permiso and not clave_hash:
-                raise ValueError('Configura una clave personal antes de conceder aprobacion.')
             conn.execute(text(
-                'UPDATE operarios SET clave_personal_hash=:clave, aprobar_mangueras=:permiso, '
+                'UPDATE operarios SET clave_personal_hash=:clave, '
                 'clave_intentos=0, clave_bloqueada_hasta=0 WHERE id=:id'
-            ), {'id': op_id, 'clave': clave_hash, 'permiso': int(permiso)})
+            ), {'id': op_id, 'clave': clave_hash})
         return jsonify(success=True)
     except PermissionError as exc:
         return jsonify(success=False, error=str(exc)), 403
@@ -94,34 +61,14 @@ def configurar_credencial_mangueras(op_id):
         return jsonify(success=False, error=str(exc)), 400
 
 
-@bp.route('/api/mangueras/identificacion', methods=['GET', 'POST', 'DELETE'])
+@bp.route('/api/mangueras/identificacion', methods=['GET'])
 def identificacion_mangueras():
-    if request.method == 'GET':
-        identidad = _identidad()
-        if not identidad:
-            return jsonify(success=False, error='Identificate con tu clave personal.'), 401
-        return jsonify(success=True, nombre=identidad['nombre'], aprobar=bool(identidad['aprobar_mangueras']))
-    try:
-        datos = _json_peticion()
-        session.pop('mangueras_identidad_id', None)
-        session.pop('mangueras_identidad_ts', None)
-        session.pop('mangueras_credencial', None)
-        if request.method == 'DELETE':
-            return jsonify(success=True)
-        operario = _credenciales(datos)
-        if not operario:
-            return jsonify(success=False, error='Identificacion incorrecta o bloqueada durante 5 minutos.'), 401
-        if not operario_puede(operario['nombre'], 'mangueras') and not operario['aprobar_mangueras']:
-            return jsonify(success=False, error='No tienes permiso de mangueras.'), 403
-        session['mangueras_identidad_id'] = operario['id']
-        session['mangueras_identidad_ts'] = time.time()
-        session['mangueras_credencial'] = hashlib.sha256(operario['clave_personal_hash'].encode()).hexdigest()
-        return jsonify(success=True, nombre=operario['nombre'], operario_id=operario['id'],
-                   aprobar=bool(operario['aprobar_mangueras']))
-    except PermissionError as exc:
-        return jsonify(success=False, error=str(exc)), 403
-    except ValueError as exc:
-        return jsonify(success=False, error=str(exc)), 400
+    identidad = _identidad()
+    if not identidad:
+        return jsonify(success=False, error='Entra al modulo con tu sesion de operario.'), 401
+    if not operario_puede(identidad['nombre'], 'mangueras'):
+        return jsonify(success=False, error='No tienes permiso de mangueras.'), 403
+    return jsonify(success=True, nombre=identidad['nombre'], operario_id=identidad['id'])
 
 
 @bp.route('/mangueras/propuestas')
@@ -140,10 +87,11 @@ def contador_propuestas_mangueras():
 
 @bp.route('/api/mangueras/propuestas', methods=['GET', 'POST'])
 def api_mangueras_propuestas():
-    identidad = _identidad()
+    administrador = administrador_actual() if request.method == 'GET' else None
+    identidad = administrador or _identidad()
     if not identidad:
-        return jsonify(success=False, error='Identificate con tu clave personal.'), 401
-    if not operario_puede(identidad['nombre'], 'mangueras') and not identidad['aprobar_mangueras']:
+        return jsonify(success=False, error='Entra al modulo con tu sesion de operario o identificate en Admin.'), 401
+    if not administrador and not operario_puede(identidad['nombre'], 'mangueras'):
         return jsonify(success=False, error='No tienes permiso de mangueras.'), 403
     if request.method == 'GET':
         with db.engine.connect() as conn:
@@ -158,14 +106,18 @@ def api_mangueras_propuestas():
             propuesta['original'] = json.loads(propuesta.pop('original_json'))
             propuesta['sugerido'] = json.loads(propuesta.pop('sugerido_json'))
             propuestas.append(propuesta)
-        return jsonify(success=True, propuestas=propuestas, aprobar=bool(identidad['aprobar_mangueras']),
+        return jsonify(success=True, propuestas=propuestas, aprobar=bool(administrador),
                        operario_id=identidad['id'], nombre=identidad['nombre'],
                        pendientes=sum(p['estado'] == 'pendiente' for p in propuestas))
     try:
         datos = _json_peticion()
-        motivo = datos.get('motivo')
-        if not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:
-            raise ValueError('Escribe un motivo de entre 5 y 2000 caracteres.')
+        categoria = datos.get('motivo_categoria')
+        detalle = datos.get('motivo', '')
+        if categoria not in ('Informacion de nave cliente', 'Fallo en documentacion', 'Otros'):
+            raise ValueError('Selecciona el motivo de la propuesta.')
+        if not isinstance(detalle, str) or len(detalle) > 1900 or (categoria == 'Otros' and len(detalle.strip()) < 5):
+            raise ValueError('En Otros escribe el motivo (al menos 5 caracteres).')
+        motivo = categoria + (': ' + detalle.strip() if detalle.strip() else '')
         archivo = datos.get('archivo')
         ruta = _ruta_upload_segura(archivo)
         if not ruta or not os.path.isfile(ruta):
@@ -219,11 +171,9 @@ def resolver_propuesta_mangueras(propuesta_id):
     ruta = None
     try:
         datos = _json_peticion()
-        responsable = _credenciales(datos)
+        responsable = administrador_actual()
         if not responsable:
-            return jsonify(success=False, error='Identificacion incorrecta o bloqueada.'), 401
-        if not responsable['aprobar_mangueras']:
-            return jsonify(success=False, error='No tienes permiso para aprobar mangueras.'), 403
+            return jsonify(success=False, error='Entra en Admin con tu operario y contrasena para resolver propuestas.'), 401
         accion = datos.get('accion')
         motivo = datos.get('motivo', '')
         if accion not in ('aprobar', 'rechazar') or not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:

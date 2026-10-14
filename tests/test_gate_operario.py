@@ -24,24 +24,24 @@ def test_operario_nuevo_tiene_modulos_permitidos_null(client):
     assert fila['modulos_permitidos'] is None  # None = todos los modulos
 
 
-def test_guardar_modulos_permitidos(client):
+def test_guardar_modulos_permitidos(client, admin_client):
     op = _crear_operario(client)
-    r = client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado', 'etiquetas']})
+    r = admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado', 'etiquetas']})
     assert r.get_json()['success']
     fila = next(o for o in client.get('/api/operarios').get_json()['operarios'] if o['id'] == op['id'])
     assert sorted(fila['modulos_permitidos']) == ['engastado', 'etiquetas']
 
 
-def test_modulo_invalido_rechazado(client):
+def test_modulo_invalido_rechazado(client, admin_client):
     op = _crear_operario(client)
-    r = client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['no_existe']})
+    r = admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['no_existe']})
     assert r.status_code == 400
 
 
-def test_volver_a_null_permite_todos_de_nuevo(client):
+def test_volver_a_null_permite_todos_de_nuevo(client, admin_client):
     op = _crear_operario(client)
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': None})
+    admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
+    admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': None})
     fila = next(o for o in client.get('/api/operarios').get_json()['operarios'] if o['id'] == op['id'])
     assert fila['modulos_permitidos'] is None
 
@@ -245,7 +245,7 @@ def test_gate_on_filtra_modulos_por_permiso(client, admin_client):
     client.post('/api/puesto/pc', json={'puesto_id': 'puesto_001'})
 
     op = _crear_operario_con_tag(client, 'Op Filtrado', 'EEEEEEEE')
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['etiquetas']})
+    admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['etiquetas']})
     login_id = client.post('/api/puestos/engastado_v3/entrada',
                            json={'tag_uid': 'EEEEEEEE'}).get_json()['login_id']
     client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
@@ -262,7 +262,7 @@ def test_pc_de_engastado_entra_directo_a_v3(client, admin_client):
     client.post('/api/puesto/pc', json={'puesto_id': 'puesto_001'})
 
     op = _crear_operario_con_tag(client, 'Op Directo', 'EEEEEEE1')
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
+    admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
     login_id = client.post('/api/puestos/engastado_v3/entrada',
                            json={'tag_uid': 'EEEEEEE1'}).get_json()['login_id']
     client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})
@@ -278,7 +278,7 @@ def test_gate_desactivar_ignora_sesion_colgada(client, admin_client):
     admin_client.post('/api/sistema/gate_operario', json={'activo': True})
     client.post('/api/puesto/pc', json={'puesto_id': 'puesto_001'})
     op = _crear_operario_con_tag(client, 'Op Colgado', 'FFFFFFFF')
-    client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
+    admin_client.put(f"/api/operarios/{op['id']}", json={'modulos_permitidos': ['engastado']})
     login_id = client.post('/api/puestos/engastado_v3/entrada',
                            json={'tag_uid': 'FFFFFFFF'}).get_json()['login_id']
     client.post('/api/sesion/operario/adoptar', json={'login_id': login_id})

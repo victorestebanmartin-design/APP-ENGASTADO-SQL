@@ -40,21 +40,44 @@ def test_propuesta_exige_identidad_personal(client):
     assert respuesta.status_code == 401
 
 
+def test_propuestas_usan_sesion_modulo_sin_clave(client, app):
+    from datetime import datetime
+    from sqlalchemy import text
+    from app.routes.base import db
+    with db.engine.begin() as conn:
+        conn.execute(text("INSERT INTO operarios (id, nombre) VALUES ('autor', 'Operario')"))
+        conn.execute(text(
+            "INSERT INTO operario_logins (id, operario_nombre, modulo, activo, timestamp_login, ultimo_latido) "
+            "VALUES ('login-autor', 'Operario', 'mangueras', 1, :ahora, :ahora)"
+        ), {'ahora': datetime.now().isoformat()})
+    with client.session_transaction() as sesion:
+        sesion['operario_actual'] = 'Operario'
+        sesion['operario_login_id'] = 'login-autor'
+    respuesta = client.get('/api/mangueras/propuestas')
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()['nombre'] == 'Operario'
+    assert respuesta.get_json()['aprobar'] is False
+
+
 def preparar_propuesta(client, admin_client, app):
     from app.routes.base import db
     from sqlalchemy import text
+    from datetime import datetime
     with db.engine.begin() as conn:
         for identificador, nombre in [('autor', 'Operario'), ('jefe', 'Jefe')]:
             conn.execute(text('INSERT INTO operarios (id, nombre) VALUES (:id, :nombre)'),
                          {'id': identificador, 'nombre': nombre})
-    for identificador in ('autor', 'jefe'):
-        respuesta = admin_client.put(f'/api/operarios/{identificador}/credencial-mangueras', json={
-            'clave': 'personal123', 'aprobar_mangueras': identificador == 'jefe',
-        })
-        assert respuesta.status_code == 200
-    assert client.post('/api/mangueras/identificacion', json={
-        'operario_id': 'autor', 'clave': 'personal123',
-    }).status_code == 200
+        conn.execute(text(
+            "UPDATE operarios SET modulos_permitidos='[\"admin\",\"mangueras\"]' WHERE id='jefe'"
+        ))
+        conn.execute(text(
+            "INSERT INTO operario_logins (id, operario_nombre, modulo, activo, timestamp_login, ultimo_latido) "
+            "VALUES ('login-autor', 'Operario', 'mangueras', 1, :ahora, :ahora)"
+        ), {'ahora': datetime.now().isoformat()})
+    assert admin_client.put('/api/operarios/jefe/credencial-admin', json={'clave': 'personal123'}).status_code == 200
+    with client.session_transaction() as sesion:
+        sesion['operario_actual'] = 'Operario'
+        sesion['operario_login_id'] = 'login-autor'
     original = excel_original()
     ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
     ruta.write_bytes(original)
@@ -63,7 +86,7 @@ def preparar_propuesta(client, admin_client, app):
     cambio['de']['pm'] = 80
     respuesta = client.post('/api/mangueras/propuestas', json={
         'archivo': 'corte.xlsx', 'revision': datos['revision'],
-        'cambios': [cambio], 'motivo': 'Medida verificada en taller',
+        'cambios': [cambio], 'motivo_categoria': 'Fallo en documentacion', 'motivo': 'Medida verificada en taller',
     })
     assert respuesta.status_code == 201
     assert ruta.read_bytes() == original
@@ -80,8 +103,9 @@ def test_propuesta_aprobacion_trazada(client, admin_client, app):
     assert propuesta['original'][1]['de']['pm'] is None
     assert propuesta['sugerido']['filas'][1]['de']['pm'] == 80
     assert 'original_excel' not in propuesta
+    assert client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'}).status_code == 302
     respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar',
+        'accion': 'aprobar',
         'motivo': 'Correcto tras comprobar plano',
     })
     assert respuesta.status_code == 200
@@ -93,19 +117,22 @@ def test_propuesta_aprobacion_trazada(client, admin_client, app):
     assert propuesta['resuelta_at']
     assert propuesta['motivo_resolucion'] == 'Correcto tras comprobar plano'
     assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Repetir decision',
+        'accion': 'aprobar', 'motivo': 'Repetir decision',
     }).status_code == 409
 
 
 def test_propuesta_no_autoaprobacion_ni_revision_antigua(client, admin_client, app):
     identificador, ruta, original = preparar_propuesta(client, admin_client, app)
-    admin_client.put('/api/operarios/autor/credencial-mangueras', json={'aprobar_mangueras': True})
+    admin_client.put('/api/operarios/autor', json={'modulos_permitidos': ['admin', 'mangueras']})
+    admin_client.put('/api/operarios/autor/credencial-admin', json={'clave': 'personal123'})
+    client.post('/admin/login', data={'operario_id': 'autor', 'clave': 'personal123'})
     assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'autor', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Yo lo propuse',
+        'accion': 'aprobar', 'motivo': 'Yo lo propuse',
     }).status_code == 403
     ruta.write_bytes(original + b'cambio posterior')
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
     respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Medida comprobada',
+        'accion': 'aprobar', 'motivo': 'Medida comprobada',
     })
     assert respuesta.status_code == 409
     assert ruta.read_bytes() == original + b'cambio posterior'
@@ -115,10 +142,11 @@ def test_propuesta_no_autoaprobacion_ni_revision_antigua(client, admin_client, a
 def test_propuesta_rechazo_conserva_excel(client, admin_client, app):
     identificador, ruta, original = preparar_propuesta(client, admin_client, app)
     assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'autor', 'clave': 'personal123', 'accion': 'rechazar', 'motivo': 'Sin permiso',
-    }).status_code == 403
+        'accion': 'rechazar', 'motivo': 'Sin permiso',
+    }).status_code == 401
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
     assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'rechazar', 'motivo': 'No coincide con el plano',
+        'accion': 'rechazar', 'motivo': 'No coincide con el plano',
     }).status_code == 200
     assert ruta.read_bytes() == original
     assert client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]['estado'] == 'rechazada'
@@ -128,19 +156,20 @@ def test_clave_personal_protegida_y_bloqueo(client, admin_client, app):
     from app.routes.base import db
     from sqlalchemy import text
     with db.engine.begin() as conn:
-        conn.execute(text("INSERT INTO operarios (id, nombre) VALUES ('autor', 'Operario')"))
-    datos = {'clave': 'personal123', 'aprobar_mangueras': False}
+        conn.execute(text("INSERT INTO operarios (id, nombre, modulos_permitidos) VALUES ('autor', 'Operario', '[\"admin\"]')"))
+    datos = {'clave': 'personal123'}
     assert client.put('/api/operarios/autor/credencial-mangueras', json=datos).status_code == 401
     assert admin_client.put('/api/operarios/autor/credencial-mangueras', json=datos,
                             headers={'Origin': 'https://otro.example'}).status_code == 403
     assert admin_client.put('/api/operarios/autor/credencial-mangueras', json=datos).status_code == 200
     for intento in range(5):
-        assert client.post('/api/mangueras/identificacion', json={
+        assert client.post('/admin/login', data={
             'operario_id': 'autor', 'clave': 'equivocada',
-        }).status_code == 401
-    assert client.post('/api/mangueras/identificacion', json={
+        }).status_code == 200
+    assert client.post('/admin/login', data={
         'operario_id': 'autor', 'clave': 'personal123',
-    }).status_code == 401
+    }).status_code == 200
+    assert client.get('/admin').status_code == 302
 
 
 def test_propuesta_duplicada_y_sin_cambios(client, admin_client, app):
@@ -148,31 +177,34 @@ def test_propuesta_duplicada_y_sin_cambios(client, admin_client, app):
     datos = leer_preparacion(original, 'corte.xlsx')
     cambio = deepcopy(datos['filas'][1])
     cuerpo = {'archivo': 'corte.xlsx', 'revision': datos['revision'],
-              'cambios': [cambio], 'motivo': 'Comprobacion de taller'}
+              'cambios': [cambio], 'motivo_categoria': 'Otros', 'motivo': 'Comprobacion de taller'}
     assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 400
     cambio['de']['pm'] = 90
     assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 409
     assert ruta.read_bytes() == original
 
 
-def test_cambio_de_clave_revoca_identificacion(client, admin_client, app):
+def test_cambio_de_clave_revoca_admin_no_sesion_operario(client, admin_client, app):
     preparar_propuesta(client, admin_client, app)
     assert client.get('/api/mangueras/identificacion').status_code == 200
-    assert admin_client.put('/api/operarios/autor/credencial-mangueras', json={
-        'clave': 'otraPersonal123', 'aprobar_mangueras': False,
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert admin_client.put('/api/operarios/jefe/credencial-admin', json={
+        'clave': 'otraPersonal123',
     }).status_code == 200
-    assert client.get('/api/mangueras/propuestas').status_code == 401
-    assert client.get('/api/mangueras/identificacion').status_code == 401
+    assert client.get('/admin').status_code == 302
+    assert client.get('/api/mangueras/propuestas').get_json()['aprobar'] is False
+    assert client.get('/api/mangueras/identificacion').status_code == 200
 
 
 def test_propuesta_fallo_reemplazo_no_aprueba(client, admin_client, app, monkeypatch):
     from app.routes import mangueras_propuestas
     identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
     def fallo_reemplazo(origen, destino):
         raise OSError('Archivo bloqueado')
     monkeypatch.setattr(mangueras_propuestas.os, 'replace', fallo_reemplazo)
     respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
-        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Medida comprobada',
+        'accion': 'aprobar', 'motivo': 'Medida comprobada',
     })
     assert respuesta.status_code == 500
     assert ruta.read_bytes() == original
@@ -193,6 +225,39 @@ def test_propuesta_no_modifica_otras_mangueras():
     for fila in (3, 4, 5):
         for columna in range(1, libro_sugerido['Format'].max_column + 1):
             assert libro_sugerido['Format'].cell(fila, columna).value == libro_original['Format'].cell(fila, columna).value
+
+
+def test_propuesta_motivo_rapido_y_autor_de_sesion(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][0])
+    cambio['de']['pm'] = 120
+    respuesta = client.post('/api/mangueras/propuestas', json={
+        'archivo': 'corte.xlsx', 'revision': datos['revision'], 'cambios': [cambio],
+        'motivo_categoria': 'Informacion de nave cliente', 'autor_id': 'jefe', 'autor_nombre': 'Jefe',
+    })
+    assert respuesta.status_code == 201
+    propuesta = client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]
+    assert propuesta['autor_id'] == 'autor'
+    assert propuesta['autor_nombre'] == 'Operario'
+    assert propuesta['motivo'] == 'Informacion de nave cliente'
+    assert ruta.read_bytes() == original
+
+
+def test_propuesta_otros_exige_texto_y_sesion_viva(client, admin_client, app):
+    from sqlalchemy import text
+    from app.routes.base import db
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][0])
+    cambio['de']['pm'] = 120
+    cuerpo = {'archivo': 'corte.xlsx', 'revision': datos['revision'], 'cambios': [cambio], 'motivo_categoria': 'Otros'}
+    assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 400
+    cuerpo['motivo'] = 'Motivo concreto de la correccion'
+    with db.engine.begin() as conn:
+        conn.execute(text("UPDATE operario_logins SET activo=0 WHERE id='login-autor'"))
+    assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 401
+    assert ruta.read_bytes() == original
 
 
 def test_sugerencias_y_legacy():

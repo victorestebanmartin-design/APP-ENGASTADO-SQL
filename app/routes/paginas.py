@@ -197,7 +197,7 @@ def login_operario():
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
-MANUAL_VERSION = 'v1.3'
+MANUAL_VERSION = 'v1.4'
 MANUAL_FECHA = 'octubre 2026'
 
 
@@ -228,7 +228,34 @@ def index_v3():
 @requiere_pin_admin
 def admin():
     """Panel de administración"""
-    return render_template('admin.html', pin_activo=proteccion_activa())
+    from app.auth import administrador_actual
+    return render_template('admin.html', pin_activo=proteccion_activa(), administrador=administrador_actual())
+
+
+@bp.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    from urllib.parse import urlsplit
+    from app.auth import verificar_credenciales_personales
+    from app.routes.base import modulos_permitidos_de
+    destino = _destino_pin_seguro(request.values.get('next'))
+    error = None
+    if request.method == 'POST':
+        origen = request.headers.get('Origin') or request.headers.get('Referer')
+        if origen and urlsplit(origen).netloc != request.host:
+            return 'Origen no permitido', 403
+        cerrar_sesion_admin()
+        operario = verificar_credenciales_personales(request.form.get('operario_id'), request.form.get('clave'))
+        if operario and 'admin' in (modulos_permitidos_de(operario['modulos_permitidos']) or set()):
+            marcar_sesion_admin(operario)
+            return redirect(destino)
+        error = 'Operario o contraseña incorrectos, sin permiso de Administración o acceso bloqueado.'
+    with db.engine.connect() as conn:
+        filas = conn.execute(text(
+            'SELECT id, nombre, modulos_permitidos FROM operarios '
+            'WHERE activo=1 AND clave_personal_hash IS NOT NULL ORDER BY nombre'
+        )).mappings().all()
+    operarios = [fila for fila in filas if 'admin' in (modulos_permitidos_de(fila['modulos_permitidos']) or set())]
+    return render_template('admin-pin.html', personal=True, operarios=operarios, error=error, next=destino)
 
 
 @bp.route('/admin/pin/configurar', methods=['GET', 'POST'])
@@ -325,7 +352,7 @@ def admin_pin():
 def admin_logout():
     """Cierra la sesión de administración."""
     cerrar_sesion_admin()
-    return redirect(url_for('main.admin_pin'))
+    return redirect(url_for('main.admin_login'))
 
 
 @bp.route('/gestion-puestos')
