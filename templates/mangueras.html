@@ -181,6 +181,15 @@
     </div>
 
     <div class="section-card">
+      <section id="mg-trabajo" hidden aria-live="polite" style="margin-bottom:16px;overflow-wrap:anywhere;">
+        <h2 id="mg-orden" style="font-size:18px;"></h2>
+        <p id="mg-trabajo-resumen"></p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+          <button type="button" class="nav-btn" id="mg-pausar">Pausar</button>
+          <button type="button" class="nav-btn" id="mg-terminar">Terminar preparación</button>
+          <button type="button" class="nav-btn" id="mg-trazabilidad" data-trazabilidad-mangueras="">Trazabilidad</button>
+        </div>
+      </section>
       <div id="mg-activo" style="display:none">
         <!-- Nav -->
         <div class="nav-manguera">
@@ -250,16 +259,16 @@
       <div id="modal-corte-input" class="hidden">
         <div class="modal-operario-header">
           <div class="modal-operario-icon">⌨️</div>
-          <h2>Introducir Código de Corte</h2>
+          <h2>Escanear orden</h2>
         </div>
         <div class="modal-operario-body">
-          <label for="modal-input-corte">Código de Corte</label>
-          <input type="text" id="modal-input-corte" placeholder="Escanea o escribe el código" autocomplete="off">
+          <label for="modal-input-corte">Corte - Orden - Cantidad</label>
+          <input type="text" id="modal-input-corte" placeholder="H0174891-60238442-1" autocomplete="off">
           <div id="modal-corte-error" class="modal-operario-error hidden">Introduce un código de corte válido.</div>
         </div>
         <div class="modal-bono-footer">
           <button type="button" id="btn-corte-volver1" class="btn-volver-modal">← Volver</button>
-          <button type="button" id="btn-corte-confirmar" class="btn-confirmar-operario btn-confirmar-flex">Cargar Corte</button>
+          <button type="button" id="btn-corte-confirmar" class="btn-confirmar-operario btn-confirmar-flex">Preparar orden</button>
         </div>
       </div>
 
@@ -284,6 +293,7 @@
   <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
   <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/mangueras-trazabilidad.js') }}"></script>
   <script src="{{ url_for('static', filename='js/mangueras.js') }}"></script>
 </body>
 </html>

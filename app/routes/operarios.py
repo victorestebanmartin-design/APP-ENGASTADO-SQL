@@ -480,6 +480,8 @@ def api_operario_logout():
             conn.execute(text(
                 "UPDATE operario_logins SET activo=0 WHERE id=:id"
             ), {'id': login_id})
+            from app.routes.mangueras_trabajo import cerrar_tramos_login
+            cerrar_tramos_login(conn, login_id)
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -647,6 +649,8 @@ def api_sesion_operario_salir():
     if login_id:
         with db.engine.connect() as conn:
             conn.execute(text("UPDATE operario_logins SET activo=0 WHERE id=:id"), {'id': login_id})
+            from app.routes.mangueras_trabajo import cerrar_tramos_login
+            cerrar_tramos_login(conn, login_id)
             conn.commit()
     session.pop('operario_actual', None)
     session.pop('operario_login_id', None)
@@ -684,6 +688,8 @@ def api_operario_login_liberar(login_id):
             conn.execute(text(
                 "UPDATE operario_logins SET activo=0 WHERE id=:id"
             ), {'id': login_id})
+            from app.routes.mangueras_trabajo import cerrar_tramos_login
+            cerrar_tramos_login(conn, login_id)
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:

@@ -70,6 +70,30 @@ nueva se inicializa sola: esquema desde `schema_sqlite.sql` + datos de
 `seed_inicial.json` (solo inserta lo que falte; lo gestionado desde el panel
 de administración nunca se pisa).
 
+## Registro de ordenes desde mangueras
+
+En Preparacion de Mangueras, **Introducir codigo** acepta el codigo de barras
+`CODIGO_CORTE-ORDEN-CANTIDAD`, por ejemplo `H0174891-60238442-1`.
+Se requiere una sesion de operario con permiso de mangueras y un corte registrado
+con Excel asociado. El escaneo abre la preparacion y registra la orden en el pool
+con su cantidad. Repetir el escaneo retoma la misma orden sin duplicarla; si el
+corte o la cantidad no coinciden con una orden existente, se rechaza sin modificarla.
+
+**Pausar**, cambiar de corte o cerrar sesion cierran el tramo del operario.
+Al volver a escanear, se inicia otro tramo y se suma al tiempo anterior, sin
+contar la pausa. Si se pierde la conexion o se cierra el navegador sin aviso,
+tras dos minutos sin latidos se cierra el tramo en su ultimo latido recibido.
+El tiempo acumulado es la suma del trabajo de todos los operarios; si trabajan
+simultaneamente, se suman ambos tiempos, no solo el tiempo de reloj transcurrido.
+
+**Terminar preparacion** guarda la hora final y cierra los tramos activos de
+la orden. No marca la orden de produccion como terminada ni la saca del pool.
+Una preparacion terminada no se reabre mediante otro escaneo.
+**Trazabilidad** en la preparacion, o **Mangueras** en el listado de ordenes,
+muestran inicio, fin, tiempo acumulado y los tramos de cada operario.
+La seleccion desde **Cortes disponibles** sigue permitiendo consultar el corte
+sin registrar una orden ni tiempos de trabajo.
+
 ## Editor de preparación de mangueras
 
 Desde **Preparación Mangueras → Editar preparación**, abre un Excel `.xlsx` o

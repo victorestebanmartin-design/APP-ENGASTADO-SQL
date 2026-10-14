@@ -17,6 +17,27 @@ def _apply_migrations(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS mangueras_preparaciones (
+            orden_id TEXT PRIMARY KEY REFERENCES ordenes_produccion(id) ON DELETE CASCADE,
+            inicio TEXT NOT NULL,
+            fin TEXT
+        );
+        CREATE TABLE IF NOT EXISTS mangueras_tramos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            orden_id TEXT NOT NULL REFERENCES ordenes_produccion(id) ON DELETE CASCADE,
+            login_id TEXT NOT NULL,
+            operario_id TEXT NOT NULL,
+            operario_nombre TEXT NOT NULL,
+            inicio TEXT NOT NULL,
+            ultimo_latido TEXT NOT NULL,
+            fin TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mangueras_tramo_activo
+            ON mangueras_tramos(login_id) WHERE fin IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_mangueras_tramos_orden ON mangueras_tramos(orden_id);
+    """)
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS agrupacion_series_config (
             archivo_excel TEXT PRIMARY KEY,

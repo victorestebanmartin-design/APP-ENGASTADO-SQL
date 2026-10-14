@@ -13,6 +13,56 @@
   var idx       = 0;   // índice actual
   var cortes    = [];   // cortes registrados disponibles
   var archivoActual = null;
+  var ordenActual = null;
+  var enviandoEscaneo = false;
+
+  function mostrarTrabajo(preparacion) {
+    document.getElementById('mg-trabajo').hidden = !ordenActual;
+    if (!ordenActual) return;
+    document.getElementById('mg-orden').textContent = 'Orden ' + ordenActual.numero + ' / Cantidad ' + ordenActual.cantidad;
+    document.getElementById('mg-trabajo-resumen').textContent = window.estadoMangueras(preparacion.estado) + ' / ' +
+      window.duracionMangueras(preparacion.segundos) + ' de trabajo / ' + preparacion.operarios.join(', ');
+    document.getElementById('mg-trazabilidad').dataset.trazabilidadMangueras = ordenActual.id;
+    document.getElementById('mg-pausar').disabled = preparacion.estado !== 'en_preparacion';
+    document.getElementById('mg-terminar').disabled = preparacion.estado !== 'en_preparacion';
+  }
+
+  async function actualizarTrabajo(accion) {
+    if (!ordenActual) return;
+    var respuesta = await fetch('/api/mangueras/trabajo/' + encodeURIComponent(ordenActual.id), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: accion })
+    });
+    var datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || 'No se pudo registrar el trabajo.');
+    mostrarTrabajo(datos.preparacion);
+    return datos;
+  }
+
+  document.getElementById('mg-pausar').addEventListener('click', async function () {
+    try { await actualizarTrabajo('pausar'); abrirModalCorte(); }
+    catch (error) { alert(error.message); }
+  });
+  document.getElementById('mg-terminar').addEventListener('click', async function () {
+    if (!confirm('Marcar como terminada la preparacion de mangueras de esta orden?')) return;
+    try { await actualizarTrabajo('terminar'); abrirModalCorte(); }
+    catch (error) { alert(error.message); }
+  });
+  setInterval(function () {
+    if (ordenActual && !document.getElementById('mg-pausar').disabled) {
+      actualizarTrabajo('latido').catch(function (error) {
+        document.getElementById('mg-trabajo-resumen').textContent = error.message;
+        document.getElementById('mg-pausar').disabled = true;
+        document.getElementById('mg-terminar').disabled = true;
+        abrirModalCorte();
+      });
+    }
+  }, 30000);
+  window.addEventListener('pagehide', function () {
+    if (!ordenActual) return;
+    navigator.sendBeacon('/api/mangueras/trabajo/' + encodeURIComponent(ordenActual.id),
+      new Blob([JSON.stringify({ accion: 'pausar' })], { type: 'application/json' }));
+  });
 
   // ── Referencias DOM ──────────────────────────────────────────────────
 
@@ -92,17 +142,42 @@
     );
   }
 
-  function confirmarCorteCodigo() {
+  async function confirmarCorteCodigo() {
+    if (enviandoEscaneo) return;
     var valor = inputCorte ? inputCorte.value.trim() : '';
     if (!valor) {
       if (errorCorte) errorCorte.classList.remove('hidden');
       if (inputCorte) inputCorte.focus();
       return;
     }
-    seleccionarCorte(valor);
+    enviandoEscaneo = true;
+    document.getElementById('btn-corte-confirmar').disabled = true;
+    try {
+      var respuesta = await fetch('/api/mangueras/trabajo/escanear', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo: valor })
+      });
+      var datos = await respuesta.json();
+      if (!respuesta.ok) throw new Error(datos.error || 'No se pudo registrar la orden.');
+      ordenActual = datos.orden;
+      mostrarTrabajo(datos.preparacion);
+      cerrarModalCorte();
+      await cargarMangueras(datos.corte);
+    } catch (error) {
+      errorCorte.textContent = error.message;
+      errorCorte.classList.remove('hidden');
+    } finally {
+      enviandoEscaneo = false;
+      document.getElementById('btn-corte-confirmar').disabled = false;
+    }
   }
 
-  function seleccionarCorte(codigo) {
+  async function seleccionarCorte(codigo) {
+    try {
+      if (ordenActual && !document.getElementById('mg-pausar').disabled) await actualizarTrabajo('pausar');
+    } catch (error) { alert(error.message); return; }
+    ordenActual = null;
+    document.getElementById('mg-trabajo').hidden = true;
     var cod = String(codigo || '').trim();
     var corte = cortes.find(function (c) {
       return String(c.codigo).toUpperCase() === cod.toUpperCase();
@@ -157,6 +232,7 @@
       var data = await resp.json();
 
       if (!data.success) {
+        if (ordenActual) await actualizarTrabajo('pausar');
         alert('Error: ' + (data.error || 'Error desconocido'));
         abrirModalCorte();
         return;
@@ -164,6 +240,7 @@
 
       mangueras = data.mangueras || [];
       if (mangueras.length === 0) {
+        if (ordenActual) await actualizarTrabajo('pausar');
         alert('No se encontraron filas con instrucciones de pelado (<-) en este corte.');
         abrirModalCorte();
         return;
@@ -176,6 +253,7 @@
       renderManguera();
 
     } catch (e) {
+      if (ordenActual) actualizarTrabajo('pausar').catch(function () {});
       alert('Error de conexión: ' + e.message);
       abrirModalCorte();
     }
@@ -183,7 +261,12 @@
 
   // Botón cambiar corte del banner
   var btnCambiarCorte = document.getElementById('mg-corte-cambiar');
-  if (btnCambiarCorte) btnCambiarCorte.addEventListener('click', abrirModalCorte);
+  if (btnCambiarCorte) btnCambiarCorte.addEventListener('click', async function () {
+    try {
+      if (ordenActual && !document.getElementById('mg-pausar').disabled) await actualizarTrabajo('pausar');
+      abrirModalCorte();
+    } catch (error) { alert(error.message); }
+  });
   document.addEventListener('mangueras-pendientes-actualizadas', async function () {
     if (!archivoActual || document.querySelector('dialog[open]')) return;
     var archivo = archivoActual;

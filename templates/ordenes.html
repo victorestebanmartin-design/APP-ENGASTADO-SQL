@@ -218,6 +218,7 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/mangueras-trazabilidad.js') }}"></script>
 <script>
 let todasLasOrdenes = [];
 let filtroEstado = 'todos';
@@ -310,7 +311,8 @@ function renderTabla(ordenes) {
             ? `<button class="btn-sm btn-sm-secondary" style="margin-right:4px;" onclick="abrirEditar('${o.id}')">Editar</button>`
             : (estado === 'cancelado' ? ''
                 : `<button class="btn-sm btn-sm-secondary" style="margin-right:4px;" title="Cambia solo el número; el bono y el progreso se conservan" onclick="cambiarNumeroOrden('${o.id}','${(o.numero||'').replace(/'/g,"\\'")}')">Cambiar nº</button>`)) +
-            `<button class="btn-sm btn-sm-danger" onclick="eliminarOrden('${o.id}','${estado}','${(o.numero||'').replace(/'/g,"\\'")}')">Eliminar</button>`;
+            `<button class="btn-sm btn-sm-danger" onclick="eliminarOrden('${o.id}','${estado}','${(o.numero||'').replace(/'/g,"\\'")}')">Eliminar</button>` +
+            `<button type="button" class="btn-sm btn-sm-secondary" data-trazabilidad-mangueras="${o.id}">Mangueras</button>`;
         return `<tr>
             <td><span style="font-family:'DM Mono',monospace;font-size:.79rem;color:var(--accent);">${o.codigo_corte||'—'}</span></td>
             <td>${archivo}</td>
