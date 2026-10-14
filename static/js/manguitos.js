@@ -604,22 +604,30 @@
 
     function pintarReetiquetado(colisiones) {
       var nReservas = colisiones.reduce(function (a, c) { return a + c.reservas.length; }, 0);
+      var instrucciones = [];
+      colisiones.forEach(function (c) {
+        c.reservas.forEach(function (r) { instrucciones.push({ colision: c, reserva: r }); });
+      });
+      instrucciones.sort(function (a, b) {
+        var etqA = String(a.reserva.etiqueta).split('.').map(Number);
+        var etqB = String(b.reserva.etiqueta).split('.').map(Number);
+        return (etqA[0] - etqB[0]) || ((etqA[1] || 0) - (etqB[1] || 0));
+      });
       document.getElementById('mg-reet-resumen').textContent =
         colisiones.length + ' paquete' + (colisiones.length !== 1 ? 's' : '') + ' juntados por la máquina · ' +
         nReservas + ' etiqueta' + (nReservas !== 1 ? 's' : '') + ' de reserva';
-      document.getElementById('mg-reet-lista').innerHTML = colisiones.map(function (c) {
-        var movs = c.reservas.map(function (r) {
-          var cables = r.cables.map(function (k) {
-            return k.cantidad + '× marca <b>' + esc(k.marca || '—') + '</b>' + esc(fmtLongitud(k.longitud)) +
-                   (k.igual_en_principal ? ' <span class="mg-reet-igual">(hay iguales en ' + esc(c.principal.etiqueta) + ': da lo mismo cuál)</span>' : '');
-          }).join(' &nbsp;·&nbsp; ');
-          return '<div class="mg-reet-mover">Etiqueta <b>#' + esc(r.etiqueta) + '</b> → ' +
-                 (cables || (r.num_cables + ' cable' + (r.num_cables !== 1 ? 's' : ''))) + '</div>';
-        }).join('');
+      document.getElementById('mg-reet-lista').innerHTML = instrucciones.map(function (instruccion) {
+        var c = instruccion.colision;
+        var r = instruccion.reserva;
+        var cables = r.cables.map(function (k) {
+          return k.cantidad + '× marca <b>' + esc(k.marca || '—') + '</b>' + esc(fmtLongitud(k.longitud)) +
+                 (k.igual_en_principal ? ' <span class="mg-reet-igual">(hay iguales en ' + esc(c.principal.etiqueta) + ': da lo mismo cuál)</span>' : '');
+        }).join(' &nbsp;·&nbsp; ');
         return '<div class="mg-reet-item">' +
                  '<div class="mg-reet-cab">' + esc(c.elemento) + '<small>' + esc(c.cod_cable) + '</small></div>' +
                  '<div class="mg-reet-quedan">Etiqueta principal en el paquete: #' + esc(c.principal.etiqueta) + '</div>' +
-                 movs +
+                 '<div class="mg-reet-mover">Etiqueta de reserva <b>#' + esc(r.etiqueta) + '</b> → ' +
+                 (cables || (r.num_cables + ' cable' + (r.num_cables !== 1 ? 's' : ''))) + '</div>' +
                '</div>';
       }).join('');
     }
