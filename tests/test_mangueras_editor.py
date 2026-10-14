@@ -32,6 +32,169 @@ def excel_original():
     return salida.getvalue()
 
 
+def test_propuesta_exige_identidad_personal(client):
+    respuesta = client.post('/api/mangueras/propuestas', json={
+        'archivo': 'corte.xlsx', 'motivo': 'Corregir medida',
+        'cambios': [], 'revision': 'sin revision',
+    })
+    assert respuesta.status_code == 401
+
+
+def preparar_propuesta(client, admin_client, app):
+    from app.routes.base import db
+    from sqlalchemy import text
+    with db.engine.begin() as conn:
+        for identificador, nombre in [('autor', 'Operario'), ('jefe', 'Jefe')]:
+            conn.execute(text('INSERT INTO operarios (id, nombre) VALUES (:id, :nombre)'),
+                         {'id': identificador, 'nombre': nombre})
+    for identificador in ('autor', 'jefe'):
+        respuesta = admin_client.put(f'/api/operarios/{identificador}/credencial-mangueras', json={
+            'clave': 'personal123', 'aprobar_mangueras': identificador == 'jefe',
+        })
+        assert respuesta.status_code == 200
+    assert client.post('/api/mangueras/identificacion', json={
+        'operario_id': 'autor', 'clave': 'personal123',
+    }).status_code == 200
+    original = excel_original()
+    ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
+    ruta.write_bytes(original)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][1])
+    cambio['de']['pm'] = 80
+    respuesta = client.post('/api/mangueras/propuestas', json={
+        'archivo': 'corte.xlsx', 'revision': datos['revision'],
+        'cambios': [cambio], 'motivo': 'Medida verificada en taller',
+    })
+    assert respuesta.status_code == 201
+    assert ruta.read_bytes() == original
+    return respuesta.get_json()['id'], ruta, original
+
+
+def test_propuesta_aprobacion_trazada(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    lista = client.get('/api/mangueras/propuestas').get_json()
+    assert lista['pendientes'] == 1
+    propuesta = lista['propuestas'][0]
+    assert propuesta['autor_nombre'] == 'Operario'
+    assert propuesta['creada_at']
+    assert propuesta['original'][1]['de']['pm'] is None
+    assert propuesta['sugerido']['filas'][1]['de']['pm'] == 80
+    assert 'original_excel' not in propuesta
+    respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar',
+        'motivo': 'Correcto tras comprobar plano',
+    })
+    assert respuesta.status_code == 200
+    assert load_workbook(ruta)['Format']['G3'].value == 'PM80'
+    assert Path(str(ruta) + f'.backup_mangueras_propuesta_{identificador}').read_bytes() == original
+    propuesta = client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]
+    assert propuesta['estado'] == 'aprobada'
+    assert propuesta['responsable_nombre'] == 'Jefe'
+    assert propuesta['resuelta_at']
+    assert propuesta['motivo_resolucion'] == 'Correcto tras comprobar plano'
+    assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Repetir decision',
+    }).status_code == 409
+
+
+def test_propuesta_no_autoaprobacion_ni_revision_antigua(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    admin_client.put('/api/operarios/autor/credencial-mangueras', json={'aprobar_mangueras': True})
+    assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'autor', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Yo lo propuse',
+    }).status_code == 403
+    ruta.write_bytes(original + b'cambio posterior')
+    respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Medida comprobada',
+    })
+    assert respuesta.status_code == 409
+    assert ruta.read_bytes() == original + b'cambio posterior'
+    assert client.get('/api/mangueras/propuestas').get_json()['pendientes'] == 1
+
+
+def test_propuesta_rechazo_conserva_excel(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'autor', 'clave': 'personal123', 'accion': 'rechazar', 'motivo': 'Sin permiso',
+    }).status_code == 403
+    assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'rechazar', 'motivo': 'No coincide con el plano',
+    }).status_code == 200
+    assert ruta.read_bytes() == original
+    assert client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]['estado'] == 'rechazada'
+
+
+def test_clave_personal_protegida_y_bloqueo(client, admin_client, app):
+    from app.routes.base import db
+    from sqlalchemy import text
+    with db.engine.begin() as conn:
+        conn.execute(text("INSERT INTO operarios (id, nombre) VALUES ('autor', 'Operario')"))
+    datos = {'clave': 'personal123', 'aprobar_mangueras': False}
+    assert client.put('/api/operarios/autor/credencial-mangueras', json=datos).status_code == 401
+    assert admin_client.put('/api/operarios/autor/credencial-mangueras', json=datos,
+                            headers={'Origin': 'https://otro.example'}).status_code == 403
+    assert admin_client.put('/api/operarios/autor/credencial-mangueras', json=datos).status_code == 200
+    for intento in range(5):
+        assert client.post('/api/mangueras/identificacion', json={
+            'operario_id': 'autor', 'clave': 'equivocada',
+        }).status_code == 401
+    assert client.post('/api/mangueras/identificacion', json={
+        'operario_id': 'autor', 'clave': 'personal123',
+    }).status_code == 401
+
+
+def test_propuesta_duplicada_y_sin_cambios(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][1])
+    cuerpo = {'archivo': 'corte.xlsx', 'revision': datos['revision'],
+              'cambios': [cambio], 'motivo': 'Comprobacion de taller'}
+    assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 400
+    cambio['de']['pm'] = 90
+    assert client.post('/api/mangueras/propuestas', json=cuerpo).status_code == 409
+    assert ruta.read_bytes() == original
+
+
+def test_cambio_de_clave_revoca_identificacion(client, admin_client, app):
+    preparar_propuesta(client, admin_client, app)
+    assert client.get('/api/mangueras/identificacion').status_code == 200
+    assert admin_client.put('/api/operarios/autor/credencial-mangueras', json={
+        'clave': 'otraPersonal123', 'aprobar_mangueras': False,
+    }).status_code == 200
+    assert client.get('/api/mangueras/propuestas').status_code == 401
+    assert client.get('/api/mangueras/identificacion').status_code == 401
+
+
+def test_propuesta_fallo_reemplazo_no_aprueba(client, admin_client, app, monkeypatch):
+    from app.routes import mangueras_propuestas
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    def fallo_reemplazo(origen, destino):
+        raise OSError('Archivo bloqueado')
+    monkeypatch.setattr(mangueras_propuestas.os, 'replace', fallo_reemplazo)
+    respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'operario_id': 'jefe', 'clave': 'personal123', 'accion': 'aprobar', 'motivo': 'Medida comprobada',
+    })
+    assert respuesta.status_code == 500
+    assert ruta.read_bytes() == original
+    assert client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]['estado'] == 'pendiente'
+    autorizacion = json.loads(Path(str(ruta) + f'.backup_mangueras_propuesta_{identificador}.json').read_text(encoding='utf-8'))
+    assert autorizacion['responsable_id'] == 'jefe'
+    assert autorizacion['revision_original'] == leer_preparacion(original, 'corte.xlsx')['revision']
+
+
+def test_propuesta_no_modifica_otras_mangueras():
+    original = excel_original()
+    datos = leer_preparacion(original, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][0])
+    cambio['de']['pm'] = 135
+    libro_original = load_workbook(io.BytesIO(original))
+    salida = exportar_preparacion(original, 'corte.xlsx', [cambio], datos['revision'], solo_modificadas=True)
+    libro_sugerido = load_workbook(salida)
+    for fila in (3, 4, 5):
+        for columna in range(1, libro_sugerido['Format'].max_column + 1):
+            assert libro_sugerido['Format'].cell(fila, columna).value == libro_original['Format'].cell(fila, columna).value
+
+
 def test_sugerencias_y_legacy():
     datos = leer_preparacion(excel_original(), 'corte.xlsx')
     assert [fila['fila'] for fila in datos['filas']] == [2, 3, 5]

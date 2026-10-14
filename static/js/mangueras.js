@@ -12,6 +12,7 @@
   var mangueras = [];   // lista completa cargada
   var idx       = 0;   // índice actual
   var cortes    = [];   // cortes registrados disponibles
+  var archivoActual = null;
 
   // ── Referencias DOM ──────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@
       }
 
       idx = 0;
+      archivoActual = archivo;
       actualizarBanner(corte);
       divActivo.style.display = 'block';
       renderManguera();
@@ -182,6 +184,36 @@
   // Botón cambiar corte del banner
   var btnCambiarCorte = document.getElementById('mg-corte-cambiar');
   if (btnCambiarCorte) btnCambiarCorte.addEventListener('click', abrirModalCorte);
+  document.addEventListener('mangueras-pendientes-actualizadas', async function () {
+    if (!archivoActual || document.querySelector('dialog[open]')) return;
+    var archivo = archivoActual;
+    var fila = mangueras[idx] && mangueras[idx].fila_excel;
+    try {
+      var respuesta = await fetch('/api/mangueras/datos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archivo: archivo })
+      });
+      var datos = await respuesta.json();
+      if (archivo !== archivoActual || !datos.success || !datos.mangueras.length) return;
+      mangueras = datos.mangueras;
+      var posicion = mangueras.findIndex(function (manguera) { return manguera.fila_excel === fila; });
+      idx = posicion >= 0 ? posicion : 0;
+      renderManguera();
+    } catch (error) { console.error('No se pudo actualizar la preparacion:', error); }
+  });
+  var btnEditar = document.getElementById('mg-editar');
+  if (btnEditar) btnEditar.addEventListener('click', async function () {
+    var manguera = mangueras[idx];
+    if (!manguera || !archivoActual) return;
+    var archivo = archivoActual;
+    var fila = manguera.fila_excel;
+    btnEditar.disabled = true;
+    try {
+      if (await window.identificarMangueras()) {
+        window.location.href = '/mangueras/editor?' + new URLSearchParams({ proponer: '1', archivo: archivo, fila: fila });
+      }
+    } finally { btnEditar.disabled = false; }
+  });
 
   // Wiring botones modal
   document.getElementById('btn-corte-input').addEventListener('click', mostrarInputCorte);
@@ -239,6 +271,11 @@
 
     // Instrucciones
     divInst.innerHTML = instruccionesHtml(mg);
+    document.getElementById('mg-propuestas').innerHTML = (mg.propuestas || []).map(function (propuesta) {
+      return '<section class="mp-pendiente"><strong>Propuesta #' + propuesta.id + ' pendiente de aprobacion</strong>' +
+        '<p>' + esc(propuesta.autor + ' · ' + propuesta.fecha) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p>' +
+        window.comparacionMangueras(propuesta.original, propuesta.sugerido) + '</section>';
+    }).join('');
 
     // Botones nav
     btnPrev.disabled = (idx === 0);
@@ -384,6 +421,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (mangueras.length === 0) return;
+    if (document.querySelector('dialog[open]')) return;
     if (['INPUT', 'SELECT', 'TEXTAREA'].indexOf(e.target.tagName) !== -1) return;
     if (e.key === 'ArrowLeft'  && idx > 0)                        { idx--; renderManguera(); }
     if (e.key === 'ArrowRight' && idx < mangueras.length - 1)     { idx++; renderManguera(); }

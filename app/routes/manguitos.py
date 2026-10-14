@@ -313,6 +313,24 @@ def api_mangueras_datos():
             pass  # Si no hay etiquetas cargadas, no es crítico
 
         resultado = _ordenar_mangueras_por_paquete(resultado)
+        with db.engine.connect() as conn:
+            pendientes = conn.execute(text(
+                "SELECT id, autor_nombre, creada_at, motivo, original_json, sugerido_json "
+                "FROM mangueras_propuestas WHERE archivo=:archivo AND estado='pendiente'"
+            ), {'archivo': archivo}).mappings().all()
+        for manguera in resultado:
+            manguera['propuestas'] = []
+            for propuesta in pendientes:
+                sugerido = json.loads(propuesta['sugerido_json'])
+                if not any(cambio['fila'] == manguera.get('fila_excel') for cambio in sugerido['cambios']):
+                    continue
+                fila_excel = manguera['fila_excel']
+                manguera['propuestas'].append({
+                    'id': propuesta['id'], 'autor': propuesta['autor_nombre'],
+                    'fecha': propuesta['creada_at'], 'motivo': propuesta['motivo'],
+                    'original': next(fila for fila in json.loads(propuesta['original_json']) if fila['fila'] == fila_excel),
+                    'sugerido': next(fila for fila in sugerido['filas'] if fila['fila'] == fila_excel),
+                })
         return jsonify({'success': True, 'mangueras': resultado})
     except Exception as e:
         return error_interno(e)

@@ -197,8 +197,8 @@ def login_operario():
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
-MANUAL_VERSION = 'v1.2'
-MANUAL_FECHA = 'julio 2026'
+MANUAL_VERSION = 'v1.3'
+MANUAL_FECHA = 'octubre 2026'
 
 
 @bp.route('/manual')

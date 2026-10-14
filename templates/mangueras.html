@@ -156,7 +156,8 @@
   <div class="mg-topbar">
     <div class="mg-topbar-inner">
       <div class="mg-topbar-title">🛠️ Preparación de Mangueras</div>
-      <a href="{{ url_for('main.mangueras_editor') }}" class="mg-back-btn">Editar preparación</a>
+      <a href="{{ url_for('main.mangueras_editor') }}" class="mg-back-btn">Editor administrativo</a>
+      <a href="{{ url_for('main.mangueras_propuestas') }}" class="mg-back-btn" data-mangueras-pendientes>Propuestas de mangueras</a>
       {% if pc_dedicado %}
       <a href="#" class="mg-back-btn" title="Cerrar sesión y volver al lector de tarjetas"
          onclick="salirModulo('Preparación de Mangueras'); return false;">🚪 Cerrar sesión</a>
@@ -197,6 +198,8 @@
 
         <!-- Info cable -->
         <div class="cable-info" id="mg-cable-info"></div>
+        <button type="button" id="mg-editar" class="nav-btn">Editar</button>
+        <div id="mg-propuestas" aria-live="polite"></div>
 
         <!-- Obs raw -->
         <div class="obs-raw" id="mg-obs-raw"></div>
@@ -277,6 +280,9 @@
     </div>
   </div>
 
+  {% include '_mangueras_identidad.html' %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
+  <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
   <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}"></script>
   <script src="{{ url_for('static', filename='js/mangueras.js') }}"></script>

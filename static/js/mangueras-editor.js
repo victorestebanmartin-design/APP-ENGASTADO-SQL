@@ -20,6 +20,10 @@
   var estadoGuardado = document.getElementById('me-save-status');
   var pinForm = document.getElementById('me-pin-form');
   var botonAplicarSinDescargar = document.getElementById('me-save-apply-only');
+  var parametros = new URLSearchParams(window.location.search);
+  var modoPropuesta = parametros.get('proponer') === '1';
+  var filaPropuesta = Number(parametros.get('fila'));
+  var nombreProponente = '';
 
   function mensajeGuardado(texto, error) {
     estadoGuardado.textContent = texto;
@@ -37,7 +41,7 @@
     status.classList.toggle('me-error', !!error);
   }
 
-  function claveBorrador() { return 'mangueras-editor:' + datos.revision; }
+  function claveBorrador() { return (modoPropuesta ? 'mangueras-propuesta:' + filaPropuesta + ':' + nombreProponente + ':' : 'mangueras-editor:') + datos.revision; }
 
   function persistir() {
     document.getElementById('me-draft').textContent = cambios.size + ' mangueras modificadas';
@@ -75,6 +79,10 @@
       var resultado = await respuesta.json();
       if (!respuesta.ok || !resultado.success) throw new Error(resultado.error || 'No se pudo abrir el Excel.');
       datos = resultado;
+      if (modoPropuesta) {
+        datos.filas = datos.filas.filter(function (fila) { return fila.fila === filaPropuesta; });
+        if (!datos.filas.length) throw new Error('La manguera ya no existe. Vuelve a cargar la preparacion.');
+      }
       originales = structuredClone(datos.filas);
       cambios = new Map();
       try {
@@ -412,6 +420,20 @@
     descargarAlReintentarAplicacion = true;
     pinForm.hidden = true;
     document.getElementById('me-pin').value = '';
+    if (modoPropuesta) {
+      document.getElementById('me-save-title').textContent = 'Proponer modificacion';
+      document.getElementById('me-save-summary').textContent = nombreProponente + ' · ' + datos.nombre;
+      document.getElementById('me-motivo-label').hidden = false;
+      document.getElementById('me-save-proposal').hidden = false;
+      destino.parentElement.hidden = true;
+      ['me-save-download', 'me-save-apply', 'me-save-apply-only'].forEach(function (id) { document.getElementById(id).hidden = true; });
+      var comparacion = document.getElementById('me-propuesta-comparacion');
+      comparacion.hidden = false;
+      comparacion.innerHTML = window.comparacionMangueras(originales[0], datos.filas[0]);
+      mensajeGuardado('Pendiente de aprobacion del jefe de linea.');
+      dialogo.showModal();
+      return;
+    }
     destino.innerHTML = '<option value="">Seleccionar corte</option>' + cortesDisponibles.map(function (corte) {
       return '<option value="' + esc(corte.archivo) + '">' + esc(corte.codigo + ' · ' + (corte.descripcion || corte.archivo)) + '</option>';
     }).join('');
@@ -495,6 +517,27 @@
   }
 
   download.addEventListener('click', abrirGuardado);
+  document.getElementById('me-save-proposal').addEventListener('click', async function () {
+    if (ocupado || !datos || !guardarActual()) return;
+    var motivo = document.getElementById('me-motivo').value.trim();
+    if (motivo.length < 5) { mensajeGuardado('Escribe el motivo de la modificacion (al menos 5 caracteres).', true); return; }
+    bloquear(true);
+    try {
+      var respuesta = await fetch('/api/mangueras/propuestas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          archivo: fuente.archivo, revision: datos.revision, cambios: [datos.filas[0]], motivo: motivo
+        })
+      });
+      var resultado = await respuesta.json();
+      if (!respuesta.ok) throw new Error(resultado.error || 'No se pudo enviar la propuesta.');
+      cambios.clear();
+      pendiente = false;
+      localStorage.removeItem(claveBorrador());
+      ocupado = false;
+      window.location.href = '/mangueras/propuestas';
+    } catch (error) { mensajeGuardado(error.message, true); }
+    finally { bloquear(false); }
+  });
   document.getElementById('me-save-download').addEventListener('click', function () { guardarExcel(false, true); });
   if (botonAplicarSinDescargar) botonAplicarSinDescargar.addEventListener('click', function () { guardarExcel(true, false); });
   document.getElementById('me-save-apply').addEventListener('click', function () { guardarExcel(true, true); });
@@ -563,4 +606,15 @@
       fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(function () {});
     }
   });
+  if (modoPropuesta) {
+    document.querySelector('.me-source').hidden = true;
+    document.getElementById('me-download').textContent = 'Enviar propuesta...';
+    document.getElementById('me-save').textContent = 'Proponer modificacion';
+    fetch('/api/mangueras/identificacion').then(function (respuesta) { return respuesta.json(); }).then(async function (identidad) {
+      if (!identidad.success) identidad = await window.identificarMangueras();
+      if (!identidad) { window.location.href = '/mangueras'; return; }
+      nombreProponente = identidad.nombre;
+      await cargar({ archivo: parametros.get('archivo') });
+    }).catch(function (error) { mensaje(error.message, true); });
+  }
 })();

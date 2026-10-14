@@ -165,6 +165,39 @@ def _apply_migrations(db_path):
         cur.execute("ALTER TABLE operarios ADD COLUMN modulos_permitidos TEXT")
         conn.commit()
 
+    for columna, definicion in (
+        ('clave_personal_hash', 'TEXT'),
+        ('aprobar_mangueras', 'INTEGER NOT NULL DEFAULT 0'),
+        ('clave_intentos', 'INTEGER NOT NULL DEFAULT 0'),
+        ('clave_bloqueada_hasta', 'REAL NOT NULL DEFAULT 0'),
+    ):
+        if columna not in op_cols:
+            cur.execute(f'ALTER TABLE operarios ADD COLUMN {columna} {definicion}')
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mangueras_propuestas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            archivo TEXT NOT NULL,
+            revision TEXT NOT NULL,
+            autor_id TEXT NOT NULL,
+            autor_nombre TEXT NOT NULL,
+            creada_at TEXT NOT NULL,
+            motivo TEXT NOT NULL,
+            original_json TEXT NOT NULL,
+            sugerido_json TEXT NOT NULL,
+            original_excel BLOB NOT NULL,
+            sugerido_excel BLOB NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            responsable_id TEXT,
+            responsable_nombre TEXT,
+            resuelta_at TEXT,
+            motivo_resolucion TEXT,
+            backup TEXT
+        )
+    """)
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_mangueras_propuestas_estado '
+                'ON mangueras_propuestas(estado, archivo)')
+    conn.commit()
+
     # Migración: tabla sesiones_trabajo (bloqueo de paquetes concurrente)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sesiones_trabajo (

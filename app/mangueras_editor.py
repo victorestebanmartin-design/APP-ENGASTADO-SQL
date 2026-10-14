@@ -490,7 +490,7 @@ def _serializar_retractiles(retractiles):
     return '/'.join(tokens)
 
 
-def exportar_preparacion(contenido, nombre, cambios, revision):
+def exportar_preparacion(contenido, nombre, cambios, revision, solo_modificadas=False):
     if revision != hashlib.sha256(contenido).hexdigest():
         raise ValueError('El Excel ha cambiado. Vuelve a cargarlo antes de descargar.')
     if not isinstance(cambios, list):
@@ -545,7 +545,8 @@ def exportar_preparacion(contenido, nombre, cambios, revision):
                         celda.value = ' // '.join(parte.strip() for parte in re.split(r'//|\$', obs)
                                                  if '<-' not in parte and '->' not in parte) or None
         for fila, vinculacion in vinculos.items():
-            _actualizar_bloqueos(hoja, columnas, fila, vinculacion)
+            if not solo_modificadas or fila in vistos:
+                _actualizar_bloqueos(hoja, columnas, fila, vinculacion)
         salida = io.BytesIO()
         libro.save(salida)
         salida.seek(0)

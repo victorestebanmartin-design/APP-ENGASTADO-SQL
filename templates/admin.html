@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
     <style>
         .campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
         .campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
@@ -48,6 +49,7 @@
                 <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
                 <div class="admin-nav-label">Auditoría</div>
+                <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes>Propuestas de mangueras</a>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
 
                 <div class="admin-nav-label">Sistema</div>
@@ -1097,6 +1099,15 @@
         </div>
 
         <!-- Modales -->
+        <dialog id="op-credencial-dialog" class="mp-dialog" aria-labelledby="op-credencial-titulo">
+            <form id="op-credencial-form">
+                <h2 id="op-credencial-titulo">Clave personal de mangueras</h2>
+                <label>Nueva clave personal<input id="op-credencial-clave" type="password" autocomplete="new-password" minlength="8" maxlength="128"></label>
+                <label><input id="op-credencial-aprobar" type="checkbox"> Aprobar mangueras</label>
+                <p id="op-credencial-error" class="mp-error" role="alert"></p>
+                <div class="mp-actions"><button type="button" onclick="document.getElementById('op-credencial-dialog').close()">Cancelar</button><button type="submit">Guardar</button></div>
+            </form>
+        </dialog>
         <div id="modal-puesto" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -1199,6 +1210,37 @@
         });
     }
 
+    function configurarClaveMangueras(id, aprobar) {
+        const formulario = document.getElementById('op-credencial-form');
+        formulario.dataset.id = id;
+        document.getElementById('op-credencial-clave').value = '';
+        document.getElementById('op-credencial-aprobar').checked = aprobar;
+        document.getElementById('op-credencial-error').textContent = '';
+        document.getElementById('op-credencial-dialog').showModal();
+    }
+    document.getElementById('op-credencial-dialog').addEventListener('close', function () {
+        document.getElementById('op-credencial-clave').value = '';
+    });
+    document.getElementById('op-credencial-form').addEventListener('submit', async function (evento) {
+        evento.preventDefault();
+        const boton = evento.target.querySelector('[type=submit]');
+        boton.disabled = true;
+        try {
+            const respuesta = await fetch('/api/operarios/' + evento.target.dataset.id + '/credencial-mangueras', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                    clave: document.getElementById('op-credencial-clave').value,
+                    aprobar_mangueras: document.getElementById('op-credencial-aprobar').checked
+                })
+            });
+            document.getElementById('op-credencial-clave').value = '';
+            const datos = await respuesta.json();
+            if (!respuesta.ok) throw new Error(datos.error || datos.message || 'No se pudo guardar.');
+            document.getElementById('op-credencial-dialog').close();
+            cargarOperariosAdmin();
+        } catch (error) { document.getElementById('op-credencial-error').textContent = error.message; }
+        finally { boton.disabled = false; }
+    });
+
     function cargarOperariosAdmin() {
         Promise.all([fetch('/api/operarios').then(r => r.json()), _cargarModulosApp()])
             .then(([data, modulos]) => {
@@ -1237,6 +1279,10 @@
                             <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
                         </td>
                         <td>
+                            <span>${op.clave_personal_configurada ? 'Clave configurada' : 'Sin clave personal'}${op.aprobar_mangueras ? ' / Puede aprobar' : ''}</span>
+                            <button class="btn-secondary" type="button" onclick="configurarClaveMangueras('${op.id}', ${op.aprobar_mangueras})">Clave y aprobaci&oacute;n</button>
+                        </td>
+                        <td>
                             <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">${casillasModulos}</div>
                             <button onclick="guardarPermisosOperario('${op.id}')" class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:0.8em;">Guardar permisos</button>
                             <span id="op-permisos-msg-${op.id}" style="font-size:0.78em;margin-left:6px;"></span>
@@ -1264,6 +1310,7 @@
                                     <th>Nombre</th>
                                     <th>Tarjeta NFC</th>
                                     <th>Estado</th>
+                                    <th>Mangueras</th>
                                     <th>Módulos permitidos</th>
                                     <th>Acciones</th>
                                 </tr>
@@ -3528,5 +3575,6 @@
 
     })();
     </script>
+<script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
 </body>
 </html>

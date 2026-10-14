@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+  <title>Propuestas de mangueras</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-editor.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
+</head>
+<body class="me-app">
+  {% include '_version_badge.html' %}
+  <header class="me-topbar">
+    <div><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="36" height="36" alt=""><h1>Propuestas de mangueras</h1></div>
+    <a href="{{ url_for('main.mangueras') }}">Volver a preparaci&oacute;n</a>
+  </header>
+  <main class="me-main">
+    <div class="mp-filtros">
+      <button id="mp-entrar" type="button">Identificarse</button>
+      <label>Estado<select id="mp-filtro"><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="rechazada">Rechazadas</option><option value="">Todas</option></select></label>
+      <strong id="mp-contador"></strong>
+      <button id="mp-actualizar" type="button">Actualizar</button>
+    </div>
+    <p id="mp-status" role="status" aria-live="polite"></p>
+    <div id="mp-lista"></div>
+  </main>
+  {% include '_mangueras_identidad.html' %}
+  <dialog id="mp-resolucion" class="mp-dialog" aria-labelledby="mp-resolucion-titulo">
+    <form id="mp-resolucion-form">
+      <h2 id="mp-resolucion-titulo">Resolver propuesta</h2>
+      <label>Motivo de la decisi&oacute;n<textarea id="mp-resolucion-motivo" required minlength="5" maxlength="2000" rows="3"></textarea></label>
+      <label>Tu clave personal<input id="mp-resolucion-clave" type="password" autocomplete="current-password" required maxlength="128"></label>
+      <p id="mp-resolucion-error" class="mp-error" role="alert"></p>
+      <div class="mp-actions"><button type="button" id="mp-resolucion-cancelar">Cancelar</button><button type="submit">Confirmar decisi&oacute;n</button></div>
+    </form>
+  </dialog>
+  <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
+</body>
+</html>

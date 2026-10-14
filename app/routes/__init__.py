@@ -16,6 +16,7 @@ def init_routes(app):
     from app.routes import (  # noqa: F401
         paginas,
         manguitos,
+        mangueras_propuestas,
         proyectos,
         ordenes,
         bonos,
