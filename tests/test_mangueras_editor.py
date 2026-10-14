@@ -59,7 +59,7 @@ def test_propuestas_usan_sesion_modulo_sin_clave(client, app):
     assert respuesta.get_json()['aprobar'] is False
 
 
-def preparar_propuesta(client, admin_client, app):
+def preparar_propuesta(client, admin_client, app, indice_manguera=1):
     from app.routes.base import db
     from sqlalchemy import text
     from datetime import datetime
@@ -82,7 +82,7 @@ def preparar_propuesta(client, admin_client, app):
     ruta = Path(app.config['UPLOAD_FOLDER']) / 'corte.xlsx'
     ruta.write_bytes(original)
     datos = leer_preparacion(original, 'corte.xlsx')
-    cambio = deepcopy(datos['filas'][1])
+    cambio = deepcopy(datos['filas'][indice_manguera])
     cambio['de']['pm'] = 80
     respuesta = client.post('/api/mangueras/propuestas', json={
         'archivo': 'corte.xlsx', 'revision': datos['revision'],
@@ -150,6 +150,39 @@ def test_propuesta_rechazo_conserva_excel(client, admin_client, app):
     }).status_code == 200
     assert ruta.read_bytes() == original
     assert client.get('/api/mangueras/propuestas').get_json()['propuestas'][0]['estado'] == 'rechazada'
+
+
+@pytest.mark.parametrize('accion,estado,medida', [('aprobar', 'aprobada', 80), ('rechazar', 'rechazada', 100)])
+def test_resolver_actualiza_preparacion_y_archiva_propuesta(client, admin_client, app, accion, estado, medida):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app, indice_manguera=0)
+    antes = client.post('/api/mangueras/datos', json={'archivo': 'corte.xlsx'}).get_json()['mangueras']
+    manguera = next(fila for fila in antes if fila['fila_excel'] == 2)
+    assert manguera['de']['pm'] == 100
+    assert manguera['propuestas'][0]['sugerido']['de']['pm'] == 80
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
+        'accion': accion, 'motivo': 'Decision tras revisar el plano',
+    })
+    assert respuesta.status_code == 200
+    despues = client.post('/api/mangueras/datos', json={'archivo': 'corte.xlsx'}).get_json()['mangueras']
+    manguera = next(fila for fila in despues if fila['fila_excel'] == 2)
+    assert manguera['de']['pm'] == medida
+    assert manguera['propuestas'] == []
+    historial = client.get('/api/mangueras/propuestas').get_json()
+    assert historial['pendientes'] == 0
+    assert historial['propuestas'][0]['estado'] == estado
+    assert historial['propuestas'][0]['responsable_nombre'] == 'Jefe'
+    if accion == 'rechazar':
+        assert ruta.read_bytes() == original
+
+
+def test_recuperacion_ve_propuestas_sin_permiso_para_resolver(client, admin_client, app):
+    preparar_propuesta(client, admin_client, app)
+    respuesta = admin_client.get('/api/mangueras/propuestas')
+    assert respuesta.status_code == 200
+    assert respuesta.get_json()['recuperacion'] is True
+    assert respuesta.get_json()['aprobar'] is False
+    assert respuesta.get_json()['pendientes'] == 1
 
 
 def test_clave_personal_protegida_y_bloqueo(client, admin_client, app):

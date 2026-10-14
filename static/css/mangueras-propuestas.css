@@ -7,6 +7,12 @@
 .mp-dialog label { display: block; margin: 14px 0; font-size: 14px; }
 .mp-dialog input, .mp-dialog select, .mp-dialog textarea { box-sizing: border-box; display: block; width: 100%; padding: 10px; margin-top: 6px; font: inherit; color: #26323b; background: white; border: 1px solid #becbd3; border-radius: 4px; }
 .mp-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.mp-actions .mp-aprobar { background: #15803d; color: #fff; border-color: #15803d; }
+.mp-actions .mp-rechazar { background: #b42318; color: #fff; border-color: #b42318; }
+.me-app .mp-actions .mp-aprobar:hover:not(:disabled) { background: #166534; color: #fff; }
+.me-app .mp-actions .mp-rechazar:hover:not(:disabled) { background: #912018; color: #fff; }
+.mp-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.mp-resolution-warning { color: #9a3412; font-size: 13px; }
 .mp-actions button, .mp-dialog button { padding: 10px 14px; border: 1px solid #b6c6ce; border-radius: 4px; background: #fff; color: #26323b; cursor: pointer; font: inherit; }
 #mp-identidad-error, .mp-error { color: #b42318; }
 .mp-comparacion { overflow-x: auto; margin: 16px 0; }

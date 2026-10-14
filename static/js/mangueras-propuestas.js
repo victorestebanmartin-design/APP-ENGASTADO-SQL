@@ -6,7 +6,7 @@
     });
   }
   var ultimoPendientes = null;
-  async function actualizarContadores() {
+  async function actualizarContadores(forzar) {
     if (!document.querySelector('[data-mangueras-pendientes]')) return;
     try {
       var respuesta = await fetch('/api/mangueras/propuestas/pendientes');
@@ -14,7 +14,7 @@
       if (datos.success) document.querySelectorAll('[data-mangueras-pendientes]').forEach(function (elemento) {
         elemento.textContent = 'Propuestas de mangueras (' + datos.pendientes + (datos.pendientes === 1 ? ' pendiente)' : ' pendientes)');
       });
-      if (datos.success && ultimoPendientes !== datos.pendientes) {
+      if (datos.success && (forzar || ultimoPendientes !== datos.pendientes)) {
         ultimoPendientes = datos.pendientes;
         document.dispatchEvent(new CustomEvent('mangueras-pendientes-actualizadas'));
       }
@@ -22,6 +22,12 @@
   }
   actualizarContadores();
   setInterval(function () { if (document.visibilityState === 'visible') actualizarContadores(); }, 60000);
+  window.addEventListener('storage', function (evento) {
+    if (evento.key === 'mangueras-propuestas-resueltas') actualizarContadores(true);
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') actualizarContadores(true);
+  });
   window.identificarMangueras = async function () {
     var respuesta = await fetch('/api/mangueras/identificacion');
     var datos = await respuesta.json();
@@ -102,10 +108,17 @@
         var sugerido = filas.find(function (fila) { return fila.fila === cambio.fila; });
         return '<h3>' + esc(original.cable_marca + ' / ' + original.cod_cable + ' / ' + original.de_elemento + ' / Fila ' + original.fila) + '</h3>' + window.comparacionMangueras(original, sugerido);
       }).join('');
+      var puedeResolver = puedeAprobar && propuesta.autor_id !== identidadId;
+      var avisoResolucion = !puedeAprobar ? 'Sesion personal de Administracion requerida.' :
+        propuesta.autor_id === identidadId ? 'Esta propuesta debe resolverla otro administrador.' : '';
+      var acciones = propuesta.estado === 'pendiente' ? '<div class="mp-actions">' +
+        '<button type="button" class="mp-aprobar" data-resolver="' + propuesta.id + '" data-accion="aprobar"' + (puedeResolver ? '' : ' disabled') + '>Aprobar</button>' +
+        '<button type="button" class="mp-rechazar" data-resolver="' + propuesta.id + '" data-accion="rechazar"' + (puedeResolver ? '' : ' disabled') + '>Rechazar</button></div>' +
+        (avisoResolucion ? '<p class="mp-resolution-warning">' + esc(avisoResolucion) + '</p>' : '') : '';
       return '<article class="mp-propuesta"><h2>#' + propuesta.id + ' · ' + esc(propuesta.archivo) + ' · ' + esc(propuesta.estado) + '</h2>' +
         '<p>' + esc(propuesta.autor_nombre + ' · ' + propuesta.creada_at) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p>' + comparaciones +
         (propuesta.resuelta_at ? '<p>' + esc(propuesta.responsable_nombre + ' · ' + propuesta.resuelta_at + '\n' + propuesta.motivo_resolucion) + '</p>' : '') +
-        (propuesta.estado === 'pendiente' && puedeAprobar && propuesta.autor_id !== identidadId ? '<div class="mp-actions"><button data-resolver="' + propuesta.id + '" data-accion="aprobar">Aprobar</button><button data-resolver="' + propuesta.id + '" data-accion="rechazar">Rechazar</button></div>' : '') + '</article>';
+        acciones + '</article>';
     }).join('') || '<p>No hay propuestas en este estado.</p>';
   }
   async function cargar() {
@@ -116,7 +129,7 @@
       propuestas = datos.propuestas;
       puedeAprobar = datos.aprobar;
       identidadId = datos.operario_id;
-      document.getElementById('mp-identidad-actual').textContent = datos.nombre + (datos.aprobar ? ' / Administraci\u00f3n' : ' / Operario');
+      document.getElementById('mp-identidad-actual').textContent = datos.nombre + (datos.aprobar ? ' / Administraci\u00f3n' : datos.recuperacion ? '' : ' / Operario');
       document.getElementById('mp-contador').textContent = datos.pendientes + (datos.pendientes === 1 ? ' pendiente' : ' pendientes');
       estado.textContent = '';
       render();
@@ -148,8 +161,14 @@
       });
       var datos = await respuesta.json();
       if (!respuesta.ok) throw new Error(datos.error);
+      var aprobada = evento.target.dataset.accion === 'aprobar';
       resolucion.close();
+      document.getElementById('mp-filtro').value = aprobada ? 'aprobada' : 'rechazada';
       await cargar();
+      estado.textContent = aprobada ? 'Propuesta aceptada. La nueva preparacion ya esta aplicada al corte.' :
+        'Propuesta rechazada. Se conserva la preparacion vigente sin los cambios sugeridos.';
+      await actualizarContadores();
+      try { localStorage.setItem('mangueras-propuestas-resueltas', String(Date.now())); } catch (error) { return; }
     } catch (error) { document.getElementById('mp-resolucion-error').textContent = error.message; }
     finally { boton.disabled = false; }
   });

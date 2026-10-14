@@ -9,7 +9,7 @@ from flask import jsonify, render_template, request, session
 from sqlalchemy import text
 from werkzeug.security import generate_password_hash
 
-from app.auth import requiere_pin_admin, administrador_actual
+from app.auth import requiere_pin_admin, administrador_actual, sesion_admin_valida
 from app.excel_manager import invalidar_cache_excel
 from app.mangueras_editor import exportar_preparacion, leer_preparacion
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
@@ -88,10 +88,11 @@ def contador_propuestas_mangueras():
 @bp.route('/api/mangueras/propuestas', methods=['GET', 'POST'])
 def api_mangueras_propuestas():
     administrador = administrador_actual() if request.method == 'GET' else None
-    identidad = administrador or _identidad()
+    recuperacion = request.method == 'GET' and not administrador and sesion_admin_valida()
+    identidad = administrador or ({'id': None, 'nombre': 'Acceso de recuperacion'} if recuperacion else _identidad())
     if not identidad:
         return jsonify(success=False, error='Entra al modulo con tu sesion de operario o identificate en Admin.'), 401
-    if not administrador and not operario_puede(identidad['nombre'], 'mangueras'):
+    if not administrador and not recuperacion and not operario_puede(identidad['nombre'], 'mangueras'):
         return jsonify(success=False, error='No tienes permiso de mangueras.'), 403
     if request.method == 'GET':
         with db.engine.connect() as conn:
@@ -107,6 +108,7 @@ def api_mangueras_propuestas():
             propuesta['sugerido'] = json.loads(propuesta.pop('sugerido_json'))
             propuestas.append(propuesta)
         return jsonify(success=True, propuestas=propuestas, aprobar=bool(administrador),
+                       recuperacion=bool(recuperacion),
                        operario_id=identidad['id'], nombre=identidad['nombre'],
                        pendientes=sum(p['estado'] == 'pendiente' for p in propuestas))
     try:
