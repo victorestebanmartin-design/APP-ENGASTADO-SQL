@@ -87,6 +87,11 @@
     .inst-val { font-size: 34px; font-weight: 900; line-height: 1; }
     .inst-unit { font-size: 15px; font-weight: 700; color: #6b7280; margin-left: 3px; }
 
+    .mg-reloj { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+    .mg-reloj-label { color: #52616b; font-size: 13px; font-weight: 700; }
+    .mg-reloj-tiempo { color: #0e7490; font: 700 30px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-variant-numeric: tabular-nums; }
+
     .val-pm     { color: #0891b2; }
     .val-malla  { color: #7c3aed; }
     .val-cortar { color: #dc2626; font-size: 24px; }
@@ -183,6 +188,7 @@
     <div class="section-card">
       <section id="mg-trabajo" hidden aria-live="polite" style="margin-bottom:16px;overflow-wrap:anywhere;">
         <h2 id="mg-orden" style="font-size:18px;"></h2>
+        <div class="mg-reloj"><span class="mg-reloj-label">Tiempo fichado acumulado</span><time id="mg-cronometro" class="mg-reloj-tiempo" role="timer" aria-label="Tiempo de preparación acumulado">00:00:00</time></div>
         <p id="mg-trabajo-resumen"></p>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
           <button type="button" class="nav-btn" id="mg-pausar">Pausar</button>

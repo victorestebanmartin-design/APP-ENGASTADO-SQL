@@ -15,17 +15,42 @@
   var archivoActual = null;
   var ordenActual = null;
   var enviandoEscaneo = false;
+  var segundosFichados = 0;
+  var inicioReloj = 0;
+  var relojActivo = false;
+
+  function formatoCronometro(segundos) {
+    var total = Math.max(0, Math.floor(segundos));
+    var horas = Math.floor(total / 3600);
+    var minutos = Math.floor(total % 3600 / 60);
+    var resto = total % 60;
+    return [horas, minutos, resto].map(function (valor) { return String(valor).padStart(2, '0'); }).join(':');
+  }
+
+  function pintarCronometro() {
+    var reloj = document.getElementById('mg-cronometro');
+    if (!reloj) return;
+    var total = segundosFichados;
+    if (relojActivo) total += Math.floor((Date.now() - inicioReloj) / 1000);
+    reloj.textContent = formatoCronometro(total);
+  }
 
   function mostrarTrabajo(preparacion) {
     document.getElementById('mg-trabajo').hidden = !ordenActual;
     if (!ordenActual) return;
     document.getElementById('mg-orden').textContent = 'Orden ' + ordenActual.numero + ' / Cantidad ' + ordenActual.cantidad;
+    segundosFichados = Math.max(0, Number(preparacion.segundos) || 0);
+    inicioReloj = Date.now();
+    relojActivo = preparacion.estado === 'en_preparacion';
+    pintarCronometro();
     document.getElementById('mg-trabajo-resumen').textContent = window.estadoMangueras(preparacion.estado) + ' / ' +
-      window.duracionMangueras(preparacion.segundos) + ' de trabajo / ' + preparacion.operarios.join(', ');
+      preparacion.operarios.join(', ');
     document.getElementById('mg-trazabilidad').dataset.trazabilidadMangueras = ordenActual.id;
     document.getElementById('mg-pausar').disabled = preparacion.estado !== 'en_preparacion';
     document.getElementById('mg-terminar').disabled = preparacion.estado !== 'en_preparacion';
   }
+
+  setInterval(pintarCronometro, 1000);
 
   async function actualizarTrabajo(accion) {
     if (!ordenActual) return;
