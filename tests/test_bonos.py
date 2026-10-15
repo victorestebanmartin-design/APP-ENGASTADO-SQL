@@ -132,3 +132,91 @@ def test_renombrar_bono_rechaza_duplicado_y_nombres_raros(client):
     assert client.put('/api/bonos/B_A', json={'nombre': 'B_A', 'estado': 'en_proceso'}).status_code == 400
     assert client.put('/api/bonos/NO_EXISTE', json={'nombre': 'X'}).status_code == 404
     assert client.get('/api/bonos/B_A').status_code == 200
+
+
+def _orden_en_carro(client, app, numero, carro):
+    from sqlalchemy import text
+    from app.routes.base import db
+    orden = _crear_orden(client, numero)
+    with app.app_context(), db.engine.begin() as conn:
+        conn.execute(text("UPDATE ordenes_produccion SET archivo_excel = 'corte.xlsx' WHERE id = :id"), {'id': orden['id']})
+    respuesta = client.post('/api/carros/asignar-orden', json={'orden_id': orden['id'], 'numero_carro': carro})
+    assert respuesta.status_code == 200, respuesta.get_json()
+    return orden, respuesta.get_json()['proyecto_id']
+
+
+def test_asignacion_manual_rechaza_ocupados_y_orden_duplicada(client, app):
+    orden, proyecto = _orden_en_carro(client, app, 'MANUAL_3', 3)
+    assert client.post('/api/carros/asignar-orden', json={'orden_id': orden['id'], 'numero_carro': 3}).status_code == 409
+    assert client.post('/api/carros/asignar-orden', json={'orden_id': orden['id'], 'numero_carro': 4}).status_code == 409
+    carros = client.get('/api/carros').get_json()['carros']
+    assert not carros[0]['ocupado'] and not carros[1]['ocupado']
+    assert carros[2]['proyecto_id'] == proyecto
+    assert carros[2]['proyecto_nombre'] == 'MANUAL_3 - COD_TEST'
+
+
+def test_mover_intercambiar_y_liberar_ordenes(client, app):
+    orden, proyecto = _orden_en_carro(client, app, 'MOV_3', 3)
+    otra, otro_proyecto = _orden_en_carro(client, app, 'MOV_4', 4)
+    ruta = '/api/carros/3/mover'
+    assert client.post(ruta, json={'destino': 4, 'proyecto_id': proyecto}).status_code == 409
+    assert client.post(ruta, json={'destino': 4, 'proyecto_id': proyecto, 'intercambiar': True}).status_code == 200
+    assert client.get('/api/carros').get_json()['carros'][2]['proyecto_id'] == otro_proyecto
+    assert client.post('/api/carros/4/mover', json={'destino': 6, 'proyecto_id': proyecto}).status_code == 200
+    assert client.post('/api/carros/6/liberar').status_code == 200
+    ordenes = {item['id']: item for item in client.get('/api/ordenes/listar').get_json()['ordenes']}
+    assert ordenes[orden['id']]['estado'] == 'pendiente'
+    assert ordenes[orden['id']]['carro_numero'] is None
+    assert ordenes[otra['id']]['carro_numero'] == 3
+
+
+def test_bono_selectivo_conserva_carros_fisicos_y_reserva(client, app):
+    _orden_en_carro(client, app, 'QUEDA_1', 1)
+    _orden_en_carro(client, app, 'BONO_3', 3)
+    _orden_en_carro(client, app, 'BONO_4', 4)
+    respuesta = client.post('/api/bonos/generar', json={'nombre': 'SOLO_3_4', 'carros': [3, 4]})
+    assert respuesta.status_code == 200, respuesta.get_json()
+    bono = client.get('/api/bonos/SOLO_3_4').get_json()['bono']
+    assert bono['numeracion_carros'] == 'fisica'
+    assert {orden['carro_numero'] for orden in bono['ordenes']} == {3, 4}
+    assert len(bono['ordenes']) == 2
+    carros = client.get('/api/carros').get_json()['carros']
+    assert carros[0]['ocupado'] and not carros[0]['en_bono']
+    assert carros[2]['ocupado'] and carros[2]['en_bono']
+    assert client.post('/api/carros/3/liberar').status_code == 409
+    assert client.post('/api/carros/3/liberar', json={'confirmar_bono': True}).status_code == 200
+    assert len(client.get('/api/bonos/SOLO_3_4').get_json()['bono']['ordenes']) == 2
+
+
+def test_bono_rechaza_carros_vacios_o_seleccion_invalida(client, app):
+    _orden_en_carro(client, app, 'NO_PERDER', 4)
+    for seleccion, codigo in (([], 400), ([4, 4], 400), ([7], 400), ([True], 400), ([3, 4], 409)):
+        assert client.post('/api/bonos/generar', json={'nombre': 'INVALIDO', 'carros': seleccion}).status_code == codigo
+    assert client.get('/api/carros').get_json()['carros'][3]['ocupado']
+
+
+def test_progreso_y_report_respetan_numeracion_nueva_y_antigua(client, app, monkeypatch):
+    from flask import jsonify
+    from sqlalchemy import text
+    from app.routes import progreso, reports
+    from app.routes.base import db
+    monkeypatch.setattr(progreso, '_crimps_por_terminal_archivo', lambda archivo: {'T1': 2})
+    monkeypatch.setattr(reports, '_crimps_por_terminal_archivo', lambda archivo: {'T1': 2})
+    monkeypatch.setattr(reports, 'render_template', lambda plantilla, **datos: jsonify(carros=datos['carros']))
+    _orden_en_carro(client, app, 'FISICO_3', 3)
+    _orden_en_carro(client, app, 'FISICO_4', 4)
+    assert client.post('/api/bonos/generar', json={'nombre': 'FISICOS', 'carros': [3, 4]}).status_code == 200
+    assert client.post('/api/bonos/FISICOS/progreso', json={'terminal': 'T1', 'carro': 3}).get_json()['success']
+    datos = client.get('/api/bonos/FISICOS/progreso-ponderado').get_json()
+    assert set(datos['progreso_por_carro']) == {'3', '4'}
+    assert datos['progreso_por_carro']['3']['porcentaje'] == 100
+    assert datos['progreso_por_carro']['4']['porcentaje'] == 0
+    assert datos['porcentaje_bono'] == 50
+    carros = client.get('/report/bono/FISICOS/carros').get_json()['carros']
+    assert {carro['numero'] for carro in carros} == {3, 4}
+    assert next(carro for carro in carros if carro['numero'] == 3)['completados'] == 1
+    with app.app_context(), db.engine.begin() as conn:
+        conn.execute(text("UPDATE bonos SET numeracion_carros = 'posicional' WHERE nombre = 'FISICOS'"))
+    antiguos = client.get('/api/bonos/FISICOS/progreso-ponderado').get_json()
+    assert set(antiguos['progreso_por_carro']) == {'1', '2'}
+    assert {carro['numero'] for carro in client.get('/report/bono/FISICOS/carros').get_json()['carros']} == {1, 2}

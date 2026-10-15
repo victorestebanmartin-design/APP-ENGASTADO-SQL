@@ -195,8 +195,7 @@ def report_carros_bono(nombre_bono):
             archivo = orden.get('archivo_excel')
             if not archivo:
                 continue
-            # Numeración por posición (idx+1), coherente con carros_completados
-            carro_key = str(idx + 1)
+            carro_key = str((orden.get('carro_numero') or idx + 1) if bono.get('numeracion_carros') == 'fisica' else idx + 1)
 
             if archivo not in _cache_crimps:
                 _cache_crimps[archivo] = _crimps_por_terminal_archivo(archivo)
@@ -231,7 +230,7 @@ def report_carros_bono(nombre_bono):
                 })
 
             carros.append({
-                'numero': idx + 1,
+                'numero': int(carro_key),
                 'proyecto': orden.get('numero', '') or '',
                 'archivo': archivo,
                 'filas': filas,

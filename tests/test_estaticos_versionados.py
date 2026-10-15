@@ -41,7 +41,7 @@ def test_un_estatico_que_no_existe_no_revienta_el_render(app):
     assert '?v=' not in url
 
 
-@pytest.mark.parametrize('pagina', ['/gestion-puestos', '/v3', '/admin'])
+@pytest.mark.parametrize('pagina', ['/gestion-puestos', '/v3', '/admin', '/proyectos'])
 def test_las_paginas_no_dejan_ningun_estatico_sin_versionar(client, pagina):
     """Un ?v= puesto a mano detras del url_for dejaria '?v=123?v=13'."""
     html = client.get(pagina, follow_redirects=True).get_data(as_text=True)

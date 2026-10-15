@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {% include '_head_pwa.html' %}
-    <title>Proyectos y Carros — COJOsw</title>
+    <title>Creación de Bonos — COJOsw</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-proyectos.css') }}">
@@ -17,7 +17,7 @@
     <header class="proy-topbar">
         <div class="proy-topbar-left">
             <span class="proy-topbar-icon"><i class="fas fa-truck"></i></span>
-            <span class="proy-topbar-title">Proyectos y Carros</span>
+            <span class="proy-topbar-title">Creación de Bonos</span>
         </div>
         <a href="/" class="proy-btn proy-btn-ghost"><i class="fas fa-home"></i> Inicio</a>
     </header>
@@ -33,6 +33,7 @@
                     Estado de los Carros
                 </div>
                 <div class="proy-section-actions">
+                    <button class="proy-btn proy-btn-ghost proy-icon" onclick="actualizarPlanificacion()" title="Actualizar carros y órdenes" aria-label="Actualizar carros y órdenes"><i class="fas fa-sync"></i></button>
                     <button class="proy-btn proy-btn-primary" onclick="abrirModalGenerarBono()">
                         <i class="fas fa-ticket-alt"></i> Generar Bono de Trabajo
                     </button>
@@ -53,10 +54,10 @@
                 </div>
                 <div class="proy-section-actions">
                     <button class="proy-btn proy-btn-accent" onclick="cargarSiguientesOrdenes()">
-                        <i class="fas fa-arrow-down"></i> Cargar Siguientes
+                        <i class="fas fa-arrow-down"></i> Cargar siguientes en seleccionados
                     </button>
                     <button class="proy-btn proy-btn-warn" onclick="limpiarCarros()">
-                        <i class="fas fa-broom"></i> Limpiar Carros
+                        <i class="fas fa-broom"></i> Vaciar preparados seleccionados
                     </button>
                 </div>
             </div>
@@ -191,6 +192,12 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
+                    <label for="ordenParaCarro">Orden pendiente</label>
+                    <select id="ordenParaCarro"><option value="">Seleccionar orden pendiente</option></select>
+                </div>
+                <details>
+                    <summary>Proyecto sin orden registrada</summary>
+                <div class="form-group">
                     <label>Nombre del Proyecto</label>
                     <input type="text" id="nombreProyectoCarro" placeholder="Ej: PC_CAB">
                 </div>
@@ -200,6 +207,7 @@
                         <option value="">— Seleccionar Archivo —</option>
                     </select>
                 </div>
+                </details>
                 <div class="form-actions">
                     <button type="button" class="proy-btn proy-btn-ghost" onclick="cerrarModal('modalAsignarProyectoCarro')">Cancelar</button>
                     <button type="button" class="proy-btn proy-btn-primary" onclick="confirmarAsignacionDirecta()"><i class="fas fa-check"></i> Asignar</button>

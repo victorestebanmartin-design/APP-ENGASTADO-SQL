@@ -529,11 +529,7 @@ def api_bonos_progreso_ponderado(nombre_bono):
             archivo = orden.get('archivo_excel')
             if not archivo:
                 continue
-            # IMPORTANTE: el carro se numera por POSICIÓN (idx+1), igual que el
-            # frontend de engastado (carrosDelBono = ordenes.map((o, idx) => carro: idx+1)).
-            # No usar carro_numero de la BD: puede no coincidir con el orden posicional
-            # y provoca que carros_completados nunca cuadre con los pesos (progreso a 0).
-            carro_key = str(idx + 1)
+            carro_key = str((orden.get('carro_numero') or idx + 1) if bono.get('numeracion_carros') == 'fisica' else idx + 1)
 
             # Crimps por terminal con la MISMA lógica que ve el operario (De+Para, sin '*')
             if archivo not in _cache_crimps:

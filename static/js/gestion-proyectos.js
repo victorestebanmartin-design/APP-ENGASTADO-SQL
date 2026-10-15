@@ -5,12 +5,25 @@
 let proyectoActualAsignar = null;
 let carrosActuales = [];
 let ordenesPendientes = [];
+const carrosExcluidos = new Set();
+let carrosBonoSeleccionados = [];
+let operacionCarros = false;
+
+function textoSeguro(valor) {
+    const elemento = document.createElement('span');
+    elemento.textContent = valor == null ? '' : String(valor);
+    return elemento.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function actualizarPlanificacion() {
+    await cargarCarros();
+    await cargarOrdenesPendientes();
+}
 
 // Cargar datos al iniciar
 document.addEventListener('DOMContentLoaded', () => {
-    cargarCarros();
+    actualizarPlanificacion();
     cargarArchivosExcel();
-    cargarOrdenesPendientes();
 });
 
 /**
@@ -38,22 +51,84 @@ function mostrarCarros(carros) {
     const container = document.getElementById('carrosGrid');
     
     container.innerHTML = carros.map(carro => `
-        <div class="carro-card ${carro.ocupado ? 'ocupado' : 'libre'}" onclick="${!carro.ocupado ? `abrirModalAsignarProyectoCarro(${carro.numero})` : ''}" style="${!carro.ocupado ? 'cursor: pointer;' : ''}">
-            <div class="carro-numero">🚛 ${carro.numero}</div>
-            <div class="carro-estado ${carro.ocupado ? 'ocupado' : 'libre'}">
-                ${carro.ocupado ? 'OCUPADO' : 'LIBRE'}
+        <div class="carro-card ${carro.ocupado ? 'ocupado' : 'libre'} ${carro.en_bono ? 'en-bono' : ''}" data-carro="${carro.numero}">
+            <div class="carro-cabecera">
+                <div class="carro-numero"><i class="fas fa-truck"></i> ${carro.numero}</div>
+                ${!carro.en_bono && (!carro.ocupado || carro.proyecto_id) ? `<label class="carro-incluir"><input type="checkbox" aria-label="Seleccionar carro ${carro.numero}" ${carrosExcluidos.has(carro.numero) ? '' : 'checked'} onchange="seleccionarCarro(${carro.numero}, this.checked)"> Incluir</label>` : ''}
             </div>
-            
+            <div class="carro-estado ${carro.ocupado ? 'ocupado' : 'libre'}">
+                ${carro.en_bono ? 'EN BONO' : carro.ocupado ? 'PREPARADO' : 'LIBRE'}
+            </div>
             ${carro.ocupado ? `
-                <div class="carro-proyecto">${carro.proyecto_nombre}</div>
-                <button class="btn-liberar" onclick="event.stopPropagation(); liberarCarro(${carro.numero})">
-                    <i class="fas fa-times"></i> Liberar
-                </button>
+                <div class="carro-proyecto">${textoSeguro(carro.en_bono ? carro.bono_nombre : carro.proyecto_nombre || 'Ocupado')}</div>
+                ${carro.proyecto_id && !carro.en_bono ? `<div class="carro-controles">
+                    <select id="moverCarro${carro.numero}" aria-label="Destino del carro ${carro.numero}">
+                        <option value="">Mover a...</option>
+                        ${carros.filter(destino => destino.numero !== carro.numero && !destino.en_bono && (!destino.ocupado || destino.proyecto_id)).map(destino => `<option value="${destino.numero}">Carro ${destino.numero}${destino.ocupado ? ' (intercambiar)' : ' (libre)'}</option>`).join('')}
+                    </select>
+                    <button class="proy-btn proy-btn-ghost proy-icon" title="Mover o intercambiar" aria-label="Mover o intercambiar carro ${carro.numero}" onclick="moverOrdenCarro(${carro.numero})"><i class="fas fa-exchange-alt"></i></button>
+                </div>` : ''}
+                <button class="btn-liberar" onclick="liberarCarro(${carro.numero})"><i class="fas fa-times"></i> ${carro.en_bono ? 'Liberar carro vacio' : 'Devolver a pendientes'}</button>
             ` : `
-                <div class="carro-proyecto"><em>Click para asignar</em></div>
+                <button class="proy-btn proy-btn-ghost" onclick="abrirModalAsignarProyectoCarro(${carro.numero})"><i class="fas fa-plus"></i> Asignar orden</button>
             `}
         </div>
     `).join('');
+}
+
+function seleccionarCarro(numero, seleccionado) {
+    if (seleccionado) carrosExcluidos.delete(numero);
+    else carrosExcluidos.add(numero);
+}
+
+async function asignarOrdenACarro(ordenId, numeroCarro) {
+    const response = await fetch('/api/carros/asignar-orden', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({orden_id: ordenId, numero_carro: numeroCarro})
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message || 'No se pudo asignar la orden');
+    carrosExcluidos.delete(numeroCarro);
+}
+
+async function asignarOrdenIndividual(indice) {
+    if (operacionCarros) return;
+    const numero = Number(document.getElementById(`destinoOrden${indice}`).value);
+    if (!numero) return mostrarMensaje('Selecciona el carro de destino', 'warning');
+    operacionCarros = true;
+    try {
+        await asignarOrdenACarro(ordenesPendientes[indice].id, numero);
+        mostrarMensaje(`Orden asignada al carro ${numero}`, 'success');
+    } catch (error) {
+        mostrarMensaje(error.message, 'error');
+    } finally {
+        await actualizarPlanificacion();
+        operacionCarros = false;
+    }
+}
+
+async function moverOrdenCarro(numero) {
+    if (operacionCarros) return;
+    const destino = Number(document.getElementById(`moverCarro${numero}`).value);
+    if (!destino) return mostrarMensaje('Selecciona un carro de destino', 'warning');
+    const origen = carrosActuales.find(carro => carro.numero === numero);
+    const otro = carrosActuales.find(carro => carro.numero === destino);
+    if (!confirm(otro.ocupado ? `¿Intercambiar las ordenes de los carros ${numero} y ${destino}?` : `¿Mover la orden del carro ${numero} al ${destino}?`)) return;
+    operacionCarros = true;
+    try {
+        const response = await fetch(`/api/carros/${numero}/mover`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({destino, proyecto_id: origen.proyecto_id, intercambiar: otro.ocupado})
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'No se pudo mover la orden');
+        mostrarMensaje(otro.ocupado ? 'Ordenes intercambiadas' : `Orden movida al carro ${destino}`, 'success');
+    } catch (error) {
+        mostrarMensaje(error.message, 'error');
+    } finally {
+        await actualizarPlanificacion();
+        operacionCarros = false;
+    }
 }
 
 /**
@@ -85,30 +160,49 @@ function abrirModalAsignarProyectoCarro(numeroCarro) {
     window.carroSeleccionado = numeroCarro;
     document.getElementById('numeroCarroAsignar').textContent = numeroCarro;
     document.getElementById('nombreProyectoCarro').value = '';
+    const select = document.getElementById('ordenParaCarro');
+    select.innerHTML = '<option value="">Seleccionar orden pendiente</option>' + ordenesPendientes.map((orden, indice) => `<option value="${indice}">${textoSeguro(orden.numero)} - ${textoSeguro(orden.codigo_corte)} (${orden.cantidad})</option>`).join('');
     
     modal.classList.add('active');
-    document.getElementById('nombreProyectoCarro').focus();
+    select.focus();
 }
 
 /**
  * Confirmar asignación directa de proyecto a carro
  */
 async function confirmarAsignacionDirecta() {
+    if (operacionCarros) return;
+    const indice = document.getElementById('ordenParaCarro').value;
+    if (indice !== '') {
+        operacionCarros = true;
+        try {
+            await asignarOrdenACarro(ordenesPendientes[Number(indice)].id, window.carroSeleccionado);
+            cerrarModal('modalAsignarProyectoCarro');
+            mostrarMensaje(`Orden asignada al carro ${window.carroSeleccionado}`, 'success');
+        } catch (error) {
+            mostrarMensaje(error.message, 'error');
+        } finally {
+            await actualizarPlanificacion();
+            operacionCarros = false;
+        }
+        return;
+    }
     const nombreProyecto = document.getElementById('nombreProyectoCarro').value.trim();
     const archivoExcel = document.getElementById('archivoExcelCarro').value;
     
     if (!nombreProyecto || !archivoExcel) {
-        mostrarMensaje('Completa todos los campos', 'error');
+        mostrarMensaje('Selecciona una orden pendiente o completa el proyecto sin orden', 'warning');
         return;
     }
     
+    operacionCarros = true;
     try {
-        // Primero crear el proyecto
-        const responseProyecto = await fetch('/api/proyectos', {
+        const responseProyecto = await fetch('/api/carros/asignar-orden', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                nombre: nombreProyecto,
+                numero_carro: window.carroSeleccionado,
+                proyecto_nombre: nombreProyecto,
                 archivo: archivoExcel
             })
         });
@@ -120,29 +214,15 @@ async function confirmarAsignacionDirecta() {
             return;
         }
         
-        // Luego asignar al carro
-        const responseAsignar = await fetch('/api/carros/asignar', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                proyecto_id: dataProyecto.proyecto.id,
-                carro: window.carroSeleccionado
-            })
-        });
-        
-        const dataAsignar = await responseAsignar.json();
-        
-        if (dataAsignar.success) {
-            mostrarMensaje('Proyecto asignado al carro correctamente', 'success');
-            cerrarModal('modalAsignarProyectoCarro');
-            await cargarCarros();
-            await cargarOrdenesPendientes();  // Actualizar lista de órdenes
-        } else {
-            mostrarMensaje(dataAsignar.message || 'Error al asignar', 'error');
-        }
+        carrosExcluidos.delete(window.carroSeleccionado);
+        mostrarMensaje('Proyecto asignado al carro correctamente', 'success');
+        cerrarModal('modalAsignarProyectoCarro');
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje('Error al asignar proyecto', 'error');
+    } finally {
+        await actualizarPlanificacion();
+        operacionCarros = false;
     }
 }
 
@@ -150,11 +230,15 @@ async function confirmarAsignacionDirecta() {
  * Liberar un carro
  */
 async function liberarCarro(numeroCarro) {
-    if (!confirm(`¿Liberar el carro ${numeroCarro}?`)) return;
+    if (operacionCarros) return;
+    const carro = carrosActuales.find(item => item.numero === numeroCarro);
+    if (!confirm(carro?.en_bono ? `El carro ${numeroCarro} pertenece al bono ${carro.bono_nombre}. ¿Confirmas que esta vacio y disponible? El bono y su progreso se conservan.` : `¿Devolver la orden del carro ${numeroCarro} a pendientes?`)) return;
     
+    operacionCarros = true;
     try {
         const response = await fetch(`/api/carros/${numeroCarro}/liberar`, {
-            method: 'POST'
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({confirmar_bono: Boolean(carro?.en_bono)})
         });
         
         const data = await response.json();
@@ -169,6 +253,8 @@ async function liberarCarro(numeroCarro) {
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje('Error al liberar carro', 'error');
+    } finally {
+        operacionCarros = false;
     }
 }
 
@@ -178,11 +264,13 @@ async function liberarCarro(numeroCarro) {
  * Abrir modal para generar bono
  */
 async function abrirModalGenerarBono() {
+    if (operacionCarros) return;
+    await actualizarPlanificacion();
     // Verificar que hay carros ocupados
-    const carrosOcupados = carrosActuales.filter(c => c.ocupado);
+    const carrosOcupados = carrosActuales.filter(c => c.proyecto_id && !c.en_bono && !carrosExcluidos.has(c.numero));
     
     if (carrosOcupados.length === 0) {
-        mostrarMensaje('No hay carros con proyectos asignados', 'error');
+        mostrarMensaje('Selecciona al menos un carro preparado para el bono', 'warning');
         return;
     }
     
@@ -191,11 +279,7 @@ async function abrirModalGenerarBono() {
         return;
     }
     
-    // Mostrar modal de confirmación primero
-    const confirmacion = await mostrarModalConfirmacionCarros(carrosOcupados);
-    if (!confirmacion) {
-        return;
-    }
+    carrosBonoSeleccionados = carrosOcupados.map(carro => carro.numero);
     
     // Obtener nombre sugerido
     try {
@@ -215,7 +299,7 @@ async function abrirModalGenerarBono() {
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#243044;border:1px solid #334155;border-left:3px solid #3b82f6;border-radius:9px;margin-bottom:8px;">
             <i class="fas fa-truck" style="color:#3b82f6;font-size:.8rem;"></i>
             <span style="font-size:.82rem;font-weight:600;color:#93c5fd;font-family:'DM Mono',monospace;">Carro ${carro.numero}</span>
-            <span style="font-size:.78rem;color:#64748b;">${carro.proyecto_nombre}</span>
+            <span style="font-size:.78rem;color:#64748b;">${textoSeguro(carro.proyecto_nombre)}</span>
         </div>
     `).join('');
     
@@ -352,6 +436,7 @@ async function liberarCarroYActualizar(numeroCarro) {
  * Confirmar generación de bono
  */
 async function confirmarGenerarBono() {
+    if (operacionCarros) return;
     const nombreBono = document.getElementById('nombreBono').value.trim();
     
     if (!nombreBono) {
@@ -359,11 +444,12 @@ async function confirmarGenerarBono() {
         return;
     }
     
+    operacionCarros = true;
     try {
         const response = await fetch('/api/bonos/generar', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ nombre: nombreBono })
+            body: JSON.stringify({ nombre: nombreBono, carros: carrosBonoSeleccionados })
         });
         
         const data = await response.json();
@@ -381,6 +467,8 @@ async function confirmarGenerarBono() {
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje('Error al generar bono', 'error');
+    } finally {
+        operacionCarros = false;
     }
 }
 
@@ -904,17 +992,18 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
                     <th>Fecha</th>
                     <th>Estado</th>
                     <th>Prioridad</th>
+                    <th>Destino</th>
                 </tr>
             </thead>
             <tbody>
                 ${todasOrdenes.map((orden, index) => `
                     <tr>
                         <td style="color:var(--dim);">${index + 1}</td>
-                        <td><strong style="color:var(--text);">${orden.numero}</strong></td>
-                        <td style="font-family:'DM Mono',monospace;font-size:.78rem;">${orden.codigo_corte}</td>
-                        <td style="font-size:.78rem;color:var(--muted);">📄 ${orden.archivo_excel}</td>
+                        <td><strong style="color:var(--text);">${textoSeguro(orden.numero)}</strong></td>
+                        <td style="font-family:'DM Mono',monospace;font-size:.78rem;">${textoSeguro(orden.codigo_corte)}</td>
+                        <td style="font-size:.78rem;color:var(--muted);">${textoSeguro(orden.archivo_excel)}</td>
                         <td>${orden.cantidad}</td>
-                        <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:.78rem;">${orden.fecha_entrega}</td>
+                        <td style="color:var(--dim);font-family:'DM Mono',monospace;font-size:.78rem;">${textoSeguro(orden.fecha_entrega)}</td>
                         <td>
                             <span class="badge ${orden.estado === 'pendiente' ? 'badge-pendiente' : 'badge-activo'}">
                                 ${orden.estado === 'pendiente' ? '⏳ PENDIENTE' : '🚛 EN CARRO'}
@@ -925,8 +1014,12 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
                                 orden.prioridad === 'urgente' ? 'badge-urgente' :
                                 orden.prioridad === 'alta'    ? 'badge-alta' :
                                 orden.prioridad === 'media'   ? 'badge-media' : 'badge-pendiente'
-                            }">${orden.prioridad.toUpperCase()}</span>
+                            }">${textoSeguro((orden.prioridad || 'normal').toUpperCase())}</span>
                         </td>
+                        <td>${orden.estado === 'pendiente' ? `<div class="orden-destino">
+                            <select id="destinoOrden${index}" aria-label="Carro para la orden ${textoSeguro(orden.numero)}"><option value="">Carro...</option>${carrosActuales.filter(carro => !carro.ocupado).map(carro => `<option value="${carro.numero}">Carro ${carro.numero}</option>`).join('')}</select>
+                            <button class="proy-btn proy-btn-accent proy-icon" title="Asignar orden" aria-label="Asignar orden ${textoSeguro(orden.numero)}" onclick="asignarOrdenIndividual(${index})"><i class="fas fa-arrow-up"></i></button>
+                        </div>` : `Carro ${orden.carro_numero || '-'}`}</td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -938,8 +1031,9 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
  * Cargar las siguientes órdenes en los carros libres
  */
 async function cargarSiguientesOrdenes() {
+    if (operacionCarros) return;
     // Obtener carros libres
-    const carrosLibres = carrosActuales.filter(c => !c.ocupado);
+    const carrosLibres = carrosActuales.filter(c => !c.ocupado && !carrosExcluidos.has(c.numero));
     
     if (carrosLibres.length === 0) {
         mostrarMensaje('No hay carros libres disponibles', 'warning');
@@ -953,6 +1047,9 @@ async function cargarSiguientesOrdenes() {
     
     // Tomar tantas órdenes como carros libres haya
     const ordenesACargar = ordenesPendientes.slice(0, carrosLibres.length);
+    if (!confirm(ordenesACargar.map((orden, indice) => `${orden.numero} -> Carro ${carrosLibres[indice].numero}`).join('\n') + '\n\n¿Confirmar estas asignaciones?')) return;
+    let cargadas = 0;
+    operacionCarros = true;
     
     try {
         // Asignar cada orden a un carro libre
@@ -960,32 +1057,20 @@ async function cargarSiguientesOrdenes() {
             const orden = ordenesACargar[i];
             const carro = carrosLibres[i];
             
-            const response = await fetch('/api/carros/asignar-orden', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    numero_carro: carro.numero,
-                    proyecto_nombre: `${orden.numero} - ${orden.codigo_corte}`,
-                    archivo: orden.archivo_excel,
-                    orden_id: orden.id  // Agregar ID de la orden
-                })
-            });
-            
-            const data = await response.json();
-            if (!data.success) {
-                console.error(`Error asignando carro ${carro.numero}:`, data.message);
-            }
+            await asignarOrdenACarro(orden.id, carro.numero);
+            cargadas++;
         }
         
-        mostrarMensaje(`${ordenesACargar.length} orden(es) cargada(s) en los carros`, 'success');
+        mostrarMensaje(`${cargadas} orden(es) cargada(s) en los carros`, 'success');
         await cargarCarros();
         await cargarOrdenesPendientes();
         
     } catch (error) {
         console.error('Error:', error);
-        mostrarMensaje('Error al cargar órdenes en carros', 'error');
+        mostrarMensaje(`${cargadas} orden(es) cargada(s). ${error.message}`, 'error');
+    } finally {
+        await actualizarPlanificacion();
+        operacionCarros = false;
     }
 }
 
@@ -993,12 +1078,14 @@ async function cargarSiguientesOrdenes() {
  * Limpiar todos los carros
  */
 async function limpiarCarros() {
-    if (!confirm('¿Estás seguro de que quieres liberar TODOS los carros?')) {
+    if (operacionCarros) return;
+    if (!confirm('¿Devolver a pendientes las ordenes de los carros preparados seleccionados? Los carros en bono no se tocaran.')) {
         return;
     }
     
+    operacionCarros = true;
     try {
-        const carrosOcupados = carrosActuales.filter(c => c.ocupado);
+        const carrosOcupados = carrosActuales.filter(c => c.proyecto_id && !c.en_bono && !carrosExcluidos.has(c.numero));
         
         if (carrosOcupados.length === 0) {
             mostrarMensaje('No hay carros ocupados', 'info');
@@ -1030,6 +1117,8 @@ async function limpiarCarros() {
     } catch (error) {
         console.error('Error:', error);
         mostrarMensaje('Error al limpiar carros', 'error');
+    } finally {
+        operacionCarros = false;
     }
 }
 

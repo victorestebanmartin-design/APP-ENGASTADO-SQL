@@ -102,6 +102,7 @@ def api_obtener_bono_por_nombre(nombre):
             'descripcion': bono.get('descripcion'),
             'estado': bono['estado'],
             'fecha_creacion': bono['fecha_creacion'],
+            'numeracion_carros': bono.get('numeracion_carros', 'posicional'),
             'total_ordenes': len(ordenes),
             'ordenes': ordenes,
             'carros': carros_list,
@@ -330,6 +331,13 @@ def api_generar_bono_desde_carros():
     try:
         data = request.get_json()
         nombre_bono = data.get('nombre')
+        seleccion = data.get('carros')
+        if seleccion is not None and (
+            not isinstance(seleccion, list) or not seleccion or len(seleccion) > 6
+            or any(type(numero) is not int or not 1 <= numero <= 6 for numero in seleccion)
+            or len(set(seleccion)) != len(seleccion)
+        ):
+            return jsonify(success=False, message='Selecciona entre uno y seis carros distintos'), 400
         
         if not nombre_bono:
             return jsonify({
@@ -344,6 +352,11 @@ def api_generar_bono_desde_carros():
         # Obtener todos los proyectos con carro asignado
         proyectos = proyecto_repo.obtener_todos_proyectos()
         proyectos_en_carros = [p for p in proyectos if p['carro_asignado'] is not None]
+        if seleccion is not None:
+            proyectos_en_carros = [proyecto for proyecto in proyectos_en_carros if proyecto['carro_asignado'] in seleccion]
+            if {proyecto['carro_asignado'] for proyecto in proyectos_en_carros} != set(seleccion):
+                return jsonify(success=False, message='El contenido de los carros ha cambiado. Actualiza la pantalla.'), 409
+        proyectos_en_carros.sort(key=lambda proyecto: proyecto['carro_asignado'])
         
         if not proyectos_en_carros:
             return jsonify({
@@ -381,12 +394,23 @@ def api_generar_bono_desde_carros():
         # revierte junto si cualquier paso falla.
         descripcion = f"Bono con {len(proyectos_en_carros)} carros"
         with db.engine.begin() as conn:
+            conn.execute(text('UPDATE carros SET numero = numero'))
+            for proyecto in proyectos_en_carros:
+                actual = conn.execute(text('SELECT * FROM proyectos WHERE id = :id'), {'id': proyecto['id']}).mappings().first()
+                carro = conn.execute(text('SELECT * FROM carros WHERE numero = :numero'), {'numero': proyecto['carro_asignado']}).mappings().first()
+                if not actual or actual['carro_asignado'] != proyecto['carro_asignado'] or not carro or carro['bono_id'] or carro['estado'] == 'en_proceso':
+                    return jsonify(success=False, message='Los carros han cambiado o ya estan ocupados por un bono'), 409
+                if proyecto['orden_id']:
+                    orden = conn.execute(text('SELECT * FROM ordenes_produccion WHERE id = :id'), {'id': proyecto['orden_id']}).mappings().first()
+                    if not orden or orden['bono_id'] or orden['estado'] != 'en_proceso':
+                        return jsonify(success=False, message='Una orden ya no esta disponible para este bono'), 409
             bono_id = bono_repo.crear_bono(
                 nombre=nombre_bono,
                 ordenes_ids=ordenes_ids,
                 descripcion=descripcion,
                 conn=conn
             )
+            conn.execute(text("UPDATE bonos SET numeracion_carros = 'fisica' WHERE id = :id"), {'id': bono_id})
 
             # Cambiar estado de las órdenes a 'en_bono' y guardar carro_numero
             for idx, (numero_orden, carro_info) in enumerate(zip(ordenes_ids, carros_info)):
@@ -400,6 +424,7 @@ def api_generar_bono_desde_carros():
             # Liberar los carros (establecer carro_asignado a NULL)
             for proyecto in proyectos_en_carros:
                 proyecto_repo.liberar_carro(proyecto['id'], conn=conn)
+                conn.execute(text("UPDATE carros SET bono_id = :bono, estado = 'en_proceso' WHERE numero = :numero"), {'bono': bono_id, 'numero': proyecto['carro_asignado']})
         
         # Construir respuesta con información del bono
         bono_generado = {

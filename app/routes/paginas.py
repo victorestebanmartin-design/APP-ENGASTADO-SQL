@@ -197,7 +197,7 @@ def login_operario():
 
 
 # Versión y fecha del manual de uso (fáciles de actualizar aquí)
-MANUAL_VERSION = 'v1.6'
+MANUAL_VERSION = 'v1.7'
 MANUAL_FECHA = 'octubre 2026'
 
 

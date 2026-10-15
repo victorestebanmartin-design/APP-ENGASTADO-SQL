@@ -24,7 +24,7 @@ async function cargarBono() {
             
             // Para compatibilidad, crear estructura de carros del bono
             carrosDelBono = data.bono.ordenes ? data.bono.ordenes.map((orden, idx) => ({
-                carro: idx + 1,
+                carro: data.bono.numeracion_carros === 'fisica' ? (orden.carro_numero || idx + 1) : idx + 1,
                 proyecto_nombre: `${orden.numero} - ${orden.codigo_corte}`,
                 archivo_excel: orden.archivo_excel || 'No especificado',
                 orden_id: orden.id || '',
@@ -46,7 +46,7 @@ async function cargarBono() {
             if (carrosDelBono.length > 0) {
                 listaCarros.innerHTML = carrosDelBono.map((carro, index) => `
                     <div style="padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 5px; border-left: 3px solid #0d6efd;">
-                        <strong>${index + 1}.</strong> ${carro.proyecto_nombre} <small>(${carro.archivo_excel})</small>
+                        <strong>Carro ${carro.carro}.</strong> ${carro.proyecto_nombre} <small>(${carro.archivo_excel})</small>
                     </div>
                 `).join('');
             } else {

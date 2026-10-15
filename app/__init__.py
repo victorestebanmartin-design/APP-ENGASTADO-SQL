@@ -17,6 +17,14 @@ def _apply_migrations(db_path):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
+    for tabla, columna, definicion in (
+        ('proyectos', 'orden_id', 'TEXT'),
+        ('bonos', 'numeracion_carros', "TEXT NOT NULL DEFAULT 'posicional'"),
+    ):
+        cur.execute(f'PRAGMA table_info({tabla})')
+        if columna not in {fila[1] for fila in cur.fetchall()}:
+            cur.execute(f'ALTER TABLE {tabla} ADD COLUMN {columna} {definicion}')
+
     cur.executescript("""
         CREATE TABLE IF NOT EXISTS mangueras_preparaciones (
             orden_id TEXT PRIMARY KEY REFERENCES ordenes_produccion(id) ON DELETE CASCADE,
