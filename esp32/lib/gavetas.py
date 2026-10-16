@@ -179,6 +179,7 @@ class Gavetas:
         # invierte solo los de la lista, encima del criterio general.
         self.invertidos = set()
 
+        self.fuera = set()
         self.fuera = self._leer_micros()   # foto inicial: lo que ya estaba fuera
         self._ultima_lectura_ms = time.ticks_ms()
         self._cambio_pendiente = {}        # gaveta -> ticks del primer cambio
@@ -251,6 +252,9 @@ class Gavetas:
         if self.ignorar:
             errores = set(g for g in errores if g not in self.ignorar)
         self.canales_error = errores
+        # Sin lectura no hay movimiento confirmado: conserva la ultima foto
+        # de esos canales, pero sigue exponiendo el fallo a Admin.
+        fuera.update(self.fuera & errores)
         return fuera
 
     def configurar_micros(self, cfg):
@@ -895,8 +899,13 @@ class Gavetas:
 
         leidas = self._leer_micros()
 
+        for gaveta in self.canales_error:
+            self._cambio_pendiente.pop(gaveta, None)
+
         # Antirrebote: un cambio solo cuenta si se mantiene ANTIRREBOTE_MS.
         for gaveta in set(leidas) ^ set(self.fuera):
+            if gaveta in self.canales_error:
+                continue
             desde = self._cambio_pendiente.get(gaveta)
             if desde is None:
                 self._cambio_pendiente[gaveta] = ahora

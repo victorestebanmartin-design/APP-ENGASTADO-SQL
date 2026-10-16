@@ -355,6 +355,92 @@ def placa_con_tira(gavetas):
     return obj, tira, expansores
 
 
+def test_arranque_lee_micros_sin_estado_previo(gavetas, placa_con_tira, monkeypatch):
+    _, _, expansores = placa_con_tira
+    expansores[0]._bits = 1 << 2
+    monkeypatch.setattr(gavetas.Gavetas, '_abrir_servidor', lambda self: None)
+    monkeypatch.setattr(gavetas.Gavetas, '_avisar', lambda *args: None)
+    obj = gavetas.Gavetas(expansores, TiraFalsa(16), None, 'test')
+    assert obj.fuera == {3}
+    assert obj.canales_error == set()
+
+
+@pytest.mark.parametrize('devolucion', [False, True])
+def test_fallo_i2c_no_inventa_devolucion_de_gaveta_en_uso(
+        gavetas, placa_con_tira, monkeypatch, devolucion):
+    obj, tira, expansores = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *args: avisos.append(args)
+    expansores[0]._bits = 1 << 2
+    obj.encender(3, '640204', [3])
+    obj.marcar_espera_devolucion(devolucion)
+    assert obj.recogida
+
+    def sin_respuesta():
+        raise OSError('I2C sin respuesta')
+
+    monkeypatch.setattr(expansores[0], 'leer', sin_respuesta)
+    obj._atender_micros(100)
+    obj._atender_micros(200)
+
+    assert obj.canales_error == set(range(1, 17))
+    assert obj.fuera == {3}
+    assert obj.recogida
+    assert not obj.equivocadas
+    assert tira[2] == gavetas.COLOR_EN_USO
+    assert avisos == []
+
+    monkeypatch.setattr(expansores[0], 'leer', lambda: 1 << 2)
+    obj._atender_micros(300)
+    assert obj.canales_error == set()
+    assert obj.recogida and obj.fuera == {3}
+    assert not obj.equivocadas and avisos == []
+
+
+def test_fallo_i2c_no_impide_leer_otro_expansor(gavetas, placa_con_tira, monkeypatch):
+    obj, _, expansores = placa_con_tira
+    sano = type(expansores[0])()
+    sano.direccion = 0x21
+    sano._bits = 1
+    expansores.append(sano)
+    obj.fuera = {3}
+
+    def sin_respuesta():
+        raise OSError('I2C sin respuesta')
+
+    monkeypatch.setattr(expansores[0], 'leer', sin_respuesta)
+    assert obj._leer_micros() == {3, 17}
+    assert obj.canales_error == set(range(1, 17))
+
+
+def test_error_i2c_reinicia_antirrebote_sin_ocultar_devolucion_real(
+        gavetas, placa_con_tira, monkeypatch):
+    obj, _, expansores = placa_con_tira
+    avisos = []
+    obj._avisar = lambda *args: avisos.append(args)
+    expansores[0]._bits = 1 << 2
+    obj.encender(3, '640204', [3])
+    expansores[0]._bits = 0
+    obj._atender_micros(100)
+    assert obj._cambio_pendiente == {3: 100}
+    leer = expansores[0].leer
+
+    def sin_respuesta():
+        raise OSError('I2C sin respuesta')
+
+    monkeypatch.setattr(expansores[0], 'leer', sin_respuesta)
+    obj._atender_micros(200)
+    assert obj._cambio_pendiente == {}
+    monkeypatch.setattr(expansores[0], 'leer', leer)
+    obj._atender_micros(300)
+    assert obj.recogida
+    obj._atender_micros(400)
+    assert not obj.recogida
+    assert obj.equivocadas == {3}
+    assert avisos == [(3, False, 'devuelta_temprana')]
+    assert obj.canales_error == set()
+
+
 def test_test_led_enciende_solo_ese_pixel(gavetas, placa_con_tira):
     obj, tira, _ = placa_con_tira
     resp = gavetas.Gavetas._responder(obj, b'{"test_led": 3, "color": [100, 0, 0]}')

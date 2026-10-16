@@ -12,6 +12,22 @@ El firmware del Lector de Puesto (`esp32/micropython/lib/gavetas.py` y `mcp23017
 - **Hasta 8 expansores en el mismo bus** (`0x20` a `0x27`), lo que permite un control total de hasta **128 gavetas** por puesto.
 - La numeración de las gavetas en el sistema es consecutiva según la dirección I2C configurada físicamente en cada placa.
 
+### Fallos de lectura durante el trabajo
+
+Desde el firmware `2026-10-16a`, un expansor que no responde conserva el último
+estado conocido de sus gavetas y comunica sus canales en `canales_error`.
+Una lectura fallida no confirma recogidas ni devoluciones, y reinicia el
+antirrebote de esos canales hasta que vuelvan a recibirse lecturas válidas.
+Los demás expansores siguen funcionando.
+
+Antes, un fallo de lectura podía interpretarse como una devolución anticipada:
+la gaveta en uso se ponía roja y el lector pedía devolverla aunque siguiera fuera.
+Si se repite, comprobar los errores de lectura en Admin y la conexión del bus;
+conservar el estado no significa que el expansor esté funcionando.
+
+Para aplicar la corrección hay que desplegar el servidor actualizado y comprobar
+en **Admin → Lectores RFID** que la placa recibe por OTA la versión `2026-10-16a`.
+
 ---
 
 ## 🎛️ Tabla de Codificación de Pines (A2, A1, A0) para 8 Expansores
