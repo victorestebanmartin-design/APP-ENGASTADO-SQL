@@ -17,6 +17,7 @@ def init_routes(app):
         paginas,
         manguitos,
         mangueras_propuestas,
+        engastado_propuestas,
         mangueras_trabajo,
         proyectos,
         ordenes,

@@ -208,6 +208,9 @@ class ExcelManager:
         tipo[(~mask_origen) & (mask_destino)] = 'destino'
         tipo[(mask_origen) & (mask_destino)] = 'ambas'
         df['tipo_conexion'] = tipo.loc[df.index].fillna('origen')
+        # Fila del Excel (cabecera en la 1): para poder señalar ese cable al
+        # proponer que el terminal no se pone (engastado_propuestas).
+        df['_fila_excel'] = [int(i) + 2 for i in df.index]
         
         return df.to_dict('records')
     
@@ -330,14 +333,17 @@ class ExcelManager:
                 engastar_para = tiene_destino and not para_no_poner
                 if engastar_de or engastar_para:
                     lado = 'doble' if engastar_de and engastar_para else 'de' if engastar_de else 'para'
-                    grupos[clave]['detalles_cables'][lado].append({
+                    detalle = {
                         'cable': cable_marca,
                         'origen': _safe_str(row.get('De Elemento', '')),
                         'origen_punto': _safe_str(row.get('De Punto Conexión', row.get('De Punto Conexion', row.get('De Punto', '')))),
                         'destino': _safe_str(row.get('Para Elemento', '')),
                         'destino_punto': _safe_str(row.get('Para Punto Conexión', row.get('Para Punto Conexion', row.get('Para Punto', '')))),
                         'longitud': _safe_num(row.get('Longitud', '')),
-                    })
+                    }
+                    if row.get('_fila_excel') is not None:
+                        detalle['fila'] = row['_fila_excel']
+                    grupos[clave]['detalles_cables'][lado].append(detalle)
                 
                 # Agregar cable a la lista
                 grupos[clave]['cables_lista'].append(cable_marca)

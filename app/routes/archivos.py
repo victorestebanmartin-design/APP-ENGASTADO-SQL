@@ -41,6 +41,7 @@ from app.routes.base import (
 )
 from app.routes.etiquetas import _regenerar_etiquetas_archivo
 from app.mangueras_editor import transferir_preparacion_edicion
+from app.routes.engastado_propuestas import heredar_bloqueos
 
 
 def _guardar_excel_migrado(filepath, contenido, respaldo):
@@ -66,6 +67,16 @@ def _guardar_excel_migrado(filepath, contenido, respaldo):
     finally:
         if temporal and os.path.exists(temporal):
             os.unlink(temporal)
+
+
+def _mensaje_engastado_heredado(resumen):
+    if not resumen['heredados'] and not resumen['no_heredados']:
+        return ''
+    mensaje = f" Terminales que no se ponen heredados: {resumen['heredados']}."
+    if resumen['no_heredados']:
+        mensaje += (f" {resumen['no_heredados']} no se encontraron en la ED nueva: "
+                    "revisa Propuestas de engastado.")
+    return mensaje
 
 
 # ==================== CÓDIGOS DE CORTES ====================
@@ -145,12 +156,15 @@ def upload_file():
                     contenido_anterior = anterior.read()
             contenido_subido = file.read()
             preparacion_migrada = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+            engastado_heredado = {'heredados': 0, 'no_heredados': 0}
+            registrar_engastado = lambda: None
             contenido_final = contenido_subido
             if (contenido_anterior and filename.lower().endswith(('.xlsx', '.xlsm'))):
                 try:
                     contenido_migrado, preparacion_migrada = transferir_preparacion_edicion(
                         contenido_anterior, filename, contenido_subido, filename)
-                    contenido_final = contenido_migrado.getvalue()
+                    contenido_final, engastado_heredado, registrar_engastado = heredar_bloqueos(
+                        filename, filename, contenido_migrado.getvalue(), filename)
                 except Exception as error_migracion:
                     return jsonify({
                         'success': False,
@@ -165,6 +179,7 @@ def upload_file():
                 file.save(filepath)
                 invalidar_cache_excel(filepath)
                 respaldo_migracion = None
+            registrar_engastado()
 
             # Validar columnas de mangueras
             validacion = validar_excel_columnas(filepath)
@@ -213,6 +228,7 @@ def upload_file():
                 'etiquetas_total': etiquetas_total,
                 'validacion': validacion,
                 'preparacion_migrada': preparacion_migrada,
+                'engastado_heredado': engastado_heredado,
                 'respaldo_preparacion': respaldo_migracion,
             })
         else:
@@ -301,6 +317,7 @@ def add_corte():
             }), 409
 
         preparacion_migrada = {'heredadas': 0, 'avisos': 0, 'ambiguas': 0}
+        engastado_heredado = {'heredados': 0, 'no_heredados': 0}
         respaldo_preparacion = None
         archivo_anterior = existe.get('archivo_excel') if existe else None
         if (existe and forzar and archivo_anterior and archivo_anterior != archivo
@@ -314,10 +331,12 @@ def add_corte():
                     contenido_nuevo = fichero.read()
                 contenido_migrado, preparacion_migrada = transferir_preparacion_edicion(
                     contenido_anterior, archivo_anterior, contenido_nuevo, archivo)
-                contenido_final = contenido_migrado.getvalue()
+                contenido_final, engastado_heredado, registrar_engastado = heredar_bloqueos(
+                    archivo_anterior, archivo, contenido_migrado.getvalue(), archivo)
                 if contenido_final != contenido_nuevo:
                     respaldo_preparacion = _guardar_excel_migrado(
                         filepath, contenido_final, contenido_nuevo)
+                registrar_engastado()
 
         # Agregar/sobreescribir código
         success = codigo_repo.agregar_codigo(
@@ -331,10 +350,12 @@ def add_corte():
             if preparacion_migrada['heredadas'] or preparacion_migrada['avisos']:
                 mensaje += (f" Preparación heredada en {preparacion_migrada['heredadas']} mangueras; "
                             f"{preparacion_migrada['avisos']} con diferencias para revisar en Preparación de Mangueras.")
+            mensaje += _mensaje_engastado_heredado(engastado_heredado)
             return jsonify({
                 'success': True,
                 'message': mensaje,
                 'preparacion_migrada': preparacion_migrada,
+                'engastado_heredado': engastado_heredado,
                 'respaldo_preparacion': respaldo_preparacion,
             })
         else:

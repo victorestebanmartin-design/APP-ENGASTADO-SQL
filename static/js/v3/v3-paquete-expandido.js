@@ -236,6 +236,7 @@ async function mostrarPaqueteExpandido() {
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
                         <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
+                        <button onclick="abrirAvisoNoPoner()" title="Avisar de cables en los que este terminal no se pone" style="padding:8px 16px;font-size:0.88em;background:white;color:#b42318;border:1.5px solid #f1a9a0;border-radius:8px;cursor:pointer;font-weight:600;">🚫 No pongo terminal</button>
                     </div>
                     <button onclick="document.getElementById('engaste-scroll-body')?.scrollTo({top:99999,behavior:'smooth'})" style="padding:10px 22px;font-size:1em;font-weight:700;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;touch-action:manipulation;">↓ Bajar</button>
                 </div>
@@ -366,6 +367,7 @@ async function mostrarPaqueteExpandido() {
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${paqueteActualIndex > 0 ? `<button onclick="volverPaqueteAnterior()" style="padding:8px 16px;font-size:0.88em;background:white;color:#495057;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;font-weight:600;">◀ Anterior</button>` : ''}
                         <button onclick="saltarPaquete()" style="padding:8px 16px;font-size:0.88em;background:#fff3cd;color:#856404;border:1.5px solid #ffc107;border-radius:8px;cursor:pointer;font-weight:600;">⤵️ Saltar</button>
+                        <button onclick="abrirAvisoNoPoner()" title="Avisar de cables en los que este terminal no se pone" style="padding:8px 16px;font-size:0.88em;background:white;color:#b42318;border:1.5px solid #f1a9a0;border-radius:8px;cursor:pointer;font-weight:600;">🚫 No pongo terminal</button>
                     </div>
                     <button onclick="document.getElementById('engaste-scroll-body')?.scrollTo({top:99999,behavior:'smooth'})" style="padding:10px 22px;font-size:1em;font-weight:700;background:#1e293b;color:white;border:none;border-radius:8px;cursor:pointer;touch-action:manipulation;">↓ Bajar</button>
                 </div>

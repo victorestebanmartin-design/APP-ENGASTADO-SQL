@@ -51,6 +51,7 @@
 
                 <div class="admin-nav-label">Auditoría</div>
                 <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes>Propuestas de mangueras</a>
+                <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes>Propuestas de engastado</a>
                 <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
 
                 <div class="admin-nav-label">Sistema</div>
@@ -3574,5 +3575,6 @@
     })();
     </script>
 <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
+<script src="{{ url_for('static', filename='js/engastado-propuestas.js') }}"></script>
 </body>
 </html>

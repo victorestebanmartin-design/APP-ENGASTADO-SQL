@@ -225,6 +225,53 @@ def _apply_migrations(db_path):
     """)
     cur.execute('CREATE INDEX IF NOT EXISTS idx_mangueras_propuestas_estado '
                 'ON mangueras_propuestas(estado, archivo)')
+
+    # Migración: propuestas de engastado ("este terminal no se pone en este
+    # cable"). Una propuesta por paquete; cada cable es una fila de
+    # engastado_propuestas_cables. activo=1 = el '*' está puesto en ese archivo
+    # y se hereda a la siguiente ED (ver app/engastado_bloqueos.py).
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS engastado_propuestas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            archivo TEXT NOT NULL,
+            terminal TEXT NOT NULL,
+            paquete TEXT NOT NULL,
+            autor_id TEXT NOT NULL,
+            autor_nombre TEXT NOT NULL,
+            creada_at TEXT NOT NULL,
+            motivo TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            responsable_id TEXT,
+            responsable_nombre TEXT,
+            resuelta_at TEXT,
+            motivo_resolucion TEXT,
+            revertida_por TEXT,
+            revertida_at TEXT,
+            motivo_reversion TEXT
+        )
+    """)
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_engastado_propuestas_estado '
+                'ON engastado_propuestas(estado, archivo)')
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS engastado_propuestas_cables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            propuesta_id INTEGER NOT NULL REFERENCES engastado_propuestas(id) ON DELETE CASCADE,
+            archivo TEXT NOT NULL,
+            fila INTEGER,
+            lado TEXT NOT NULL,
+            terminal TEXT NOT NULL,
+            cod_cable TEXT NOT NULL,
+            cable_marca TEXT NOT NULL,
+            elemento TEXT NOT NULL,
+            serie TEXT NOT NULL DEFAULT '',
+            activo INTEGER NOT NULL DEFAULT 0,
+            resultado TEXT
+        )
+    """)
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_engastado_cables_archivo '
+                'ON engastado_propuestas_cables(archivo, activo)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_engastado_cables_propuesta '
+                'ON engastado_propuestas_cables(propuesta_id)')
     conn.commit()
 
     # Migración: tabla sesiones_trabajo (bloqueo de paquetes concurrente)

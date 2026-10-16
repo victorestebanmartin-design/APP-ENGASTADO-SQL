@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+  <title>Propuestas de engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-editor.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
+</head>
+<body class="me-app">
+  {% include '_version_badge.html' %}
+  <header class="me-topbar">
+    <div><h1>Propuestas de engastado</h1></div>
+    <a href="{{ url_for('main.admin') }}">Volver a Administraci&oacute;n</a>
+  </header>
+  <main class="me-main">
+    <p>Cables en los que los operarios dicen que el terminal no se pone. Al aprobar se marca con <strong>*</strong> en el Excel y el terminal deja de pedirse; se hereda en las ediciones nuevas del corte. Revertir lo vuelve a pedir.</p>
+    <div class="mp-filtros">
+      <a id="ep-entrar" href="{{ url_for('main.admin_login', next='/engastado/propuestas') }}">Entrar en Administraci&oacute;n</a>
+      <span id="ep-identidad-actual"></span>
+      <label>Estado<select id="ep-filtro"><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="rechazada">Rechazadas</option><option value="revertida">Revertidas</option><option value="">Todas</option></select></label>
+      <strong id="ep-contador"></strong>
+      <button id="ep-actualizar" type="button">Actualizar</button>
+    </div>
+    <p id="ep-status" role="status" aria-live="polite"></p>
+    <div id="ep-lista"></div>
+  </main>
+  <dialog id="ep-resolucion" class="mp-dialog" aria-labelledby="ep-resolucion-titulo">
+    <form id="ep-resolucion-form">
+      <h2 id="ep-resolucion-titulo">Resolver propuesta</h2>
+      <label>Motivo de la decisi&oacute;n<textarea id="ep-resolucion-motivo" required minlength="5" maxlength="2000" rows="3"></textarea></label>
+      <p id="ep-resolucion-error" class="mp-error" role="alert"></p>
+      <div class="mp-actions"><button type="button" id="ep-resolucion-cancelar">Cancelar</button><button type="submit">Confirmar</button></div>
+    </form>
+  </dialog>
+  <script src="{{ url_for('static', filename='js/engastado-propuestas.js') }}"></script>
+</body>
+</html>

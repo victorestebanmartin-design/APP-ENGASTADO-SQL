@@ -344,6 +344,11 @@ async function subirArchivo(e) {
                 if (revisar) msg += `; ${revisar} para revisar en Preparación de Mangueras`;
                 if (data.respaldo_preparacion) msg += ` (respaldo: ${data.respaldo_preparacion})`;
             }
+            const engastado = data.engastado_heredado || {};
+            if (engastado.heredados || engastado.no_heredados) {
+                msg += ` — Terminales que no se ponen heredados: ${engastado.heredados || 0}`;
+                if (engastado.no_heredados) msg += `; ${engastado.no_heredados} no encontrados en la ED nueva (revisa Propuestas de engastado)`;
+            }
 
             // Auto-rellenar formulario de asociación si se extrajo código de la hoja
             if (data.codigo) {
