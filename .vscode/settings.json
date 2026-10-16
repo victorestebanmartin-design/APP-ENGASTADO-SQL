@@ -3,6 +3,18 @@
         "/^python deploy\\.py \"fix: modal puestos transparente - colores explícitos \\(vars CSS fuera de \\.admin-app scope\\)\"$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python -m pytest tests\\\\test_bonos\\.py tests\\\\test_carro_unico_proyecto\\.py tests\\\\test_concurrencia_progreso\\.py tests\\\\test_estaticos_versionados\\.py tests\\\\test_encoding_ficheros\\.py tests\\\\test_encoding_consola\\.py -q$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node --check static\\\\js\\\\gestion-proyectos\\.js; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; node --check static\\\\js\\\\v3\\\\v3-seleccion\\.js; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; git diff --check; git fetch origin; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; git rev-list --left-right --count HEAD\\.\\.\\.origin/main$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^git diff --check; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; git fetch origin; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; git rev-list --left-right --count HEAD\\.\\.\\.origin/main; git --no-pager status --short$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

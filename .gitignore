@@ -82,3 +82,4 @@ data/.maintenance.sqlite*
 # Ajustes locales de Claude Code (el repo es publico)
 .claude/settings.local.json
 data/server.pid
+.vscode/settings.json
