@@ -176,7 +176,7 @@ async function eliminarBono(nombreBono) {
     }
     
     try {
-        const response = await fetch(`/api/bonos/${nombreBono}`, {
+        const response = await fetch(`/api/bonos/${encodeURIComponent(nombreBono)}`, {
             method: 'DELETE'
         });
         

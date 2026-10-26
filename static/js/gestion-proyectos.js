@@ -688,7 +688,7 @@ function eliminarBonoConfirmar(nombreBono) {
 
 async function eliminarBono(nombreBono) {
     try {
-        const response = await fetch(`/api/bonos/${nombreBono}`, {
+        const response = await fetch(`/api/bonos/${encodeURIComponent(nombreBono)}`, {
             method: 'DELETE'
         });
         
@@ -878,7 +878,7 @@ async function descargarReporteCSV(nombreBono) {
 
 async function abrirModalEditarBono(nombreBono) {
     try {
-        const response = await fetch(`/api/bonos/${nombreBono}`);
+        const response = await fetch(`/api/bonos/${encodeURIComponent(nombreBono)}`);
         const data = await response.json();
         
         if (data.success && data.bono) {

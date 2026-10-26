@@ -65,7 +65,7 @@ def api_obtener_bonos():
         return error_interno(e)
 
 
-@bp.route('/api/bonos/<nombre>', methods=['GET'])
+@bp.route('/api/bonos/<path:nombre>', methods=['GET'])
 def api_obtener_bono_por_nombre(nombre):
     """Obtener bono por nombre con sus órdenes"""
     try:
@@ -118,7 +118,7 @@ def api_obtener_bono_por_nombre(nombre):
         return error_interno(e)
 
 
-@bp.route('/api/bonos/<nombre>', methods=['DELETE'])
+@bp.route('/api/bonos/<path:nombre>', methods=['DELETE'])
 def api_eliminar_bono(nombre):
     """Eliminar bono por nombre"""
     try:
@@ -147,7 +147,7 @@ _NOMBRE_BONO_VALIDO = re.compile(r'^[\w.\- ]+$')
 _ESTADOS_BONO = ('activo', 'completado', 'pausado')
 
 
-@bp.route('/api/bonos/<nombre>', methods=['PUT'])
+@bp.route('/api/bonos/<path:nombre>', methods=['PUT'])
 def api_actualizar_bono(nombre):
     """Cambiar nombre y/o estado de un bono.
 
@@ -229,11 +229,18 @@ def api_crear_bono():
     """Crear nuevo bono"""
     try:
         data = request.get_json()
-        
+
+        nombre = str(data['nombre']).strip()
+        if not _NOMBRE_BONO_VALIDO.match(nombre) or nombre.strip('. ') != nombre:
+            return jsonify({
+                'success': False,
+                'message': 'El nombre del bono solo puede llevar letras, números, espacios, punto, guion y guion bajo (sin "/").'
+            }), 400
+
         bono_repo = BonoRepository(db)
         with db.engine.begin() as conn:
             bono_id = bono_repo.crear_bono(
-                nombre=data['nombre'],
+                nombre=nombre,
                 ordenes_ids=data['ordenes_ids'],
                 descripcion=data.get('descripcion'),
                 conn=conn

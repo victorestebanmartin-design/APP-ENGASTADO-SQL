@@ -157,7 +157,10 @@ def _ruta_progreso_bono(nombre_bono):
     para que los llamadores no necesiten un guard extra.
     """
     base = os.path.abspath(current_app.config['DATA_DIR'])
-    seguro = os.path.basename(f'progreso_bono_{nombre_bono or ""}.json')
+    # Los nombres pueden llevar '/' (p. ej. "ZEFIRO 26/10"): se sustituye para
+    # que no se lea como carpeta y dos bonos no acaben en el mismo fichero.
+    nombre = (nombre_bono or '').replace('/', '_').replace('\\', '_')
+    seguro = os.path.basename(f'progreso_bono_{nombre}.json')
     return os.path.join(base, seguro)
 
 
