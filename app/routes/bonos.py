@@ -54,9 +54,24 @@ def api_obtener_bonos():
         bonos = bono_repo.obtener_todos_bonos(estado)
 
         # Marcar cada bono como finalizado si todos sus terminales están completados
+        # Órdenes que componen cada bono (para el tooltip de las listas)
+        por_bono = {}
+        for o in bono_repo.execute_select(
+                "SELECT bono_id, numero, proyecto, descripcion, cantidad, carro_numero "
+                "FROM ordenes_produccion WHERE bono_id IS NOT NULL "
+                "ORDER BY carro_numero, numero"):
+            por_bono.setdefault(o['bono_id'], []).append({
+                'numero': o['numero'],
+                'proyecto': o['proyecto'],
+                'descripcion': o['descripcion'],
+                'cantidad': o['cantidad'],
+                'carro': o['carro_numero'],
+            })
+
         for bono in bonos:
             bono['finalizado'] = _bono_finalizado(bono.get('nombre'))
-        
+            bono['ordenes_resumen'] = por_bono.get(bono['id'], [])
+
         return jsonify({
             'success': True,
             'bonos': bonos
@@ -144,6 +159,7 @@ def api_eliminar_bono(nombre):
 
 
 _NOMBRE_BONO_VALIDO = re.compile(r'^[\w.\- ]+$')
+_NOMBRE_BONO_NUEVO = re.compile(r'^(\d{7})_(\d{4})$')
 _ESTADOS_BONO = ('activo', 'completado', 'pausado')
 
 
@@ -291,39 +307,24 @@ def api_asignar_bono_carro(bono_id):
 
 @bp.route('/api/bonos/nombre-sugerido', methods=['GET'])
 def api_obtener_nombre_sugerido_bono():
-    """Obtener nombre sugerido para el siguiente bono en formato DDMMYYYY_N"""
+    """Obtener nombre sugerido para el siguiente bono en formato NNNNNNN_AAAA.
+
+    El contador reinicia cada año y el año va en el nombre, así que 0000001_2026
+    y 0000001_2027 no chocan. Los bonos con el formato antiguo (DDMMYYYY_N) se
+    ignoran: no cuentan para el contador.
+    """
     try:
-        from datetime import datetime
-        
         bono_repo = BonoRepository(db)
-        
-        # Formato: DDMMYYYY
-        fecha_hoy = datetime.now().strftime('%d%m%Y')
-        
-        # Obtener todos los bonos
-        bonos = bono_repo.obtener_todos_bonos()
-        
-        # Filtrar bonos del día de hoy y encontrar el último número
-        bonos_hoy = [b for b in bonos if b['nombre'].startswith(fecha_hoy)]
-        
-        if bonos_hoy:
-            # Extraer números y encontrar el máximo
-            numeros = []
-            for bono in bonos_hoy:
-                try:
-                    # Formato esperado: DDMMYYYY_N
-                    partes = bono['nombre'].split('_')
-                    if len(partes) >= 2:
-                        numeros.append(int(partes[-1]))
-                except (ValueError, IndexError):
-                    continue
-            
-            siguiente_numero = max(numeros) + 1 if numeros else 1
-        else:
-            siguiente_numero = 1
-        
-        nombre_sugerido = f"{fecha_hoy}_{siguiente_numero}"
-        
+        anio = str(datetime.now().year)
+
+        ultimo = 0
+        for bono in bono_repo.obtener_todos_bonos():
+            m = _NOMBRE_BONO_NUEVO.match(bono['nombre'])
+            if m and m.group(2) == anio:
+                ultimo = max(ultimo, int(m.group(1)))
+
+        nombre_sugerido = f"{ultimo + 1:07d}_{anio}"
+
         return jsonify({
             'success': True,
             'nombre': nombre_sugerido

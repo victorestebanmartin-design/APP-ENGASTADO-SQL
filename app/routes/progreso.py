@@ -171,14 +171,39 @@ def _terminales_disponibles_bono(nombre_bono):
     return terminales_con_datos
 
 
+def _terminales_trabajables(terminales):
+    """De los terminales de un bono, los que alguien puede llegar a engastar.
+
+    Quedan fuera los pelados (KN-...), los ignorados (Admin -> Terminales) y los
+    que no están en ninguna máquina activa: nadie los trabaja, así que no pueden
+    contar para dar el bono por terminado.
+    """
+    filas = db.session.execute(text("""
+        SELECT DISTINCT UPPER(mt.terminal_codigo)
+        FROM maquinas_terminales mt
+        JOIN maquinas m ON m.id = mt.maquina_id
+        WHERE mt.activo = 1 AND m.activo = 1
+    """)).fetchall()
+    asignados = {r[0] for r in filas}
+    ignorados = {r[0].upper() for r in db.session.execute(
+        text("SELECT terminal_codigo FROM terminales_ignorados")).fetchall()}
+    return {t for t in terminales
+            if t.upper() in asignados
+            and t.upper() not in ignorados
+            and not t.upper().startswith('KN-')}
+
+
 def _bono_finalizado(nombre_bono, terminales=None):
-    """Determina si un bono está finalizado: tiene al menos un terminal con datos
-    y TODOS sus terminales disponibles están marcados como 'completado' en el
-    progreso guardado. Devuelve False si el bono no tiene terminales o no hay
-    progreso."""
+    """Determina si un bono está finalizado: tiene al menos un terminal
+    trabajable y TODOS ellos están marcados como 'completado' en el progreso
+    guardado (ver _terminales_trabajables). Devuelve False si el bono no tiene
+    terminales o no hay progreso."""
     try:
         if terminales is None:
             terminales = _terminales_disponibles_bono(nombre_bono)
+
+        if terminales:
+            terminales = _terminales_trabajables(terminales)
 
         if not terminales:
             return False

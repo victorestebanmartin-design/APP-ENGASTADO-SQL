@@ -1,4 +1,5 @@
 """Tests del flujo de bonos: crear, duplicados, órdenes, carros y borrado."""
+from datetime import datetime
 
 
 def _crear_orden(client, numero='ORD_1'):
@@ -85,12 +86,28 @@ def test_eliminar_bono_devuelve_ordenes_a_pendiente(client):
 
 def test_nombre_sugerido_incrementa(client):
     r = client.get('/api/bonos/nombre-sugerido')
+    anio = datetime.now().year
     nombre1 = r.get_json()['nombre']
-    assert nombre1.endswith('_1')
+    assert nombre1 == f'0000001_{anio}'
 
     client.post('/api/bonos', json={'nombre': nombre1, 'ordenes_ids': []})
     r = client.get('/api/bonos/nombre-sugerido')
-    assert r.get_json()['nombre'].endswith('_2')
+    assert r.get_json()['nombre'] == f'0000002_{anio}'
+
+
+def test_nombre_sugerido_reinicia_por_anio_e_ignora_formato_antiguo(client):
+    anio = datetime.now().year
+    for n in ('27102025_9', f'0000041_{anio - 1}', f'0000005_{anio}'):
+        client.post('/api/bonos', json={'nombre': n, 'ordenes_ids': []})
+    r = client.get('/api/bonos/nombre-sugerido')
+    assert r.get_json()['nombre'] == f'0000006_{anio}'
+
+
+def test_listado_bonos_incluye_resumen_de_ordenes(client):
+    _crear_orden(client, 'ORD_RES')
+    client.post('/api/bonos', json={'nombre': 'B_RES', 'ordenes_ids': ['ORD_RES']})
+    bono = next(b for b in client.get('/api/bonos').get_json()['bonos'] if b['nombre'] == 'B_RES')
+    assert [o['numero'] for o in bono['ordenes_resumen']] == ['ORD_RES']
 
 
 def _bono(client, nombre):

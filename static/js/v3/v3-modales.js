@@ -149,6 +149,18 @@ function mostrarInputBono() {
     inp.onkeypress = (e) => { if (e.key === 'Enter') confirmarBonoCodigo(); };
 }
 
+// Texto del tooltip de un bono: las órdenes que lo componen, una por línea.
+function _tooltipBono(bono) {
+    const ordenes = bono.ordenes_resumen || [];
+    if (ordenes.length === 0) return 'Bono sin órdenes';
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    return esc(ordenes.map(o => {
+        const carro = o.carro ? `Carro ${o.carro}: ` : '';
+        const desc = o.descripcion ? ` - ${o.descripcion}` : '';
+        return `${carro}${o.numero}${desc} (x${o.cantidad})`;
+    }).join('\n'));
+}
+
 async function mostrarListaBonosModal() {
     _mostrarVistaBono('lista');
     const contenido = document.getElementById('modal-bonos-lista-contenido');
@@ -165,7 +177,7 @@ async function mostrarListaBonosModal() {
         }
 
         contenido.innerHTML = bonos.map(bono => `
-            <div class="modal-bono-item" onclick="seleccionarBonoDesdeModal('${bono.nombre}')">
+            <div class="modal-bono-item" title="${_tooltipBono(bono)}" onclick="seleccionarBonoDesdeModal('${bono.nombre}')">
                 <div>
                     <div class="modal-bono-item-nombre">${bono.nombre}</div>
                     <div class="modal-bono-item-fecha">

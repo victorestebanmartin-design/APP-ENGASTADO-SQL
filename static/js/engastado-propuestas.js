@@ -43,7 +43,7 @@
     var filtro = document.getElementById('ep-filtro').value;
     lista.innerHTML = propuestas.filter(function (propuesta) { return !filtro || propuesta.estado === filtro; }).map(function (propuesta) {
       var cables = propuesta.cables.map(function (cable) {
-        return '<li>' + esc(cable.cable_marca) + ' · ' + esc(cable.cod_cable) + ' · ' + esc(cable.elemento) +
+        return '<li>' + (cable.paquete ? 'Paquete ' + esc(cable.paquete) + ' · ' : '') + esc(cable.cable_marca) + ' · ' + esc(cable.cod_cable) + ' · ' + esc(cable.elemento) +
           (cable.serie ? ' · ' + esc(cable.serie) : '') + ' · lado ' + (cable.lado === 'de' ? 'De (liso)' : 'Para (guion)') +
           ' · ' + esc(cable.archivo) + (cable.fila ? ' fila ' + cable.fila : '') +
           (cable.resultado ? ' — <em>' + esc(textoResultado(cable.resultado)) + '</em>' : '') + '</li>';
@@ -61,7 +61,10 @@
         acciones = '<div class="mp-actions"><button type="button" data-id="' + propuesta.id + '" data-accion="revertir"' +
           (puedeAprobar ? '' : ' disabled') + '>Revertir (volver a pedir el terminal)</button></div>';
       }
-      return '<article class="mp-propuesta"><h2>#' + propuesta.id + ' · Terminal ' + esc(propuesta.terminal) + ' · ' + esc(propuesta.paquete) + ' · ' + esc(propuesta.estado) + '</h2>' +
+      var numeros = propuesta.cables.map(function (cable) { return cable.paquete; })
+        .filter(function (numero, i, todos) { return numero && todos.indexOf(numero) === i; });
+      return '<article class="mp-propuesta"><h2>#' + propuesta.id + ' · Terminal ' + esc(propuesta.terminal) +
+        (numeros.length ? ' · Paquete ' + esc(numeros.join(', ')) : '') + ' · ' + esc(propuesta.paquete) + ' · ' + esc(propuesta.estado) + '</h2>' +
         '<p>' + esc(propuesta.autor_nombre + ' · ' + propuesta.creada_at + ' · ' + propuesta.archivo) + '</p>' +
         '<p>Motivo: ' + esc(propuesta.motivo) + '</p><ul>' + cables + '</ul>' +
         (propuesta.resuelta_at ? '<p>' + esc(propuesta.responsable_nombre + ' · ' + propuesta.resuelta_at + '\n' + propuesta.motivo_resolucion) + '</p>' : '') +

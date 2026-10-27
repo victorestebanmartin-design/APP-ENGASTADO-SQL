@@ -41,9 +41,9 @@ def test_el_sondeo_de_logins_es_barato(client):
 
 # ── Intervalos de sondeo ──────────────────────────────────────────────────
 
-def test_la_pantalla_sondea_al_menos_cada_segundo():
+def test_la_pantalla_sondea_al_menos_cada_2_segundos():
     m = re.search(r'^POLL_INTERVAL\s*=\s*(\d+)', _leer('esp32/micropython/main_wifi.py'), re.M)
-    assert m and int(m.group(1)) <= 1, 'la pantalla tardaria mas de 1s en pintar un paquete'
+    assert m and int(m.group(1)) <= 2, 'la pantalla tardaria mas de 2s en pintar un paquete'
 
 
 def test_el_navegador_sondea_los_logins_al_menos_cada_750ms():

@@ -106,7 +106,7 @@
       var comparaciones = propuesta.sugerido.cambios.map(function (cambio) {
         var original = propuesta.original.find(function (fila) { return fila.fila === cambio.fila; });
         var sugerido = filas.find(function (fila) { return fila.fila === cambio.fila; });
-        return '<h3>' + esc(original.cable_marca + ' / ' + original.cod_cable + ' / ' + original.de_elemento + ' / Fila ' + original.fila) + '</h3>' + window.comparacionMangueras(original, sugerido);
+        return '<h3>' + (original.paquete ? 'Paquete ' + esc(original.paquete) + ' / ' : '') + esc(original.cable_marca + ' / ' + original.cod_cable + ' / ' + original.de_elemento + ' / Fila ' + original.fila) + '</h3>' + window.comparacionMangueras(original, sugerido);
       }).join('');
       var puedeResolver = puedeAprobar && propuesta.autor_id !== identidadId;
       var avisoResolucion = !puedeAprobar ? 'Sesion personal de Administracion requerida.' :

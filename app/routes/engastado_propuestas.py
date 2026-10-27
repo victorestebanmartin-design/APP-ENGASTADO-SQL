@@ -20,10 +20,10 @@ from app.auth import administrador_actual, sesion_admin_valida
 from app.engastado_bloqueos import aplicar_bloqueos, leer_cable, quitar_bloqueos, LADOS
 from app.excel_manager import invalidar_cache_excel
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
-from app.routes.mangueras_propuestas import _identidad, _json_peticion
+from app.routes.mangueras_propuestas import _identidad, _json_peticion, numeros_paquete
 from app.routes.manguitos import _MANGUERAS_EDITOR_LOCK
 
-MOTIVOS = ('Plano / documentacion', 'Indicacion del cliente', 'Otros')
+MOTIVOS = ('Plano / documentacion', 'Indicacion del cliente', 'Error listado terminal no corresponde con seccion (fallo IFA)', 'Otros')
 _CAMPOS_REGLA = ('lado', 'terminal', 'cod_cable', 'cable_marca', 'elemento', 'serie', 'fila')
 
 
@@ -102,9 +102,12 @@ def api_engastado_propuestas():
                 'SELECT * FROM engastado_propuestas_cables WHERE propuesta_id IN '
                 '(SELECT id FROM engastado_propuestas ORDER BY id DESC LIMIT 500) ORDER BY id'
             )).mappings().all()
+            buscadores = numeros_paquete(conn, [cable['archivo'] for cable in cables])
         por_propuesta = {}
         for cable in cables:
-            por_propuesta.setdefault(cable['propuesta_id'], []).append(dict(cable))
+            cable = dict(cable, paquete=buscadores[cable['archivo']](
+                cable['cod_cable'], cable['elemento'], cable['serie']))
+            por_propuesta.setdefault(cable['propuesta_id'], []).append(cable)
         for propuesta in propuestas:
             propuesta['cables'] = por_propuesta.get(propuesta['id'], [])
         return jsonify(success=True, propuestas=propuestas, aprobar=bool(administrador),

@@ -114,7 +114,7 @@ async function mostrarBonosDisponibles() {
             const bonosLista = document.getElementById('bonos-lista');
             
             // data.bonos ya es un array, no un objeto
-            const bonosActivos = data.bonos.filter(b => b.estado === 'activo');
+            const bonosActivos = data.bonos.filter(b => b.estado === 'activo' && !b.finalizado);
             
             if (bonosActivos.length === 0) {
                 bonosLista.innerHTML = '<p style="color: #6c757d;">No hay bonos activos disponibles.</p>';

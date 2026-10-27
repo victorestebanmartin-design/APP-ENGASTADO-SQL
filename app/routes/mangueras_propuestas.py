@@ -71,6 +71,31 @@ def identificacion_mangueras():
     return jsonify(success=True, nombre=identidad['nombre'], operario_id=identidad['id'])
 
 
+def numeros_paquete(conn, archivos):
+    """{archivo: buscar(cod_cable, elemento, serie) -> '25' | '25.01' | None}.
+
+    Es el número de etiqueta con el que el operario reconoce el paquete. Se
+    resuelve al listar (no se guarda) para que también salga en las propuestas
+    ya creadas. Sin etiquetas generadas devuelve None: no es un error."""
+    tablas = {}
+    for archivo in set(archivos):
+        filas = conn.execute(text(
+            'SELECT numero_etiqueta, sub_numero, grupo_serie, cod_cable, elemento FROM etiquetas_elementos '
+            'WHERE archivo_excel=:archivo AND es_grupo_padre=0 ORDER BY numero_etiqueta, sub_numero'
+        ), {'archivo': archivo}).mappings().all()
+
+        def buscar(cod_cable, elemento, serie, filas=filas):
+            mismos = [f for f in filas if f['cod_cable'] == cod_cable and f['elemento'] == elemento]
+            fila = next((f for f in mismos if (f['grupo_serie'] or '') == (serie or '')), None) or \
+                (mismos[0] if mismos else None)
+            if not fila:
+                return None
+            sub = fila['sub_numero'] or 0
+            return f"{fila['numero_etiqueta']}.{sub:02d}" if sub > 0 else str(fila['numero_etiqueta'])
+        tablas[archivo] = buscar
+    return tablas
+
+
 @bp.route('/mangueras/propuestas')
 def mangueras_propuestas():
     return render_template('mangueras-propuestas.html')
@@ -101,11 +126,15 @@ def api_mangueras_propuestas():
                 'original_json, sugerido_json, responsable_nombre, resuelta_at, motivo_resolucion '
                 'FROM mangueras_propuestas ORDER BY id DESC'
             )).mappings().all()
+            buscadores = numeros_paquete(conn, [fila['archivo'] for fila in filas])
         propuestas = []
         for fila in filas:
             propuesta = dict(fila)
             propuesta['original'] = json.loads(propuesta.pop('original_json'))
             propuesta['sugerido'] = json.loads(propuesta.pop('sugerido_json'))
+            for cable in propuesta['original']:
+                cable['paquete'] = buscadores[fila['archivo']](
+                    cable.get('cod_cable'), cable.get('de_elemento'), cable.get('serie'))
             propuestas.append(propuesta)
         return jsonify(success=True, propuestas=propuestas, aprobar=bool(administrador),
                        recuperacion=bool(recuperacion),

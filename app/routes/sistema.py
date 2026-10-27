@@ -1997,7 +1997,7 @@ def api_esp32_devices():
         for did, d in sorted(devs.items()):
             online = False
             try:
-                online = (ahora - datetime.fromisoformat(d.get('last_seen', ''))).total_seconds() < 15
+                online = (ahora - datetime.fromisoformat(d.get('last_seen', ''))).total_seconds() < ESP32_TTL_S
             except Exception:
                 pass
             out.append({

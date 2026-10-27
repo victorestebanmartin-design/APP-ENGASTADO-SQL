@@ -10,6 +10,14 @@ function _escNoPoner(valor) {
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// valor que viaja al servidor (MOTIVOS en engastado_propuestas.py) → texto que ve el operario
+const MOTIVOS_NO_PONER = {
+    'Plano / documentacion': 'Plano / documentación',
+    'Indicacion del cliente': 'Indicación del cliente',
+    'Error listado terminal no corresponde con seccion (fallo IFA)': 'Error: el listado de terminal no corresponde con la sección (fallo de IFA)',
+    'Otros': 'Otros',
+};
+
 function _cablesParaAviso(paquete) {
     const subs = paquete.es_grupo ? (paquete.sub_paquetes || []) : [paquete];
     const cables = [];
@@ -68,8 +76,8 @@ async function abrirAvisoNoPoner() {
             <button type="button" id="np-todos" style="padding:6px 12px;font-size:0.85em;background:#f8f9fa;border:1.5px solid #ced4da;border-radius:8px;cursor:pointer;">Marcar todos</button>
             <fieldset style="margin:16px 0 8px;border:1px solid #dee2e6;border-radius:8px;padding:10px 14px;">
                 <legend style="font-weight:700;font-size:0.92em;">Motivo</legend>
-                ${['Plano / documentacion', 'Indicacion del cliente', 'Otros'].map((m, i) => `
-                    <label style="display:block;padding:6px 0;cursor:pointer;"><input type="radio" name="np-motivo" value="${m}" ${i === 0 ? 'checked' : ''}> ${m === 'Plano / documentacion' ? 'Plano / documentación' : m === 'Indicacion del cliente' ? 'Indicación del cliente' : 'Otros'}</label>`).join('')}
+                ${Object.entries(MOTIVOS_NO_PONER).map(([m, texto], i) => `
+                    <label style="display:block;padding:6px 0;cursor:pointer;"><input type="radio" name="np-motivo" value="${m}" ${i === 0 ? 'checked' : ''}> ${texto}</label>`).join('')}
                 <textarea id="np-detalle" rows="2" maxlength="1900" placeholder="Detalle (obligatorio en Otros)" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ced4da;border-radius:6px;font:inherit;"></textarea>
             </fieldset>
             <p id="np-error" role="alert" style="color:#b42318;min-height:1.2em;margin:6px 0;"></p>

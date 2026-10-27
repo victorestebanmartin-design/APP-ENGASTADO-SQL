@@ -13,7 +13,7 @@
   {% include '_version_badge.html' %}
   <header class="me-topbar">
     <div><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="36" height="36" alt=""><h1>Propuestas de mangueras</h1></div>
-    <a href="{{ url_for('main.mangueras') }}">Volver a preparaci&oacute;n</a>
+    <nav><a href="{{ url_for('main.mangueras') }}">Volver a preparaci&oacute;n</a> <a href="{{ url_for('main.admin') }}">Volver a Administraci&oacute;n</a></nav>
   </header>
   <main class="me-main">
     <div class="mp-filtros">
