@@ -108,6 +108,8 @@
             <button class="admin-nav-item"         data-prio="alta"    onclick="setFiltroPrio('alta')">   <span class="ico">🟡</span> Alta</button>
             <button class="admin-nav-item"         data-prio="media"   onclick="setFiltroPrio('media')">  <span class="ico">🔵</span> Media</button>
             <button class="admin-nav-item"         data-prio="baja"    onclick="setFiltroPrio('baja')">   <span class="ico">⚪</span> Baja</button>
+            <div class="admin-nav-label" style="margin-top:18px;">Análisis</div>
+            <a class="admin-nav-item" href="{{ url_for('main.tiempos_ordenes') }}" style="text-decoration:none;"><span class="ico">⏱️</span> Tiempos por orden</a>
             <div style="margin-top:auto;padding:12px 0 4px;">
                 <button class="admin-nav-item" onclick="limpiarFiltrosNav()" style="opacity:.6;font-size:.78rem;">↺ Limpiar filtros</button>
             </div>

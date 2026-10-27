@@ -66,6 +66,89 @@
   var corteCodigoEl = document.getElementById('mg-corte-codigo');
   var corteDescEl   = document.getElementById('mg-corte-desc');
 
+  // ── Tiempo de colocación por orden ───────────────────────────────────
+  // Igual que mangueras.js: el reloj suma lo fichado por cada operario y se
+  // pausa al cambiar de corte, salir o dejar de dar latidos.
+  var ordenActual      = null;
+  var segundosFichados = 0;
+  var inicioReloj      = 0;
+  var relojActivo      = false;
+  var ESTADOS_TRABAJO  = { en_preparacion: 'En colocación', pausada: 'Pausada', terminada: 'Terminada' };
+
+  function formatoCronometro(segundos) {
+    var total = Math.max(0, Math.floor(segundos));
+    return [Math.floor(total / 3600), Math.floor(total % 3600 / 60), total % 60]
+      .map(function (valor) { return String(valor).padStart(2, '0'); }).join(':');
+  }
+
+  function pintarCronometro() {
+    var reloj = document.getElementById('mg-cronometro');
+    if (!reloj) return;
+    var total = segundosFichados;
+    if (relojActivo) total += Math.floor((Date.now() - inicioReloj) / 1000);
+    reloj.textContent = formatoCronometro(total);
+  }
+
+  function mostrarTrabajo(colocacion) {
+    document.getElementById('mg-trabajo').hidden = !ordenActual;
+    if (!ordenActual) return;
+    document.getElementById('mg-orden').textContent = 'Orden ' + ordenActual.numero + ' / Cantidad ' + ordenActual.cantidad;
+    segundosFichados = Math.max(0, Number(colocacion.segundos) || 0);
+    inicioReloj = Date.now();
+    relojActivo = colocacion.estado === 'en_preparacion';
+    pintarCronometro();
+    document.getElementById('mg-trabajo-resumen').textContent =
+      (ESTADOS_TRABAJO[colocacion.estado] || colocacion.estado) + ' / ' + colocacion.operarios.join(', ');
+    document.getElementById('mg-pausar').disabled = colocacion.estado !== 'en_preparacion';
+    document.getElementById('mg-terminar').disabled = colocacion.estado !== 'en_preparacion';
+  }
+
+  function trabajoEnMarcha() {
+    return ordenActual && !document.getElementById('mg-pausar').disabled;
+  }
+
+  async function actualizarTrabajo(accion, extra) {
+    if (!ordenActual) return;
+    var respuesta = await fetch('/api/manguitos/trabajo/' + encodeURIComponent(ordenActual.id), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ accion: accion }, extra))
+    });
+    var datos = await respuesta.json();
+    if (!respuesta.ok) throw new Error(datos.error || 'No se pudo registrar el trabajo.');
+    mostrarTrabajo(datos.colocacion);
+    return datos;
+  }
+
+  // Pausa sin molestar al operario si algo falla al cargar el guiado
+  function pausarSilencioso() {
+    if (trabajoEnMarcha()) actualizarTrabajo('pausar').catch(function () {});
+  }
+
+  setInterval(pintarCronometro, 1000);
+  setInterval(function () {
+    if (!trabajoEnMarcha()) return;
+    actualizarTrabajo('latido').catch(function (error) {
+      document.getElementById('mg-trabajo-resumen').textContent = error.message;
+      document.getElementById('mg-pausar').disabled = true;
+      document.getElementById('mg-terminar').disabled = true;
+      abrirModalMg();
+    });
+  }, 30000);
+  window.addEventListener('pagehide', function () {
+    if (!ordenActual) return;
+    navigator.sendBeacon('/api/manguitos/trabajo/' + encodeURIComponent(ordenActual.id),
+      new Blob([JSON.stringify({ accion: 'pausar' })], { type: 'application/json' }));
+  });
+  document.getElementById('mg-pausar').addEventListener('click', async function () {
+    try { await actualizarTrabajo('pausar'); abrirModalMg(); }
+    catch (error) { alert(error.message); }
+  });
+  document.getElementById('mg-terminar').addEventListener('click', async function () {
+    if (!confirm('Marcar como terminada la colocacion de manguitos de esta orden?')) return;
+    try { await actualizarTrabajo('terminar'); abrirModalMg(); }
+    catch (error) { alert(error.message); }
+  });
+
   // Delegación de eventos del selector de ristra (se registra una sola vez)
   divRistraSelector.addEventListener('click', function (e) {
     var btn = e.target.closest('.ristra-btn');
@@ -185,7 +268,7 @@
   // ── Cargar manguitos del Excel del corte ─────────────────────────────
   async function cargarGuiado(corte) {
     var archivo = corte && corte.archivo ? corte.archivo : null;
-    if (!archivo) { abrirModalMg(); return; }
+    if (!archivo) { pausarSilencioso(); abrirModalMg(); return; }
 
     try {
       var res  = await fetch('/api/manguitos/datos', {
@@ -196,6 +279,7 @@
       var data = await res.json();
 
       if (!data.success) {
+        pausarSilencioso();
         alert('Error: ' + data.error);
         abrirModalMg();
         return;
@@ -204,6 +288,7 @@
       elementos = data.elementos || [];
 
       if (elementos.length === 0) {
+        pausarSilencioso();
         alert('No se encontraron manguitos en este corte\n(todas las filas tienen "S/M" o la columna "De Manguito" está vacía).');
         abrirModalMg();
         return;
@@ -217,6 +302,7 @@
       aplicarFiltroRistra(null);
 
     } catch (e) {
+      pausarSilencioso();
       alert('Error de conexión: ' + e.message);
       abrirModalMg();
     }
@@ -469,6 +555,22 @@
   if (typeof initCableColors === 'function') initCableColors();
   initModalMg();
 
+  // Mantiene viva la sesión de operario: sin latido el login caduca a los 3
+  // minutos (operarios.py:LOGIN_CADUCIDAD_MINUTOS) y la app echa al operario.
+  setInterval(function () {
+    if (document.visibilityState === 'visible') {
+      fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(function () {});
+    }
+  }, 60000);
+
+  // Puesto olvidado: tras unos minutos sin tocarlo se cierra la sesión, y el
+  // tiempo sin actividad no cuenta como colocación.
+  if (window.inactividadOperario) window.inactividadOperario.iniciar({
+    antesDeSalir: async function (inactivoSegundos) {
+      if (trabajoEnMarcha()) await actualizarTrabajo('pausar', { inactivo_segundos: inactivoSegundos });
+    }
+  });
+
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
@@ -490,7 +592,11 @@
     var errorCorte  = document.getElementById('modal-mg-corte-error');
     var listaEl     = document.getElementById('modal-mg-lista-contenido');
 
-    var VISTAS = ['modo', 'txttipo', 'metodo', 'input', 'lista', 'swform', 'excelform', 'reetiquetado'];
+    var VISTAS = ['modo', 'txttipo', 'metodo', 'input', 'lista', 'swform', 'excelform', 'reetiquetado', 'escaneo'];
+
+    var inputEscaneo = document.getElementById('modal-mg-input-escaneo');
+    var errorEscaneo = document.getElementById('modal-mg-escaneo-error');
+    var enviandoEscaneo = false;
 
     function mostrarVista(v) {
       VISTAS.forEach(function (n) {
@@ -500,6 +606,57 @@
       if (v === 'input') {
         setTimeout(function () { if (inputCorte) inputCorte.focus(); }, 50);
       }
+      if (v === 'escaneo') {
+        setTimeout(function () { if (inputEscaneo) inputEscaneo.focus(); }, 50);
+      }
+    }
+
+    // ── Escaneo de la orden (guiado) ────────────────────────────────────
+    // Registra la orden en el reloj de manguitos. El servidor rechaza con un
+    // motivo legible si las mangueras de la orden aún no se han preparado.
+    function mostrarEscaneo() {
+      errorEscaneo.classList.add('hidden');
+      inputEscaneo.value = '';
+      mostrarVista('escaneo');
+    }
+
+    async function confirmarEscaneo() {
+      if (enviandoEscaneo) return;
+      var valor = inputEscaneo.value.trim();
+      if (!valor) {
+        errorEscaneo.textContent = 'Escanea o escribe el código de la orden.';
+        errorEscaneo.classList.remove('hidden');
+        inputEscaneo.focus();
+        return;
+      }
+      enviandoEscaneo = true;
+      var boton = document.getElementById('btn-mg-escaneo-confirmar');
+      boton.disabled = true;
+      try {
+        var res = await fetch('/api/manguitos/trabajo/escanear', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo: valor })
+        });
+        var datos = await res.json();
+        if (!res.ok) throw new Error(datos.error || 'No se pudo registrar la orden.');
+        ordenActual = datos.orden;
+        mostrarTrabajo(datos.colocacion);
+        comprobarReetiquetado(datos.corte);
+      } catch (error) {
+        errorEscaneo.textContent = error.message;
+        errorEscaneo.classList.remove('hidden');
+        inputEscaneo.select();
+      } finally {
+        enviandoEscaneo = false;
+        boton.disabled = false;
+      }
+    }
+
+    async function volverDeReetiquetado() {
+      try {
+        if (trabajoEnMarcha()) await actualizarTrabajo('pausar');
+      } catch (error) { alert(error.message); }
+      if (flujo === 'guiado') mostrarEscaneo(); else irAMetodoCorte();
     }
 
     function abrir() { mostrarVista('modo'); modal.classList.remove('hidden'); }
@@ -756,7 +913,14 @@
 
     // ── Wiring de botones ───────────────────────────────────────────────
     document.getElementById('btn-mg-guiado').addEventListener('click', function () {
-      flujo = 'guiado'; irAMetodoCorte();
+      flujo = 'guiado'; mostrarEscaneo();
+    });
+    document.getElementById('btn-mg-escaneo-volver').addEventListener('click', function () {
+      mostrarVista('modo');
+    });
+    document.getElementById('btn-mg-escaneo-confirmar').addEventListener('click', confirmarEscaneo);
+    inputEscaneo.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') confirmarEscaneo();
     });
     document.getElementById('btn-mg-txt').addEventListener('click', function () {
       mostrarVista('txttipo');
@@ -789,7 +953,7 @@
     }
 
     document.getElementById('btn-mg-sw-volver').addEventListener('click', irAMetodoCorte);
-    document.getElementById('btn-mg-reet-volver').addEventListener('click', irAMetodoCorte);
+    document.getElementById('btn-mg-reet-volver').addEventListener('click', volverDeReetiquetado);
     document.getElementById('btn-mg-reet-confirmar').addEventListener('click', function () {
       var corte = corteSel;
       cerrar();
@@ -803,7 +967,12 @@
 
     // Botón cambiar del banner → reabrir wizard
     var btnCambiar = document.getElementById('mg-corte-cambiar');
-    if (btnCambiar) btnCambiar.addEventListener('click', abrir);
+    if (btnCambiar) btnCambiar.addEventListener('click', async function () {
+      try {
+        if (trabajoEnMarcha()) await actualizarTrabajo('pausar');
+        abrir();
+      } catch (error) { alert(error.message); }
+    });
 
     // Arranque: cargar cortes y abrir modal
     cargarCortes();

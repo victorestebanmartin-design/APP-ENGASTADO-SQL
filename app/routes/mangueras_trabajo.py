@@ -14,9 +14,24 @@ def _ahora():
     return datetime.now(timezone.utc).isoformat()
 
 
+def fin_de_pausa(inicio, ahora, inactivo_segundos):
+    """Cuando acaba un tramo que se pausa por inactividad.
+
+    El puesto cierra la sesion tras unos minutos sin tocarse; esos minutos no
+    son trabajo, asi que el tramo termina cuando el operario dejo de actuar (sin
+    pasar nunca de antes de su propio inicio). Un valor ausente o absurdo
+    cierra el tramo ahora, como una pausa normal.
+    """
+    if not isinstance(inactivo_segundos, int) or isinstance(inactivo_segundos, bool) or not 0 < inactivo_segundos <= 3600:
+        return ahora
+    fin = datetime.fromisoformat(ahora) - timedelta(seconds=inactivo_segundos)
+    return max(fin, datetime.fromisoformat(inicio)).isoformat()
+
+
 def cerrar_tramos_login(conn, login_id):
-    conn.execute(text('UPDATE mangueras_tramos SET fin=:ahora WHERE login_id=:login AND fin IS NULL'),
-                 {'ahora': _ahora(), 'login': login_id})
+    for tabla in ('mangueras_tramos', 'manguitos_tramos'):
+        conn.execute(text(f'UPDATE {tabla} SET fin=:ahora WHERE login_id=:login AND fin IS NULL'),
+                     {'ahora': _ahora(), 'login': login_id})
 
 
 def _cerrar_abandonados(conn):
@@ -131,12 +146,15 @@ def trabajo_mangueras(orden_id):
             if request.method == 'POST':
                 ahora = _ahora()
                 activo = conn.execute(text(
-                    'SELECT id FROM mangueras_tramos WHERE orden_id=:orden AND login_id=:login AND fin IS NULL'
-                ), {'orden': orden_id, 'login': session['operario_login_id']}).scalar()
+                    'SELECT id, inicio FROM mangueras_tramos WHERE orden_id=:orden AND login_id=:login AND fin IS NULL'
+                ), {'orden': orden_id, 'login': session['operario_login_id']}).first()
                 if not activo:
                     return jsonify(success=False, error='Preparacion pausada. Vuelve a escanear la orden para retomarla.'), 409
+                fin = None if accion == 'latido' else ahora
+                if accion == 'pausar':
+                    fin = fin_de_pausa(activo.inicio, ahora, datos.get('inactivo_segundos'))
                 conn.execute(text('UPDATE mangueras_tramos SET ultimo_latido=:ahora, fin=:fin WHERE id=:id'),
-                             {'id': activo, 'ahora': ahora, 'fin': ahora if accion != 'latido' else None})
+                             {'id': activo.id, 'ahora': ahora, 'fin': fin})
                 if accion == 'terminar':
                     conn.execute(text('UPDATE mangueras_tramos SET fin=:ahora WHERE orden_id=:id AND fin IS NULL'),
                                  {'ahora': ahora, 'id': orden_id})

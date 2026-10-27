@@ -147,6 +147,13 @@
       gap: 16px; margin-top: 12px; font-size: 13px; color: #6b7280; }
     .paginacion strong { color: #374151; }
 
+    .mg-reloj { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+    .mg-reloj-label { color: #52616b; font-size: 13px; font-weight: 700; }
+    .mg-reloj-tiempo { color: #0e7490; font: 700 30px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-variant-numeric: tabular-nums; }
+    #mg-trabajo .nav-btn { background: #0c4a6e; }
+    #mg-trabajo .nav-btn:hover:not(:disabled) { background: #075985; }
+
     /* Hint teclado */
     .hint-teclado { text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; }
 
@@ -200,6 +207,15 @@
     <!-- Guiado de colocación -->
     <div id="tab-guiado">
       <div class="section-card">
+        <section id="mg-trabajo" hidden aria-live="polite" style="margin-bottom:16px;overflow-wrap:anywhere;">
+          <h2 id="mg-orden" style="font-size:18px;margin:0 0 6px;"></h2>
+          <div class="mg-reloj"><span class="mg-reloj-label">Tiempo fichado acumulado</span><time id="mg-cronometro" class="mg-reloj-tiempo" role="timer" aria-label="Tiempo de colocación acumulado">00:00:00</time></div>
+          <p id="mg-trabajo-resumen"></p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+            <button type="button" class="nav-btn" id="mg-pausar">Pausar</button>
+            <button type="button" class="nav-btn" id="mg-terminar">Terminar colocación</button>
+          </div>
+        </section>
         <div id="guiado-activo" style="display:none">
           <div id="ristra-selector" class="ristra-selector" style="display:none"></div>
           <div class="mg-buscador-row">
@@ -286,6 +302,24 @@
         </div>
         <div class="modal-bono-footer">
           <button type="button" id="btn-mg-txttipo-volver" class="btn-volver-modal">← Volver</button>
+        </div>
+      </div>
+
+      <!-- Vista: escanear la orden (guiado). Da la orden de alta en el reloj de manguitos -->
+      <div id="modal-mg-escaneo" class="hidden">
+        <div class="modal-operario-header">
+          <div class="modal-operario-icon">📷</div>
+          <h2>Escanear orden</h2>
+          <p>Escanea el código bidi de la orden. Las mangueras de la orden tienen que estar ya preparadas.</p>
+        </div>
+        <div class="modal-operario-body">
+          <label for="modal-mg-input-escaneo">Corte - Orden - Cantidad</label>
+          <input type="text" id="modal-mg-input-escaneo" placeholder="H0174891-60238442-1" autocomplete="off">
+          <div id="modal-mg-escaneo-error" class="modal-operario-error hidden"></div>
+        </div>
+        <div class="modal-bono-footer">
+          <button type="button" id="btn-mg-escaneo-volver" class="btn-volver-modal">← Volver</button>
+          <button type="button" id="btn-mg-escaneo-confirmar" class="btn-confirmar-operario btn-confirmar-flex">Empezar colocación</button>
         </div>
       </div>
 
@@ -413,6 +447,7 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/shared/salir-modulo.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/shared/inactividad-operario.js') }}"></script>
   <script src="{{ url_for('static', filename='js/cable-colors.js') }}"></script>
   <script src="{{ url_for('static', filename='js/manguitos.js') }}"></script>
 </body>

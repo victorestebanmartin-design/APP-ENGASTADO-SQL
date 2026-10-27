@@ -52,11 +52,11 @@
 
   setInterval(pintarCronometro, 1000);
 
-  async function actualizarTrabajo(accion) {
+  async function actualizarTrabajo(accion, extra) {
     if (!ordenActual) return;
     var respuesta = await fetch('/api/mangueras/trabajo/' + encodeURIComponent(ordenActual.id), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: accion })
+      body: JSON.stringify(Object.assign({ accion: accion }, extra))
     });
     var datos = await respuesta.json();
     if (!respuesta.ok) throw new Error(datos.error || 'No se pudo registrar el trabajo.');
@@ -566,5 +566,15 @@
       fetch('/api/sesion/operario/latido', { method: 'POST' }).catch(function () {});
     }
   }, 60000);
+
+  // Puesto olvidado: tras unos minutos sin tocarlo se cierra la sesión, y el
+  // tiempo sin actividad no cuenta como preparación.
+  if (window.inactividadOperario) window.inactividadOperario.iniciar({
+    antesDeSalir: async function (inactivoSegundos) {
+      if (!document.getElementById('mg-pausar').disabled) {
+        await actualizarTrabajo('pausar', { inactivo_segundos: inactivoSegundos });
+      }
+    }
+  });
 
 })();

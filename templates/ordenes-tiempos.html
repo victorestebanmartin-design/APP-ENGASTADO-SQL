@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+    <title>Tiempos por orden — COJOsw</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
+    <style>
+        .tm-resumen { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-bottom:20px; }
+        .tm-card { background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+        .tm-card h3 { margin:0 0 10px; font-size:.78rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); font-family:'DM Mono',monospace; }
+        .tm-media { font-family:'DM Mono',monospace; font-size:1.7rem; font-weight:500; color:var(--text); line-height:1.1; }
+        .tm-sub { margin-top:6px; font-size:.78rem; color:var(--text-dim); line-height:1.5; }
+        .tm-nota { font-size:.8rem; color:var(--text-muted); background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:16px; line-height:1.5; }
+
+        .ord-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+        .ord-table th { background:var(--panel-3); color:var(--text-muted); font-family:'DM Mono',monospace; font-size:.73rem; letter-spacing:.06em; text-transform:uppercase; padding:10px 14px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+        .ord-table td { padding:10px 14px; border-bottom:1px solid rgba(51,65,85,.4); color:var(--text); vertical-align:middle; }
+        .ord-table tbody tr:last-child td { border-bottom:none; }
+        .ord-table tbody tr:hover td { background:rgba(59,130,246,.04); }
+        .num { font-family:'DM Mono',monospace; font-size:.8rem; white-space:nowrap; }
+        .tiempo { font-family:'DM Mono',monospace; font-size:.9rem; font-weight:500; white-space:nowrap; }
+        .tiempo small { display:block; font-size:.68rem; font-weight:400; color:var(--text-dim); }
+        .quien { display:block; font-size:.7rem; color:var(--text-dim); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+        .badge-fase { display:inline-block; padding:2px 9px; border-radius:20px; font-size:.68rem; font-weight:600; font-family:'DM Mono',monospace; white-space:nowrap; }
+        .fase-terminada      { background:rgba(34,197,94,.15);  color:#4ade80; }
+        .fase-terminada_auto { background:rgba(59,130,246,.15); color:#93c5fd; }
+        .fase-en_curso       { background:rgba(168,85,247,.15); color:#c4b5fd; }
+        .fase-pausada        { background:rgba(245,158,11,.15); color:#fcd34d; }
+        .fase-sin_datos      { background:rgba(100,116,139,.15); color:#94a3b8; }
+
+        .tm-filtros { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+        .tm-filtros input[type=text] { flex:1; min-width:200px; background:var(--panel-2); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:8px 12px; font-size:.88rem; outline:none; }
+        .tm-filtros label { font-size:.82rem; color:var(--text-muted); display:flex; align-items:center; gap:6px; cursor:pointer; }
+        .btn-sm { display:inline-flex; align-items:center; gap:4px; padding:6px 12px; border-radius:6px; font-size:.78rem; font-weight:500; cursor:pointer; background:var(--panel-3); border:1px solid var(--border); color:var(--text); }
+        .btn-sm:hover { background:var(--panel-2); border-color:var(--accent); }
+        .empty-state { padding:48px; text-align:center; color:var(--text-muted); }
+    </style>
+</head>
+<body>
+{% include '_version_badge.html' %}
+<div class="admin-app">
+    <header class="admin-topbar">
+        <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
+        <div class="admin-topbar-title">Tiempos por orden</div>
+        <div class="admin-topbar-spacer"></div>
+        <a href="{{ url_for('main.lista_ordenes') }}" class="admin-back">← Órdenes</a>
+    </header>
+
+    <main class="admin-content" style="max-width:1300px;margin:0 auto;width:100%;">
+        <div class="admin-section-head">
+            <h1>Tiempos de mangueras y manguitos</h1>
+            <p>Tiempo fichado por los operarios en cada orden, y la media para estimar plazos.</p>
+        </div>
+
+        <div class="tm-resumen">
+            <div class="tm-card"><h3>🛠️ Mangueras</h3><div class="tm-media" id="media-mangueras">—</div><div class="tm-sub" id="sub-mangueras"></div></div>
+            <div class="tm-card"><h3>🔧 Manguitos</h3><div class="tm-media" id="media-manguitos">—</div><div class="tm-sub" id="sub-manguitos"></div></div>
+            <div class="tm-card"><h3>Σ Mangueras + manguitos</h3><div class="tm-media" id="media-total">—</div><div class="tm-sub" id="sub-total"></div></div>
+        </div>
+
+        <div class="tm-nota">
+            La media solo incluye fases <b>acabadas</b>: las que el operario dio por terminadas
+            (<span class="badge-fase fase-terminada">terminada</span>) o las de órdenes en las que
+            ya se ha engastado algún terminal (<span class="badge-fase fase-terminada_auto">por engastado</span>).
+            Las fases a medias y las órdenes de antes de poner el sistema no cuentan.
+        </div>
+
+        <div class="card">
+            <div class="tm-filtros">
+                <input type="text" id="filtro" placeholder="Buscar por orden, corte, proyecto o bono…" oninput="pintar()">
+                <label><input type="checkbox" id="solo-contadas" onchange="pintar()"> Solo órdenes que entran en la media</label>
+                <button class="btn-sm" onclick="cargar()">↻ Actualizar</button>
+            </div>
+            <div id="contador" style="font-size:.78rem;color:var(--text-dim);margin-bottom:10px;"></div>
+            <div style="overflow-x:auto;">
+                <table class="ord-table">
+                    <thead>
+                        <tr>
+                            <th>Orden</th>
+                            <th>Corte</th>
+                            <th>Cant.</th>
+                            <th>Mangueras</th>
+                            <th>Manguitos</th>
+                            <th>Total</th>
+                            <th>Por unidad</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr><td colspan="7" class="empty-state">Cargando…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+let ordenes = [];
+const ETIQUETA = { terminada: 'terminada', terminada_auto: 'por engastado', en_curso: 'en curso', pausada: 'pausada', sin_datos: 'sin datos' };
+
+function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function dur(s) {
+    if (s == null) return '—';
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), seg = s % 60;
+    if (h) return h + ' h ' + String(m).padStart(2, '0') + ' min';
+    if (m) return m + ' min ' + String(seg).padStart(2, '0') + ' s';
+    return seg + ' s';
+}
+function fechaCorta(v) {
+    return v ? new Date(v).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit' }) : '';
+}
+
+function celdaFase(fase) {
+    if (!fase) return '<span class="badge-fase fase-sin_datos">sin datos</span>';
+    const quien = fase.operarios.length ? `<span class="quien" title="${esc(fase.operarios.join(', '))}">${esc(fase.operarios.join(', '))}</span>` : '';
+    const tiempo = fase.segundos ? `<div class="tiempo">${dur(fase.segundos)}<small>${fechaCorta(fase.inicio)}</small></div>` : '';
+    return `${tiempo}<span class="badge-fase fase-${fase.estado}">${ETIQUETA[fase.estado]}</span>${quien}`;
+}
+
+function resumenMedia(id, datos, unidad) {
+    document.getElementById('media-' + id).textContent = dur(datos.media_segundos);
+    const sub = document.getElementById('sub-' + id);
+    if (!datos.ordenes) { sub.textContent = 'Aún no hay órdenes acabadas con tiempo.'; return; }
+    sub.textContent = 'Media de ' + datos.ordenes + ' orden' + (datos.ordenes !== 1 ? 'es' : '') +
+        (datos.segundos_por_unidad != null ? ' · ' + dur(datos.segundos_por_unidad) + ' por ' + (unidad || 'unidad') : '');
+}
+
+async function cargar() {
+    try {
+        const r = await fetch('/api/ordenes/tiempos');
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || 'Error');
+        ordenes = d.ordenes;
+        resumenMedia('mangueras', d.medias.mangueras);
+        resumenMedia('manguitos', d.medias.manguitos);
+        resumenMedia('total', d.medias.total, 'orden');
+        document.getElementById('sub-total').textContent = d.medias.total.ordenes
+            ? 'Media de ' + d.medias.total.ordenes + ' orden' + (d.medias.total.ordenes !== 1 ? 'es' : '') + ' con las dos fases acabadas'
+            : 'Aún no hay órdenes con las dos fases acabadas.';
+        pintar();
+    } catch (e) {
+        document.getElementById('tbody').innerHTML = '<tr><td colspan="7" class="empty-state">No se pudieron cargar los tiempos: ' + esc(e.message) + '</td></tr>';
+    }
+}
+
+function pintar() {
+    const q = document.getElementById('filtro').value.toLowerCase();
+    const soloContadas = document.getElementById('solo-contadas').checked;
+    const lista = ordenes.filter(o => {
+        if (q && !`${o.numero} ${o.codigo_corte} ${o.proyecto || ''} ${o.bono || ''}`.toLowerCase().includes(q)) return false;
+        if (soloContadas && !((o.mangueras && o.mangueras.cuenta) || (o.manguitos && o.manguitos.cuenta))) return false;
+        return true;
+    });
+    document.getElementById('contador').textContent = lista.length + ' orden' + (lista.length !== 1 ? 'es' : '');
+    const tbody = document.getElementById('tbody');
+    if (!lista.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">Todavía no hay órdenes con tiempos registrados.</div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = lista.map(o => {
+        const cuentan = [o.mangueras, o.manguitos].every(f => f && f.cuenta);
+        const total = cuentan ? o.mangueras.segundos + o.manguitos.segundos : null;
+        return `<tr>
+            <td class="num">${esc(o.numero)}${o.bono ? `<span class="quien">${esc(o.bono)}</span>` : ''}</td>
+            <td class="num">${esc(o.codigo_corte)}${o.proyecto ? `<span class="quien" title="${esc(o.proyecto)}">${esc(o.proyecto)}</span>` : ''}</td>
+            <td style="text-align:center;">${o.cantidad}</td>
+            <td>${celdaFase(o.mangueras)}</td>
+            <td>${celdaFase(o.manguitos)}</td>
+            <td class="tiempo">${total == null ? '—' : dur(total)}</td>
+            <td class="tiempo">${total == null ? '—' : dur(Math.round(total / o.cantidad))}</td>
+        </tr>`;
+    }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', cargar);
+</script>
+</body>
+</html>
