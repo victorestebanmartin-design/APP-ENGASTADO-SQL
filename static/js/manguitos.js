@@ -89,7 +89,7 @@
     reloj.textContent = formatoCronometro(total);
   }
 
-  function mostrarTrabajo(colocacion) {
+  function mostrarTrabajo(colocacion, aviso) {
     document.getElementById('mg-trabajo').hidden = !ordenActual;
     if (!ordenActual) return;
     document.getElementById('mg-orden').textContent = 'Orden ' + ordenActual.numero + ' / Cantidad ' + ordenActual.cantidad;
@@ -97,7 +97,7 @@
     inicioReloj = Date.now();
     relojActivo = colocacion.estado === 'en_preparacion';
     pintarCronometro();
-    document.getElementById('mg-trabajo-resumen').textContent =
+    document.getElementById('mg-trabajo-resumen').textContent = (aviso ? '⚠ ' + aviso + ' — ' : '') +
       (ESTADOS_TRABAJO[colocacion.estado] || colocacion.estado) + ' / ' + colocacion.operarios.join(', ');
     document.getElementById('mg-pausar').disabled = colocacion.estado !== 'en_preparacion';
     document.getElementById('mg-terminar').disabled = colocacion.estado !== 'en_preparacion';
@@ -640,7 +640,7 @@
         var datos = await res.json();
         if (!res.ok) throw new Error(datos.error || 'No se pudo registrar la orden.');
         ordenActual = datos.orden;
-        mostrarTrabajo(datos.colocacion);
+        mostrarTrabajo(datos.colocacion, datos.aviso);
         comprobarReetiquetado(datos.corte);
       } catch (error) {
         errorEscaneo.textContent = error.message;

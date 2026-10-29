@@ -27,6 +27,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
+from app.fases_orden import motivo_fases_pendientes
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -144,6 +145,9 @@ def api_asignar_orden_a_carro():
                     return jsonify(success=False, message='La orden ya no esta pendiente. Actualiza la pantalla.'), 409
                 if not orden['archivo_excel']:
                     return jsonify(success=False, message='Asocia primero un archivo Excel a la orden'), 400
+                pendiente = motivo_fases_pendientes(conn, orden)
+                if pendiente:
+                    return jsonify(success=False, message=pendiente), 409
                 proyecto_nombre = f"{orden['numero']} - {orden['codigo_corte']}"
                 archivo = orden['archivo_excel']
                 conn.execute(text("UPDATE ordenes_produccion SET estado = 'en_proceso', carro_numero = :carro WHERE id = :id"), {'carro': numero_carro, 'id': orden_id})
@@ -164,32 +168,37 @@ def api_asignar_orden_a_carro():
 def api_liberar_carro(numero_carro):
     """Liberar un carro eliminando sus proyectos activos y devolviendo órdenes a pendiente"""
     try:
-        ordenes_liberadas = []
         data = request.get_json(silent=True) or {}
         with db.engine.begin() as conn:
-            conn.execute(text('UPDATE carros SET numero = numero WHERE numero = :numero'), {'numero': numero_carro})
-            carro = conn.execute(text('SELECT * FROM carros WHERE numero = :numero'), {'numero': numero_carro}).mappings().first()
-            if not carro:
-                return jsonify(success=False, message='Carro no encontrado'), 404
-            proyectos = conn.execute(text('SELECT * FROM proyectos WHERE carro_asignado = :numero'), {'numero': numero_carro}).mappings().all()
-            if carro['bono_id'] and data.get('confirmar_bono') is not True:
-                return jsonify(success=False, message='El carro pertenece a un bono. Confirma que esta vacio antes de liberarlo.'), 409
-            for proyecto in proyectos:
-                numero_orden = proyecto['nombre'].split(' - ')[0].strip()
-                resultado = conn.execute(text("UPDATE ordenes_produccion SET estado = 'pendiente', carro_numero = NULL WHERE (id = :id OR (:id IS NULL AND numero = :numero)) AND estado = 'en_proceso' AND bono_id IS NULL"), {'id': proyecto['orden_id'], 'numero': numero_orden})
-                if resultado.rowcount:
-                    ordenes_liberadas.append(numero_orden)
-                conn.execute(text('UPDATE proyectos SET carro_asignado = NULL WHERE id = :id'), {'id': proyecto['id']})
-            conn.execute(text("UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE numero = :numero"), {'numero': numero_carro})
-        
-        return jsonify({
-            'success': True,
-            'message': f'Carro {numero_carro} liberado',
-            'ordenes_liberadas': ordenes_liberadas
-        })
-        
+            resultado, estado = liberar_carro_en_conn(conn, numero_carro, data.get('confirmar_bono') is True)
+        return jsonify(resultado), estado
     except Exception as e:
         return error_interno(e)
+
+
+def liberar_carro_en_conn(conn, numero_carro, confirmar_bono):
+    """Deja el carro libre. Devuelve (cuerpo de respuesta, código HTTP).
+
+    Si el carro es de un bono hace falta confirmar que está vacío. Solo se
+    libera el carro: el bono y sus órdenes siguen como estaban (se cierran al
+    finalizar el bono o se deshacen borrándolo)."""
+    ordenes_liberadas = []
+    conn.execute(text('UPDATE carros SET numero = numero WHERE numero = :numero'), {'numero': numero_carro})
+    carro = conn.execute(text('SELECT * FROM carros WHERE numero = :numero'), {'numero': numero_carro}).mappings().first()
+    if not carro:
+        return {'success': False, 'message': 'Carro no encontrado'}, 404
+    proyectos = conn.execute(text('SELECT * FROM proyectos WHERE carro_asignado = :numero'), {'numero': numero_carro}).mappings().all()
+    if carro['bono_id'] and not confirmar_bono:
+        return {'success': False, 'message': 'El carro pertenece a un bono. Confirma que esta vacio antes de liberarlo.'}, 409
+    for proyecto in proyectos:
+        numero_orden = proyecto['nombre'].split(' - ')[0].strip()
+        resultado = conn.execute(text("UPDATE ordenes_produccion SET estado = 'pendiente', carro_numero = NULL WHERE (id = :id OR (:id IS NULL AND numero = :numero)) AND estado = 'en_proceso' AND bono_id IS NULL"), {'id': proyecto['orden_id'], 'numero': numero_orden})
+        if resultado.rowcount:
+            ordenes_liberadas.append(numero_orden)
+        conn.execute(text('UPDATE proyectos SET carro_asignado = NULL WHERE id = :id'), {'id': proyecto['id']})
+    conn.execute(text("UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE numero = :numero"), {'numero': numero_carro})
+    return {'success': True, 'message': f'Carro {numero_carro} liberado',
+            'ordenes_liberadas': ordenes_liberadas}, 200
 
 
 @bp.route('/api/carros/<int:numero_carro>/mover', methods=['POST'])

@@ -1250,13 +1250,14 @@
                     return;
                 }
                 const filas = data.operarios.map(op => {
-                    // null = sin restringir explícita: todo marcado salvo Admin.
+                    // null = sin restringir explícita: todo marcado salvo Admin y
+                    // Generar bonos, que hay que dar a propósito (ver base.py).
                     const permitidos = op.modulos_permitidos;
                     const casillasModulos = modulos.map(m => `
                         <label style="display:flex;align-items:center;gap:5px;font-size:0.85em;white-space:nowrap;">
                             <input type="checkbox" class="op-mod-check" data-op="${op.id}" data-slug="${m.slug}"
                                 ${(permitidos === null
-                                    ? (m.slug !== 'admin')
+                                    ? (m.slug !== 'admin' && m.slug !== 'bonos')
                                     : permitidos.includes(m.slug)) ? 'checked' : ''}>
                             ${m.label}
                         </label>`).join('');

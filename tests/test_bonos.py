@@ -157,6 +157,8 @@ def _orden_en_carro(client, app, numero, carro):
     orden = _crear_orden(client, numero)
     with app.app_context(), db.engine.begin() as conn:
         conn.execute(text("UPDATE ordenes_produccion SET archivo_excel = 'corte.xlsx' WHERE id = :id"), {'id': orden['id']})
+        for tabla in ('mangueras_preparaciones', 'manguitos_colocaciones'):
+            conn.execute(text(f"INSERT INTO {tabla} (orden_id, inicio, fin) VALUES (:id, 'a', 'b')"), {'id': orden['id']})
     respuesta = client.post('/api/carros/asignar-orden', json={'orden_id': orden['id'], 'numero_carro': carro})
     assert respuesta.status_code == 200, respuesta.get_json()
     return orden, respuesta.get_json()['proyecto_id']

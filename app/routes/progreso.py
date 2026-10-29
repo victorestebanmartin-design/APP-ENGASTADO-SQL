@@ -225,6 +225,45 @@ def _bono_finalizado(nombre_bono, terminales=None):
         return False
 
 
+def liberar_carros_de_bono(bono_id, conn=None):
+    """Cierra un bono finalizado: carros a 'disponible', bono y órdenes a
+    'completado'. Idempotente: sin carros ni órdenes pendientes no hace nada.
+
+    Las órdenes conservan su carro_numero (los reports lo usan); lo que cambia
+    es que el carro deja de apuntar al bono, y por eso vuelve a poder recibir
+    otra orden. Devuelve los números de carro liberados.
+    """
+    def _hacer(c):
+        carros = [r[0] for r in c.execute(
+            text("SELECT numero FROM carros WHERE bono_id = :b ORDER BY numero"), {'b': bono_id})]
+        c.execute(text("UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE bono_id = :b"),
+                  {'b': bono_id})
+        c.execute(text("UPDATE bonos SET estado = 'completado' WHERE id = :b"), {'b': bono_id})
+        c.execute(text(
+            "UPDATE ordenes_produccion SET estado = 'completado', fecha_completado = datetime('now') "
+            "WHERE bono_id = :b AND estado NOT IN ('completado', 'cancelado')"), {'b': bono_id})
+        return carros
+
+    if conn is not None:
+        return _hacer(conn)
+    with db.engine.begin() as c:
+        return _hacer(c)
+
+
+def _liberar_si_finalizado(nombre_bono):
+    """Si el bono acaba de quedar finalizado, libera sus carros. Devuelve la
+    lista de carros liberados (vacía si no procede). Un fallo aquí no debe
+    tumbar el guardado del progreso, que ya está escrito: se registra y sigue."""
+    try:
+        bono = BonoRepository(db).obtener_bono_por_nombre(nombre_bono)
+        if not bono or bono['estado'] != 'activo' or not _bono_finalizado(nombre_bono):
+            return []
+        return liberar_carros_de_bono(bono['id'])
+    except Exception as e:
+        current_app.logger.error(f'No se pudieron liberar los carros del bono {nombre_bono}: {e}')
+        return []
+
+
 @bp.route('/api/bonos/<nombre_bono>/terminales-disponibles', methods=['GET'])
 def api_bonos_terminales_disponibles(nombre_bono):
     """Obtener terminales que tienen datos en los archivos del bono"""
@@ -438,7 +477,11 @@ def api_bonos_progreso_estado(nombre_bono):
 
             _escribir_progreso_atomico(progreso_path, progreso)
 
-        return jsonify({'success': True, 'terminal': terminal, 'estado': estado})
+        # Fuera del lock: _bono_finalizado relee el fichero y toca la BD.
+        liberados = _liberar_si_finalizado(nombre_bono) if estado == 'completado' else []
+
+        return jsonify({'success': True, 'terminal': terminal, 'estado': estado,
+                        'carros_liberados': liberados})
 
     except Exception as e:
         return error_interno(e)

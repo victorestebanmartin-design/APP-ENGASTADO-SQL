@@ -216,7 +216,16 @@ def api_listar_ordenes_alias():
     try:
         orden_repo = OrdenRepository(db)
         ordenes = orden_repo.obtener_todas_ordenes()
-        
+
+        # Check de las fases previas: sin las dos no se puede asignar carro.
+        from app.fases_orden import fases_terminadas
+        with db.engine.connect() as conn:
+            fases = fases_terminadas(conn, [o['id'] for o in ordenes])
+        for o in ordenes:
+            o['mangueras_terminada'] = fases[o['id']]['mangueras']
+            o['manguitos_terminada'] = fases[o['id']]['manguitos']
+            o['fases_completas'] = all(fases[o['id']].values())
+
         return jsonify({
             'success': True,
             'ordenes': ordenes

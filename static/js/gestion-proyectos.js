@@ -991,6 +991,7 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
                     <th>Cantidad</th>
                     <th>Fecha</th>
                     <th>Estado</th>
+                    <th>Mangueras / Manguitos</th>
                     <th>Prioridad</th>
                     <th>Destino</th>
                 </tr>
@@ -1009,6 +1010,10 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
                                 ${orden.estado === 'pendiente' ? '⏳ PENDIENTE' : '🚛 EN CARRO'}
                             </span>
                         </td>
+                        <td style="white-space:nowrap;">
+                            <span class="badge ${orden.mangueras_terminada ? 'badge-activo' : 'badge-pendiente'}">${orden.mangueras_terminada ? '✔' : '⏳'} Mangueras</span>
+                            <span class="badge ${orden.manguitos_terminada ? 'badge-activo' : 'badge-pendiente'}">${orden.manguitos_terminada ? '✔' : '⏳'} Manguitos</span>
+                        </td>
                         <td>
                             <span class="badge ${
                                 orden.prioridad === 'urgente' ? 'badge-urgente' :
@@ -1016,7 +1021,7 @@ function mostrarOrdenesPendientes(ordenesEnProceso = []) {
                                 orden.prioridad === 'media'   ? 'badge-media' : 'badge-pendiente'
                             }">${textoSeguro((orden.prioridad || 'normal').toUpperCase())}</span>
                         </td>
-                        <td>${orden.estado === 'pendiente' ? `<div class="orden-destino">
+                        <td>${orden.estado === 'pendiente' && !orden.fases_completas ? '<span style="color:var(--dim);font-size:.78rem;">Falta terminar mangueras / manguitos</span>' : orden.estado === 'pendiente' ? `<div class="orden-destino">
                             <select id="destinoOrden${index}" aria-label="Carro para la orden ${textoSeguro(orden.numero)}"><option value="">Carro...</option>${carrosActuales.filter(carro => !carro.ocupado).map(carro => `<option value="${carro.numero}">Carro ${carro.numero}</option>`).join('')}</select>
                             <button class="proy-btn proy-btn-accent proy-icon" title="Asignar orden" aria-label="Asignar orden ${textoSeguro(orden.numero)}" onclick="asignarOrdenIndividual(${index})"><i class="fas fa-arrow-up"></i></button>
                         </div>` : `Carro ${orden.carro_numero || '-'}`}</td>
@@ -1040,13 +1045,18 @@ async function cargarSiguientesOrdenes() {
         return;
     }
     
-    if (ordenesPendientes.length === 0) {
-        mostrarMensaje('No hay órdenes pendientes para cargar', 'warning');
+    // Solo las que ya tienen terminadas mangueras y manguitos: el servidor
+    // rechaza el resto.
+    const ordenesListas = ordenesPendientes.filter(o => o.fases_completas);
+    if (ordenesListas.length === 0) {
+        mostrarMensaje(ordenesPendientes.length
+            ? 'Ninguna orden pendiente tiene terminadas las mangueras y los manguitos'
+            : 'No hay órdenes pendientes para cargar', 'warning');
         return;
     }
-    
+
     // Tomar tantas órdenes como carros libres haya
-    const ordenesACargar = ordenesPendientes.slice(0, carrosLibres.length);
+    const ordenesACargar = ordenesListas.slice(0, carrosLibres.length);
     if (!confirm(ordenesACargar.map((orden, indice) => `${orden.numero} -> Carro ${carrosLibres[indice].numero}`).join('\n') + '\n\n¿Confirmar estas asignaciones?')) return;
     let cargadas = 0;
     operacionCarros = true;

@@ -202,6 +202,65 @@ def api_etiquetas_cargar_grupos():
         return error_interno(e, 'Error al cargar grupos')
 
 
+def _html_plancha(archivo, grupos, codigo_corte):
+    """HTML de la plancha con los colores de cable guardados en BD."""
+    color_map = {}
+    text_color_map = {}
+    try:
+        with db.engine.connect() as _cc:
+            _rows = _cc.execute(text("SELECT cod_cable, color_hex, color_texto FROM cable_colores")).fetchall()
+            color_map = {r[0]: r[1] for r in _rows}
+            text_color_map = {r[0]: r[2] for r in _rows if r[2]}
+    except Exception:
+        pass
+    return generar_html_etiquetas_impresion(grupos, archivo, codigo_corte, color_map=color_map, text_color_map=text_color_map)
+
+
+@bp.route('/api/impresora', methods=['GET'])
+def api_impresora_get():
+    from app import impresion_planchas as ip_
+    return jsonify({'success': True, **ip_.leer_config(current_app.config['DATA_DIR'])})
+
+
+@bp.route('/api/impresora', methods=['POST'])
+@requiere_pin_admin
+def api_impresora_set():
+    from app import impresion_planchas as ip_
+    data = request.get_json(silent=True) or {}
+    try:
+        ip = ip_.guardar_config(current_app.config['DATA_DIR'], data.get('ip', ''))
+    except ip_.ErrorImpresion as e:
+        return jsonify({'success': False, 'message': str(e)})
+    return jsonify({'success': True, 'ip': ip})
+
+
+@bp.route('/api/etiquetas/imprimir_plancha', methods=['POST'])
+def api_etiquetas_imprimir_plancha():
+    """Imprime la plancha completa en la impresora del servidor.
+
+    Responde 200 con success=False y un motivo legible si algo falla, nunca 500.
+    Con {"pdf": true} devuelve el PDF para descargarlo en vez de imprimir.
+    """
+    from app import impresion_planchas as ip_
+    data = request.get_json(silent=True) or {}
+    archivo = (data.get('archivo') or '').strip()
+    grupos = data.get('grupos') or []
+    if not archivo or not grupos:
+        return jsonify({'success': False, 'message': 'Faltan datos requeridos (archivo, grupos)'}), 400
+    try:
+        html = _html_plancha(archivo, grupos, (data.get('codigo_corte') or '').strip())
+        if data.get('pdf'):
+            pdf = ip_.html_a_pdf(html)
+            return send_file(io.BytesIO(pdf), mimetype='application/pdf',
+                             as_attachment=True, download_name='plancha_etiquetas.pdf')
+        ip = ip_.imprimir_plancha(html, current_app.config['DATA_DIR'])
+        return jsonify({'success': True, 'message': f'Plancha enviada a la impresora ({ip}).'})
+    except ip_.ErrorImpresion as e:
+        return jsonify({'success': False, 'sin_impresora': 'configurada' in str(e), 'message': str(e)})
+    except Exception as e:
+        return error_interno(e, 'Error al imprimir la plancha', status=200)
+
+
 @bp.route('/api/etiquetas/generar_html', methods=['POST'])
 def generar_etiquetas_html():
     """Generar HTML de etiquetas para imprimir en impresora normal"""
@@ -210,27 +269,15 @@ def generar_etiquetas_html():
         archivo = data.get('archivo', '').strip()
         grupos = data.get('grupos', [])
         codigo_corte = data.get('codigo_corte', '').strip()
-        
+
         if not archivo or not grupos:
             return jsonify({
                 'success': False,
                 'message': 'Faltan datos requeridos (archivo, grupos)'
             }), 400
-        
-        # Cargar colores desde BD
-        color_map = {}
-        text_color_map = {}
-        try:
-            with db.engine.connect() as _cc:
-                _rows = _cc.execute(text("SELECT cod_cable, color_hex, color_texto FROM cable_colores")).fetchall()
-                color_map = {r[0]: r[1] for r in _rows}
-                text_color_map = {r[0]: r[2] for r in _rows if r[2]}
-        except Exception:
-            pass
 
-        # Generar HTML para imprimir
-        html = generar_html_etiquetas_impresion(grupos, archivo, codigo_corte, color_map=color_map, text_color_map=text_color_map)
-        
+        html = _html_plancha(archivo, grupos, codigo_corte)
+
         return jsonify({
             'success': True,
             'html': html,

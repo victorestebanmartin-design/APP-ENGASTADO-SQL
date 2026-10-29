@@ -60,7 +60,12 @@ def test_reentrada_suma_solo_trabajo_y_finaliza_sin_sacar_del_pool(preparador, a
     assert fin['estado'] == 'terminada'
     assert len(fin['tramos']) == 2
     assert fin['fin'] == reloj[0].isoformat()
-    assert preparador.post('/api/mangueras/trabajo/escanear', json={'codigo': 'H0174891-60238442-3'}).status_code == 409
+    # Terminada: deja volver a entrar, con aviso y sin abrir tramo nuevo.
+    otra = preparador.post('/api/mangueras/trabajo/escanear', json={'codigo': 'H0174891-60238442-3'})
+    assert otra.status_code == 200
+    assert 'ya estaba terminada' in otra.get_json()['aviso']
+    assert otra.get_json()['preparacion']['estado'] == 'terminada'
+    assert len(otra.get_json()['preparacion']['tramos']) == 2
     with sqlite3.connect(app.config['DB_PATH']) as conn:
         assert conn.execute('SELECT estado FROM ordenes_produccion').fetchone()[0] == 'pendiente'
 

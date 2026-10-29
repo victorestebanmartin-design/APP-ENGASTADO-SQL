@@ -229,6 +229,18 @@
       max-width: 1000px;
       margin: 0 auto;
     }
+    /* Botón de ancho completo bajo las dos tarjetas (fila implícita, alto propio) */
+    .puesto-compartido .modules-grid { grid-template-rows: minmax(0, 1fr) auto; }
+    .mod-bono-btn {
+      grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center; justify-content: center; gap: 14px;
+      min-height: 96px; border: 2px solid #6ee7b7; border-radius: 8px; cursor: pointer;
+      background: linear-gradient(145deg, #10b981 0%, #047857 100%); color: #ffffff;
+      font-family: 'Bebas Neue', sans-serif; font-size: 40px; letter-spacing: .12em;
+      text-shadow: 0 2px 6px rgba(0,0,0,.35);
+      box-shadow: 0 6px 18px rgba(0,0,0,.45);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .mod-bono-btn:hover { transform: translateY(-3px); box-shadow: 0 14px 28px rgba(0,0,0,.5); }
     .puesto-compartido .mod-card { justify-content: center; border-radius: 8px; }
     .puesto-compartido .mod-desc { display: none; }
     .puesto-compartido .mod-title { letter-spacing: 0; line-height: 1.2; }
@@ -238,8 +250,9 @@
     @media (max-width: 600px) {
       .puesto-compartido .modules-grid {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr)) auto;
       }
+      .mod-bono-btn { grid-row: 3; font-size: 34px; min-height: 110px; }
       .puesto-compartido .mod-card { padding: 14px; }
       .puesto-compartido .mod-icon { margin: 0 0 8px; }
       .puesto-compartido .mod-title { font-size: 22px; }
@@ -357,6 +370,11 @@
       </a>
       {% endif %}
 
+      <!-- Generar bono: solo en la pantalla de Manguitos y Mangueras, con el permiso «bonos» -->
+      {% if compartido and puede_bonos %}
+      <button type="button" id="ab-abrir" class="mod-bono-btn">🧾 GENERAR BONO</button>
+      {% endif %}
+
       <!-- ══ FILA 2: Cards pequeñas (4 columnas) ════════════════ -->
       {% if not compartido %}
       <div class="modules-row-bottom">
@@ -449,5 +467,6 @@
     }
     {% endif %}
   </script>
+  {% if compartido and puede_bonos %}{% include '_asistente_bono.html' %}{% endif %}
 </body>
 </html>

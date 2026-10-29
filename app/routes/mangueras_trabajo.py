@@ -106,11 +106,20 @@ def escanear_mangueras():
             _cerrar_abandonados(conn)
             preparacion = conn.execute(text('SELECT fin FROM mangueras_preparaciones WHERE orden_id=:id'),
                                        {'id': orden['id']}).first()
+            login_id = session['operario_login_id']
             if preparacion and preparacion[0]:
-                return jsonify(success=False, error='La preparacion de esta orden ya esta terminada.'), 409
+                # Terminada: se puede volver a entrar a verla, pero no reabre el
+                # reloj ni abre tramo. Se cierra el tramo que el operario tuviera
+                # en otra orden, como en cualquier cambio de orden.
+                conn.execute(text('UPDATE mangueras_tramos SET fin=:ahora WHERE login_id=:login AND fin IS NULL'),
+                             {'ahora': ahora, 'login': login_id})
+                return jsonify(success=True, orden=dict(orden), corte={'codigo': codigo_info['codigo'],
+                               'archivo': codigo_info['archivo_excel'], 'proyecto': codigo_info['proyecto_nombre']},
+                               preparacion=_resumen(conn, orden['id']),
+                               aviso='La preparación de mangueras de esta orden ya estaba terminada. '
+                                     'Puedes consultarla, pero no se vuelve a fichar tiempo.')
             conn.execute(text('INSERT OR IGNORE INTO mangueras_preparaciones (orden_id, inicio) VALUES (:id, :ahora)'),
                          {'id': orden['id'], 'ahora': ahora})
-            login_id = session['operario_login_id']
             conn.execute(text('UPDATE mangueras_tramos SET fin=:ahora WHERE login_id=:login AND orden_id!=:orden AND fin IS NULL'),
                          {'ahora': ahora, 'login': login_id, 'orden': orden['id']})
             conn.execute(text(

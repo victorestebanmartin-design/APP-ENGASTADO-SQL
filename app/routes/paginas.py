@@ -40,7 +40,7 @@ from app.auth import (
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
-    MODULOS_APP, modulos_permitidos_de,
+    MODULOS_APP, MODULOS_SOLO_EXPLICITOS, modulos_permitidos_de, operario_puede,
 )
 
 
@@ -121,7 +121,8 @@ def modules():
             from app.routes.base import operario_puede
             permitidos = {modulo for modulo in MODULOS_COMPARTIDOS
                           if nombre and operario_puede(nombre, modulo)}
-            return render_template('modules.html', permitidos=permitidos, compartido=True)
+            return render_template('modules.html', permitidos=permitidos, compartido=True,
+                                   puede_bonos=bool(nombre and operario_puede(nombre, 'bonos')))
 
         # PC de planta: a su módulo. Si el operario NO tiene permiso para el
         # módulo del equipo se le deja ver la rejilla a propósito: redirigirle
@@ -142,7 +143,7 @@ def modules():
                     permitidos = calculados
                 else:
                     # Sin permisos explícitos aún: todo menos Admin.
-                    permitidos = {m for m in MODULOS_APP.keys() if m != 'admin'}
+                    permitidos = {m for m in MODULOS_APP.keys() if m not in MODULOS_SOLO_EXPLICITOS}
     return render_template('modules.html', permitidos=permitidos)
 
 

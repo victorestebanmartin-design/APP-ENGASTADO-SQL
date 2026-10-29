@@ -56,7 +56,12 @@ def test_con_mangueras_iniciadas_cuenta_el_tiempo_y_termina(operario, app, reloj
     assert fin['segundos'] == 75
     assert fin['estado'] == 'terminada'
     assert fin['operarios'] == ['Ana']
-    assert operario.post('/api/manguitos/trabajo/escanear', json={'codigo': CODIGO}).status_code == 409
+    # Terminada: deja volver a entrar, con aviso y sin reabrir el reloj.
+    otra = operario.post('/api/manguitos/trabajo/escanear', json={'codigo': CODIGO})
+    assert otra.status_code == 200
+    assert 'ya estaba terminada' in otra.get_json()['aviso']
+    assert otra.get_json()['colocacion']['estado'] == 'terminada'
+    assert otra.get_json()['colocacion']['segundos'] == 75
 
 
 def test_cantidad_distinta_no_se_acepta(operario):

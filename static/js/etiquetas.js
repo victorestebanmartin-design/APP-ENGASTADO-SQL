@@ -295,6 +295,57 @@ async function imprimirEtiquetas() {
     }
 }
 
+/**
+ * Imprimir la plancha completa en la impresora que solo ve el servidor.
+ * Si falla, el botón "Imprimir Etiquetas" (impresora de este PC) sigue valiendo.
+ */
+async function imprimirPlanchaServidor() {
+    if (!gruposCargados || gruposCargados.length === 0 || !archivoSeleccionado) {
+        alert('Carga un archivo primero.');
+        return;
+    }
+    const boton = document.getElementById('btn_print_servidor');
+    const cuerpo = {
+        archivo: archivoSeleccionado,
+        grupos: gruposCargados,
+        codigo_corte: codigoCorteActual
+    };
+    const llamar = async () => {
+        const r = await fetch('/api/etiquetas/imprimir_plancha', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cuerpo)
+        });
+        return r.json();
+    };
+    if (boton) boton.disabled = true;
+    try {
+        let data = await llamar();
+        if (!data.success && data.sin_impresora) {
+            const ip = prompt('Escribe la IP de la impresora de la fábrica (red local, por ejemplo 192.168.1.50):');
+            if (!ip) return;
+            const guardado = await (await fetch('/api/impresora', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip })
+            })).json();
+            if (!guardado.success) {
+                alert(guardado.message || 'No se pudo guardar la impresora.');
+                return;
+            }
+            data = await llamar();
+        }
+        alert(data.success ? data.message
+            : (data.message || 'No se pudo imprimir.') +
+              '\n\nPuedes usar "Imprimir Etiquetas" para sacarla por la impresora de este PC.');
+    } catch (error) {
+        console.error('Error al imprimir la plancha:', error);
+        alert('No se pudo contactar con el servidor: ' + error.message);
+    } finally {
+        if (boton) boton.disabled = false;
+    }
+}
+
 // ==================== REAGRUPACIÓN MANUAL ====================
 
 let rgPadre = null;          // numero_etiqueta del padre seleccionado

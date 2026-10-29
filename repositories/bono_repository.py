@@ -168,9 +168,17 @@ class BonoRepository(BaseRepository):
         return rows > 0
 
     def eliminar_bono(self, bono_id: str) -> bool:
-        """Eliminar bono y desasociar órdenes relacionadas"""
+        """Eliminar bono, desasociar sus órdenes y dejar libres sus carros.
+
+        Sin liberar los carros quedaban en 'en_proceso' sin bono: ocupados para
+        siempre y sin forma de verlo desde el asistente."""
         self.execute_update(
-            "UPDATE ordenes_produccion SET bono_id = NULL, estado = 'pendiente' WHERE bono_id = :bono_id",
+            "UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE bono_id = :bono_id",
+            {'bono_id': bono_id}
+        )
+        self.execute_update(
+            "UPDATE ordenes_produccion SET bono_id = NULL, carro_numero = NULL, estado = 'pendiente' "
+            "WHERE bono_id = :bono_id",
             {'bono_id': bono_id}
         )
         rows = self.execute_update("DELETE FROM bonos WHERE id = :id", {'id': bono_id})

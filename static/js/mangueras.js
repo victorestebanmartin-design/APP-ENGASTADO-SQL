@@ -35,16 +35,18 @@
     reloj.textContent = formatoCronometro(total);
   }
 
-  function mostrarTrabajo(preparacion) {
+  function mostrarTrabajo(preparacion, aviso) {
     document.getElementById('mg-trabajo').hidden = !ordenActual;
+    var sinOrden = document.getElementById('mg-sin-orden');
+    if (sinOrden) sinOrden.hidden = true;
     if (!ordenActual) return;
     document.getElementById('mg-orden').textContent = 'Orden ' + ordenActual.numero + ' / Cantidad ' + ordenActual.cantidad;
     segundosFichados = Math.max(0, Number(preparacion.segundos) || 0);
     inicioReloj = Date.now();
     relojActivo = preparacion.estado === 'en_preparacion';
     pintarCronometro();
-    document.getElementById('mg-trabajo-resumen').textContent = window.estadoMangueras(preparacion.estado) + ' / ' +
-      preparacion.operarios.join(', ');
+    document.getElementById('mg-trabajo-resumen').textContent = (aviso ? '⚠ ' + aviso + ' — ' : '') +
+      window.estadoMangueras(preparacion.estado) + ' / ' + preparacion.operarios.join(', ');
     document.getElementById('mg-trazabilidad').dataset.trazabilidadMangueras = ordenActual.id;
     document.getElementById('mg-pausar').disabled = preparacion.estado !== 'en_preparacion';
     document.getElementById('mg-terminar').disabled = preparacion.estado !== 'en_preparacion';
@@ -185,7 +187,7 @@
       var datos = await respuesta.json();
       if (!respuesta.ok) throw new Error(datos.error || 'No se pudo registrar la orden.');
       ordenActual = datos.orden;
-      mostrarTrabajo(datos.preparacion);
+      mostrarTrabajo(datos.preparacion, datos.aviso);
       cerrarModalCorte();
       await cargarMangueras(datos.corte);
     } catch (error) {
@@ -228,7 +230,22 @@
     corteCodigoEl.textContent = corte.codigo;
     corteDescEl.textContent = desc;
     corteBanner.classList.add('activo');
+    // Entrar por la lista de cortes no trae orden: sin ella no hay reloj ni
+    // «Terminar preparación», y la orden no podría ir a un carro.
+    var sinOrden = document.getElementById('mg-sin-orden');
+    if (sinOrden) {
+      sinOrden.hidden = !!ordenActual;
+      sinOrden.dataset.corte = corte.codigo;
+    }
   }
+
+  var btnEscanearOrden = document.getElementById('mg-escanear-orden');
+  if (btnEscanearOrden) btnEscanearOrden.addEventListener('click', function () {
+    mostrarInputCorte();
+    inputCorte.value = document.getElementById('mg-sin-orden').dataset.corte + '-';
+    abrirModalCorte();
+    mostrarVistaCorte('input');
+  });
 
   // ── Cargar lista de cortes registrados ───────────────────────────────
   async function cargarListaCortes() {

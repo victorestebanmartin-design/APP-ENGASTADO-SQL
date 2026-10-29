@@ -62,7 +62,13 @@ MODULOS_APP = {
     'produccion':    {'label': 'Producción',      'endpoint': None},  # popup Bonos+Ordenes
     'visualizacion': {'label': 'Visualización',   'endpoint': 'main.visualizacion'},
     'etiquetas':     {'label': 'Etiquetas',       'endpoint': 'main.etiquetas'},
+    # Sin pantalla propia: habilita el botón «Generar bono» en Mangueras y
+    # Manguitos. Como Admin, solo lo tiene quien lo recibe de forma explícita.
+    'bonos':         {'label': 'Generar bonos',   'endpoint': None},
 }
+
+# Módulos que NO se conceden a un operario sin permisos explícitos (NULL).
+MODULOS_SOLO_EXPLICITOS = frozenset({'admin', 'bonos'})
 
 
 def modulos_permitidos_de(modulos_permitidos_raw):
@@ -102,13 +108,20 @@ def modulos_permitidos_operario(nombre):
         return set()
     calculados = modulos_permitidos_de(row[0])
     if calculados is None:
-        return {m for m in MODULOS_APP.keys() if m != 'admin'}
+        return {m for m in MODULOS_APP.keys() if m not in MODULOS_SOLO_EXPLICITOS}
     return calculados
 
 
 def operario_puede(nombre, modulo):
     """True si ese operario puede entrar a ese modulo."""
     return modulo in modulos_permitidos_operario(nombre)
+
+
+def puede_generar_bonos():
+    """True si quien está en esta sesión tiene el permiso «bonos» (decide si
+    Mangueras y Manguitos pintan el botón «Generar bono»)."""
+    from flask import session
+    return operario_puede(session.get('operario_actual'), 'bonos')
 
 
 def _ahora_iso() -> str:

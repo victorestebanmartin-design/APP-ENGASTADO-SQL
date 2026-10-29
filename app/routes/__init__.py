@@ -24,6 +24,7 @@ def init_routes(app):
         proyectos,
         ordenes,
         bonos,
+        bonos_asistente,
         carros,
         archivos,
         puestos,

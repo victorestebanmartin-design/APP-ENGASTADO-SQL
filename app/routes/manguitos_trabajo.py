@@ -89,11 +89,18 @@ def escanear_manguitos():
             _cerrar_abandonados(conn)
             colocacion = conn.execute(text('SELECT fin FROM manguitos_colocaciones WHERE orden_id=:id'),
                                       {'id': orden['id']}).first()
+            login_id = session['operario_login_id']
             if colocacion and colocacion[0]:
-                return jsonify(success=False, error='La colocacion de manguitos de esta orden ya esta terminada.'), 409
+                # Terminada: se puede volver a entrar a verla (ver mangueras_trabajo.py).
+                conn.execute(text('UPDATE manguitos_tramos SET fin=:ahora WHERE login_id=:login AND fin IS NULL'),
+                             {'ahora': ahora, 'login': login_id})
+                return jsonify(success=True, orden=dict(orden), corte={'codigo': codigo_info['codigo'],
+                               'archivo': codigo_info['archivo_excel'], 'proyecto': codigo_info['proyecto_nombre']},
+                               colocacion=_resumen(conn, orden['id']),
+                               aviso='La colocación de manguitos de esta orden ya estaba terminada. '
+                                     'Puedes consultarla, pero no se vuelve a fichar tiempo.')
             conn.execute(text('INSERT OR IGNORE INTO manguitos_colocaciones (orden_id, inicio) VALUES (:id, :ahora)'),
                          {'id': orden['id'], 'ahora': ahora})
-            login_id = session['operario_login_id']
             conn.execute(text('UPDATE manguitos_tramos SET fin=:ahora WHERE login_id=:login AND orden_id!=:orden AND fin IS NULL'),
                          {'ahora': ahora, 'login': login_id, 'orden': orden['id']})
             conn.execute(text(
