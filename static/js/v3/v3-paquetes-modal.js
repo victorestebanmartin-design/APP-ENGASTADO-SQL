@@ -103,7 +103,12 @@ async function mostrarModalPaquetes(carro) {
     if (paginaPaquetes === 0) {
         paquetesOrdenados = paquetesActuales.map(p => ({
             ...p,
-            numeroEtiqueta: obtenerNumeroEtiqueta(p.cod_cable, p.elemento, gruposEtiquetas, p.archivo_excel)
+            // La serie entra en la busqueda: el mismo elemento puede ir suelto y
+            // dentro de una serie, y cada uno lleva su etiqueta. Sin ella, el K1
+            // suelto (24) cogia la del K1 hijo de la serie 202 (1.01) y se
+            // colaba detras del padre en el modal y en la pantalla del carro.
+            numeroEtiqueta: obtenerNumeroEtiqueta(p.cod_cable, p.elemento, gruposEtiquetas, p.archivo_excel,
+                p.es_grupo ? (p.grupo_serie || '') : (p.serie_col || ''))
         }));
         paquetesOrdenados.sort((a, b) => {
             if (a.numeroEtiqueta !== null && b.numeroEtiqueta !== null) return a.numeroEtiqueta - b.numeroEtiqueta;

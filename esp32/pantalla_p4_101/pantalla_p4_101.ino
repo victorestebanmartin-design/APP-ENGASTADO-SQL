@@ -110,6 +110,16 @@ struct Op {
 };
 
 Op            ops_buf[MAX_OPS];
+
+// Vista del bono: el carro la manda al mantener OK 3 s ("bono":{...} en la
+// trama; ausente o null = no se muestra). Tiene prioridad sobre la lista y el
+// detalle porque la pide alguien delante del carro.
+static constexpr int MAX_BONO_ROWS = 12;
+struct BonoFila { int carro; char orden[16]; char corte[26]; };
+static bool     bono_activo = false;
+static char     bono_nombre[40] = "";
+static int      bono_n = 0;
+static BonoFila bono_fila[MAX_BONO_ROWS];
 int           nops        = 0;
 char          sel_id[40]  = "";
 char          carro_id[8] = "--";
@@ -280,6 +290,15 @@ static uint32_t huellaActual() {
     snprintf(t, sizeof(t), "%s|%s|%d|%d|%d|%d", sel_id, carro_id, (int)wifi_ok, nops,
              (int)tiene_datos, (int)modo_ahorro);
     h = fnv(t, h);
+    if (bono_activo) {
+        snprintf(t, sizeof(t), "B%s|%d", bono_nombre, bono_n);
+        h = fnv(t, h);
+        for (int k = 0; k < bono_n; k++) {
+            snprintf(t, sizeof(t), "%d|%s|%s", bono_fila[k].carro, bono_fila[k].orden, bono_fila[k].corte);
+            h = fnv(t, h);
+        }
+        return h;
+    }
     if (!tiene_datos) { snprintf(t, sizeof(t), "R%lu|%s", rx_bytes >> 10, diag); return fnv(t, h); }
     int si = selIndex();
     if (si >= 0) {
@@ -926,19 +945,65 @@ static void aviso_ahorro(bool activo) {
     aviso_hasta = millis() + 3000;
 }
 
+// Bono del carro: su codigo en grande y de que se compone (que carro lleva
+// que orden y de que corte). Es lo que se ve al mantener OK 3 s en el carro,
+// mientras su pantalla pequena saca el QR del mismo codigo para la pistola.
+static void ui_bono() {
+    lv_obj_clean(cont);
+    lv_obj_t *c = card(cont, COL_AMBAR);
+    lv_obj_set_height(c, LV_PCT(100));
+    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(c, 8, 0);
+
+    txt(c, "BONO", F_SM, COL_MUTE);
+    lv_obj_t *nm = txt(c, bono_nombre[0] ? bono_nombre : "(sin bono)", F_XL, COL_AMBAR);
+    lv_obj_set_width(nm, LV_PCT(100));
+    lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
+
+    if (bono_n == 0) {
+        txt(c, "Sin ordenes asignadas", F_MD, COL_MUTE);
+        return;
+    }
+    txt(c, "CARRO        ORDEN                    CORTE", F_SM, COL_MUTE);
+
+    for (int i = 0; i < bono_n; i++) {
+        const BonoFila &f = bono_fila[i];
+        lv_obj_t *row = lv_obj_create(c);
+        lv_obj_set_width(row, LV_PCT(100));
+        lv_obj_set_height(row, 46);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(row, 28, 0);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+        char cb[8];
+        if (f.carro > 0) snprintf(cb, sizeof(cb), "%d", f.carro); else snprintf(cb, sizeof(cb), "-");
+        lv_obj_t *chp = chip(row, cb, COL_AMBAR, F_MD);
+        lv_obj_set_width(chp, 90);
+        lv_obj_set_style_text_align(chp, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_t *o = txt(row, f.orden, F_MD, COL_TXT);
+        lv_obj_set_width(o, 230);
+        txt(row, f.corte, F_MD, COL_TXT);
+    }
+}
+
 static void ui_actualizar(bool forzar) {
     uint32_t h = huellaActual();
     if (!forzar && h == huella_prev) return;
     huella_prev = h;
 
-    backlight_set(!modo_ahorro || aviso_obj != nullptr || (tiene_datos && sel_id[0] != '\0'));
+    backlight_set(!modo_ahorro || aviso_obj != nullptr || bono_activo || (tiene_datos && sel_id[0] != '\0'));
 
     lv_label_set_text_fmt(lbl_carro, "CARRO %s", carro_id);
     lv_label_set_text(lbl_wifi, wifi_ok ? "WiFi" : "SIN WiFi");
     lv_obj_set_style_text_color(lbl_wifi, wifi_ok ? COL_VERDE : COL_ROJO, 0);
     lv_label_set_text_fmt(lbl_fw, "fw %s", fw_buf);
 
-    if (!tiene_datos && rx_bytes == 0)      ui_espera();
+    if (bono_activo)                        ui_bono();
+    else if (!tiene_datos && rx_bytes == 0) ui_espera();
     else if (!tiene_datos)                  ui_diag();
     else {
         int si = selIndex();
@@ -1063,6 +1128,21 @@ static void procesarLinea(const String &msg) {
     ahorro_conocido = true;
     // El carro ya no pide OK (o cambio de puesto): corta cualquier reintento vivo.
     if (!pide_ok) ok_tx_activo = false;
+
+    // Vista del bono (OK 3 s en el carro): ausente o null = fuera.
+    JsonObject bono = doc["bono"].as<JsonObject>();
+    bono_activo = !bono.isNull();
+    bono_n = 0;
+    if (bono_activo) {
+        copiaCampo(bono_nombre, sizeof(bono_nombre), bono["n"], "");
+        for (JsonObject f : bono["o"].as<JsonArray>()) {
+            if (bono_n >= MAX_BONO_ROWS) break;
+            BonoFila &b = bono_fila[bono_n++];
+            b.carro = f["c"] | 0;
+            copiaCampo(b.orden, sizeof(b.orden), f["o"], "");
+            copiaCampo(b.corte, sizeof(b.corte), f["k"], "");
+        }
+    }
 
     JsonArray arr = doc["ops"].as<JsonArray>();
     nops = 0;

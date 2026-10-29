@@ -45,7 +45,7 @@ from app.auth import (
 )
 from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
-    _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
+    _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado, _ruta_progreso_bono,
 )
 from app.estado_json import cargar as _json_cargar, guardar as _json_guardar, actualizar as _json_actualizar
 from app.config_manager import ConfigManager
@@ -675,6 +675,81 @@ def api_esp32_push():
         return error_interno(e)
 
 
+def _estado_carro_pantalla(carro, hay_trabajo_vivo):
+    """Estado de un carro para colorear su pantalla: (estado, nombre_bono).
+
+    libre      -> sin bono (verde, "LIBRE")
+    asignado   -> con bono pero sin empezar a engastar (naranja)
+    engastando -> con bono y ya hay trabajo hecho/pendiente en el, o hay un
+                  puesto trabajandolo ahora mismo (rojo)
+
+    Nunca lanza: la pantalla del carro sondea cada pocos segundos y un fallo
+    aqui no puede tumbar su respuesta; ante la duda, sin estado (la pantalla
+    se queda como estaba).
+    """
+    try:
+        numero = int(str(carro).strip())
+    except (TypeError, ValueError):
+        return '', ''
+    try:
+        with db.engine.connect() as conn:
+            fila = conn.execute(text(
+                "SELECT c.bono_id, c.estado, b.nombre FROM carros c "
+                "LEFT JOIN bonos b ON b.id = c.bono_id WHERE c.numero = :n"
+            ), {'n': numero}).fetchone()
+    except Exception:
+        return '', ''
+    if not fila:
+        return '', ''
+    bono_id, estado_carro, bono = fila
+    if not bono_id or estado_carro == 'disponible':
+        return 'libre', ''
+    bono = bono or ''
+    if hay_trabajo_vivo:
+        return 'engastando', bono
+    try:
+        ruta = _ruta_progreso_bono(bono)
+        if os.path.exists(ruta):
+            with open(ruta, encoding='utf-8') as f:
+                progreso = json.load(f)
+            clave = str(numero)
+            for datos in progreso.values():
+                if not isinstance(datos, dict):
+                    continue
+                if clave in {str(c) for c in datos.get('carros_completados', [])}:
+                    return 'engastando', bono
+                if clave in (datos.get('carros_con_pendientes') or {}):
+                    return 'engastando', bono
+    except Exception:
+        pass
+    return 'asignado', bono
+
+
+def _composicion_bono(bono):
+    """De que se compone un bono, para la pantalla grande del carro.
+
+    Devuelve {'nombre', 'ordenes': [{'c': carro, 'o': orden, 'k': corte}]}, con
+    claves cortas porque viaja en cada sondeo del carro y despues por UART.
+    Las ordenes van por carro; el mismo bono puede ocupar varios carros.
+    Tope de 12 filas (la pantalla no da para mas). Nunca lanza.
+    """
+    if not bono:
+        return None
+    try:
+        with db.engine.connect() as conn:
+            filas = conn.execute(text(
+                "SELECT o.carro_numero, o.numero, o.codigo_corte, o.proyecto "
+                "FROM ordenes_produccion o JOIN bonos b ON b.id = o.bono_id "
+                "WHERE b.nombre = :n ORDER BY o.carro_numero, o.numero"
+            ), {'n': bono}).fetchall()
+    except Exception:
+        return None
+    ordenes = [{'c': c if c is not None else 0, 'o': str(num or '')[:12],
+                'k': str(proy or corte or '')[:22]}
+               for c, num, corte, proy in filas][:12]
+    return {'nombre': bono, 'ordenes': ordenes}
+
+
 @bp.route('/api/esp32/current', methods=['GET'])
 def api_esp32_current():
     """Devuelve los últimos datos de trabajo enviados al ESP32 (TTL 60 min).
@@ -735,8 +810,11 @@ def api_esp32_current():
             if dev_prev.get('carro'):
                 carro = dev_prev['carro']
 
-        extra = {'carro_asignado': carro or '', 'ota': ota, 'fw_server': version_srv}
         ops_dict = _esp32_load_ops(_esp32_file(carro))
+        estado_carro, bono_carro = _estado_carro_pantalla(carro, bool(ops_dict))
+        extra = {'carro_asignado': carro or '', 'ota': ota, 'fw_server': version_srv,
+                 'carro_estado': estado_carro, 'carro_bono': bono_carro,
+                 'carro_bono_info': _composicion_bono(bono_carro)}
         if not ops_dict:
             return jsonify({'data': None, 'ops': [], **extra})
         ops = [{'operario': k, 'data': v['data'], 'ts': v.get('ts', '')}

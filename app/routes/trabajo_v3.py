@@ -149,6 +149,70 @@ def datos_trabajo_v3():
 
         paquetes_raw = [p for p in paquetes_raw if _tiene_engaste(p)]
 
+        # Agrupaciones MANUALES de etiquetas (Etiquetas -> fusionar en padre/hijos):
+        # el padre es un elemento real con su etiqueta (32) y los hijos llevan
+        # 32.01, 32.02... Para el operario es un solo paquete, como una serie del
+        # Excel: si los hijos salieran sueltos, llenarian los 5 huecos de la
+        # pantalla del carro y del modal con paquetes que no hay que coger aparte.
+        with db.engine.connect() as conn:
+            filas_man = conn.execute(text(
+                "SELECT numero_etiqueta, sub_numero, cod_cable, elemento "
+                "FROM etiquetas_elementos "
+                "WHERE archivo_excel = :archivo AND (COALESCE(es_padre_manual, 0) = 1 "
+                "OR numero_etiqueta IN (SELECT numero_etiqueta FROM etiquetas_elementos "
+                "WHERE archivo_excel = :archivo AND COALESCE(es_padre_manual, 0) = 1)) "
+                "AND COALESCE(grupo_serie, '') = ''"
+            ), {'archivo': archivo}).fetchall()
+        manuales = {}   # numero_etiqueta -> {'padre': (cod, elem), 'hijos': {(cod, elem): sub}}
+        for num, sub, cod, elem in filas_man:
+            g = manuales.setdefault(num, {'padre': None, 'hijos': {}})
+            if sub and sub > 0:
+                g['hijos'][(cod, elem)] = sub
+            else:
+                g['padre'] = (cod, elem)
+        if manuales:
+            por_clave = {(p['cod_cable'], p['elemento']): p for p in paquetes_raw
+                         if not (p.get('serie_col') or '').strip()}
+            for num, g in manuales.items():
+                if not g['padre'] or not g['hijos']:
+                    continue
+                miembros = []
+                p_padre = por_clave.get(g['padre'])
+                if p_padre:
+                    p_padre['sub_numero'] = 0
+                    p_padre['es_padre_propio'] = True
+                    miembros.append(p_padre)
+                for clave, sub in sorted(g['hijos'].items(), key=lambda kv: kv[1]):
+                    ph = por_clave.get(clave)
+                    if ph:
+                        ph['sub_numero'] = sub
+                        miembros.append(ph)
+                if not any(m.get('sub_numero') for m in miembros):
+                    continue    # ningun hijo lleva este terminal: el padre va como paquete normal
+                cod_p, elem_p = g['padre']
+                for m in miembros:
+                    m['grupo_serie'] = elem_p
+                ids = {id(m) for m in miembros}
+                paquetes_raw = [p for p in paquetes_raw if id(p) not in ids]
+                paquetes_raw.append({
+                    'cod_cable': cod_p,
+                    'elemento': elem_p,
+                    'descripcion': (p_padre or miembros[0]).get('descripcion', ''),
+                    'seccion': (p_padre or miembros[0]).get('seccion', ''),
+                    'longitud': 0.0,
+                    'cables': [],
+                    'num_cables': sum(m['num_cables'] for m in miembros),
+                    'num_terminales': sum(m['num_terminales'] for m in miembros),
+                    'cables_doble_terminal': [c for m in miembros for c in m.get('cables_doble_terminal', [])],
+                    'cables_de_terminal':    [c for m in miembros for c in m.get('cables_de_terminal', [])],
+                    'cables_para_terminal':  [c for m in miembros for c in m.get('cables_para_terminal', [])],
+                    'es_grupo': True,
+                    'grupo_serie': elem_p,
+                    'archivo_excel': archivo,
+                    'sub_paquetes': miembros,
+                    'cantidad_orden': cantidad_orden,
+                })
+
         # Fusionar paquetes de la misma serie — fuente: columna 'Series' del Excel
         series_paquetes = {}       # serie_code -> [paquete, ...]
         paquetes_individuales = []

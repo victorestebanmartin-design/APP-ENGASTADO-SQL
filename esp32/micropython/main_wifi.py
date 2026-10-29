@@ -54,12 +54,16 @@ import binascii
 from machine import SPI, SoftSPI, Pin
 import framebuf
 from uart_display import DisplayUart
+try:
+    import qr_mini        # QR del bono (OK 3 s); sin el, la vista sale sin QR
+except ImportError:
+    qr_mini = None
 # network y socket se importan tarde, tras el primer draw
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-09-28a"
+FW_VERSION = "2026-10-29b"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -91,6 +95,8 @@ POLL_INTERVAL = 2      # segundos entre polls de /api/esp32/current. Es el techo
                        # OK del pulsador va por UART, no depende del poll).
 AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al siguiente
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
+BONO_HOLD_MS = 3000    # mantener OK 3s con un bono en el carro = ver su QR y su detalle
+BONO_VISTA_S = 60      # la vista del bono se cierra sola a los 60 s
 OTA_HOLD_MS = 5000     # mantener OK (boton 8) 5s EN REPOSO = actualizar por WiFi
 AVISO_PENDIENTE_S = 25 # cada cuanto recuerda con un pitido que hay un grupo
                        # esperando a que alguien vaya al carro a confirmarlo
@@ -398,8 +404,83 @@ def draw_wifi_bar():
 # Carro) o, en su defecto, CARRO_ASIGNADO. Se actualiza con cada poll.
 mi_carro = CARRO_ASIGNADO
 
+# Estado del carro segun el servidor: 'libre' | 'asignado' | 'engastando' ('' =
+# aun no se sabe, o servidor antiguo: se pinta como antes). Colorea el numero
+# del carro y decide lo que va debajo (LIBRE o el bono).
+carro_estado = ''
+carro_bono   = ''
+
+def _color_carro():
+    if carro_estado == 'libre':      return GREEN
+    if carro_estado == 'asignado':   return ORANGE
+    if carro_estado == 'engastando': return RED
+    return YELLOW
+
+def _texto_bono():
+    """Lo que va debajo del numero del carro: LIBRE, el bono, o nada."""
+    if carro_estado == 'libre':
+        return "LIBRE"
+    if carro_estado in ('asignado', 'engastando'):
+        return carro_bono or "BONO"
+    return ""
+
+def draw_estado_carro(y):
+    """Linea LIBRE / bono, centrada en y, del color del estado. Escala 2 si
+    cabe en los 240 px de la pantalla; si el bono es largo, escala 1."""
+    t = _texto_bono()
+    if not t:
+        return
+    sc = 2 if len(t) * 18 <= 232 else 1
+    text_center(y, t[:26], _color_carro(), BLACK, scale=sc)
+
+# Composicion del bono de este carro (la manda el servidor en cada sondeo) y
+# vista del bono: se abre manteniendo OK BONO_HOLD_MS y se cierra con otro OK.
+carro_bono_info = None
+bono_vista      = False
+bono_vista_t0   = 0
+
+def draw_bono_qr():
+    """Vista del bono: su codigo y un QR que lee la pistola. El QR se calcula
+    aqui mismo (qr_mini), sin red: solo hace falta saber el codigo del bono."""
+    rect(0, 0, 240, 320, BLACK)
+    nombre = str(carro_bono or '')
+    text_center(4, "BONO", _color_carro(), BLACK, scale=2)
+    sc = 2 if len(nombre) * 18 <= 232 else 1
+    text_center(26, nombre[:26], WHITE, BLACK, scale=sc)
+    m = None
+    if qr_mini is not None and nombre:
+        try:
+            m = qr_mini.crear(nombre)
+        except Exception as e:
+            print("QR error:", e)
+    if m is None:
+        text_center(140, "QR NO DISPONIBLE", RED, BLACK, scale=1)
+    else:
+        n = len(m)
+        esc = max(1, min(8, 232 // (n + 8)))     # 4 modulos de margen claro a cada lado
+        lado = (n + 8) * esc
+        x0 = (240 - lado) // 2
+        y0 = 48 + (238 - lado) // 2
+        rect(x0, y0, lado, lado, WHITE)
+        for r in range(n):
+            fila = m[r]
+            c = 0
+            while c < n:
+                if fila[c]:
+                    c2 = c
+                    while c2 < n and fila[c2]:
+                        c2 += 1
+                    rect(x0 + (c + 4) * esc, y0 + (r + 4) * esc, (c2 - c) * esc, esc, BLACK)
+                    c = c2
+                else:
+                    c += 1
+    text_center(288, "OK = cerrar", DGRAY, BLACK, scale=1)
+    draw_wifi_bar()
+
 def draw_idle(msg=None):
     """Pantalla de reposo: sin contadores, solo identidad y estado."""
+    if bono_vista:
+        return
     if msg is None:
         msg = "Esperando paquetes..." if mi_carro else "Esperando carro..."
     rect(0, 0, 240, 320, BLACK)
@@ -409,8 +490,10 @@ def draw_idle(msg=None):
     if mi_carro:
         # Identificar la pantalla: este es MI carro
         text_center(140, "CARRO", LGRAY, BLACK, scale=2)
-        s = max(3, min(8, 232 // (9*len(mi_carro))))
-        text_center(170, mi_carro, YELLOW, BLACK, scale=s)
+        # Tope de escala 6 (48 px): debajo cabe la linea LIBRE / bono
+        s = max(3, min(6, 232 // (9*len(mi_carro))))
+        text_center(170, mi_carro, _color_carro(), BLACK, scale=s)
+        draw_estado_carro(224)
     text_center(244, msg, LGRAY, BLACK, scale=1)
     # Estado del firmware: verde al dia, rojo desactualizada (OK 5s para actualizar)
     try:
@@ -485,7 +568,42 @@ display_uart = DisplayUart(
     rx_pin=DISPLAY_UART_RX,
 )
 
-def _enviar_display(ops, carro, fw, sel='', pide_ok=False):
+def _bono_payload():
+    """Lo que ve la P4 en la vista del bono; None = no mostrarla."""
+    if not bono_vista:
+        return None
+    info = carro_bono_info or {}
+    return {'n': str(carro_bono or info.get('nombre') or ''), 'o': info.get('ordenes') or []}
+
+def _reenviar_display_ahora():
+    """Manda ya la instantanea a la P4 (abrir/cerrar la vista del bono) sin
+    esperar al siguiente sondeo."""
+    global display_bono, display_ts
+    sel = sel_clave if vista == 'detalle' else ''
+    if _enviar_display(work_ops, mi_carro, fw_servidor, sel, False, _bono_payload()):
+        display_bono = bono_vista
+        display_ts = time.ticks_ms()
+
+def abrir_vista_bono():
+    global bono_vista, bono_vista_t0
+    bono_vista = True
+    bono_vista_t0 = time.ticks_ms()
+    draw_bono_qr()
+    bip_seleccion()
+    _reenviar_display_ahora()
+
+def cerrar_vista_bono():
+    global bono_vista
+    if not bono_vista:
+        return
+    bono_vista = False
+    if en_work_mode:
+        mostrar_lista()
+    else:
+        draw_reposo()
+    _reenviar_display_ahora()
+
+def _enviar_display(ops, carro, fw, sel='', pide_ok=False, bono=None):
     """Publica una instantánea; una pantalla desconectada no bloquea el carro.
 
     'sel' es la clave del puesto que se está mirando en detalle (tras pasar
@@ -509,6 +627,7 @@ def _enviar_display(ops, carro, fw, sel='', pide_ok=False):
         'ok': bool(pide_ok),
         'ahorro': bool(p4_ahorro),
         'ops': ops,
+        'bono': bono,
     })
 
 # Version que anuncia el servidor: para pintar en reposo si estamos al dia.
@@ -610,8 +729,14 @@ def draw_work_header(d, titulo='', extra=''):
 
 def draw_lista():
     """Pantalla por defecto en modo trabajo: quien tiene que venir al carro."""
+    if bono_vista:
+        return
     rect(0, 0, 240, 320, BLACK)
-    text(4, Y_CARRO, 'CARRO ' + str(mi_carro or '')[:8], WHITE, BLACK, scale=3)
+    text(4, Y_CARRO, 'CARRO ' + str(mi_carro or '')[:8], _color_carro() if carro_estado else WHITE, BLACK, scale=3)
+    if carro_estado in ('asignado', 'engastando') and carro_bono:
+        # Bono a la derecha de la cabecera, pequeno y del mismo color
+        b = carro_bono[:9]
+        text(240 - len(b)*10 - 4, Y_CARRO + 6, b, _color_carro(), BLACK, scale=1)
     hline(0, Y_SEP1, 240, DGRAY)
     if nfc is not None:
         text_center(LISTA_TIT, "PASA TU TARJETA", ORANGE, BLACK, scale=2)
@@ -668,6 +793,8 @@ def draw_pie(msg, color):
 
 def draw_package():
     """Zona central con el paquete actual (redibujado parcial)."""
+    if bono_vista:
+        return
     rect(0, PKG_Y0, 240, PKG_Y1-PKG_Y0, BLACK)
     if not work_pkgs:
         text_center(140, "Sin paquetes", LGRAY, BLACK, scale=2)
@@ -1314,6 +1441,8 @@ btn_ok_prev  = 1
 btn_ok_last  = 0
 btn_ok_t0    = 0                  # inicio de la pulsacion de OK (para la larga)
 btn_ok_ota_hecho = False          # ya se lanzo el OTA en esta pulsacion larga
+btn_ok_bono_hecho = False         # ya se abrio la vista del bono en esta pulsacion larga
+display_bono  = False             # ultimo estado de la vista del bono enviado a la P4
 btn_ok_hold_shown = -1            # segundo mostrado en la cuenta atras (-1 = ninguno)
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
 ultimo_envio  = 0                 # ultimo intento de mandar eventos pendientes
@@ -1444,6 +1573,7 @@ while True:
         if b_ok == 0:
             btn_ok_t0 = now
             btn_ok_ota_hecho = False
+            btn_ok_bono_hecho = False
             btn_ok_hold_shown = -1
         elif btn_ok_hold_shown >= 0 and not en_work_mode:
             btn_ok_hold_shown = -1
@@ -1463,11 +1593,24 @@ while True:
                 btn_ok_hold_shown = seg
                 rect(0, 262, 240, 18, BLACK)
                 text_center(262, "ACTUALIZAR EN %d" % seg, ORANGE, BLACK, scale=1)
+    # Pulsacion LARGA de OK (3 s) con un bono en el carro: vista del bono (QR +
+    # detalle en la P4). No en detalle de un puesto (ahi OK confirma) ni en
+    # reposo con firmware desactualizado (ahi la larga es la del OTA).
+    if b_ok == 0 and not btn_ok_bono_hecho and not bono_vista and carro_bono \
+            and not (en_work_mode and vista == 'detalle') \
+            and not (not en_work_mode and _desactualizada()) \
+            and time.ticks_diff(now, btn_ok_t0) >= BONO_HOLD_MS:
+        btn_ok_bono_hecho = True
+        abrir_vista_bono()
+    if bono_vista and time.ticks_diff(now, bono_vista_t0) >= BONO_VISTA_S * 1000:
+        cerrar_vista_bono()
     if b_ok == 0 and btn_ok_prev == 1 and time.ticks_diff(now, btn_ok_last) > 250:
         btn_ok_last = now
         ultima_accion = now
         ultimo_avance = now
-        if en_work_mode and vista == 'detalle':
+        if bono_vista:
+            cerrar_vista_bono()              # este OK solo cierra la vista
+        elif en_work_mode and vista == 'detalle':
             confirmar_ok()
         elif en_work_mode:
             # OK sin haberse identificado: NUNCA adivinar de quien es. Cada
@@ -1577,6 +1720,21 @@ while True:
                 fw_servidor = d.get('fw_server') or ''
                 # Carro que nos asigna el servidor (Admin -> Display Carro)
                 ca = d.get('carro_asignado') or CARRO_ASIGNADO
+                # Estado y bono del carro (color del numero + LIBRE / bono)
+                nuevo_estado = d.get('carro_estado') or ''
+                nuevo_bono   = d.get('carro_bono') or ''
+                carro_bono_info = d.get('carro_bono_info')
+                if (nuevo_estado != carro_estado or nuevo_bono != carro_bono) and ca == mi_carro:
+                    carro_estado = nuevo_estado
+                    carro_bono   = nuevo_bono
+                    if not en_work_mode:
+                        draw_reposo()
+                        fw_servidor_shown = fw_servidor
+                    elif vista == 'lista':
+                        draw_lista()
+                elif ca != mi_carro:
+                    carro_estado = nuevo_estado
+                    carro_bono   = nuevo_bono
                 if ca != mi_carro:
                     mi_carro = ca
                     if not en_work_mode:
@@ -1601,14 +1759,20 @@ while True:
                 # carro" hasta el proximo cambio de estado -- habia que apagar y
                 # encender el carro para que volviera a mandarle algo.
                 reenvio = time.ticks_diff(now, display_ts) >= 5000
+                if bono_vista and not carro_bono:
+                    cerrar_vista_bono()           # el bono se libero mientras se veia
+                if bono_vista:
+                    pide_ok = False               # la vista del bono no pide OK
                 if fp != display_fp or sel_disp != display_sel \
                         or pide_ok != display_ok or p4_ahorro != display_ahorro \
+                        or bono_vista != display_bono \
                         or reenvio:
-                    if _enviar_display(ops, ca, fw_servidor, sel_disp, pide_ok):
+                    if _enviar_display(ops, ca, fw_servidor, sel_disp, pide_ok, _bono_payload()):
                         display_fp = fp
                         display_sel = sel_disp
                         display_ok = pide_ok
                         display_ahorro = p4_ahorro
+                        display_bono = bono_vista
                         display_ts = time.ticks_ms()
                 if not ops:
                     if en_work_mode:

@@ -83,3 +83,6 @@ data/.maintenance.sqlite*
 .claude/settings.local.json
 data/server.pid
 .vscode/settings.json
+
+# Perfil de navegador y PDF de pruebas de impresion (se regeneran solos)
+data/pt3/

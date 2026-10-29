@@ -107,14 +107,16 @@ async function mostrarPaqueteExpandido() {
             const g = buscarGrupoEtiqueta(sub.cod_cable, sub.elemento, gruposEtiquetas2, sub.archivo_excel, grupoSerie, true);
             return g && g.sub_numero > 0 ? g.sub_numero : null;
         };
-        (paquete.sub_paquetes || []).sort((a, b) =>
-            (subEtiquetado(a) ?? 1e9 + (a.sub_numero || 0)) - (subEtiquetado(b) ?? 1e9 + (b.sub_numero || 0)));
+        // Agrupacion manual: el padre es un elemento real y lleva la etiqueta
+        // del padre a secas (sin .NN); va el primero.
+        const _clave = s => s.es_padre_propio ? -1 : (subEtiquetado(s) ?? 1e9 + (s.sub_numero || 0));
+        (paquete.sub_paquetes || []).sort((a, b) => _clave(a) - _clave(b));
         const etiquetaPadreHtml = numPadre
             ? `<span style="display:inline-block;background:#f59e0b;color:white;padding:10px 20px;border-radius:10px;font-weight:bold;font-size:1.2em;margin-bottom:10px;box-shadow:0 2px 4px rgba(0,0,0,0.2);">&#127991;&#65039; Etiqueta ${grupoSerie} — #${numPadre}</span>`
             : `<span style="display:inline-block;background:#6c757d;color:white;padding:8px 16px;border-radius:8px;font-weight:bold;font-size:1.1em;margin-bottom:10px;">&#128230; ${grupoSerie}</span>`;
 
         const subPaquetesHtml = (paquete.sub_paquetes || []).map((sub, i) => {
-            const numSub = numPadre ? `${numPadre}.${String(subEtiquetado(sub) || sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
+            const numSub = sub.es_padre_propio ? `${numPadre}` : numPadre ? `${numPadre}.${String(subEtiquetado(sub) || sub.sub_numero || (i+1)).padStart(2, '0')}` : `${i+1}`;
             const _sub = getCodCableColor(sub.cod_cable);
             const cablesDe   = sub.cables_de_terminal   || [];
             const cablesPara = sub.cables_para_terminal || [];
