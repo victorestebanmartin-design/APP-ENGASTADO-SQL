@@ -308,6 +308,11 @@ def _apply_migrations(db_path):
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_maquina ON sesiones_trabajo(maquina_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_activas ON sesiones_trabajo(activo)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_sesiones_terminal ON sesiones_trabajo(terminal_codigo)")
+    # orden_id: el bloqueo solo vale dentro de la misma orden (que es de un solo
+    # bono). Sin él, dos bonos con un paquete del mismo nombre se bloqueaban.
+    cur.execute("PRAGMA table_info(sesiones_trabajo)")
+    if 'orden_id' not in {row[1] for row in cur.fetchall()}:
+        cur.execute("ALTER TABLE sesiones_trabajo ADD COLUMN orden_id TEXT")
     conn.commit()
 
     # Migración: identificación del puesto en la pantalla del carro

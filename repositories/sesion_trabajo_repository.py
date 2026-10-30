@@ -29,7 +29,8 @@ class SesionTrabajoRepository(BaseRepository):
         terminal_codigo: str,
         archivo_excel: str,
         carro_numero: str,
-        paquetes: List[Dict]
+        paquetes: List[Dict],
+        orden_id: Optional[str] = None
     ) -> str:
         """
         Crea una sesión activa para la máquina indicada.
@@ -42,6 +43,7 @@ class SesionTrabajoRepository(BaseRepository):
             archivo_excel:    Nombre del archivo Excel del carro.
             carro_numero:     Número de carro.
             paquetes:         Lista de dicts con 'cod_cable' y 'elemento'.
+            orden_id:         Orden que se trabaja (ámbito del bloqueo).
 
         Returns:
             ID (UUID) de la nueva sesión.
@@ -58,12 +60,13 @@ class SesionTrabajoRepository(BaseRepository):
         query = """
             INSERT INTO sesiones_trabajo
                 (id, maquina_id, terminal_codigo, archivo_excel,
-                 carro_numero, paquetes_json, timestamp_inicio, activo)
+                 carro_numero, orden_id, paquetes_json, timestamp_inicio, activo)
             VALUES
                 (:id, :maquina_id, :terminal_codigo, :archivo_excel,
-                 :carro_numero, :paquetes_json, :timestamp_inicio, 1)
+                 :carro_numero, :orden_id, :paquetes_json, :timestamp_inicio, 1)
         """
         self.execute_query(query, {
+            'orden_id': orden_id or None,
             'id': sesion_id,
             'maquina_id': maquina_id,
             'terminal_codigo': terminal_codigo,
@@ -158,18 +161,35 @@ class SesionTrabajoRepository(BaseRepository):
     # Consulta de bloqueos
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _ambito(orden_id: Optional[str], archivo: Optional[str]) -> Optional[str]:
+        """Ámbito en el que dos sesiones se pisan: la orden, que es de un solo
+        bono. Una sesión sin orden (datos antiguos) se acota por su archivo, y
+        nunca se cruza con una que sí la tiene. None = no se sabe."""
+        if orden_id:
+            return f'orden:{orden_id}'
+        return f'archivo:{archivo}' if archivo else None
+
     def verificar_bloqueos(
         self,
         paquetes: List[Dict],
-        sesion_id_excluir: Optional[str] = None
+        sesion_id_excluir: Optional[str] = None,
+        orden_id: Optional[str] = None,
+        archivo: Optional[str] = None
     ) -> Dict[Tuple[str, str], Dict]:
         """
-        Indica qué paquetes de la lista están reclamados por otras sesiones activas.
+        Indica qué paquetes de la lista están reclamados por otras sesiones activas
+        de LA MISMA ORDEN. Un paquete con el mismo cable y elemento en otra orden
+        u otro bono es otro paquete y no se bloquea.
 
         Args:
             paquetes:            Lista de dicts con 'cod_cable' y 'elemento'.
             sesion_id_excluir:   ID de la propia sesión a excluir de la búsqueda
-                                 (para no bloquearse a uno mismo).
+                                 (para no bloquearse a uno mismo). De ella se
+                                 toma la orden si no se indica.
+            orden_id, archivo:   Orden que consulta quien no tiene sesión propia.
+                                 Si no hay forma de saberla, se comprueba contra
+                                 todas las sesiones (comportamiento antiguo).
 
         Returns:
             Diccionario {(cod_cable, elemento): {sesion_id, maquina_id,
@@ -180,24 +200,32 @@ class SesionTrabajoRepository(BaseRepository):
             return {}
 
         try:
+            ambito = self._ambito(orden_id, archivo)
+            if ambito is None and sesion_id_excluir:
+                propia = self.execute_select(
+                    "SELECT orden_id, archivo_excel FROM sesiones_trabajo WHERE id = :id",
+                    {'id': sesion_id_excluir}
+                )
+                if propia:
+                    ambito = self._ambito(propia[0].get('orden_id'), propia[0].get('archivo_excel'))
+
+            query = """
+                SELECT st.id, st.maquina_id, st.terminal_codigo, st.paquetes_json,
+                       st.orden_id, st.archivo_excel,
+                       m.nombre AS maquina_nombre
+                FROM sesiones_trabajo st
+                LEFT JOIN maquinas m ON st.maquina_id = m.id
+                WHERE st.activo = 1
+            """
+            params: Dict = {}
             if sesion_id_excluir:
-                query = """
-                    SELECT st.id, st.maquina_id, st.terminal_codigo, st.paquetes_json,
-                           m.nombre AS maquina_nombre
-                    FROM sesiones_trabajo st
-                    LEFT JOIN maquinas m ON st.maquina_id = m.id
-                    WHERE st.activo = 1 AND st.id != :excluir
-                """
-                sesiones = self.execute_select(query, {'excluir': sesion_id_excluir})
-            else:
-                query = """
-                    SELECT st.id, st.maquina_id, st.terminal_codigo, st.paquetes_json,
-                           m.nombre AS maquina_nombre
-                    FROM sesiones_trabajo st
-                    LEFT JOIN maquinas m ON st.maquina_id = m.id
-                    WHERE st.activo = 1
-                """
-                sesiones = self.execute_select(query, {})
+                query += " AND st.id != :excluir"
+                params['excluir'] = sesion_id_excluir
+            sesiones = self.execute_select(query, params)
+
+            if ambito is not None:
+                sesiones = [s for s in sesiones
+                            if self._ambito(s.get('orden_id'), s.get('archivo_excel')) == ambito]
 
             if not sesiones:
                 return {}

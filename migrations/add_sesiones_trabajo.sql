@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS sesiones_trabajo (
     terminal_codigo TEXT NOT NULL,                -- Terminal que se está engastando
     archivo_excel TEXT NOT NULL,                  -- Archivo Excel del carro
     carro_numero TEXT,                            -- Número de carro
+    orden_id TEXT,                                -- Orden (de un solo bono): ámbito del bloqueo
     paquetes_json TEXT NOT NULL DEFAULT '[]',     -- JSON: [{cod_cable, elemento}, ...]
     timestamp_inicio TEXT NOT NULL DEFAULT (datetime('now')),
     activo INTEGER NOT NULL DEFAULT 1,            -- 1 = activa, 0 = liberada

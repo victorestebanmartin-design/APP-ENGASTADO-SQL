@@ -463,31 +463,39 @@ async function _verificarBloqueosPendientes() {
         if (!progTerminal) continue;
 
         const carrosPendientes = progTerminal.carros_con_pendientes || {};
-        const paquetesAntesBloqueados = [];
-        for (const carro of Object.values(carrosPendientes)) {
-            for (const pkg of (carro.paquetes || [])) {
-                if (pkg.bloqueado) {
-                    paquetesAntesBloqueados.push({ cod_cable: pkg.cod_cable || '', elemento: pkg.elemento });
-                }
-            }
+        // Un bloqueo solo vale dentro de su orden: se consulta carro a carro,
+        // con la orden de cada uno, y no con todos los paquetes mezclados.
+        const consultas = [];
+        for (const [numCarro, carro] of Object.entries(carrosPendientes)) {
+            const bloqueados = (carro.paquetes || [])
+                .filter(pkg => pkg.bloqueado)
+                .map(pkg => ({ cod_cable: pkg.cod_cable || '', elemento: pkg.elemento }));
+            if (bloqueados.length === 0) continue;
+            const info = carrosDelBono.find(c => String(c.carro) === String(numCarro));
+            consultas.push({ paquetes: bloqueados, orden_id: info?.orden_id || '', archivo: info?.archivo_excel || '' });
         }
-        if (paquetesAntesBloqueados.length === 0) continue;
+        if (consultas.length === 0) continue;
 
         try {
-            const r = await fetch('/api/sesion/verificar-pendientes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paquetes: paquetesAntesBloqueados })
-            });
-            const data = await r.json();
-            if (!data.success) continue;
+            let numLibres = 0;
+            let total = 0;
+            let fallo = false;
+            for (const consulta of consultas) {
+                const r = await fetch('/api/sesion/verificar-pendientes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(consulta)
+                });
+                const data = await r.json();
+                if (!data.success) { fallo = true; break; }
+                numLibres += data.num_libres;
+                total += data.total;
+            }
+            if (fallo) continue;
 
             const tarjeta = document.getElementById(`tarjeta-terminal-${terminal}`);
             const estadoDiv = document.getElementById(`estado-terminal-${terminal}`);
             if (!tarjeta || !estadoDiv) continue;
-
-            const numLibres = data.num_libres;
-            const total = data.total;
 
             if (numLibres === total) {
                 // Todos liberados

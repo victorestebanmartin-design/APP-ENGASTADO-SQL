@@ -267,14 +267,18 @@ def datos_trabajo_v3():
                 terminal_codigo=terminal,
                 archivo_excel=archivo,
                 carro_numero=request.args.get('carro', ''),
-                paquetes=[]
+                paquetes=[],
+                orden_id=orden_id
             )
-            # Verificar qué paquetes están reclamados por OTRAS sesiones
-            bloqueos = sesion_repo.verificar_bloqueos(paquetes, sesion_id_excluir=sesion_id_nuevo)
+            # Verificar qué paquetes están reclamados por OTRAS sesiones de esta orden
+            bloqueos = sesion_repo.verificar_bloqueos(
+                paquetes, sesion_id_excluir=sesion_id_nuevo,
+                orden_id=orden_id, archivo=archivo)
         else:
             # Solo consulta (preview de carros, sin crear sesión)
-            excluir = sesion_id_param
-            bloqueos = sesion_repo.verificar_bloqueos(paquetes, sesion_id_excluir=excluir)
+            bloqueos = sesion_repo.verificar_bloqueos(
+                paquetes, sesion_id_excluir=sesion_id_param,
+                orden_id=orden_id, archivo=archivo)
 
         # Anotar en cada paquete si está bloqueado y por qué máquina
         paquetes_bloqueados_count = 0
@@ -457,7 +461,10 @@ def api_verificar_pendientes():
 
     Body JSON:
       { "paquetes": [{"cod_cable": "X", "elemento": "Y"}, ...],
-        "sesion_id_excluir": "<uuid>"  (opcional, para no contarse a uno mismo) }
+        "sesion_id_excluir": "<uuid>"  (opcional, para no contarse a uno mismo),
+        "orden_id", "archivo"          (opcionales: la orden de los paquetes; si
+                                        hay sesion_id_excluir se toma de ella) }
+    Solo bloquean las sesiones de la misma orden.
 
     Responde con:
       - bloqueados: paquetes todavía en uso por otra sesión
@@ -473,7 +480,10 @@ def api_verificar_pendientes():
             return jsonify({'success': True, 'bloqueados': [], 'libres': [], 'total': 0})
 
         sesion_repo = SesionTrabajoRepository(db)
-        bloqueos = sesion_repo.verificar_bloqueos(paquetes, sesion_id_excluir=sesion_id_excluir)
+        bloqueos = sesion_repo.verificar_bloqueos(
+            paquetes, sesion_id_excluir=sesion_id_excluir,
+            orden_id=(data.get('orden_id') or '').strip() or None,
+            archivo=(data.get('archivo') or '').strip() or None)
 
         bloqueados = []
         libres = []
