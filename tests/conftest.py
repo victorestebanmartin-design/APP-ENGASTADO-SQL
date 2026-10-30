@@ -64,6 +64,11 @@ def app(tmp_path):
     from app.routes import paginas
     paginas._PIN_INTENTOS.clear()
 
+    # Igual el freno del barrido de logins caducados: es global del módulo y,
+    # si otro test barrió hace menos de 30 s, el de este se salta el barrido.
+    from app.routes import operarios
+    operarios._ultima_expiracion[0] = float('-inf')
+
     yield aplicacion
 
 

@@ -54,10 +54,13 @@ def test_cambiar_nombre_conserva_tarjeta(client):
     assert fila['tag_uid'] == 'A1B2C3D4'
 
 
-def _registrar_lector_online(app, device_id='lector1', fw='2026-10-07a'):
+def _registrar_lector_online(app, device_id='lector1', fw=None):
+    """Lector conectado. Por defecto con el firmware que el servidor anuncia:
+    la captura de tarjetas exige estar al día, y un valor fijo aquí se queda
+    viejo en cuanto se sube FW_VERSION."""
     with app.app_context():
-        from app.routes.sistema import _rfid_registrar_dispositivo
-        _rfid_registrar_dispositivo(device_id, fw=fw)
+        from app.routes.sistema import _rfid_registrar_dispositivo, _rfid_firmware_version
+        _rfid_registrar_dispositivo(device_id, fw=fw or _rfid_firmware_version())
 
 
 def test_captura_rfid_solo_se_entrega_al_lector_elegido(app, admin_client):
