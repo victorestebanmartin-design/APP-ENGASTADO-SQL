@@ -309,6 +309,23 @@
       abrirModalCorte();
     } catch (error) { alert(error.message); }
   });
+  var btnImprimir = document.getElementById('mg-imprimir-etiquetas');
+  if (btnImprimir) btnImprimir.addEventListener('click', async function () {
+    if (!archivoActual) return;
+    btnImprimir.disabled = true;
+    try {
+      var resp = await fetch('/api/etiquetas/imprimir_archivo', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archivo: archivoActual })
+      });
+      var data = await resp.json();
+      var aviso = data.message || (data.success ? 'Etiquetas enviadas.' : 'No se pudo imprimir.');
+      if (!data.success && data.sin_impresora) aviso += ' Avisa a un administrador (Etiquetas → Imprimir en servidor).';
+      alert(aviso);
+    } catch (error) {
+      alert('No se pudo contactar con el servidor: ' + error.message);
+    } finally { btnImprimir.disabled = false; }
+  });
   document.addEventListener('mangueras-pendientes-actualizadas', async function () {
     if (!archivoActual || document.querySelector('dialog[open]')) return;
     var archivo = archivoActual;

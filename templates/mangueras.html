@@ -48,6 +48,9 @@
       border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 700; transition: background 0.15s; white-space: nowrap; }
     .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); }
     .nav-btn:disabled { opacity: 0.25; cursor: default; }
+    /* Fuera de la barra oscura, el estilo translúcido de .nav-btn es blanco sobre blanco */
+    #mg-sin-orden .nav-btn, #mg-trabajo .nav-btn { background: #0e7490; }
+    #mg-sin-orden .nav-btn:hover:not(:disabled), #mg-trabajo .nav-btn:hover:not(:disabled) { background: #0c5f75; }
     @media (max-width: 700px) {
       .mg-nav-marca, .mg-nav-elemento { font-size: 22px; }
       .mg-nav-paquete .mg-paquete-badge { font-size: 22px; padding: 6px 16px; }
@@ -147,6 +150,7 @@
       .corte-banner { flex-wrap: wrap; padding: 16px 18px; }
       .corte-banner-codigo { font-size: 22px; }
       .corte-banner-cambiar { flex-basis: 100%; }
+      .corte-banner-cambiar:disabled { opacity: 0.6; cursor: default; }
       .nav-manguera { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
       .mg-nav-center { grid-column: 1 / -1; grid-row: 1; min-width: 0; }
       .mg-nav-trio { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
@@ -182,6 +186,8 @@
         <span class="corte-banner-codigo" id="mg-corte-codigo">—</span>
         <span class="corte-banner-desc" id="mg-corte-desc"></span>
       </div>
+      <button type="button" id="mg-imprimir-etiquetas" class="corte-banner-cambiar"
+              title="Imprime las etiquetas de este archivo en la impresora del servidor">🖨️ Imprimir etiquetas</button>
       <button type="button" id="mg-corte-cambiar" class="corte-banner-cambiar">🔄 Cambiar corte</button>
     </div>
 

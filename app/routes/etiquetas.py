@@ -104,6 +104,57 @@ def api_etiquetas_grupos_json():
         return error_interno(e, 'Error al cargar etiquetas', status=200)
 
 
+def _grupos_de_archivo(archivo):
+    """Etiquetas guardadas de un archivo y su código de corte (None si no hay)."""
+    query = """
+        SELECT
+            numero_etiqueta,
+            cod_cable,
+            elemento,
+            descripcion,
+            seccion,
+            longitud,
+            de_terminal,
+            num_cables,
+            num_terminales,
+            archivo_excel,
+            codigo_corte,
+            grupo_serie,
+            es_grupo_padre,
+            sub_numero,
+            COALESCE(es_padre_manual, 0)
+        FROM etiquetas_elementos
+        WHERE archivo_excel = :archivo
+        ORDER BY numero_etiqueta, sub_numero
+    """
+    with db.engine.connect() as conn:
+        resultados = conn.execute(text(query), {'archivo': archivo}).fetchall()
+
+    grupos = []
+    codigo_corte = None
+    for row in resultados:
+        if not codigo_corte:
+            codigo_corte = row[10]
+        grupos.append({
+            'numero_etiqueta': row[0],
+            'cod_cable': row[1],
+            'elemento': row[2],
+            'descripcion': row[3],
+            'seccion': row[4],
+            'longitud': row[5],
+            'de_terminal': row[6],
+            'num_cables': row[7],
+            'num_terminales': row[8],
+            'archivo': row[9],
+            'codigo_corte': row[10],
+            'grupo_serie': row[11],
+            'es_grupo_padre': row[12],
+            'sub_numero': row[13],
+            'es_padre_manual': row[14]
+        })
+    return grupos, codigo_corte
+
+
 @bp.route('/api/etiquetas/cargar_grupos', methods=['POST'])
 def api_etiquetas_cargar_grupos():
     """Cargar grupos de etiquetas de un archivo específico"""
@@ -140,56 +191,8 @@ def api_etiquetas_cargar_grupos():
             # Caer al bloque de lectura de BD (count > 0 ahora)
         
         # Si ya existen, cargarlas de la BD
-        query = """
-            SELECT
-                numero_etiqueta,
-                cod_cable,
-                elemento,
-                descripcion,
-                seccion,
-                longitud,
-                de_terminal,
-                num_cables,
-                num_terminales,
-                archivo_excel,
-                codigo_corte,
-                grupo_serie,
-                es_grupo_padre,
-                sub_numero,
-                COALESCE(es_padre_manual, 0)
-            FROM etiquetas_elementos
-            WHERE archivo_excel = :archivo
-            ORDER BY numero_etiqueta, sub_numero
-        """
+        grupos, codigo_corte = _grupos_de_archivo(archivo)
 
-        with db.engine.connect() as conn:
-            resultados = conn.execute(text(query), {'archivo': archivo}).fetchall()
-
-        grupos = []
-        codigo_corte = None
-
-        for row in resultados:
-            if not codigo_corte:
-                codigo_corte = row[10]
-
-            grupos.append({
-                'numero_etiqueta': row[0],
-                'cod_cable': row[1],
-                'elemento': row[2],
-                'descripcion': row[3],
-                'seccion': row[4],
-                'longitud': row[5],
-                'de_terminal': row[6],
-                'num_cables': row[7],
-                'num_terminales': row[8],
-                'archivo': row[9],
-                'codigo_corte': row[10],
-                'grupo_serie': row[11],
-                'es_grupo_padre': row[12],
-                'sub_numero': row[13],
-                'es_padre_manual': row[14]
-            })
-        
         return jsonify({
             'success': True,
             'grupos': grupos,
@@ -259,6 +262,35 @@ def api_etiquetas_imprimir_plancha():
         return jsonify({'success': False, 'sin_impresora': 'configurada' in str(e), 'message': str(e)})
     except Exception as e:
         return error_interno(e, 'Error al imprimir la plancha', status=200)
+
+
+@bp.route('/api/etiquetas/imprimir_archivo', methods=['POST'])
+def api_etiquetas_imprimir_archivo():
+    """Imprime en la impresora del servidor las etiquetas guardadas de un archivo.
+
+    Para pantallas que no tienen la plancha cargada (preparación de mangueras):
+    solo necesitan decir qué archivo. Responde 200 con success=False y un
+    motivo legible si algo falla, nunca 500.
+    """
+    from app import impresion_planchas as ip_
+    data = request.get_json(silent=True) or {}
+    archivo = (data.get('archivo') or '').strip()
+    if not archivo:
+        return jsonify({'success': False, 'message': 'Falta el archivo.'}), 400
+    try:
+        grupos, codigo_corte = _grupos_de_archivo(archivo)
+        if not grupos:
+            return jsonify({'success': False,
+                            'message': 'Este archivo todavía no tiene etiquetas generadas. '
+                                       'Se generan al abrirlo en Etiquetas.'})
+        html = _html_plancha(archivo, grupos, (codigo_corte or '').strip())
+        ip = ip_.imprimir_plancha(html, current_app.config['DATA_DIR'])
+        return jsonify({'success': True,
+                        'message': f'{len(grupos)} etiquetas enviadas a la impresora ({ip}).'})
+    except ip_.ErrorImpresion as e:
+        return jsonify({'success': False, 'sin_impresora': 'configurada' in str(e), 'message': str(e)})
+    except Exception as e:
+        return error_interno(e, 'Error al imprimir las etiquetas', status=200)
 
 
 @bp.route('/api/etiquetas/generar_html', methods=['POST'])
