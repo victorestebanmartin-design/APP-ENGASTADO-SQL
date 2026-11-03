@@ -446,6 +446,10 @@ function mostrarModalRegulacion() {
     const btnPdf = document.getElementById('btn-ver-regulacion');
     if (btnPdf) btnPdf.style.display = maquinaSeleccionada.pdf_regulacion ? '' : 'none';
 
+    // «He regulado»: solo si la máquina pide ensayo de tracción (v3-ensayos.js)
+    const btnRegulado = document.getElementById('btn-he-regulado');
+    if (btnRegulado) btnRegulado.style.display = maquinaSeleccionada.ensayo_frecuencia ? '' : 'none';
+
     // Reset checkbox y botón confirmar
     const chk = document.getElementById('check-regulacion-ok');
     if (chk) chk.checked = false;

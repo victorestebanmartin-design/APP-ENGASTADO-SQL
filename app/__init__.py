@@ -644,7 +644,102 @@ def _apply_migrations(db_path):
                 duplicados_carro,
             )
 
+    _migrar_ensayos_traccion(cur)
+    conn.commit()
     conn.close()
+
+
+def _migrar_ensayos_traccion(cur):
+    """Tablas del módulo Ensayos de tracción (ver app/ensayos.py).
+
+    ensayo_frecuencia NULL = la máquina no pide ensayo: así, al desplegar, nada
+    cambia en planta hasta que alguien configura cada máquina a propósito.
+    """
+    cur.execute("PRAGMA table_info(maquinas)")
+    maq_cols = {row[1] for row in cur.fetchall()}
+    if maq_cols and 'ensayo_frecuencia' not in maq_cols:
+        cur.execute("ALTER TABLE maquinas ADD COLUMN ensayo_frecuencia TEXT")
+
+    cur.execute("PRAGMA table_info(maquinas_terminales)")
+    mt_cols = {row[1] for row in cur.fetchall()}
+    if mt_cols and 'matriz_id' not in mt_cols:
+        cur.execute("ALTER TABLE maquinas_terminales ADD COLUMN matriz_id TEXT")
+
+    # La captura armada del lector sirve también para que un supervisor pase
+    # su tarjeta tras un NOK sin que el lector le haga login como operario.
+    cur.execute("PRAGMA table_info(operario_tag_capturas)")
+    cap_cols = {row[1] for row in cur.fetchall()}
+    if cap_cols and 'tipo' not in cap_cols:
+        cur.execute("ALTER TABLE operario_tag_capturas ADD COLUMN tipo TEXT NOT NULL DEFAULT 'registro'")
+    if cap_cols and 'ref' not in cap_cols:
+        cur.execute("ALTER TABLE operario_tag_capturas ADD COLUMN ref TEXT")
+
+    cur.executescript("""
+        -- Matrices (aplicadores) de cada máquina. No se mueven de máquina.
+        CREATE TABLE IF NOT EXISTS matrices (
+            id         TEXT PRIMARY KEY,
+            maquina_id TEXT NOT NULL,
+            nombre     TEXT NOT NULL,
+            codigo     TEXT,
+            activo     INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_matrices_maquina ON matrices(maquina_id);
+
+        -- Fuerza mínima de arranque. terminal_codigo '' = genérica de la sección
+        -- (no NULL: el UNIQUE de SQLite no considera iguales dos NULL).
+        CREATE TABLE IF NOT EXISTS ensayos_especificaciones (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            terminal_codigo TEXT NOT NULL DEFAULT '',
+            seccion         TEXT NOT NULL,
+            fuerza_min_n    REAL NOT NULL,
+            norma           TEXT,
+            instrucciones   TEXT,
+            updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(terminal_codigo, seccion)
+        );
+
+        -- Registro de auditoría: ensayos, regulaciones y decisiones del
+        -- supervisor. Solo se añade: los triggers impiden modificar o borrar.
+        -- Los nombres y la fuerza exigida se guardan copiados, para que el
+        -- registro siga diciendo lo mismo aunque luego cambie la configuración.
+        CREATE TABLE IF NOT EXISTS ensayos_traccion (
+            id              TEXT PRIMARY KEY,
+            tipo            TEXT NOT NULL CHECK (tipo IN ('ensayo', 'regulacion', 'decision')),
+            fecha           TEXT NOT NULL,
+            maquina_id      TEXT NOT NULL,
+            maquina_nombre  TEXT,
+            matriz_id       TEXT,
+            matriz_nombre   TEXT,
+            puesto_id       TEXT,
+            terminal_codigo TEXT,
+            seccion         TEXT,
+            operario        TEXT,
+            bono            TEXT,
+            orden_id        TEXT,
+            motivo          TEXT,
+            fuerza_n        REAL,
+            fuerza_min_n    REAL,
+            norma           TEXT,
+            resultado       TEXT CHECK (resultado IS NULL OR resultado IN ('OK', 'NOK')),
+            origen          TEXT,
+            ref_id          TEXT,
+            decision        TEXT CHECK (decision IS NULL OR decision IN ('repetir', 'continuar')),
+            supervisor      TEXT,
+            supervisor_via  TEXT,
+            comentario      TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_ensayos_maquina_fecha ON ensayos_traccion(maquina_id, fecha);
+        CREATE INDEX IF NOT EXISTS idx_ensayos_fecha ON ensayos_traccion(fecha);
+
+        CREATE TRIGGER IF NOT EXISTS ensayos_traccion_sin_update
+        BEFORE UPDATE ON ensayos_traccion
+        BEGIN SELECT RAISE(ABORT, 'ensayos_traccion es un registro de auditoria: no se modifica'); END;
+
+        CREATE TRIGGER IF NOT EXISTS ensayos_traccion_sin_delete
+        BEFORE DELETE ON ensayos_traccion
+        BEGIN SELECT RAISE(ABORT, 'ensayos_traccion es un registro de auditoria: no se borra'); END;
+    """)
 
 
 def create_app(config_class=Config):

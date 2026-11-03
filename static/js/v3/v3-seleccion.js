@@ -580,6 +580,13 @@ async function cambiarMaquina() {
  * Seleccionar terminal específico para trabajar - CON SISTEMA DE BONOS
  */
 async function seleccionarTerminalTrabajo(terminal) {
+    // Ensayo de tracción de la matriz (si la máquina lo pide): antes de
+    // encender gavetas o marcar el terminal en proceso. Ver v3-ensayos.js.
+    if (!(await asegurarEnsayoTraccion(terminal))) {
+        await abrirModalTerminal();
+        return;
+    }
+
     terminalActual = terminal;
 
     // Cargar imagen del terminal si existe (se muestra en modales de trabajo)

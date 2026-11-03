@@ -83,20 +83,24 @@ def _operario_tag_captura_para_device(device_id):
     with db.engine.begin() as conn:
         fila = conn.execute(text("""
             SELECT c.device_id, c.operario_id, c.token, c.estado, c.expira_at,
-                   o.nombre, o.activo
+                   c.tipo, o.nombre, o.activo
             FROM operario_tag_capturas c
             LEFT JOIN operarios o ON o.id = c.operario_id
             WHERE c.device_id = :device_id
         """), {'device_id': device_id}).mappings().first()
         if not fila or fila['estado'] != 'armada':
             return None
-        if not fila['nombre'] or not fila['activo']:
+        # Tarjeta de supervisor tras un ensayo NOK (app/routes/ensayos.py): no
+        # se registra a nadie, así que no hay operario que comprobar.
+        es_supervisor = fila['tipo'] == 'supervisor_ensayo'
+        if not es_supervisor and (not fila['nombre'] or not fila['activo']):
             _captura_tag_resultado(conn, fila, 'error', 'El operario ya no está activo')
             return None
         if _captura_tag_expirada(fila):
             _captura_tag_resultado(conn, fila, 'caducada', 'La captura ha caducado')
             return None
-        return {'token': fila['token'], 'operario': fila['nombre'],
+        return {'token': fila['token'],
+                'operario': 'SUPERVISOR' if es_supervisor else fila['nombre'],
                 'segundos': max(1, int((datetime.fromisoformat(fila['expira_at'])
                                         - datetime.now()).total_seconds()))}
 
@@ -143,6 +147,7 @@ def api_operario_rfid_captura_iniciar(op_id):
                     token = excluded.token,
                     estado = 'armada', uid = NULL, mensaje = NULL,
                     expira_at = excluded.expira_at,
+                    tipo = 'registro', ref = NULL,
                     created_at = datetime('now')
             """), {'device_id': device_id, 'operario_id': op_id,
                   'token': token, 'expira_at': expira_at})
@@ -205,7 +210,7 @@ def api_esp32_operario_captura_resultado():
             return jsonify({'success': False, 'error': 'Datos de captura no válidos'}), 400
         with db.engine.begin() as conn:
             fila = conn.execute(text("""
-                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at
+                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at, tipo
                 FROM operario_tag_capturas
                 WHERE device_id = :device_id AND token = :token
             """), {'device_id': device_id, 'token': token}).mappings().first()
@@ -214,6 +219,10 @@ def api_esp32_operario_captura_resultado():
             if _captura_tag_expirada(fila):
                 _captura_tag_resultado(conn, fila, 'caducada', 'La captura ha caducado')
                 return jsonify({'success': False, 'error': 'La captura ha caducado'}), 409
+            if fila['tipo'] == 'supervisor_ensayo':
+                from app.routes.ensayos import resolver_tarjeta_supervisor
+                respuesta, status = resolver_tarjeta_supervisor(conn, fila, uid)
+                return jsonify(respuesta), status
             op = conn.execute(text(
                 "SELECT id, nombre FROM operarios WHERE id = :id AND activo = 1"
             ), {'id': fila['operario_id']}).fetchone()

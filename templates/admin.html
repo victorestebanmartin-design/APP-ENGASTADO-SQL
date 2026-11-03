@@ -13,9 +13,6 @@
     <style>
         .campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
         .campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
-        .report-tab { background: none; border: none; border-bottom: 3px solid transparent; color: #64748b; padding: 10px 18px; cursor: pointer; font-size: 0.95em; font-family: inherit; transition: color .15s, border-color .15s; }
-        .report-tab:hover { color: #f1f5f9; }
-        .report-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 600; }
         .badge-op-activo { background: rgba(34,197,94,.15); color: #22c55e; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
         .badge-op-inactivo { background: rgba(100,116,139,.15); color: #64748b; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
     </style>
@@ -898,63 +895,17 @@
 
 
                 <!-- ============ REPORT (TRAZABILIDAD) ============ -->
+                <!-- El report vive en el módulo Calidad (templates/calidad.html), junto a
+                     los ensayos de tracción. Aquí solo queda el acceso. -->
                 <section id="sec-report" class="admin-section">
                     <div class="admin-section-head">
                         <h1>Report — Trazabilidad</h1>
-                        <p>Consulta quién engastó cada terminal, en qué bono y cuándo.</p>
+                        <p>Se ha movido al módulo Calidad, junto a los ensayos de tracción.</p>
                     </div>
-
-                    <!-- Tabs -->
-                    <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:0;">
-                        <button class="report-tab active" data-tab="bono" onclick="reportTab('bono')">📦 Por Bono</button>
-                        <button class="report-tab" data-tab="terminal" onclick="reportTab('terminal')">🔌 Por Terminal</button>
-                        <button class="report-tab" data-tab="operario" onclick="reportTab('operario')">👷 Por Operario</button>
-                    </div>
-
-                    <!-- Tab: Por Bono -->
-                    <div id="report-tab-bono" class="report-tab-content">
-                        <div class="card">
-                            <h2>📦 Report por Bono</h2>
-                            <p class="instruccion">Selecciona un bono para ver qué operario engastó cada terminal y cuándo.</p>
-                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-                                <select id="report-sel-bono" style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
-                                    <option value="">— Seleccionar bono —</option>
-                                </select>
-                                <button onclick="reportBuscarBono()" class="btn-primary">🔍 Ver</button>
-                                <button onclick="reportGenerarPDFCarros()" class="btn-secondary" title="Genera una hoja report por carro para adjuntar al bono">🖨️ Report PDF por carro</button>
-                            </div>
-                            <div id="report-result-bono"></div>
-                        </div>
-                    </div>
-
-                    <!-- Tab: Por Terminal -->
-                    <div id="report-tab-terminal" class="report-tab-content" style="display:none;">
-                        <div class="card">
-                            <h2>🔌 Report por Terminal</h2>
-                            <p class="instruccion">Introduce el código de terminal para ver todos los bonos en los que fue engastado.</p>
-                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-                                <input type="text" id="report-input-terminal" placeholder="Ej: 641H10001"
-                                    style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
-                                    onkeypress="if(event.key==='Enter')reportBuscarTerminal()">
-                                <button onclick="reportBuscarTerminal()" class="btn-primary">🔍 Ver</button>
-                            </div>
-                            <div id="report-result-terminal"></div>
-                        </div>
-                    </div>
-
-                    <!-- Tab: Por Operario -->
-                    <div id="report-tab-operario" class="report-tab-content" style="display:none;">
-                        <div class="card">
-                            <h2>👷 Report por Operario</h2>
-                            <p class="instruccion">Selecciona un operario para ver todos los terminales que ha engastado.</p>
-                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-                                <select id="report-sel-operario" style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
-                                    <option value="">— Seleccionar operario —</option>
-                                </select>
-                                <button onclick="reportBuscarOperario()" class="btn-primary">🔍 Ver</button>
-                            </div>
-                            <div id="report-result-operario"></div>
-                        </div>
+                    <div class="card">
+                        <p class="instruccion">Por bono, por terminal y por operario, con el PDF por carro y los ensayos de cada uno.
+                            Para verlo desde la rejilla de módulos, el operario necesita el permiso «Calidad» (Admin → Operarios).</p>
+                        <a href="/calidad" class="btn-primary" style="display:inline-block;text-decoration:none;">🛡️ Abrir Calidad</a>
                     </div>
                 </section>
 
@@ -1181,22 +1132,6 @@
         if (saved && document.getElementById('sec-' + saved)) adminNav(saved);
     });
 
-    // ──────────────────────────────────────────────────────────────
-    //  REPORT — placeholders (lógica en el siguiente paso)
-    // ──────────────────────────────────────────────────────────────
-    function reportBuscar() {
-        alert('La búsqueda de trazabilidad se implementará en el siguiente paso.');
-    }
-    function reportGenerarPDF() {
-        alert('La generación de PDF para auditorías se implementará en el siguiente paso.');
-    }
-
-    // Genera la hoja report por carro (un folio por carro) para el bono seleccionado.
-    function reportGenerarPDFCarros() {
-        const bono = document.getElementById('report-sel-bono').value;
-        if (!bono) { alert('Selecciona un bono primero.'); return; }
-        window.open(`/report/bono/${encodeURIComponent(bono)}/carros`, '_blank');
-    }
 
     // ──────────────────────────────────────────────────────────────
     //  OPERARIOS — CRUD
@@ -1318,14 +1253,6 @@
                             <tbody>${filas}</tbody>
                         </table>
                     </div>`;
-                // Cargar también en select del report
-                const selOp = document.getElementById('report-sel-operario');
-                if (selOp) {
-                    selOp.innerHTML = '<option value="">— Todos los operarios —</option>';
-                    data.operarios.filter(o => o.activo).forEach(o => {
-                        selOp.innerHTML += `<option value="${o.nombre}">${o.nombre}</option>`;
-                    });
-                }
             });
     }
 
@@ -1609,123 +1536,9 @@
         });
     }
 
-    // ──────────────────────────────────────────────────────────────
-    //  REPORT — TABS + FUNCIONES
-    // ──────────────────────────────────────────────────────────────
-    function reportTab(tab) {
-        document.querySelectorAll('.report-tab').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.report-tab-content').forEach(d => d.style.display = 'none');
-        document.querySelector(`.report-tab[data-tab="${tab}"]`).classList.add('active');
-        document.getElementById('report-tab-' + tab).style.display = 'block';
-    }
-
-    function _reportTabla(cols, filas, emptyMsg) {
-        if (!filas.length) return `<p style="color:#64748b;margin-top:8px;">${emptyMsg}</p>`;
-        const th = cols.map(c => `<th style="padding:8px 14px;text-align:left;color:#64748b;font-size:0.82em;border-bottom:1px solid #334155;">${c}</th>`).join('');
-        const rows = filas.map(f => `<tr>${f.map(c => `<td style="padding:9px 14px;border-bottom:1px solid #1e293b;color:#f1f5f9;font-size:0.9em;">${c || '<span style="color:#475569">—</span>'}</td>`).join('')}</tr>`).join('');
-        return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table></div>`;
-    }
-
-    function _fmtFecha(iso) {
-        if (!iso) return '';
-        try {
-            const d = new Date(iso);
-            return d.toLocaleDateString('es-ES') + ' ' + d.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'});
-        } catch(e) { return iso; }
-    }
-
-    function _fmtCarros(carros) {
-        const lista = (carros || []).map(c => String(c)).filter(c => c !== '');
-        if (!lista.length) return '<span style="color:#475569">— (sin carro concreto)</span>';
-        return lista.map(c => `Carro ${c}`).join(', ');
-    }
-
-    function _estadoBadge(estado) {
-        const color = estado === 'completado' ? '#22c55e' : '#f59e0b';
-        return `<span style="background:${color}22;color:${color};padding:2px 8px;border-radius:12px;font-size:0.8em;">${estado || 'en_proceso'}</span>`;
-    }
-
-    function reportBuscarBono() {
-        const bono = document.getElementById('report-sel-bono').value;
-        if (!bono) { alert('Selecciona un bono.'); return; }
-        const cont = document.getElementById('report-result-bono');
-        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
-        fetch(`/api/report/progreso?bono=${encodeURIComponent(bono)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
-                const filas = data.registros.map(r => [
-                    `<code style="color:#93c5fd;font-size:0.92em;">${r.terminal}</code>`,
-                    r.operario || '<span style="color:#475569">Sin registrar</span>',
-                    _estadoBadge(r.estado),
-                    _fmtFecha(r.fecha_inicio),
-                    _fmtFecha(r.fecha_ultima_actualizacion),
-                    _fmtCarros(r.carros_completados)
-                ]);
-                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} terminal${data.total !== 1 ? 'es' : ''} en el bono <strong style="color:#f1f5f9;">${bono}</strong></p>` +
-                    _reportTabla(['Terminal','Operario','Estado','Fecha inicio','Última actualización','Carros engastados'], filas, 'Sin datos para este bono.');
-            });
-    }
-
-    function reportBuscarTerminal() {
-        const terminal = (document.getElementById('report-input-terminal').value || '').trim().toUpperCase();
-        if (!terminal) { alert('Introduce un código de terminal.'); return; }
-        const cont = document.getElementById('report-result-terminal');
-        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
-        fetch(`/api/report/progreso?terminal=${encodeURIComponent(terminal)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
-                const filas = data.registros.map(r => [
-                    `<code style="color:#a78bfa;font-size:0.92em;">${r.bono}</code>`,
-                    r.operario || '<span style="color:#475569">Sin registrar</span>',
-                    _estadoBadge(r.estado),
-                    _fmtFecha(r.fecha_inicio),
-                    _fmtFecha(r.fecha_ultima_actualizacion)
-                ]);
-                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} registro${data.total !== 1 ? 's' : ''} para el terminal <strong style="color:#f1f5f9;">${terminal}</strong></p>` +
-                    _reportTabla(['Bono','Operario','Estado','Fecha inicio','Última actualización'], filas, 'Sin registros para este terminal.');
-            });
-    }
-
-    function reportBuscarOperario() {
-        const operario = document.getElementById('report-sel-operario').value;
-        if (!operario) { alert('Selecciona un operario.'); return; }
-        const cont = document.getElementById('report-result-operario');
-        cont.innerHTML = '<p style="color:#64748b;">Cargando...</p>';
-        fetch(`/api/report/progreso?operario=${encodeURIComponent(operario)}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) { cont.innerHTML = `<p style="color:#ef4444;">${data.error}</p>`; return; }
-                const filas = data.registros.map(r => [
-                    `<code style="color:#93c5fd;font-size:0.92em;">${r.terminal}</code>`,
-                    `<code style="color:#a78bfa;font-size:0.92em;">${r.bono}</code>`,
-                    _estadoBadge(r.estado),
-                    _fmtFecha(r.fecha_inicio),
-                    _fmtFecha(r.fecha_ultima_actualizacion)
-                ]);
-                cont.innerHTML = `<p style="color:#64748b;margin-bottom:10px;">${data.total} terminal${data.total !== 1 ? 'es' : ''} engastado${data.total !== 1 ? 's' : ''} por <strong style="color:#f1f5f9;">${operario}</strong></p>` +
-                    _reportTabla(['Terminal','Bono','Estado','Fecha inicio','Última actualización'], filas, 'Sin registros para este operario.');
-            });
-    }
-
-    function cargarSelectsBonos() {
-        fetch('/api/bonos')
-            .then(r => r.json())
-            .then(data => {
-                const sel = document.getElementById('report-sel-bono');
-                if (!sel || !data.bonos) return;
-                sel.innerHTML = '<option value="">— Seleccionar bono —</option>';
-                data.bonos.forEach(b => {
-                    sel.innerHTML += `<option value="${b.nombre}">${b.nombre}</option>`;
-                });
-            });
-    }
-
     document.addEventListener('DOMContentLoaded', function () {
         cargarOperariosAdmin();
         cargarLoginsAdmin();
-        cargarSelectsBonos();
     });
     </script>
 

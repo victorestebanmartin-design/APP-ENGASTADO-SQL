@@ -65,10 +65,16 @@ MODULOS_APP = {
     # Sin pantalla propia: habilita el botón «Generar bono» en Mangueras y
     # Manguitos. Como Admin, solo lo tiene quien lo recibe de forma explícita.
     'bonos':         {'label': 'Generar bonos',   'endpoint': None},
+    # Calidad: report de trazabilidad y ensayos de tracción (configuración
+    # e historial), lo que piden auditorías y clientes.
+    'calidad':       {'label': 'Calidad',         'endpoint': 'main.calidad_pagina'},
+    # Sin pantalla propia: quien lo tiene puede resolver un ensayo NOK
+    # pasando su tarjeta (ver app/ensayos.py).
+    'ensayos_supervisor': {'label': 'Supervisor de ensayos', 'endpoint': None},
 }
 
 # Módulos que NO se conceden a un operario sin permisos explícitos (NULL).
-MODULOS_SOLO_EXPLICITOS = frozenset({'admin', 'bonos'})
+MODULOS_SOLO_EXPLICITOS = frozenset({'admin', 'bonos', 'calidad', 'ensayos_supervisor'})
 
 
 def modulos_permitidos_de(modulos_permitidos_raw):

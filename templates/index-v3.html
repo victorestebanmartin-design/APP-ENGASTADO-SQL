@@ -205,6 +205,10 @@
                     <input type="checkbox" id="check-regulacion-ok" onchange="toggleBtnIniciarReg(this.checked)">
                     <span class="modal-reg-check-label">Conozco la regulación de esta máquina y sé cómo aplicarla correctamente</span>
                 </label>
+                <!-- Solo en máquinas con ensayo de tracción: regular obliga a ensayar -->
+                <button type="button" id="btn-he-regulado" class="modal-reg-btn-pdf" onclick="avisarRegulacionEnsayo()" style="display:none">
+                    🔧 He regulado la máquina (pedirá ensayo de tracción)
+                </button>
             </div>
             <div class="modal-reg-footer">
                 <button type="button" onclick="abrirModalMaquina()" class="btn-volver-modal">← Cambiar máquina</button>
@@ -338,5 +342,6 @@
     <script src="{{ url_for('static', filename='js/v3/v3-paquetes-modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-paquete-expandido.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-no-poner.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/v3/v3-ensayos.js') }}"></script>
 </body>
 </html>

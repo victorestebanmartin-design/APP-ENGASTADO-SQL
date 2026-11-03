@@ -58,7 +58,19 @@ def datos_trabajo_v3():
                 'success': False,
                 'message': 'Parámetros incompletos (se requiere archivo y terminal)'
             })
-        
+
+        # Ensayo de tracción: sin él no se empieza a engastar. Se comprueba
+        # aquí y no solo en la pantalla para que un F5 o una petición directa
+        # no se lo salten (el modal vive en static/js/v3/v3-ensayos.js).
+        if maquina and request.args.get('iniciar_sesion', '').lower() in ('1', 'true'):
+            from app import ensayos
+            with db.engine.connect() as conn:
+                est = ensayos.estado(conn, maquina, terminal)
+            if est['bloquea']:
+                return jsonify({'success': False, 'ensayo_requerido': True,
+                                'message': est['motivo'], 'motivo': est['motivo'],
+                                'consejo': est['consejo']}), 409
+
         # Crear instancia del ExcelManager
         upload_folder = current_app.config['UPLOAD_FOLDER']
         manager = ExcelManager(upload_folder)

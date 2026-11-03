@@ -115,6 +115,30 @@ En el firmware, cualquier **4xx** es una decisión del servidor sobre esa tarjet
 → pitido de rechazo con su motivo. El error técnico (tres pitidos) queda solo
 para 5xx o sin respuesta.
 
+## Ensayos de tracción: aquí bloquear es el objetivo
+
+Viven en el módulo **Calidad** (`/calidad`, permiso `calidad`), junto al report
+de trazabilidad que antes estaba en Admin: `templates/calidad.html`, con
+`static/js/ensayos.js` y `static/js/calidad-report.js` (este reutiliza `esc` y
+`api` del primero, así que va cargado después).
+
+`app/ensayos.py` decide si una matriz necesita ensayo antes de engastar; el
+modal está en `static/js/v3/v3-ensayos.js`. Al revés que el pick-to-light:
+
+- **No hay «Continuar sin confirmar».** Un NOK solo lo levanta un supervisor
+  (permiso `ensayos_supervisor`) con su tarjeta o su clave.
+- **El bloqueo lo pone el servidor** (`datos_trabajo_v3` responde 409 con
+  `ensayo_requerido`); el modal es la cara amable, no la protección.
+- **`ensayos_traccion` solo admite inserciones** (triggers). Nada de UPDATE ni
+  DELETE "para arreglar un dato": se corrige añadiendo otro registro. Guarda
+  copiados nombres y fuerza exigida a propósito, para auditorías.
+- **`maquinas.ensayo_frecuencia` NULL = sin ensayo.** Es el valor por defecto
+  para que desplegar no pare la planta; no lo cambies por uno "sugerido".
+- La tarjeta del supervisor reutiliza la captura armada de
+  `operario_tag_capturas` (`tipo='supervisor_ensayo'`). Quien arme una captura
+  ahí tiene que fijar `tipo` y `ref` también en el `ON CONFLICT`, o hereda los
+  de la anterior.
+
 ## Tests
 
 ```bash

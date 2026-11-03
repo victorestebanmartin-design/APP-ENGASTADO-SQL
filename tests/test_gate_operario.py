@@ -5,12 +5,13 @@ import json
 
 # ==================== MODULOS_APP / permisos por operario ====================
 
-def test_api_modulos_lista_los_ocho_modulos(client):
+def test_api_modulos_lista_todos_los_modulos(client):
     d = client.get('/api/modulos').get_json()
     assert d['success']
     slugs = {m['slug'] for m in d['modulos']}
     assert slugs == {'engastado', 'mangueras', 'manguitos', 'admin',
-                      'produccion', 'visualizacion', 'etiquetas', 'bonos'}
+                      'produccion', 'visualizacion', 'etiquetas', 'bonos',
+                      'calidad', 'ensayos_supervisor'}
 
 
 def _crear_operario(client, nombre='Test Op'):

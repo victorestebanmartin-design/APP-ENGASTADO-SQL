@@ -23,6 +23,16 @@ async function cargarPaquetesDelCarro() {
         const response = await fetch(`/api/datos_trabajo_v3?archivo=${encodeURIComponent(carro.archivo_excel)}&terminal=${encodeURIComponent(terminalActual)}&maquina=${maquinaSeleccionada.id}&orden_id=${encodeURIComponent(carro.orden_id || '')}&iniciar_sesion=true`);
         const data = await response.json();
         
+        // El servidor pide ensayo de tracción (p. ej. ha pasado la medianoche
+        // con el terminal abierto): hacerlo y volver a cargar el carro.
+        if (!data.success && data.ensayo_requerido) {
+            if (await asegurarEnsayoTraccion(terminalActual)) {
+                return cargarPaquetesDelCarro();
+            }
+            mostrarMensaje(data.message, 'error');
+            return;
+        }
+
         if (!data.success) {
             console.error('Error del servidor:', data.message || 'Sin mensaje');
             console.error('Datos completos:', data);

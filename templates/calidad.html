@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  {% include '_head_pwa.html' %}
+  <title>Calidad - Sistema de Engastado</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .ens-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .ens-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .ens-header h1 { margin: 0; }
+    .ens-aviso { background: #fff3cd; border: 1px solid #ffe69c; color: #664d03; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    .ens-tabs { display: flex; gap: 6px; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; }
+    .ens-tab { padding: 10px 18px; border: none; background: none; font-size: 1rem; font-weight: 600; color: #6c757d; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+    .ens-tab.activa { color: #0d6efd; border-bottom-color: #0d6efd; }
+    .ens-panel { display: none; }
+    .ens-panel.activo { display: block; }
+    .ens-card { background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .ens-maq-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .ens-maq-top h3 { margin: 0; }
+    .ens-maq-sub { color: #6c757d; font-size: .9rem; }
+    .ens-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .ens-chip { display: inline-flex; align-items: center; gap: 6px; background: #e7f1ff; border: 1px solid #b6d4fe; border-radius: 16px; padding: 4px 6px 4px 12px; font-size: .9rem; }
+    .ens-chip button { border: none; background: none; cursor: pointer; font-size: .95rem; padding: 0 4px; }
+    table.ens-tabla { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    .ens-tabla th, .ens-tabla td { padding: 7px 9px; border-bottom: 1px solid #e9ecef; text-align: left; vertical-align: top; }
+    .ens-tabla th { background: #f8f9fa; font-weight: 600; position: sticky; top: 0; }
+    .ens-ok { color: #198754; font-weight: 700; }
+    .ens-nok { color: #dc3545; font-weight: 700; }
+    .ens-tipo { font-size: .8rem; padding: 2px 8px; border-radius: 10px; background: #e9ecef; }
+    .ens-tipo.regulacion { background: #e9d5ff; }
+    .ens-tipo.decision { background: #fde68a; }
+    .ens-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+    .ens-form label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: #495057; font-weight: 600; }
+    .ens-form input, .ens-form select, .ens-row select, .ens-row input, .ens-form textarea { padding: 7px 9px; border: 1px solid #ced4da; border-radius: 6px; font-size: .95rem; font-family: inherit; }
+    .ens-scroll { max-height: 65vh; overflow: auto; }
+    .ens-vacio { color: #6c757d; font-style: italic; }
+    .ens-msg { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 8px; color: #fff; font-weight: 600; z-index: 1000; display: none; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .ens-tab-sep { width: 1px; background: #dee2e6; margin: 8px 6px; }
+    .ens-sub { margin: 18px 0 8px; font-size: 1.05rem; }
+    .rep-estado { font-size: .8rem; padding: 2px 8px; border-radius: 10px; background: #fff3cd; color: #664d03; }
+    .rep-estado.completado { background: #d1e7dd; color: #0f5132; }
+  </style>
+</head>
+<body>
+<div class="ens-container">
+  <div class="ens-header">
+    <h1>🛡️ Calidad</h1>
+    <a href="{{ url_for('main.modules') }}" class="btn-secondary">← Volver</a>
+  </div>
+
+  {% if not puede_editar %}
+  <div class="ens-aviso">
+    Estás en modo consulta. Para cambiar máquinas, matrices o fuerzas mínimas,
+    <a href="{{ url_for('main.admin_login') }}?next=/calidad">entra como administrador</a>.
+  </div>
+  {% endif %}
+
+  <div class="ens-tabs">
+    <button class="ens-tab activa" data-panel="panel-rep-bono">📦 Report por bono</button>
+    <button class="ens-tab" data-panel="panel-rep-terminal">🔌 Por terminal</button>
+    <button class="ens-tab" data-panel="panel-rep-operario">👷 Por operario</button>
+    <span class="ens-tab-sep"></span>
+    <button class="ens-tab" data-panel="panel-historial">🧪 Historial de ensayos</button>
+    <button class="ens-tab" data-panel="panel-maquinas">Máquinas y matrices</button>
+    <button class="ens-tab" data-panel="panel-fuerzas">Fuerzas mínimas</button>
+  </div>
+
+  <!-- ══ Report de trazabilidad (quién engastó qué, cuándo) ══ -->
+  <div class="ens-panel activo" id="panel-rep-bono">
+    <div class="ens-card">
+      <p class="ens-maq-sub">Qué operario engastó cada terminal del bono y cuándo, y los ensayos de tracción hechos para él.</p>
+      <div class="ens-row">
+        <select id="rep-bono" style="flex:1;min-width:220px"><option value="">— Seleccionar bono —</option></select>
+        <button class="btn-primary" id="rep-bono-ver">🔍 Ver</button>
+        <button class="btn-secondary" id="rep-bono-pdf" title="Un folio por carro para adjuntar al bono">🖨️ Report PDF por carro</button>
+      </div>
+    </div>
+    <div class="ens-card ens-scroll" id="rep-bono-res"><p class="ens-vacio">Elige un bono.</p></div>
+  </div>
+
+  <div class="ens-panel" id="panel-rep-terminal">
+    <div class="ens-card">
+      <p class="ens-maq-sub">Todos los bonos en los que se ha engastado un terminal, y sus ensayos de tracción.</p>
+      <div class="ens-row">
+        <input id="rep-terminal" placeholder="Ej: 641H10001" style="flex:1;min-width:220px">
+        <button class="btn-primary" id="rep-terminal-ver">🔍 Ver</button>
+      </div>
+    </div>
+    <div class="ens-card ens-scroll" id="rep-terminal-res"><p class="ens-vacio">Escribe un terminal.</p></div>
+  </div>
+
+  <div class="ens-panel" id="panel-rep-operario">
+    <div class="ens-card">
+      <p class="ens-maq-sub">Todo lo que ha engastado un operario, y los ensayos que ha hecho.</p>
+      <div class="ens-row">
+        <select id="rep-operario" style="flex:1;min-width:220px"><option value="">— Seleccionar operario —</option></select>
+        <button class="btn-primary" id="rep-operario-ver">🔍 Ver</button>
+      </div>
+    </div>
+    <div class="ens-card ens-scroll" id="rep-operario-res"><p class="ens-vacio">Elige un operario.</p></div>
+  </div>
+
+  <!-- ══ Máquinas y matrices ══ -->
+  <div class="ens-panel" id="panel-maquinas">
+    <p class="ens-maq-sub">
+      Cada máquina decide cada cuánto se ensaya. Se ensaya cada <strong>matriz</strong> el primer
+      día (o mes) que se usa; los terminales sin matriz se ensayan a nivel de máquina.
+      Las máquinas en «Sin ensayo» funcionan como siempre.
+    </p>
+    <div id="lista-maquinas"><p class="ens-vacio">Cargando…</p></div>
+  </div>
+
+  <!-- ══ Fuerzas mínimas ══ -->
+  <div class="ens-panel" id="panel-fuerzas">
+    <div class="ens-card">
+      <h3 style="margin-top:0">Añadir o cambiar</h3>
+      <p class="ens-maq-sub">Deja el terminal vacío para una fuerza genérica de esa sección: se usa cuando el terminal no tiene la suya.</p>
+      <div class="ens-form">
+        <label>Terminal <input id="f-terminal" placeholder="(genérica)"></label>
+        <label>Sección (mm²) <input id="f-seccion" inputmode="decimal" placeholder="1,5"></label>
+        <label>Fuerza mínima (N) <input id="f-fuerza" inputmode="decimal" placeholder="155"></label>
+        <label>Norma / origen <input id="f-norma" placeholder="IEC 60352-2, cliente…"></label>
+        <label style="grid-column: 1 / -1">Instrucciones para el operario (opcional)
+          <textarea id="f-instr" rows="2" placeholder="Si se deja vacío se muestran las instrucciones genéricas"></textarea></label>
+        <button class="btn-primary" id="f-guardar" {% if not puede_editar %}disabled{% endif %}>Guardar</button>
+      </div>
+      <hr>
+      <div class="ens-row">
+        <strong>Importar Excel:</strong>
+        <span class="ens-maq-sub">columnas «Terminal», «Sección», «Fuerza mínima (N)» y opcional «Norma», «Instrucciones»</span>
+        <input type="file" id="f-excel" accept=".xlsx,.xls" {% if not puede_editar %}disabled{% endif %}>
+      </div>
+    </div>
+    <div class="ens-card ens-scroll">
+      <table class="ens-tabla">
+        <thead><tr><th>Terminal</th><th>Sección</th><th>Fuerza mínima</th><th>Norma</th><th>Instrucciones</th><th></th></tr></thead>
+        <tbody id="tabla-fuerzas"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ Historial ══ -->
+  <div class="ens-panel" id="panel-historial">
+    <div class="ens-card">
+      <div class="ens-form">
+        <label>Desde <input type="date" id="h-desde"></label>
+        <label>Hasta <input type="date" id="h-hasta"></label>
+        <label>Máquina <select id="h-maquina"><option value="">Todas</option></select></label>
+        <label>Terminal <input id="h-terminal"></label>
+        <label>Tipo
+          <select id="h-tipo">
+            <option value="">Todo</option>
+            <option value="ensayo">Ensayos</option>
+            <option value="decision">Decisiones del supervisor</option>
+            <option value="regulacion">Regulaciones</option>
+          </select></label>
+        <label>Resultado
+          <select id="h-resultado"><option value="">Todos</option><option>OK</option><option>NOK</option></select></label>
+        <button class="btn-primary" id="h-buscar">Buscar</button>
+        <button class="btn-secondary" id="h-csv">Exportar CSV</button>
+      </div>
+    </div>
+    <div class="ens-card ens-scroll">
+      <table class="ens-tabla">
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Máquina / matriz</th><th>Terminal</th><th>Sección</th>
+                   <th>Fuerza</th><th>Mínimo</th><th>Resultado</th><th>Operario</th><th>Supervisor / decisión</th><th>Comentario</th></tr></thead>
+        <tbody id="tabla-historial"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="ens-msg" id="ens-msg"></div>
+
+<script>window.ENSAYOS_PUEDE_EDITAR = {{ 'true' if puede_editar else 'false' }};</script>
+<script src="{{ url_for('static', filename='js/ensayos.js') }}"></script>
+<script src="{{ url_for('static', filename='js/calidad-report.js') }}"></script>
+{% include '_version_badge.html' %}
+</body>
+</html>
