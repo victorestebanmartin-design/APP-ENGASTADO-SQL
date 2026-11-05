@@ -63,6 +63,7 @@ async function cargarPaquetesDelCarro() {
         }
 
         paginaPaquetes = 0;    // reset al cargar nuevo carro
+        paquetesPorPagina = data.paquetes_por_tanda || 5; // cada carro, según la cantidad de su orden
         batchFinIndex = 0;     // reset límite de lote
         paqueteActualIndex = 0; // reset índice para evitar falsos "completados" al cancelar
         paquetesOrdenados = []; // forzar re-orden
@@ -104,7 +105,7 @@ function _hashLote(texto) {
 }
 
 /**
- * Mostrar modal con paquetes a coger del carro (paginado de 5 en 5)
+ * Mostrar modal con paquetes a coger del carro (paginado por tandas de paquetesPorPagina)
  */
 async function mostrarModalPaquetes(carro) {
     const gruposEtiquetas = await cargarGruposEtiquetas();
@@ -129,8 +130,8 @@ async function mostrarModalPaquetes(carro) {
     }
 
     const total = paquetesOrdenados.length;
-    const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
-    const fin = Math.min(inicio + PAQUETES_POR_PAGINA, total);
+    const inicio = paginaPaquetes * paquetesPorPagina;
+    const fin = Math.min(inicio + paquetesPorPagina, total);
     let paginaActual = paquetesOrdenados.slice(inicio, fin);
     const esUltimaPagina = fin >= total;
 
@@ -178,8 +179,10 @@ async function mostrarModalPaquetes(carro) {
         }
     }
 
-    const totalPaginas = Math.ceil(total / PAQUETES_POR_PAGINA);
+    const totalPaginas = Math.ceil(total / paquetesPorPagina);
     const paginaNum = paginaPaquetes + 1;
+    // De 1 en 1 sería "Paquetes 3–3"
+    const rangoPagina = fin - inicio > 1 ? `Paquetes ${inicio+1}–${fin}` : `Paquete ${inicio+1}`;
 
     // ── Confirmación física en el carro (botón del puesto + OK) ──────────
     // Cada grupo tiene un id de lote. Si el carro tiene pantalla asignada y el
@@ -211,7 +214,7 @@ async function mostrarModalPaquetes(carro) {
     const displayVivo = est.viva;
 
     // Push a pantalla ESP32 (asíncrono, no bloquea el modal).
-    // Se envía SOLO la página visible del modal (los mismos 5 que ve el
+    // Se envía SOLO la página visible del modal (los mismos que ve el
     // operario), con los bloqueos ya re-verificados. La entrada va indexada por
     // PUESTO: la pantalla la muestra cuando se pulsa el botón de ese puesto.
     pushToESP32(_payloadESP32(carro, {
@@ -262,15 +265,15 @@ async function mostrarModalPaquetes(carro) {
                 ${(carro.cantidad || 1) > 1 ? `<div style="flex:1;text-align:center;"><div style="font-size:1.2em;font-weight:bold;">×${carro.cantidad}</div><div style="font-size:0.78em;opacity:0.9;">Uds. de la orden</div></div>` : ''}
             </div>
 
-            ${total > PAQUETES_POR_PAGINA ? `
+            ${total > paquetesPorPagina ? `
             <div style="display:flex;align-items:center;justify-content:space-between;background:#e7f1ff;border-radius:8px;padding:10px 16px;margin-bottom:16px;">
                 <span style="font-weight:600;color:#0d6efd;">Grupo ${paginaNum} de ${totalPaginas}</span>
-                <span style="color:#495057;">Paquetes ${inicio+1}–${fin} de ${total}</span>
-                <div style="display:flex;gap:4px;">${Array.from({length:totalPaginas},(_,i)=>`<div style="width:10px;height:10px;border-radius:50%;background:${i===paginaPaquetes?'#0d6efd':'#dee2e6'};"></div>`).join('')}</div>
+                <span style="color:#495057;">${rangoPagina} de ${total}</span>
+                ${totalPaginas <= 20 ? `<div style="display:flex;gap:4px;">${Array.from({length:totalPaginas},(_,i)=>`<div style="width:10px;height:10px;border-radius:50%;background:${i===paginaPaquetes?'#0d6efd':'#dee2e6'};"></div>`).join('')}</div>` : ''}
             </div>` : ''}
 
             <div style="margin-bottom:20px;">
-                <h3 style="margin-bottom:4px;font-size:1em;">📦 ${total > PAQUETES_POR_PAGINA ? `Paquetes ${inicio+1}–${fin} (grupo ${paginaNum}/${totalPaginas}):` : 'Paquetes a coger:'}</h3>
+                <h3 style="margin-bottom:4px;font-size:1em;">📦 ${total > paquetesPorPagina ? `${rangoPagina} (grupo ${paginaNum}/${totalPaginas}):` : 'Paquetes a coger:'}</h3>
                 ${libresEnPagina > 0 ? '<p style="font-size:0.78em;color:#6c757d;margin-bottom:6px;">👆 Pulsa en un paquete que <strong>no tengas</strong> para saltarlo al inicio</p>' : ''}
                 ${bloqueadosEnPagina > 0 ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;font-size:0.88em;"><span>⚠️</span><span><strong>${bloqueadosEnPagina} paquete${bloqueadosEnPagina>1?'s están siendo trabajados':'  está siendo trabajado'} por otro puesto.</strong> Se saltarán automáticamente y quedarán pendientes.</span></div>` : ''}
                 ${paginaActual.map((paquete, i) => { const _c = paquete.numeroEtiqueta ? getCodCableColor(paquete.cod_cable) : null; return paquete.bloqueado ? `
@@ -320,7 +323,7 @@ async function mostrarModalPaquetes(carro) {
 
             <div style="text-align:center;border-top:2px solid #dee2e6;padding-top:10px;">
                 <p style="font-size:1em;color:#0d6efd;margin-bottom:10px;font-weight:bold;">
-                    ${total > PAQUETES_POR_PAGINA
+                    ${total > paquetesPorPagina
                         ? `Grupo ${paginaNum}/${totalPaginas}: pon ${libresEnPagina} paquete${libresEnPagina!==1?'s':''} en tu zona.${fin >= total ? ' (¡último grupo!)' : ` Quedan ${total - fin} más en el siguiente grupo.`}`
                         : libresEnPagina > 0 ? `Pon estos ${libresEnPagina} paquete${libresEnPagina!==1?'s':''} en tu zona de trabajo.` : 'Todos los paquetes de esta página están en uso por otro puesto.'
                     }
@@ -526,7 +529,7 @@ async function pedirDevolucion(esFinDeCarro, continuar) {
     window._devolucionContinuar = continuar;
 
     // Los paquetes del grupo que se acaba de trabajar
-    const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
+    const inicio = paginaPaquetes * paquetesPorPagina;
     const grupo = paquetesOrdenados.slice(inicio, batchFinIndex);
 
     pushToESP32(_payloadESP32(carro, {
@@ -535,7 +538,7 @@ async function pedirDevolucion(esFinDeCarro, continuar) {
         final: !!esFinDeCarro,
         lote: loteDev,
         grupo: paginaPaquetes + 1,
-        grupos: Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA),
+        grupos: Math.ceil(paquetesOrdenados.length / paquetesPorPagina),
         paquetes: grupo
     }));
 
@@ -710,8 +713,8 @@ function toggleSkipModal(idx) {
 function _actualizarBotonConfirmarModal() {
     const btn = document.getElementById('btn-confirmar-paquetes');
     if (!btn) return;
-    const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
-    const fin = Math.min(inicio + PAQUETES_POR_PAGINA, paquetesOrdenados.length);
+    const inicio = paginaPaquetes * paquetesPorPagina;
+    const fin = Math.min(inicio + paquetesPorPagina, paquetesOrdenados.length);
     // Excluir paquetes bloqueados del conteo (no se pueden trabajar)
     const bloqueadosEnLote = paquetesOrdenados.slice(inicio, fin).filter(p => p.bloqueado).length;
     const totalPagina = fin - inicio - bloqueadosEnLote;
@@ -741,8 +744,8 @@ function confirmarPaginaPaquetes() {
     }
     // Pre-saltar los paquetes que el usuario marcó como no disponibles
     if (window._skipModal && window._skipModal.size > 0) {
-        const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
-        const fin = Math.min(inicio + PAQUETES_POR_PAGINA, paquetesOrdenados.length);
+        const inicio = paginaPaquetes * paquetesPorPagina;
+        const fin = Math.min(inicio + paquetesPorPagina, paquetesOrdenados.length);
         for (const idx of window._skipModal) {
             if (idx >= inicio && idx < fin) {
                 const p = paquetesOrdenados[idx];
@@ -770,9 +773,9 @@ function confirmarPaginaPaquetes() {
         window._preSkipModal = new Set();
     }
     // Iniciar trabajo en el lote actual
-    const inicio = paginaPaquetes * PAQUETES_POR_PAGINA;
+    const inicio = paginaPaquetes * paquetesPorPagina;
     paqueteActualIndex = inicio;
-    batchFinIndex = Math.min(inicio + PAQUETES_POR_PAGINA, paquetesOrdenados.length);
+    batchFinIndex = Math.min(inicio + paquetesPorPagina, paquetesOrdenados.length);
 
     // Decirle a la pantalla del carro que este puesto ya está trabajando: deja
     // de pedir la recogida aunque la pantalla se reinicie.
@@ -782,7 +785,7 @@ function confirmarPaginaPaquetes() {
             fase: 'trabajando',
             lote: window._loteActualId || '',
             grupo: paginaPaquetes + 1,
-            grupos: Math.ceil(paquetesOrdenados.length / PAQUETES_POR_PAGINA),
+            grupos: Math.ceil(paquetesOrdenados.length / paquetesPorPagina),
             paquetes: paquetesOrdenados.slice(inicio, batchFinIndex)
         }));
     }
@@ -934,10 +937,10 @@ async function cancelarModalPaquetes() {
 let paqueteActualIndex = 0;
 let handlerEnterPaquete = null; // Handler global para evitar duplicados
 let paquetesOrdenados = [];    // Paquetes del carro ordenados por etiqueta
-let paginaPaquetes = 0;        // Página actual (grupos de 5)
+let paginaPaquetes = 0;        // Página actual (grupos de paquetesPorPagina)
 let batchFinIndex = 0;         // Índice límite del lote actual en la vista expandida
 let paquetesSaltados = [];     // Paquetes saltados en este carro (pendientes)
-const PAQUETES_POR_PAGINA = 5;
+let paquetesPorPagina = 5;     // Tamaño de tanda del carro actual (depende de la cantidad de su orden)
 
 function saltarPaquete() {
     if (paqueteActualIndex >= paquetesOrdenados.length) return;

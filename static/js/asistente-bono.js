@@ -1,4 +1,5 @@
-/* Asistente «Generar bono»: carro -> orden, repetido hasta 6 carros, y crear.
+/* Asistente «Generar bono»: carro -> orden, repetido hasta 6 carros (con el
+   número físico que lleve cada uno, sin tope), y crear.
    Pensado para la pistola: un único campo siempre enfocado; cada lectura
    termina en Enter. El servidor revalida todo al crear (app/routes/bonos_asistente.py). */
 (function () {
@@ -64,12 +65,12 @@
             ayuda.textContent = 'Etiqueta de la orden: corte-orden-cantidad';
             input.placeholder = 'H0174891-60238442-1';
         } else if (elegidos.length >= MAX_CARROS) {
-            paso.textContent = 'Bono completo (6 carros)';
+            paso.textContent = `Bono completo (${MAX_CARROS} carros)`;
             ayuda.textContent = 'Pulsa «Crear bono».';
             input.placeholder = '';
         } else {
             paso.textContent = elegidos.length ? 'Escanea otro carro o crea el bono' : 'Escanea el carro';
-            ayuda.textContent = 'Código del carro: carro1 … carro6';
+            ayuda.textContent = 'Código del carro: carro y su número, por ejemplo carro7';
             input.placeholder = 'carro1';
         }
         input.disabled = elegidos.length >= MAX_CARROS && carroPendiente === null;
@@ -111,14 +112,15 @@
         if (!codigo || ocupado) return;
         mostrarError();
         if (carroPendiente === null) {
-            const m = /^(?:carro\s*)?0*([1-6])$/i.exec(codigo);
-            if (!m) return mostrarError('Eso no es un carro.', 'Escanea el código del carro (carro1 … carro6).');
+            const m = /^(?:carro\s*)?0*([1-9]\d{0,6})$/i.exec(codigo);
+            if (!m) return mostrarError('Eso no es un carro.', 'Escanea el código del carro, por ejemplo carro7.');
             const n = Number(m[1]);
             if (elegidos.some((x) => x.carro === n)) return mostrarError(`El carro ${n} ya está en este bono.`);
+            // Un carro que no sale en la lista no se ha usado nunca: se da de alta al crear el bono.
             const info = carros.find((c) => c.numero === n);
-            if (!info || !info.libre) {
-                return mostrarError(`El carro ${n} no está libre.${info && info.motivo ? ' ' + info.motivo + '.' : ''}`,
-                    'Usa un carro vacío, o espera a que termine su bono. Si está vacío y se ha quedado atascado, libéralo.', info ? n : null);
+            if (info && !info.libre) {
+                return mostrarError(`El carro ${n} no está libre.${info.motivo ? ' ' + info.motivo + '.' : ''}`,
+                    'Usa un carro vacío, o espera a que termine su bono. Si está vacío y se ha quedado atascado, libéralo.', n);
             }
             carroPendiente = n;
         } else {

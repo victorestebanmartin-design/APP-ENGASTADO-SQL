@@ -107,7 +107,7 @@ class BonoRepository(BaseRepository):
         
         Args:
             bono_id: ID del bono
-            carro_numero: Número de carro (1-6)
+            carro_numero: Número de carro
         
         Returns:
             True si se asignó correctamente

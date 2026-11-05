@@ -1259,7 +1259,13 @@
         }
         
         function generarVistaBono(bono) {
-            const carros = [1, 2, 3, 4, 5, 6].map(numCarro => {
+            // Seis filas fijas si caben; con carros de numeración alta (7 y 10),
+            // solo los del bono, para no llenar la tarjeta de filas vacías.
+            const numerosBono = bono.carros.map(c => c.carro);
+            const filasCarro = numerosBono.some(n => n > 6)
+                ? [...numerosBono].sort((a, b) => a - b)
+                : [1, 2, 3, 4, 5, 6];
+            const carros = filasCarro.map(numCarro => {
                 const carroData = bono.carros.find(c => c.carro === numCarro);
                 return carroData || { carro: numCarro, vacio: true };
             });

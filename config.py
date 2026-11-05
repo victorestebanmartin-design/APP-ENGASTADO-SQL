@@ -287,11 +287,6 @@ class Config:
     PRINT_ON_CARRO_COMPLETION = os.environ.get('PRINT_ON_CARRO_COMPLETION', 'True').lower() == 'true'
     
     # =====================================================
-    # CONFIGURACIÓN CARROS
-    # =====================================================
-    NUM_CARROS = 6
-    
-    # =====================================================
     # LOGGING
     # =====================================================
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')

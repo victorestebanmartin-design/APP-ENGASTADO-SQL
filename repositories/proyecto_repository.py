@@ -70,7 +70,7 @@ class ProyectoRepository(BaseRepository):
         
         Args:
             proyecto_id: ID del proyecto
-            carro_numero: Número de carro (1-6)
+            carro_numero: Número de carro
         
         Returns:
             True si se asignó correctamente

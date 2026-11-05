@@ -12,6 +12,39 @@ from logging.handlers import RotatingFileHandler
 import sqlite3
 
 
+def _quitar_tope_numero_carros(conn):
+    """Quita el CHECK (numero BETWEEN 1 AND 6) de una BD existente.
+
+    SQLite no deja borrar un CHECK: hay que recrear la tabla. Las vistas y
+    triggers que nombran carros se quitan y se reponen, porque con ellos el
+    RENAME falla al no encontrar la tabla. Con foreign_keys en OFF, el DROP no
+    pone a NULL el carro_numero de las órdenes."""
+    fila = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='carros'").fetchone()
+    tope = r'CHECK\s*\(\s*numero\s+BETWEEN\s+1\s+AND\s+6\s*\)'
+    if not fila or not re.search(tope, fila[0], re.IGNORECASE):
+        return
+    tabla_nueva = re.sub(tope, '', fila[0], flags=re.IGNORECASE)
+    tabla_nueva = re.sub(r'^CREATE TABLE\s+"?carros"?', 'CREATE TABLE carros_nueva', tabla_nueva, flags=re.IGNORECASE)
+    indices = [sql for (sql,) in conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='carros' AND sql IS NOT NULL")]
+    dependientes = [(tipo, nombre, sql) for tipo, nombre, sql in conn.execute(
+        "SELECT type, name, sql FROM sqlite_master WHERE type IN ('view', 'trigger')")
+        if re.search(r'\bcarros\b', sql, re.IGNORECASE)]
+    quitar = ''.join(f'DROP {tipo} "{nombre}";\n' for tipo, nombre, _ in dependientes)
+    reponer = ''.join(f'{sql};\n' for sql in indices + [sql for _, _, sql in dependientes])
+    conn.executescript(f"""
+        PRAGMA foreign_keys=OFF;
+        BEGIN;
+        {quitar}
+        {tabla_nueva};
+        INSERT INTO carros_nueva SELECT * FROM carros;
+        DROP TABLE carros;
+        ALTER TABLE carros_nueva RENAME TO carros;
+        {reponer}
+        COMMIT;
+    """)
+
+
 def _apply_migrations(db_path):
     """Aplica migraciones necesarias a la BD existente."""
     conn = sqlite3.connect(db_path)
@@ -80,6 +113,8 @@ def _apply_migrations(db_path):
         """)
         cur.execute("DROP TABLE agrupacion_series_excepciones")
     conn.commit()
+
+    _quitar_tope_numero_carros(conn)
 
     # Obtener columnas actuales de etiquetas_elementos
     cur.execute("PRAGMA table_info(etiquetas_elementos)")

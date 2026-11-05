@@ -89,7 +89,7 @@ CREATE INDEX idx_bonos_fecha ON bonos(fecha_creacion DESC);
 DROP TABLE IF EXISTS carros;
 
 CREATE TABLE carros (
-    numero INTEGER PRIMARY KEY CHECK (numero BETWEEN 1 AND 6),
+    numero INTEGER PRIMARY KEY,
     bono_id TEXT,
     estado TEXT NOT NULL DEFAULT 'disponible',
     fecha_inicio TEXT,

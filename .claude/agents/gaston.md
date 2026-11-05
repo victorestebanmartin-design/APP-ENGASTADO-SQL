@@ -67,7 +67,9 @@ Consecuencias prácticas:
 4. **Máquina → terminal → carro.** Se filtran por
    `/api/bonos/<bono>/terminales-disponibles`: solo se ofrecen terminales que
    de verdad tienen trabajo en los Excels del bono.
-5. **Paquetes** (`v3-paquetes-modal.js`), de 5 en 5, con bloqueo entre puestos.
+5. **Paquetes** (`v3-paquetes-modal.js`), por tandas según la cantidad de la orden
+   de cada carro (1 → 5, 2 → 3, 3 → 2, 4 o más → 1; `_paquetes_por_tanda` en
+   `trabajo_v3.py`), con bloqueo entre puestos.
 6. **Progreso**, que se guarda en un JSON por bono.
 
 ## El número de carro es posicional — y eso ya ha roto el progreso
@@ -93,14 +95,14 @@ Del mismo lado está el filtro de `trabajo_v3.py`: los paquetes cuyas tres
 listas de cables quedan vacías (todo el elemento marcado con `*`, el terminal
 no se engasta ahí) **sí** se ocultan — ahí sí es verdad que no hay trabajo.
 
-## Bloqueo entre puestos: sesiones de 5 paquetes
+## Bloqueo entre puestos: sesiones por tanda de paquetes
 
 Dos puestos pueden tener el mismo paquete en su lista. El mecanismo:
 
 - `/api/datos_trabajo_v3?...&iniciar_sesion=1` crea una sesión **con lista
   vacía** y devuelve `sesion_id` (→ `sesionActualId`).
 - El frontend llama a `PUT /api/sesion/actualizar-paquetes` **en cada página**
-  de 5, de modo que la sesión solo reclama lo que el operario tiene delante en
+  (tanda), de modo que la sesión solo reclama lo que el operario tiene delante en
   ese momento. Si bloqueara todo el terminal de golpe, un puesto dejaría a los
   demás sin trabajo durante una hora.
 - Saltar un paquete → `POST /api/sesion/liberar-paquete`. Salir → `/api/sesion/liberar`.

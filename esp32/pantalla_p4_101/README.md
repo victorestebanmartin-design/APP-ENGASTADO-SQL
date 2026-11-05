@@ -55,7 +55,7 @@ en el carro; vacío = nadie identificado):
   fuentes de más de 48 px) y `N cbl · M term` abajo, todo sobre **el color de
   fondo de la etiqueta** (el mismo que el modal del SW web). Un paquete en uso por otro
   puesto sale en gris con borde rojo y «EN USO». El carro pasa los paquetes de
-  uno en uno por su pantalla pequeña; aquí se ven los cinco del grupo. Cuando
+  uno en uno por su pantalla pequeña; aquí se ven todos los del grupo (hasta cinco). Cuando
   el carro vuelve solo a la lista (a los `VOLVER_LISTA_S`), la P4 también.
 
 Pie: `Conectado` (punto verde) mientras llegan tramas; si pasan 90 s sin

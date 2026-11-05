@@ -84,7 +84,9 @@ def test_crear_bono_ocupa_carros_y_ordenes(operario, app):
 
 def test_crear_valida_la_peticion(operario):
     assert _crear(operario, []).status_code == 400
-    assert _crear(operario, [(7, 'o1')]).status_code == 400
+    assert _crear(operario, [(0, 'o1')]).status_code == 400
+    assert _crear(operario, [('7', 'o1')]).status_code == 400
+    assert _crear(operario, [(10_000_000, 'o1')]).status_code == 400
     assert _crear(operario, [(1, 'o1'), (1, 'o2')]).status_code == 400
     assert _crear(operario, [(1, 'o1'), (2, 'o1')]).status_code == 400
 
@@ -179,7 +181,8 @@ def test_liberar_carro_atascado(operario, app):
     _crear(operario, [(3, 'o1')])
     ruta = '/api/bonos/asistente/liberar-carro'
     assert operario.post(ruta, json={'carro': 3}).status_code == 400          # sin confirmar
-    assert operario.post(ruta, json={'carro': 9, 'confirmar': True}).status_code == 400
+    assert operario.post(ruta, json={'carro': 0, 'confirmar': True}).status_code == 400
+    assert operario.post(ruta, json={'carro': 9, 'confirmar': True}).status_code == 404       # sin dar de alta
     r = operario.post(ruta, json={'carro': 3, 'confirmar': True})
     assert r.status_code == 200 and r.get_json()['success']
     libres = {c['numero']: c['libre'] for c in operario.get('/api/bonos/asistente/estado').get_json()['carros']}

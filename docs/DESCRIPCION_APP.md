@@ -55,14 +55,14 @@ Un **bono** es la unidad de trabajo diaria: agrupa órdenes de producción que s
 **Flujo:**
 1. Se crean órdenes de producción (por código de corte y cantidad)
 2. Se genera un bono agrupando varias órdenes
-3. El bono se asigna a uno o varios **carros** (1 a 6 disponibles)
+3. El bono se asigna a uno o varios **carros** (máximo 6 por bono, con cualquier número)
 4. Cada carro lleva físicamente las piezas a la máquina
 5. Se hace seguimiento del progreso del bono
 
 **Entidades:**
 - **Proyectos:** archivos Excel cargados, representan un corte/proyecto
 - **Bonos:** agrupación de órdenes con fecha, estado y progreso
-- **Carros:** 6 carros físicos (1-6), cada uno puede llevar un bono activo
+- **Carros:** carros físicos, sin tope de numeración; cada uno puede llevar un bono activo
 
 ---
 
@@ -157,7 +157,7 @@ Fichero: `data/engastado.db`
 |---|---|
 | `proyectos` | Archivos Excel cargados |
 | `bonos` | Bonos de producción |
-| `carros` | 6 carros físicos (1-6) |
+| `carros` | Carros físicos, por su número (del 1 al 6 de inicio; se añaden más) |
 | `ordenes_produccion` | Órdenes con estado y asignación |
 | `codigos_cortes` | Códigos de corte registrados |
 | `puestos` | Puestos de trabajo en planta |

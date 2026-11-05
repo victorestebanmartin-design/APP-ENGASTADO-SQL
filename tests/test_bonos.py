@@ -209,7 +209,7 @@ def test_bono_selectivo_conserva_carros_fisicos_y_reserva(client, app):
 
 def test_bono_rechaza_carros_vacios_o_seleccion_invalida(client, app):
     _orden_en_carro(client, app, 'NO_PERDER', 4)
-    for seleccion, codigo in (([], 400), ([4, 4], 400), ([7], 400), ([True], 400), ([3, 4], 409)):
+    for seleccion, codigo in (([], 400), ([4, 4], 400), ([0], 400), ([True], 400), (list(range(1, 8)), 400), ([3, 4], 409), ([7], 409)):
         assert client.post('/api/bonos/generar', json={'nombre': 'INVALIDO', 'carros': seleccion}).status_code == codigo
     assert client.get('/api/carros').get_json()['carros'][3]['ocupado']
 

@@ -1,9 +1,10 @@
 """
 Asistente «Generar bono» para operarios.
 
-El operario escanea con la pistola el carro (carro1..carro6) y la orden que
-lleva (corte-orden-cantidad, el mismo código que en Mangueras) y, al confirmar,
-nace el bono. Un carro lleva una sola orden; el bono junta varios carros.
+El operario escanea con la pistola el carro (carro7, con el número que lleve) y
+la orden que lleva (corte-orden-cantidad, el mismo código que en Mangueras) y, al
+confirmar, nace el bono. Un carro lleva una sola orden; el bono junta varios
+carros. Un carro que aún no estaba en la BD se da de alta al crear el bono.
 
 Aquí no se pide el PIN de admin: se pide sesión de operario con el permiso
 «bonos», que se habilita a mano en Admin -> Operarios.
@@ -17,13 +18,12 @@ from sqlalchemy.exc import IntegrityError
 
 from app.auth import sesion_admin_valida
 from app.fases_orden import motivo_fases_pendientes
-from app.routes.carros import liberar_carro_en_conn
+from app.routes.carros import MAX_CARROS_POR_BONO, liberar_carro_en_conn, numero_carro_valido
 from app.routes.base import bp, db, error_interno, operario_puede, _es_error_nombre_bono_duplicado
 from app.routes.mangueras_propuestas import _identidad, _json_peticion
 
 _CODIGO_ORDEN = re.compile(r'([A-Za-z0-9_]+)-(\d+)-([1-9]\d*)')
 _NOMBRE_BONO_NUEVO = re.compile(r'^(\d{7})_(\d{4})$')
-_MAX_CARROS = 6
 
 
 def nombre_sugerido_bono(conn):
@@ -55,7 +55,7 @@ def _quien():
 
 
 def _carros_libres(conn):
-    """{numero: (libre, motivo)} de los seis carros."""
+    """{numero: (libre, motivo)} de los carros dados de alta."""
     ocupados_proyecto = {r[0] for r in conn.execute(text(
         'SELECT carro_asignado FROM proyectos WHERE carro_asignado IS NOT NULL'))}
     resultado = {}
@@ -147,7 +147,7 @@ def asistente_bono_liberar_carro():
     try:
         datos = _json_peticion()
         carro = datos.get('carro')
-        if type(carro) is not int or not 1 <= carro <= _MAX_CARROS:
+        if not numero_carro_valido(carro):
             raise ValueError('Carro no válido.')
         if datos.get('confirmar') is not True:
             return jsonify(success=False, error='Confirma que el carro está vacío.'), 400
@@ -177,11 +177,11 @@ def asistente_bono_crear():
     try:
         datos = _json_peticion()
         items = datos.get('carros')
-        if not isinstance(items, list) or not 1 <= len(items) <= _MAX_CARROS:
-            raise ValueError(f'Añade entre uno y {_MAX_CARROS} carros al bono.')
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_CARROS_POR_BONO:
+            raise ValueError(f'Añade entre uno y {MAX_CARROS_POR_BONO} carros al bono.')
         for item in items:
-            if (not isinstance(item, dict) or type(item.get('carro')) is not int
-                    or not 1 <= item['carro'] <= _MAX_CARROS or not isinstance(item.get('orden_id'), str)):
+            if (not isinstance(item, dict) or not numero_carro_valido(item.get('carro'))
+                    or not isinstance(item.get('orden_id'), str)):
                 raise ValueError('Datos de carro u orden no válidos.')
         if len({i['carro'] for i in items}) != len(items) or len({i['orden_id'] for i in items}) != len(items):
             raise ValueError('Hay un carro o una orden repetidos.')
@@ -192,7 +192,8 @@ def asistente_bono_crear():
             conn.exec_driver_sql('BEGIN IMMEDIATE')
             libres = _carros_libres(conn)
             for item in items:
-                libre, motivo = libres.get(item['carro'], (False, 'Carro no encontrado'))
+                # Un carro sin fila en la BD es uno que nunca se ha usado: libre.
+                libre, motivo = libres.get(item['carro'], (True, None))
                 if not libre:
                     return jsonify(success=False, error=f"Carro {item['carro']}: {motivo}.",
                                    consejo='Actualiza la pantalla y elige otro carro.'), 409
@@ -211,6 +212,7 @@ def asistente_bono_crear():
             ), {'id': bono_id, 'nombre': nombre,
                 'descripcion': f'Bono con {len(items)} carros (creado por {operario})'})
             for item in items:
+                conn.execute(text('INSERT OR IGNORE INTO carros (numero) VALUES (:n)'), {'n': item['carro']})
                 conn.execute(text(
                     "UPDATE ordenes_produccion SET bono_id = :bono, estado = 'en_bono', "
                     "carro_numero = :carro, fecha_inicio_bono = datetime('now') WHERE id = :id"

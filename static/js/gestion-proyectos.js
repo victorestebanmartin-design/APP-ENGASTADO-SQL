@@ -76,6 +76,30 @@ function mostrarCarros(carros) {
     `).join('');
 }
 
+/**
+ * Dar de alta un carro físico nuevo, con el número que lleve
+ */
+async function anadirCarro() {
+    if (operacionCarros) return;
+    const texto = prompt('Número del carro que quieres añadir:');
+    if (texto === null) return;
+    operacionCarros = true;
+    try {
+        const response = await fetch('/api/carros', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({numero: Number(texto.trim())})
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.message || 'No se pudo añadir el carro');
+        mostrarMensaje(data.message, 'success');
+    } catch (error) {
+        mostrarMensaje(error.message, 'error');
+    } finally {
+        await actualizarPlanificacion();
+        operacionCarros = false;
+    }
+}
+
 function seleccionarCarro(numero, seleccionado) {
     if (seleccionado) carrosExcluidos.delete(numero);
     else carrosExcluidos.add(numero);
@@ -275,7 +299,7 @@ async function abrirModalGenerarBono() {
     }
     
     if (carrosOcupados.length > 6) {
-        mostrarMensaje('No se pueden incluir más de 6 carros en un bono', 'error');
+        mostrarMensaje('No se pueden incluir más de 6 carros en un bono: desmarca «Incluir» en los que sobren', 'error');
         return;
     }
     

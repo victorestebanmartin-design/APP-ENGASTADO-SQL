@@ -26,6 +26,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager
+from app.routes.carros import MAX_CARROS_POR_BONO, numero_carro_valido
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -341,11 +342,11 @@ def api_generar_bono_desde_carros():
         nombre_bono = data.get('nombre')
         seleccion = data.get('carros')
         if seleccion is not None and (
-            not isinstance(seleccion, list) or not seleccion or len(seleccion) > 6
-            or any(type(numero) is not int or not 1 <= numero <= 6 for numero in seleccion)
+            not isinstance(seleccion, list) or not seleccion or len(seleccion) > MAX_CARROS_POR_BONO
+            or not all(numero_carro_valido(numero) for numero in seleccion)
             or len(set(seleccion)) != len(seleccion)
         ):
-            return jsonify(success=False, message='Selecciona entre uno y seis carros distintos'), 400
+            return jsonify(success=False, message=f'Selecciona entre uno y {MAX_CARROS_POR_BONO} carros distintos'), 400
         
         if not nombre_bono:
             return jsonify({
@@ -372,10 +373,10 @@ def api_generar_bono_desde_carros():
                 'message': 'No hay carros con proyectos asignados'
             }), 400
         
-        if len(proyectos_en_carros) > 6:
+        if len(proyectos_en_carros) > MAX_CARROS_POR_BONO:
             return jsonify({
                 'success': False,
-                'message': 'No se pueden incluir más de 6 carros en un bono'
+                'message': f'No se pueden incluir más de {MAX_CARROS_POR_BONO} carros en un bono'
             }), 400
         
         # Extraer números de orden de los proyectos

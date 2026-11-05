@@ -43,6 +43,34 @@ from app.routes.base import (
 
 # ==================== CARROS ====================
 
+# El número es el del carro físico y no tiene tope: lo que está limitado es
+# cuántos carros junta un bono, no cuáles.
+MAX_CARROS_POR_BONO = 6
+# 7 cifras: las que caben en el char[8] de la pantalla del carro.
+_NUMERO_CARRO_MAX = 9_999_999
+
+
+def numero_carro_valido(numero):
+    return type(numero) is int and 1 <= numero <= _NUMERO_CARRO_MAX
+
+
+@bp.route('/api/carros', methods=['POST'])
+def api_crear_carro():
+    """Dar de alta un carro físico nuevo."""
+    try:
+        data = request.get_json(silent=True) or {}
+        numero = data.get('numero')
+        if not numero_carro_valido(numero):
+            return jsonify(success=False, message='Indica un número de carro válido'), 400
+        with db.engine.begin() as conn:
+            creado = conn.execute(text('INSERT OR IGNORE INTO carros (numero) VALUES (:numero)'), {'numero': numero}).rowcount
+        if not creado:
+            return jsonify(success=False, message=f'El carro {numero} ya existe'), 409
+        return jsonify(success=True, message=f'Carro {numero} añadido')
+    except Exception as e:
+        return error_interno(e)
+
+
 @bp.route('/api/carros', methods=['GET'])
 def api_obtener_carros():
     """Obtener listado de carros con información de proyectos"""
@@ -121,8 +149,8 @@ def api_asignar_orden_a_carro():
         archivo = data.get('archivo')
         orden_id = data.get('orden_id')  # ID de la orden
         
-        if type(numero_carro) is not int or not 1 <= numero_carro <= 6:
-            return jsonify(success=False, message='Selecciona un carro del 1 al 6'), 400
+        if not numero_carro_valido(numero_carro):
+            return jsonify(success=False, message='Selecciona un carro válido'), 400
         if not orden_id and (not proyecto_nombre or not archivo):
             return jsonify({
                 'success': False,
@@ -206,8 +234,8 @@ def api_mover_carro(numero_carro):
     try:
         data = request.get_json(silent=True) or {}
         destino = data.get('destino')
-        if type(destino) is not int or not 1 <= destino <= 6 or destino == numero_carro:
-            return jsonify(success=False, message='Selecciona otro carro del 1 al 6'), 400
+        if not numero_carro_valido(destino) or destino == numero_carro:
+            return jsonify(success=False, message='Selecciona otro carro válido'), 400
         with db.engine.begin() as conn:
             conn.execute(text('UPDATE carros SET numero = numero WHERE numero IN (:origen, :destino)'), {'origen': numero_carro, 'destino': destino})
             carros = conn.execute(text('SELECT * FROM carros WHERE numero IN (:origen, :destino)'), {'origen': numero_carro, 'destino': destino}).mappings().all()
@@ -246,8 +274,8 @@ def api_asignar_proyecto_carro():
                 'message': 'Faltan parámetros'
             }), 400
         
-        if type(carro) is not int or not 1 <= carro <= 6:
-            return jsonify(success=False, message='Selecciona un carro del 1 al 6'), 400
+        if not numero_carro_valido(carro):
+            return jsonify(success=False, message='Selecciona un carro válido'), 400
         with db.engine.begin() as conn:
             conn.execute(text('UPDATE carros SET numero = numero WHERE numero = :numero'), {'numero': carro})
             destino = conn.execute(text('SELECT * FROM carros WHERE numero = :numero'), {'numero': carro}).mappings().first()

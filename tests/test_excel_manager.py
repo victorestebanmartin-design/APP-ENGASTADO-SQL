@@ -6,6 +6,8 @@ Reglas de agrupación (agrupar_por_cable_elemento):
 - ROJO  (cables_doble_terminal): terminal en ambos lados de la fila -> 2 terminales
 - Un '*' al final de De/Para Elemento indica que ese lado NO se engasta.
 """
+import os
+
 import pandas as pd
 import pytest
 
@@ -496,6 +498,30 @@ class TestCantidadOrden:
         assert d['success'], d
         assert d['cantidad_orden'] == 1
         assert d['paquetes'][0]['num_terminales'] == 2
+
+    def test_tanda_de_paquetes_depende_de_la_cantidad_de_cada_orden(self, admin_client, app):
+        """Un mismo bono puede tener carros de órdenes distintas: cada uno
+        recibe su propio tamaño de tanda."""
+        for cantidad, tanda in [(1, 5), (2, 3), (3, 2), (4, 1), (9, 1)]:
+            archivo = f'tanda{cantidad}.xlsx'
+            self._subir_excel(app, archivo)
+            orden_id = self._crear_orden(admin_client, app, f'ORD_TANDA{cantidad}', cantidad, archivo)
+            d = admin_client.get(
+                f'/api/datos_trabajo_v3?archivo={archivo}&terminal=640204&orden_id={orden_id}'
+            ).get_json()
+            assert d['success'], d
+            assert d['paquetes_por_tanda'] == tanda, f'cantidad {cantidad}'
+
+    def test_sin_orden_la_tanda_es_de_5(self, admin_client, app):
+        self._subir_excel(app, 'tanda_sin.xlsx')
+        d = admin_client.get('/api/datos_trabajo_v3?archivo=tanda_sin.xlsx&terminal=640204').get_json()
+        assert d['paquetes_por_tanda'] == 5
+
+    def test_el_modal_toma_la_tanda_del_servidor_al_cargar_cada_carro(self):
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(raiz, 'static', 'js', 'v3', 'v3-paquetes-modal.js'), encoding='utf-8') as f:
+            js = f.read()
+        assert 'paquetesPorPagina = data.paquetes_por_tanda' in js
 
 
 class TestCacheExcel:

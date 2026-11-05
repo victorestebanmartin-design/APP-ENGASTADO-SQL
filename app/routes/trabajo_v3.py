@@ -40,6 +40,13 @@ from app.routes.base import (
 )
 
 
+def _paquetes_por_tanda(cantidad_orden):
+    """Paquetes que el operario coge de una vez del carro, según las unidades
+    de la orden: cuantas más unidades, más material por paquete y menos caben
+    en la zona de trabajo. Máximo 5, los que admite la pantalla del carro."""
+    return {1: 5, 2: 3, 3: 2}.get(cantidad_orden, 1)
+
+
 @bp.route('/api/datos_trabajo_v3')
 def datos_trabajo_v3():
     """
@@ -272,7 +279,7 @@ def datos_trabajo_v3():
 
         if iniciar_sesion and maquina:
             # Crear sesión con lista vacía: los paquetes se actualizarán desde el frontend
-            # de 5 en 5 (página a página), para no bloquear paquetes que aún no están
+            # tanda a tanda (página a página), para no bloquear paquetes que aún no están
             # en pantalla del operario.
             sesion_id_nuevo = sesion_repo.crear_sesion(
                 maquina_id=maquina,
@@ -338,6 +345,7 @@ def datos_trabajo_v3():
             'paquetes_bloqueados': paquetes_bloqueados_count,
             'paquetes_libres': len(paquetes) - paquetes_bloqueados_count,
             'cantidad_orden': cantidad_orden,
+            'paquetes_por_tanda': _paquetes_por_tanda(cantidad_orden),
         }
         if sesion_id_nuevo:
             respuesta['sesion_id'] = sesion_id_nuevo
