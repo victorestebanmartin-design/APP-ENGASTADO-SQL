@@ -39,6 +39,7 @@ data/pick_to_light_estado.json
 data/pick_to_light_test.json
 data/pick_to_light_rfid_armado.json
 data/pick_to_light_correspondencia.json
+data/rfid_maquina_lecturas.json
 data/.tmp_*.json
 # Copias de seguridad automáticas (app/backup_auto.py)
 data/backups_auto/

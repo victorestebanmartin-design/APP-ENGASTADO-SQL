@@ -43,6 +43,14 @@ from app.routes.progreso import _crimps_por_terminal_archivo
 
 # ==================== REPORTS / TRAZABILIDAD ====================
 
+def _etiqueta_maquina(registro):
+    """'MATRICULA · Nombre' de un carros_registro. Vacía en los registros de antes
+    de guardar la máquina: no se deduce de la asignación actual de terminales,
+    porque en un report eso sería afirmar algo que no se sabe."""
+    return ' · '.join(p for p in (registro.get('maquina_matricula'),
+                                  registro.get('maquina_nombre')) if p)
+
+
 def _terminales_validos_bono(nombre_bono):
     """Set de terminales que REALMENTE se engastan en un bono (crimps > 0).
 
@@ -124,6 +132,8 @@ def api_report_progreso():
                     'bono': nombre_bono,
                     'terminal': terminal,
                     'operario': operario,
+                    'maquinas': sorted({e for e in map(_etiqueta_maquina,
+                                                       (datos.get('carros_registro') or {}).values()) if e}),
                     'estado': datos.get('estado', ''),
                     'carros_completados': datos.get('carros_completados', []),
                     'fecha_inicio': datos.get('fecha_inicio', ''),
@@ -224,6 +234,8 @@ def report_carros_bono(nombre_bono):
                     'terminal': terminal,
                     'crimps': int(n_crimps),
                     'operario': operario if completado else '',
+                    'maquina': _etiqueta_maquina(registro) if completado else '',
+                    'maquina_sin_confirmar': completado and registro.get('maquina_origen') == 'sin_confirmar',
                     'fecha': fecha,
                     'hora': hora,
                     'completado': completado,

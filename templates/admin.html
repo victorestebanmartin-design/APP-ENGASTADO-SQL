@@ -2758,6 +2758,11 @@
                 await ptlCargarMapa();
                 _ptlCanalPanel.fase = 'ver';
                 _ptlRenderCanalPanel();
+                if (data.rfid_heredado) {
+                    _ptlMensaje('ptl-canal-msg', 'Etiqueta de la máquina heredada: ' + data.rfid_heredado, true);
+                } else if (data.rfid_aviso) {
+                    _ptlMensaje('ptl-canal-msg', data.rfid_aviso, false);
+                }
             } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
         };
 

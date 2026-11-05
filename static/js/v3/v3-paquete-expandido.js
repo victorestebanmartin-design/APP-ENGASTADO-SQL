@@ -406,6 +406,7 @@ async function paqueteCompletado() {
                     terminal: terminalActual,
                     carro: carroActual.carro,
                     operario: operarioActual || '',
+                    ...datosMaquinaProgreso(),
                     paquetes_hechos: paqueteActualIndex,
                     paquetes_pendientes: paquetesSaltados.map(p => ({
                         elemento: p.elemento,
@@ -426,6 +427,7 @@ async function paqueteCompletado() {
                     terminal: terminalActual,
                     carro: carroActual.carro,
                     operario: operarioActual || '',
+                    ...datosMaquinaProgreso(),
                     terminales_proyecto: [terminalActual]
                 })
             });

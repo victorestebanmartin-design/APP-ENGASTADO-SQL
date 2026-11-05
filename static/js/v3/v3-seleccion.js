@@ -259,10 +259,12 @@ async function cargarMaquinas(puestoId) {
 async function seleccionarMaquina(maquina) {
     maquinaSeleccionada = maquina;
 
-    // Máquina censada con pick-to-light + RFID: antes de nada hay que coger la
-    // herramienta y confirmarla en el lector. Si no está censada, no hace nada.
-    await verificarMaquinaPtl(maquina);
-    
+    // Coger la herramienta (pick-to-light) y pasarla por el lector, si toca.
+    if (!await identificarMaquina(maquina, false)) {
+        maquinaSeleccionada = null;
+        return;
+    }
+
     // Obtener terminales que tienen datos en el bono
     let terminalesConDatos = [];
     try {

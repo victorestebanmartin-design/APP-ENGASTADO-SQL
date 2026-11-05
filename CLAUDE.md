@@ -78,6 +78,30 @@ Al tocar `esp32/lib/*.py` acuérdate de subir `FW_VERSION` en
 esa carpeta entra entera en el manifiesto OTA, pero la placa solo se actualiza
 si la versión cambia.
 
+## Matrícula y RFID de las máquinas: no es pick-to-light
+
+Cada máquina puede tener matrícula y etiqueta RFID (`app/routes/maquinas_rfid.py`,
+`static/js/v3/v3-maquina-rfid.js`) para que el report diga qué máquina hizo cada
+carro. Funciona sin PTL y sin firmware nuevo: la etiqueta llega a la misma entrada
+que una tarjeta de operario (`api_engastado_v3_entrada`), que la apunta para el
+puesto y no crea login.
+
+- **Solo se pide pasarla si** es manual, tiene etiqueta y el puesto tiene lector
+  vivo. Las manuales son móviles: pasar una en la lista la elige aunque sea de
+  otro puesto. Una con RFID de PTL ya confirmado no se pide otra vez.
+- **No bloquea:** «Continuar sin confirmar» sigue adelante, y el report lo dice.
+- **El report guarda copias** (`carros_registro`: `maquina_nombre`,
+  `maquina_matricula`, `maquina_origen`). Un registro antiguo sale con «—»: no
+  deduzcas la máquina de la asignación actual de terminales, sería inventárselo.
+- **Una etiqueta es de una sola cosa:** operario o máquina, en ambos sentidos. Sí
+  puede coincidir con la de su canal de PTL: es la misma pegatina física.
+- **El PTL la hereda:** se registra una vez, en la máquina. Al asignar la
+  herramienta a un canal vacío se copia a su `uid_rfid` (el enlace es por nombre,
+  como en `verificarMaquinaPtl`), y cambiarla o quitarla en la máquina actualiza
+  ese canal. Una etiqueta distinta puesta a mano en el canal no se pisa.
+- **La inspección solo avisa:** `maquinas.inspeccion_valida_hasta` se ve en la
+  tarjeta de Gestión de Puestos (caducada o a 30 días). No bloquea el engastado.
+
 ## Version de la app: `VERSION`, semver, la sube el asistente
 
 El fichero `VERSION` en la raíz (`X.Y.Z`) es la versión que se ve en la

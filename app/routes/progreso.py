@@ -282,6 +282,29 @@ def api_bonos_terminales_disponibles(nombre_bono):
         return error_interno(e)
 
 
+def _maquina_para_registro(data):
+    """Campos de la máquina para carros_registro, a partir de lo que manda engastado.
+
+    Nombre y matrícula van copiados a propósito, como en ensayos_traccion: el
+    report tiene que seguir diciendo qué máquina fue aunque luego se renombre o
+    se dé de baja. Un fallo aquí no puede impedir guardar el progreso.
+    """
+    maquina_id = str(data.get('maquina_id') or '').strip()
+    if not maquina_id:
+        return {}
+    origen = data.get('maquina_origen')
+    campos = {'maquina_id': maquina_id,
+              'maquina_origen': origen if origen in ('rfid', 'pantalla', 'sin_confirmar') else 'pantalla'}
+    try:
+        fila = MaquinaRepository(db).obtener_identificacion(maquina_id)
+        if fila:
+            campos['maquina_nombre'] = fila['nombre']
+            campos['maquina_matricula'] = fila['matricula'] or ''
+    except Exception:
+        current_app.logger.exception('No se pudo identificar la máquina %s para el report', maquina_id)
+    return campos
+
+
 @bp.route('/api/bonos/<nombre_bono>/progreso', methods=['POST'])
 def api_bonos_progreso_post(nombre_bono):
     """Guardar progreso de un terminal/carro en un bono"""
@@ -291,6 +314,7 @@ def api_bonos_progreso_post(nombre_bono):
         carro = data.get('carro')
         terminales_proyecto = data.get('terminales_proyecto', [])
         operario = (data.get('operario') or '').strip()
+        maquina_registro = _maquina_para_registro(data)
 
         if not terminal or not (carro or isinstance(carro, int)):
             return jsonify({
@@ -330,7 +354,8 @@ def api_bonos_progreso_post(nombre_bono):
             registro = progreso[terminal].get('carros_registro', {})
             registro[str(carro)] = {
                 'operario': operario or progreso[terminal].get('operario', ''),
-                'fecha': _ahora_iso()
+                'fecha': _ahora_iso(),
+                **maquina_registro
             }
             progreso[terminal]['carros_registro'] = registro
 
@@ -366,6 +391,7 @@ def api_bonos_progreso_parcial(nombre_bono):
         paquetes_saltados = data.get('paquetes_saltados', [])
         paquetes_hechos = data.get('paquetes_hechos', 0)
         operario = (data.get('operario') or '').strip()
+        maquina_registro = _maquina_para_registro(data)
 
         if not terminal:
             return jsonify({'success': False, 'message': 'Se requiere terminal'})
@@ -418,7 +444,8 @@ def api_bonos_progreso_parcial(nombre_bono):
                     registro = progreso[terminal].get('carros_registro', {})
                     registro[carro_key] = {
                         'operario': operario or progreso[terminal].get('operario', ''),
-                        'fecha': _ahora_iso()
+                        'fecha': _ahora_iso(),
+                        **maquina_registro
                     }
                     progreso[terminal]['carros_registro'] = registro
 

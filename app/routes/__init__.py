@@ -28,6 +28,7 @@ def init_routes(app):
         carros,
         archivos,
         puestos,
+        maquinas_rfid,
         cable_colores,
         operarios,
         reports,

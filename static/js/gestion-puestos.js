@@ -372,6 +372,8 @@ function mostrarListaMaquinas(maquinas) {
                             </div>
                         </div>
                         <p class="maquina-modelo">${maquina.modelo || 'Sin modelo'}</p>
+                        <p class="maquina-modelo">${maquina.matricula ? '🏷️ ' + maquina.matricula : 'Sin matrícula'}${maquina.tag_uid ? ' · 📡' : ''}</p>
+                        ${lineaInspeccion(maquina.inspeccion_valida_hasta)}
                         <p class="maquina-descripcion">${maquina.descripcion || 'Sin descripción'}</p>
                         <div class="maquina-stats" style="gap:6px;flex-wrap:wrap;">
                             <span class="badge-tipo ${tipoCls}">${tipoIcon} ${tipo}</span>
@@ -484,7 +486,12 @@ function mostrarModalMaquina(maquinaId = null) {
     
     // Actualizar selector de puestos
     actualizarSelectorPuestos();
-    
+
+    const maquinaRfid = maquinaId && dataMaquinas ? dataMaquinas.find(m => m.id === maquinaId) : null;
+    document.getElementById('maquina-matricula').value = maquinaRfid ? (maquinaRfid.matricula || '') : '';
+    document.getElementById('maquina-inspeccion').value = maquinaRfid ? (maquinaRfid.inspeccion_valida_hasta || '') : '';
+    _pintarRfidMaquina(maquinaRfid);
+
     if (maquinaId) {
         titulo.textContent = 'Editar Máquina';
         const maquina = dataMaquinas ? dataMaquinas.find(m => m.id === maquinaId) : null;
@@ -570,6 +577,163 @@ function mostrarModalMaquina(maquinaId = null) {
     modal.classList.add('active');
 }
 
+const INSPECCION_DIAS_AVISO = 30;
+
+/** Línea de la tarjeta con la validez de la inspección. Es válida todo su último día. */
+function lineaInspeccion(hasta) {
+    if (!hasta) return '<p class="maquina-modelo">Inspección sin anotar</p>';
+    const [anio, mes, dia] = hasta.split('-').map(Number);
+    const hoy = new Date();
+    const dias = Math.round((Date.UTC(anio, mes - 1, dia)
+                             - Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())) / 86400000);
+    const fecha = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${anio}`;
+    if (dias < 0) return `<p class="maquina-modelo" style="color:#f87171;font-weight:600;">⛔ Inspección caducada el ${fecha}</p>`;
+    if (dias <= INSPECCION_DIAS_AVISO) return `<p class="maquina-modelo" style="color:#fbbf24;font-weight:600;">⚠️ Inspección vence el ${fecha}</p>`;
+    return `<p class="maquina-modelo">🗓️ Inspección hasta ${fecha}</p>`;
+}
+
+
+// ── Etiqueta RFID de la máquina: mismo lector y misma captura que las tarjetas
+// de operario, ver app/routes/maquinas_rfid.py.
+let _maqCaptura = null;
+
+function _maqRfidBoton(texto, alPulsar) {
+    const boton = document.createElement('button');
+    boton.type = 'button';
+    boton.className = 'btn btn-secondary';
+    boton.textContent = texto;
+    boton.onclick = alPulsar;
+    return boton;
+}
+
+function _maqRfidTexto(texto, color) {
+    const span = document.createElement('span');
+    span.textContent = texto;
+    if (color) span.style.color = color;
+    return span;
+}
+
+function _pararCapturaMaquina(cancelarServidor) {
+    const anterior = _maqCaptura;
+    _maqCaptura = null;
+    if (anterior) clearTimeout(anterior.timer);
+    if (cancelarServidor && anterior) {
+        fetch(`/api/maquinas/${anterior.id}/rfid/captura/${anterior.token}`, { method: 'DELETE' }).catch(() => {});
+    }
+}
+
+function _pintarRfidMaquina(maquina, aviso, colorAviso) {
+    _pararCapturaMaquina(true);
+    const cont = document.getElementById('maquina-rfid');
+    cont.innerHTML = '';
+    if (!maquina) {
+        cont.appendChild(_maqRfidTexto('Guarda la máquina para poder asignarle la etiqueta.', 'var(--text-muted)'));
+        return;
+    }
+    cont.appendChild(_maqRfidTexto(maquina.tag_uid ? `📡 ${maquina.tag_uid}` : 'Sin etiqueta'));
+    cont.appendChild(_maqRfidBoton(maquina.tag_uid ? 'Cambiar' : 'Asignar etiqueta', () => _elegirLectorMaquina(maquina)));
+    if (maquina.tag_uid) cont.appendChild(_maqRfidBoton('Quitar', () => _quitarRfidMaquina(maquina)));
+    if (aviso) cont.appendChild(_maqRfidTexto(aviso, colorAviso));
+}
+
+async function _elegirLectorMaquina(maquina) {
+    const cont = document.getElementById('maquina-rfid');
+    cont.innerHTML = '';
+    cont.appendChild(_maqRfidTexto('Buscando lectores conectados...'));
+    try {
+        const resp = await fetch('/api/esp32/rfid/devices');
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.error || 'No se pudieron cargar los lectores');
+        const conectados = (data.devices || []).filter(d => d.online);
+        const lectores = conectados.filter(d => d.fw === data.firmware_version);
+        if (!lectores.length) {
+            _pintarRfidMaquina(maquina, conectados.length
+                ? 'Los lectores conectados necesitan actualizarse antes de registrar etiquetas.'
+                : 'No hay lectores RFID conectados.', '#f87171');
+            return;
+        }
+        const selector = document.createElement('select');
+        lectores.forEach(lector => {
+            const opcion = document.createElement('option');
+            opcion.value = lector.id;
+            opcion.textContent = `${lector.nombre || lector.id}${lector.puesto_nombre ? ' · ' + lector.puesto_nombre : ''}`;
+            selector.appendChild(opcion);
+        });
+        selector.style.maxWidth = '240px';
+        cont.innerHTML = '';
+        cont.appendChild(selector);
+        cont.appendChild(_maqRfidBoton('Preparar lector', () => _armarCapturaMaquina(maquina, selector.value)));
+        cont.appendChild(_maqRfidBoton('Cancelar', () => _pintarRfidMaquina(maquina)));
+    } catch (error) {
+        _pintarRfidMaquina(maquina, error.message, '#f87171');
+    }
+}
+
+async function _armarCapturaMaquina(maquina, deviceId) {
+    try {
+        const resp = await fetch(`/api/maquinas/${maquina.id}/rfid/captura`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.error || 'No se pudo preparar el lector');
+        _maqCaptura = { id: maquina.id, token: data.token, vence: Date.now() + data.segundos * 1000, timer: null };
+        _sondearCapturaMaquina(maquina, _maqCaptura);
+    } catch (error) {
+        _pintarRfidMaquina(maquina, error.message, '#f87171');
+    }
+}
+
+async function _sondearCapturaMaquina(maquina, captura) {
+    if (_maqCaptura !== captura) return;
+    // Cerrar el modal no puede dejar el lector esperando una etiqueta: la
+    // siguiente tarjeta de operario se tomaría por la de esta máquina.
+    if (!document.getElementById('modal-maquina').classList.contains('active')) {
+        _pararCapturaMaquina(true);
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/maquinas/${captura.id}/rfid/captura/${captura.token}`);
+        const data = await resp.json();
+        if (_maqCaptura !== captura) return;
+        if (resp.ok && data.success && data.estado !== 'armada') {
+            _maqCaptura = null;
+            const asignada = data.estado === 'asignada';
+            if (asignada) {
+                maquina.tag_uid = data.uid;
+                refrescarChips();
+            }
+            _pintarRfidMaquina(maquina, data.mensaje, asignada ? '#4ade80' : '#f87171');
+            return;
+        }
+    } catch (e) { /* Un corte breve no cancela la captura; se vuelve a consultar. */ }
+    if (Date.now() >= captura.vence) {
+        _maqCaptura = null;
+        _pintarRfidMaquina(maquina, 'Se agotó el tiempo. Vuelve a intentarlo.', '#f87171');
+        return;
+    }
+    const cont = document.getElementById('maquina-rfid');
+    cont.innerHTML = '';
+    cont.appendChild(_maqRfidTexto(`Lector preparado. Pasa la etiqueta (${Math.ceil((captura.vence - Date.now()) / 1000)} s)`, '#60a5fa'));
+    cont.appendChild(_maqRfidBoton('Cancelar', () => _pintarRfidMaquina(maquina, 'Captura cancelada.')));
+    captura.timer = setTimeout(() => _sondearCapturaMaquina(maquina, captura), 1000);
+}
+
+async function _quitarRfidMaquina(maquina) {
+    if (!confirm('¿Quitar la etiqueta RFID de esta máquina?')) return;
+    try {
+        const resp = await fetch(`/api/maquinas/${maquina.id}/rfid`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.error || 'No se pudo quitar la etiqueta');
+        maquina.tag_uid = null;
+        refrescarChips();
+        _pintarRfidMaquina(maquina, 'Etiqueta quitada.');
+    } catch (error) {
+        _pintarRfidMaquina(maquina, error.message, '#f87171');
+    }
+}
+
 /**
  * Guardar máquina
  */
@@ -577,6 +741,8 @@ async function guardarMaquina() {
     const puestoId = document.getElementById('maquina-puesto').value;
     const nombre = document.getElementById('maquina-nombre').value.trim();
     const modelo = document.getElementById('maquina-modelo').value.trim();
+    const matricula = document.getElementById('maquina-matricula').value.trim();
+    const inspeccion = document.getElementById('maquina-inspeccion').value;
     const descripcion = document.getElementById('maquina-descripcion').value.trim();
     const editId = document.getElementById('modal-maquina').dataset.editId;
     const tipoRadio = document.querySelector('input[name="maquina-tipo"]:checked');
@@ -604,17 +770,19 @@ async function guardarMaquina() {
                 puesto_id: puestoId,
                 nombre: nombre,
                 modelo: modelo || '',
+                matricula: matricula,
+                inspeccion_valida_hasta: inspeccion,
                 descripcion: descripcion || '',
                 tipo_operacion: tipoOperacion,
                 lleva_regulacion: llevaRegulacion
             })
         });
-        
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        
-        if (!data.success) {
-            alert('Error del servidor: ' + (data.message || 'Error desconocido'));
+
+        // Una matrícula repetida llega como 409 con su motivo: hay que enseñarlo.
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+            alert('Error del servidor: ' + (data.message || data.error || `HTTP ${response.status}`));
             return;
         }
 

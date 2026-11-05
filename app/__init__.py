@@ -599,6 +599,19 @@ def _apply_migrations(db_path):
             cur.execute("ALTER TABLE maquinas ADD COLUMN lleva_regulacion INTEGER NOT NULL DEFAULT 0")
         if 'pdf_regulacion' not in maq_cols:
             cur.execute("ALTER TABLE maquinas ADD COLUMN pdf_regulacion TEXT")
+        # Matricula y etiqueta RFID (app/routes/maquinas_rfid.py). Unicas solo
+        # entre las activas: una maquina dada de baja libera las dos.
+        if 'matricula' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN matricula TEXT")
+        if 'tag_uid' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN tag_uid TEXT")
+        # Hasta cuando vale la inspeccion periodica (AAAA-MM-DD). NULL = sin anotar.
+        if 'inspeccion_valida_hasta' not in maq_cols:
+            cur.execute("ALTER TABLE maquinas ADD COLUMN inspeccion_valida_hasta TEXT")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_maquinas_matricula ON maquinas(matricula) "
+                    "WHERE matricula IS NOT NULL AND activo = 1")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_maquinas_tag ON maquinas(tag_uid) "
+                    "WHERE tag_uid IS NOT NULL AND activo = 1")
         conn.commit()
 
     # Migración: tabla terminales_stock (stock de terminales por pedido)

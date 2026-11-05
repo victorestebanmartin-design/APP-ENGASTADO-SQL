@@ -80,25 +80,28 @@ async function destellarGaveta() {
  * siempre. Una etiqueta que no es la suya se explica en pantalla (dónde va la
  * que se ha cogido, o aviso al jefe de línea) y siempre queda «Continuar sin
  * confirmar».
+ *
+ * Devuelve true solo si el lector ha confirmado su etiqueta en este paso.
  */
 async function verificarMaquinaPtl(maquina) {
-    if (!maquina || !puestoSeleccionado || !puestoSeleccionado.id) return;
+    if (!maquina || !puestoSeleccionado || !puestoSeleccionado.id) return false;
     // Admin guarda el código recortado a 40 caracteres y sin espacios.
     const nombreMaq = (maquina.nombre || '').trim().slice(0, 40);
 
     // Misma máquina que ya se está usando: ya está confirmada y en azul.
-    if (herramientaEnUso && herramientaEnUso.codigo === nombreMaq) return;
+    if (herramientaEnUso && herramientaEnUso.codigo === nombreMaq) return false;
     // Otra máquina: la anterior hay que devolverla (azul parpadeando).
     if (herramientaEnUso) await devolverHerramientaMaquina(true);
 
     await cargarHerramientasDelPuesto();
     const censada = herramientasDelPuesto.find(h => h.codigo === nombreMaq);
-    if (!censada) return;
+    if (!censada) return false;
 
     avisarAtencionGaveta();
     await encenderGavetaTerminal(censada.codigo, 'parpadeo');
     const habiaLuz = !!(gavetaLuzActual && (gavetaLuzActual.activo || gavetaLuzActual.pendiente));
     await esperarRecogidaGaveta();
+    const rfidConfirmado = !!(gavetaLuzActual && gavetaLuzActual.rfid_confirmado);
 
     // Confirmada (o saltada): la herramienta queda en azul fijo mientras dure
     // el trabajo de la máquina, aunque se cambie de terminal, y la orden se
@@ -115,6 +118,7 @@ async function verificarMaquinaPtl(maquina) {
         } catch (e) { /* sin luz azul se trabaja igual */ }
     }
     await apagarGavetas();
+    return rfidConfirmado;
 }
 
 
@@ -435,6 +439,7 @@ async function esperarRecogidaGaveta() {
     } finally {
         overlay.remove();
     }
+    if (gavetaLuzActual) gavetaLuzActual.rfid_confirmado = !!(ultimoEstado && ultimoEstado.rfid_confirmado);
 
     // A partir de aqui la gaveta se queda fuera todo lo que dure el engaste;
     // eso es normal y no debe avisar de nada. Lo que si hay que seguir

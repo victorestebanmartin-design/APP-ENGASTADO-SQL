@@ -250,12 +250,13 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="width:30%;">Terminal</th>
-                        <th class="center" style="width:12%;">Crimps</th>
-                        <th style="width:24%;">Operario</th>
-                        <th class="center" style="width:16%;">Fecha</th>
-                        <th class="center" style="width:10%;">Hora</th>
-                        <th class="center" style="width:8%;">Estado</th>
+                        <th style="width:24%;">Terminal</th>
+                        <th class="center" style="width:8%;">Crimps</th>
+                        <th style="width:24%;">Máquina</th>
+                        <th style="width:20%;">Operario</th>
+                        <th class="center" style="width:12%;">Fecha</th>
+                        <th class="center" style="width:6%;">Hora</th>
+                        <th class="center" style="width:6%;">Estado</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -263,6 +264,7 @@
                     <tr>
                         <td class="term">{{ fila.terminal }}</td>
                         <td class="center">{{ fila.crimps }}</td>
+                        <td>{{ fila.maquina or '—' }}{% if fila.maquina_sin_confirmar %} <span class="estado-pend">(sin confirmar)</span>{% endif %}</td>
                         <td>{{ fila.operario or '—' }}</td>
                         <td class="center">{{ fila.fecha or '—' }}</td>
                         <td class="center">{{ fila.hora or '—' }}</td>
@@ -276,7 +278,7 @@
                     </tr>
                     {% endfor %}
                     {% if not carro.filas %}
-                    <tr><td colspan="6" class="center" style="color:#94a3b8;padding:18px;">Este carro no tiene terminales engastables.</td></tr>
+                    <tr><td colspan="7" class="center" style="color:#94a3b8;padding:18px;">Este carro no tiene terminales engastables.</td></tr>
                     {% endif %}
                 </tbody>
             </table>

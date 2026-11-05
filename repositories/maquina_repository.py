@@ -19,7 +19,9 @@ class MaquinaRepository(BaseRepository):
     
     def crear_maquina(self, id: str, puesto_id: str, nombre: str,
                       modelo: Optional[str] = None, descripcion: Optional[str] = None,
-                      tipo_operacion: str = 'MANUAL') -> bool:
+                      tipo_operacion: str = 'MANUAL',
+                      matricula: Optional[str] = None,
+                      inspeccion_valida_hasta: Optional[str] = None) -> bool:
         """
         Crear nueva máquina
         
@@ -30,13 +32,17 @@ class MaquinaRepository(BaseRepository):
             modelo: Modelo de la máquina (opcional)
             descripcion: Descripción (opcional)
             tipo_operacion: MANUAL, AUTOMATICA o SEMI-AUTOMATICA
-        
+            matricula: Matrícula física de la máquina (opcional)
+            inspeccion_valida_hasta: Validez de la inspección, AAAA-MM-DD (opcional)
+
         Returns:
             True si se creó correctamente
         """
         query = """
-            INSERT INTO maquinas (id, puesto_id, nombre, modelo, descripcion, tipo_operacion, activo)
-            VALUES (:id, :puesto_id, :nombre, :modelo, :descripcion, :tipo_operacion, 1)
+            INSERT INTO maquinas (id, puesto_id, nombre, modelo, descripcion, tipo_operacion, matricula,
+                                  inspeccion_valida_hasta, activo)
+            VALUES (:id, :puesto_id, :nombre, :modelo, :descripcion, :tipo_operacion, :matricula,
+                    :inspeccion_valida_hasta, 1)
         """
         params = {
             'id': id,
@@ -44,7 +50,9 @@ class MaquinaRepository(BaseRepository):
             'nombre': nombre,
             'modelo': modelo,
             'descripcion': descripcion,
-            'tipo_operacion': tipo_operacion or 'MANUAL'
+            'tipo_operacion': tipo_operacion or 'MANUAL',
+            'matricula': matricula or None,
+            'inspeccion_valida_hasta': inspeccion_valida_hasta or None
         }
         try:
             self.execute_insert(query, params)
@@ -62,7 +70,22 @@ class MaquinaRepository(BaseRepository):
         """
         resultados = self.execute_select(query, {'id': id})
         return resultados[0] if resultados else None
-    
+
+    def obtener_identificacion(self, id: str) -> Optional[Dict]:
+        """Nombre y matrícula de una máquina, aunque ya esté dada de baja."""
+        resultados = self.execute_select(
+            "SELECT id, nombre, matricula FROM maquinas WHERE id = :id", {'id': id})
+        return resultados[0] if resultados else None
+
+    def matricula_ocupada(self, matricula: str, excluir_id: Optional[str] = None) -> Optional[str]:
+        """Nombre de la máquina activa que ya lleva esa matrícula, o None."""
+        resultados = self.execute_select(
+            "SELECT id, nombre FROM maquinas WHERE matricula = :m AND activo = 1", {'m': matricula})
+        for fila in resultados:
+            if fila['id'] != excluir_id:
+                return fila['nombre']
+        return None
+
     def obtener_todas_maquinas(self, solo_activas: bool = True) -> List[Dict]:
         """
         Obtener todas las máquinas con información del puesto
@@ -107,11 +130,23 @@ class MaquinaRepository(BaseRepository):
                           limpiar_pdf: bool = False,
                           lleva_regulacion: Optional[bool] = None,
                           pdf_regulacion: Optional[str] = None,
-                          limpiar_pdf_regulacion: bool = False) -> bool:
-        """Actualizar información de una máquina"""
+                          limpiar_pdf_regulacion: bool = False,
+                          matricula: Optional[str] = None,
+                          inspeccion_valida_hasta: Optional[str] = None) -> bool:
+        """Actualizar información de una máquina. matricula='' o
+        inspeccion_valida_hasta='' la quitan."""
         updates = []
         params = {'id': id}
-        
+
+        if matricula is not None:
+            updates.append("matricula = :matricula")
+            params['matricula'] = matricula or None
+
+        if inspeccion_valida_hasta is not None:
+            updates.append("inspeccion_valida_hasta = :inspeccion_valida_hasta")
+            params['inspeccion_valida_hasta'] = inspeccion_valida_hasta or None
+
+
         if puesto_id is not None:
             updates.append("puesto_id = :puesto_id")
             params['puesto_id'] = puesto_id

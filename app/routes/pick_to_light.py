@@ -678,8 +678,13 @@ def api_pick_to_light_asignar_canal():
         ok, error = asignar_canal(puesto_id, canal, terminal, etiqueta, tipo=tipo)
         if not ok:
             return jsonify({'success': False, 'message': error}), 400
+        rfid_heredado, rfid_aviso = None, None
+        if tipo == 'herramienta':
+            from app.routes.maquinas_rfid import heredar_etiqueta_en_canal
+            rfid_heredado, rfid_aviso = heredar_etiqueta_en_canal(puesto_id, canal, terminal)
         return jsonify({'success': True, 'puesto_id': puesto_id, 'canal': canal,
-                        'terminal': terminal, 'etiqueta_gaveta': etiqueta, 'tipo': tipo})
+                        'terminal': terminal, 'etiqueta_gaveta': etiqueta, 'tipo': tipo,
+                        'rfid_heredado': rfid_heredado, 'rfid_aviso': rfid_aviso})
     except Exception as e:
         return error_interno(e, 'Error al asignar el canal')
 

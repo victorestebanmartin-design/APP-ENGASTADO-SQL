@@ -388,6 +388,10 @@ async function abrirModalMaquina() {
         })
         : [];
 
+    // También sin máquinas en la lista: las manuales son móviles y puede llegar
+    // una de otro puesto (v3-maquina-rfid.js).
+    iniciarEscuchaMaquina(terminalesConDatos);
+
     if (_maquinasCache.length === 0) {
         lista.innerHTML = '<p class="modal-bonos-vacio">Ninguna máquina de este puesto tiene terminales en el bono actual.</p>';
         return;
@@ -407,6 +411,7 @@ async function abrirModalMaquina() {
         return `<div class="modal-maquina-item${hecho ? ' completado' : ''}" onclick="seleccionarMaquinaDesdeModal(${i})">
             <div class="modal-maquina-item-nombre">${hecho ? '✅ ' : ''}${maquina.nombre}</div>
             ${maquina.modelo ? `<div class="modal-maquina-item-desc">${maquina.modelo}</div>` : ''}
+            ${maquina.matricula ? `<div class="modal-maquina-item-desc">🏷️ ${maquina.matricula}</div>` : ''}
             <div class="modal-puesto-item-prog">
                 <div class="modal-prog-bar"><div class="modal-prog-fill" style="width:${pct}%;background:${hecho ? '#28a745' : '#0d6efd'}"></div></div>
                 <span class="modal-prog-text">${completados}/${total}</span>
@@ -417,10 +422,20 @@ async function abrirModalMaquina() {
 }
 
 async function seleccionarMaquinaDesdeModal(idx) {
-    maquinaSeleccionada = _maquinasCache[idx];
+    await continuarConMaquina(_maquinasCache[idx], false);
+}
 
-    // Máquina censada con pick-to-light + RFID: coger la herramienta antes de seguir.
-    await verificarMaquinaPtl(maquinaSeleccionada);
+/** 'yaLeida': se ha elegido pasándola por el lector (v3-maquina-rfid.js). */
+async function continuarConMaquina(maquina, yaLeida) {
+    pararEscuchaMaquina();
+    maquinaSeleccionada = maquina;
+
+    // Coger la herramienta (pick-to-light) y pasarla por el lector, si toca.
+    if (!await identificarMaquina(maquina, yaLeida)) {
+        maquinaSeleccionada = null;
+        await abrirModalMaquina();
+        return;
+    }
 
     // Si la máquina lleva regulación, mostrar popup de verificación primero
     if (maquinaSeleccionada.lleva_regulacion) {

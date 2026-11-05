@@ -596,7 +596,15 @@ def api_crear_maquina():
                 'success': False,
                 'message': 'Puesto y nombre son obligatorios'
             }), 400
-        
+
+        from app.routes.maquinas_rfid import validar_inspeccion, validar_matricula
+        matricula, error_matricula = validar_matricula(data.get('matricula'))
+        if error_matricula:
+            return jsonify({'success': False, 'message': error_matricula}), 409
+        inspeccion, error_inspeccion = validar_inspeccion(data.get('inspeccion_valida_hasta'))
+        if error_inspeccion:
+            return jsonify({'success': False, 'message': error_inspeccion}), 400
+
         # Verificar que el puesto existe
         puesto_repo = PuestoRepository(db)
         puesto = puesto_repo.obtener_puesto(puesto_id)
@@ -616,7 +624,8 @@ def api_crear_maquina():
             new_id = f"maq_{len(maquinas_existentes) + 1:03d}_{random.randint(100, 999)}"
         
         # Crear máquina
-        if maquina_repo.crear_maquina(new_id, puesto_id, nombre, modelo, descripcion, tipo_operacion):
+        if maquina_repo.crear_maquina(new_id, puesto_id, nombre, modelo, descripcion, tipo_operacion,
+                                      matricula=matricula, inspeccion_valida_hasta=inspeccion):
             nueva_maquina = maquina_repo.obtener_maquina(new_id)
             nueva_maquina['terminales_asignados'] = []
             return jsonify({
@@ -663,9 +672,25 @@ def api_actualizar_maquina(maquina_id):
         lleva_regulacion = data.get('lleva_regulacion')
         if lleva_regulacion is not None:
             lleva_regulacion = bool(lleva_regulacion)
-        
+
+        # Sin el campo en la peticion no se toca; vacio la quita.
+        matricula = None
+        if 'matricula' in data:
+            from app.routes.maquinas_rfid import validar_matricula
+            matricula, error_matricula = validar_matricula(data.get('matricula'), maquina_id)
+            if error_matricula:
+                return jsonify({'success': False, 'message': error_matricula}), 409
+
+        inspeccion = None
+        if 'inspeccion_valida_hasta' in data:
+            from app.routes.maquinas_rfid import validar_inspeccion
+            inspeccion, error_inspeccion = validar_inspeccion(data.get('inspeccion_valida_hasta'))
+            if error_inspeccion:
+                return jsonify({'success': False, 'message': error_inspeccion}), 400
+
         if maquina_repo.actualizar_maquina(maquina_id, nombre, modelo, descripcion, puesto_id, tipo_operacion,
-                                           lleva_regulacion=lleva_regulacion):
+                                           lleva_regulacion=lleva_regulacion, matricula=matricula,
+                                           inspeccion_valida_hasta=inspeccion):
             maquina_actualizada = maquina_repo.obtener_maquina(maquina_id)
             maquina_actualizada['terminales_asignados'] = maquina_repo.obtener_terminales_asignados(maquina_id)
             return jsonify({

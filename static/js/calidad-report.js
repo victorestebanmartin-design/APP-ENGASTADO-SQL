@@ -20,6 +20,10 @@ function _repCarros(carros) {
     return lista.length ? lista.map(c => 'Carro ' + esc(c)).join(', ') : '<span class="ens-vacio">sin carro concreto</span>';
 }
 
+function _repMaquinas(maquinas) {
+    return (maquinas || []).map(esc).join('<br>');
+}
+
 function _repTabla(cols, filas, vacio) {
     if (!filas.length) return `<p class="ens-vacio">${vacio}</p>`;
     return `<table class="ens-tabla"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
@@ -64,8 +68,8 @@ document.getElementById('rep-bono-ver').onclick = () => {
     if (!bono) { aviso('Selecciona un bono', true); return; }
     _repBuscar('rep-bono-res', { bono }, { bono }, regs =>
         `<h3 class="ens-sub" style="margin-top:0">🔌 Engastado (${regs.length} terminales)</h3>` +
-        _repTabla(['Terminal', 'Operario', 'Estado', 'Inicio', 'Última actualización', 'Carros'],
-            regs.map(r => [`<code>${esc(r.terminal)}</code>`, esc(r.operario), _repEstado(r.estado),
+        _repTabla(['Terminal', 'Máquina', 'Operario', 'Estado', 'Inicio', 'Última actualización', 'Carros'],
+            regs.map(r => [`<code>${esc(r.terminal)}</code>`, _repMaquinas(r.maquinas), esc(r.operario), _repEstado(r.estado),
                            _repFecha(r.fecha_inicio), _repFecha(r.fecha_ultima_actualizacion), _repCarros(r.carros_completados)]),
             'Sin datos de engastado para este bono.'));
 };
@@ -81,8 +85,8 @@ document.getElementById('rep-terminal-ver').onclick = () => {
     if (!terminal) { aviso('Escribe un terminal', true); return; }
     _repBuscar('rep-terminal-res', { terminal }, { terminal }, regs =>
         `<h3 class="ens-sub" style="margin-top:0">📦 Engastado en ${regs.length} bono${regs.length !== 1 ? 's' : ''}</h3>` +
-        _repTabla(['Bono', 'Operario', 'Estado', 'Inicio', 'Última actualización'],
-            regs.map(r => [`<code>${esc(r.bono)}</code>`, esc(r.operario), _repEstado(r.estado),
+        _repTabla(['Bono', 'Máquina', 'Operario', 'Estado', 'Inicio', 'Última actualización'],
+            regs.map(r => [`<code>${esc(r.bono)}</code>`, _repMaquinas(r.maquinas), esc(r.operario), _repEstado(r.estado),
                            _repFecha(r.fecha_inicio), _repFecha(r.fecha_ultima_actualizacion)]),
             'Sin registros de engastado para este terminal.'));
 };
@@ -95,8 +99,8 @@ document.getElementById('rep-operario-ver').onclick = () => {
     if (!operario) { aviso('Selecciona un operario', true); return; }
     _repBuscar('rep-operario-res', { operario }, { operario }, regs =>
         `<h3 class="ens-sub" style="margin-top:0">🔌 Engastado (${regs.length})</h3>` +
-        _repTabla(['Terminal', 'Bono', 'Estado', 'Inicio', 'Última actualización'],
-            regs.map(r => [`<code>${esc(r.terminal)}</code>`, `<code>${esc(r.bono)}</code>`, _repEstado(r.estado),
+        _repTabla(['Terminal', 'Bono', 'Máquina', 'Estado', 'Inicio', 'Última actualización'],
+            regs.map(r => [`<code>${esc(r.terminal)}</code>`, `<code>${esc(r.bono)}</code>`, _repMaquinas(r.maquinas), _repEstado(r.estado),
                            _repFecha(r.fecha_inicio), _repFecha(r.fecha_ultima_actualizacion)]),
             'Sin registros de engastado para este operario.'));
 };

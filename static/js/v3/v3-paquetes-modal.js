@@ -903,6 +903,7 @@ async function cancelarModalPaquetes() {
                     terminal: terminalActual,
                     carro: carro.carro,
                     operario: operarioActual || '',
+                    ...datosMaquinaProgreso(),
                     paquetes_hechos: paquetesRealmenteHechos,
                     paquetes_saltados: paquetesSaltados.map(p => ({ elemento: p.elemento, cod_cable: p.cod_cable, num_cables: p.num_cables })),
                     paquetes_pendientes: todosPendientes

@@ -62,6 +62,13 @@ def _operario_por_tag(conn, tag_uid):
     ), {'t': tag_uid}).fetchone()
 
 
+def _maquina_por_tag(conn, tag_uid):
+    """Máquina activa con esa etiqueta RFID (ver maquinas_rfid.py), o None."""
+    return conn.execute(text(
+        "SELECT id, nombre, matricula FROM maquinas WHERE tag_uid = :t AND activo = 1"
+    ), {'t': tag_uid}).mappings().first()
+
+
 def _captura_tag_expirada(fila, ahora=None):
     try:
         return datetime.fromisoformat(fila['expira_at']) <= (ahora or datetime.now())
@@ -90,17 +97,18 @@ def _operario_tag_captura_para_device(device_id):
         """), {'device_id': device_id}).mappings().first()
         if not fila or fila['estado'] != 'armada':
             return None
-        # Tarjeta de supervisor tras un ensayo NOK (app/routes/ensayos.py): no
-        # se registra a nadie, así que no hay operario que comprobar.
-        es_supervisor = fila['tipo'] == 'supervisor_ensayo'
-        if not es_supervisor and (not fila['nombre'] or not fila['activo']):
+        # Tarjeta de supervisor tras un ensayo NOK (app/routes/ensayos.py) o
+        # etiqueta de máquina (maquinas_rfid.py): no se registra a nadie, así
+        # que no hay operario que comprobar.
+        sin_operario = {'supervisor_ensayo': 'SUPERVISOR', 'maquina': 'MAQUINA'}.get(fila['tipo'])
+        if not sin_operario and (not fila['nombre'] or not fila['activo']):
             _captura_tag_resultado(conn, fila, 'error', 'El operario ya no está activo')
             return None
         if _captura_tag_expirada(fila):
             _captura_tag_resultado(conn, fila, 'caducada', 'La captura ha caducado')
             return None
         return {'token': fila['token'],
-                'operario': 'SUPERVISOR' if es_supervisor else fila['nombre'],
+                'operario': sin_operario or fila['nombre'],
                 'segundos': max(1, int((datetime.fromisoformat(fila['expira_at'])
                                         - datetime.now()).total_seconds()))}
 
@@ -210,7 +218,7 @@ def api_esp32_operario_captura_resultado():
             return jsonify({'success': False, 'error': 'Datos de captura no válidos'}), 400
         with db.engine.begin() as conn:
             fila = conn.execute(text("""
-                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at, tipo
+                SELECT device_id, operario_id, token, estado, uid, mensaje, expira_at, tipo, ref
                 FROM operario_tag_capturas
                 WHERE device_id = :device_id AND token = :token
             """), {'device_id': device_id, 'token': token}).mappings().first()
@@ -223,6 +231,10 @@ def api_esp32_operario_captura_resultado():
                 from app.routes.ensayos import resolver_tarjeta_supervisor
                 respuesta, status = resolver_tarjeta_supervisor(conn, fila, uid)
                 return jsonify(respuesta), status
+            if fila['tipo'] == 'maquina':
+                from app.routes.maquinas_rfid import resolver_captura_maquina
+                respuesta, status = resolver_captura_maquina(conn, fila, uid)
+                return jsonify(respuesta), status
             op = conn.execute(text(
                 "SELECT id, nombre FROM operarios WHERE id = :id AND activo = 1"
             ), {'id': fila['operario_id']}).fetchone()
@@ -232,6 +244,11 @@ def api_esp32_operario_captura_resultado():
             ocupado = _operario_por_tag(conn, uid)
             if ocupado and ocupado[0] != fila['operario_id']:
                 mensaje = f'Esa tarjeta ya está asignada a "{ocupado[1]}"'
+                _captura_tag_resultado(conn, fila, 'error', mensaje, uid)
+                return jsonify({'success': False, 'error': mensaje}), 409
+            maquina = _maquina_por_tag(conn, uid)
+            if maquina:
+                mensaje = f'Esa etiqueta es de la máquina "{maquina["nombre"]}"'
                 _captura_tag_resultado(conn, fila, 'error', mensaje, uid)
                 return jsonify({'success': False, 'error': mensaje}), 409
             conn.execute(text(
@@ -343,6 +360,11 @@ def api_operarios_update(op_id):
                     return jsonify({'success': False,
                                     'error': f'Esa tarjeta ya está asignada a '
                                              f'"{ocupado[1]}"'}), 409
+                maquina = _maquina_por_tag(conn, tag_uid)
+                if maquina:
+                    return jsonify({'success': False,
+                                    'error': f'Esa etiqueta es de la máquina '
+                                             f'"{maquina["nombre"]}"'}), 409
             if nombre is not None:
                 conn.execute(text("UPDATE operarios SET nombre=:nombre WHERE id=:id"),
                              {'nombre': nombre, 'id': op_id})
@@ -951,6 +973,31 @@ def api_engastado_v3_entrada():
             # Look up operario by RFID tag
             op = _operario_por_tag(conn, tag_uid)
             if not op:
+                # Etiqueta de una máquina (maquinas_rfid.py): no es un login. El
+                # navegador del puesto la recoge por sondeo. 'operario_nombre' es
+                # lo que la placa enseña en pantalla.
+                maquina = _maquina_por_tag(conn, tag_uid)
+                if maquina:
+                    texto = maquina['matricula'] or maquina['nombre']
+                    if not puesto_id:
+                        motivo = f'Máquina {texto}: este lector no está en un puesto de engastado'
+                        _rechazo(motivo, 'MAQUINA_SIN_PUESTO',
+                                 consejo='Pásala por el lector de tu puesto. Si es este, avisa al '
+                                         'administrador (Admin → Lectores RFID).')
+                        return jsonify({'success': False, 'error': motivo}), 409
+                    from app.routes.maquinas_rfid import registrar_lectura
+                    registrar_lectura(puesto_id, maquina['id'])
+                    _log(f'Máquina leída: {texto}')
+                    return jsonify({
+                        'success': True,
+                        'tipo': 'maquina',
+                        'operario_nombre': f'MAQ {texto}',
+                        'login_id': None,
+                        'puesto_id': puesto_id,
+                        'puesto_nombre': puesto_nombre,
+                        'message': 'Máquina leída'
+                    }), 200
+
                 _rechazo('Tarjeta RFID no registrada', 'TAG_NO_REG',
                          consejo='Avisa al administrador para que dé de alta tu tarjeta '
                                  '(Admin → Operarios → Capturar tag).')
