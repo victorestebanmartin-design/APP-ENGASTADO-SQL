@@ -1331,6 +1331,7 @@ function renderAnalisis(data) {
                 ${(g['SEMI-AUTOMATICA']||0) > 0 ? `<div class="stb-seg semi" style="width:${gPct(g['SEMI-AUTOMATICA']||0)}%"></div>` : ''}
                 ${g.AUTOMATICA  > 0 ? `<div class="stb-seg auto"   style="width:${gPct(g.AUTOMATICA)}%"></div>` : ''}
             </div>
+            <div style="margin-top:8px;font-size:0.75rem;color:var(--text-muted);">Terminales distintos que se colocan en esta área, sin los desactivados ni los que solo llevan asterisco. Cada tarjeta cuenta los de su corte, así que un terminal usado en varios cortes aparece en todas ellas. Pulsa una tarjeta para ver su listado en IFA.</div>
         </div>`;
 
     // ── Ordenar ────────────────────────────────────────────────────
@@ -1365,7 +1366,10 @@ function renderAnalisis(data) {
         const nombreCorto = item.nombre.replace(/_\d{8}(_v\d+)?$/i, '').replace(/_v\d+$/i, '');
 
         return `
-        <div class="analisis-card">
+        <div class="analisis-card analisis-card-link" role="button" tabindex="0" data-codigo="${_ifaEsc(item.codigo)}"
+             title="Ver el listado de este corte en IFA"
+             onclick="irIfaCorte(this.dataset.codigo)"
+             onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); irIfaCorte(this.dataset.codigo); }">
             <div class="analisis-card-header">
                 <span class="analisis-card-nombre" title="${item.archivo}">${nombreCorto}</span>
                 <span class="analisis-card-total">${item.total} terminales</span>
@@ -1384,6 +1388,153 @@ function renderAnalisis(data) {
             </div>
         </div>`;
     }).join('')}</div>`;
+}
+
+// ================================
+// IFA: TERMINALES POR CORTE PARA SAP
+// ================================
+
+let _ifaData = null;
+let _ifaCorteAlEntrar = null;
+
+function _ifaEsc(valor) {
+    const div = document.createElement('div');
+    div.textContent = valor == null ? '' : String(valor);
+    return div.innerHTML.replace(/"/g, '&quot;');
+}
+
+/** Desde una tarjeta de Análisis: abre IFA con ese corte ya elegido. */
+function irIfaCorte(codigo) {
+    if (_ifaData) {
+        document.getElementById('ifa-corte').value = codigo;
+        renderIfa();
+    } else {
+        _ifaCorteAlEntrar = codigo;
+    }
+    gpNav('ifa');
+    window.scrollTo(0, 0);
+}
+
+async function cargarIfa() {
+    const container = document.getElementById('lista-ifa');
+    container.className = 'loading';
+    container.textContent = '🔄 Calculando terminales...';
+    try {
+        const resp = await fetch('/api/ifa/terminales-por-corte');
+        const data = await resp.json();
+        if (!data.success) {
+            container.className = '';
+            container.innerHTML = `<p class="error">${_ifaEsc(data.message || 'Error al cargar IFA')}</p>`;
+            return;
+        }
+        _ifaData = data;
+        _ifaRellenarCortes(data.cortes);
+        renderIfa();
+    } catch (e) {
+        container.className = '';
+        container.innerHTML = '<p class="error">Error de conexión</p>';
+    }
+}
+
+function _ifaRellenarCortes(cortes) {
+    const select = document.getElementById('ifa-corte');
+    const elegido = _ifaCorteAlEntrar || select.value;
+    _ifaCorteAlEntrar = null;
+    const codigos = cortes.map(c => c.codigo).sort();
+    select.innerHTML = '<option value="">Todos los cortes</option>'
+        + codigos.map(c => `<option value="${_ifaEsc(c)}">${_ifaEsc(c)}</option>`).join('');
+    if (codigos.includes(elegido)) select.value = elegido;
+}
+
+function renderIfa() {
+    if (!_ifaData) return;
+    const container = document.getElementById('lista-ifa');
+    container.className = '';
+
+    const corte = document.getElementById('ifa-corte').value;
+    const verPaneles = document.getElementById('ifa-ver-paneles').checked;
+    const cortes = _ifaData.cortes.filter(c => !corte || c.codigo === corte);
+
+    const avisos = _ifaData.avisos.filter(a => !corte || a.codigo === corte).map(a => `
+        <div class="ifa-aviso">⚠️ <strong>${_ifaEsc(a.codigo)}</strong>: ${_ifaEsc(a.motivo)} (${_ifaEsc(a.archivo)}).</div>`).join('');
+
+    if (cortes.length === 0) {
+        container.innerHTML = avisos + `
+            <div class="empty-state">
+                <div class="empty-icon">📋</div>
+                <h4>Sin datos</h4>
+                <p>No hay cortes activos.</p>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = avisos + cortes.map(c => {
+        const codigo = c.codigo;
+        const lista = _ifaData.filas.filter(f => f.codigo === codigo);
+        const retractiles = _ifaData.retractiles.filter(r => r.codigo === codigo);
+        const totalMm = retractiles.reduce((suma, r) => suma + r.mm, 0);
+        const colocados = lista.filter(f => f.colocados > 0);
+        const totalIfa = lista.reduce((suma, f) => suma + f.colocados, 0);
+        const totalPaneles = lista.reduce((suma, f) => suma + f.paneles, 0);
+        const totalPendientes = lista.reduce((suma, f) => suma + f.pendientes, 0);
+        const visibles = lista
+            .filter(f => verPaneles || f.colocados > 0)
+            .sort((a, b) => b.colocados - a.colocados || a.terminal.localeCompare(b.terminal));
+
+        return `
+        <div class="card ifa-corte">
+            <div class="ifa-corte-head">
+                <div>
+                    <div class="ifa-corte-codigo">${_ifaEsc(codigo)}</div>
+                    <div class="ifa-corte-archivo">${_ifaEsc(c.archivo)}</div>
+                </div>
+                <div class="ifa-corte-totales">
+                    <span><strong>${colocados.length}</strong> terminales distintos</span>
+                    <span><strong>${totalIfa}</strong> uds. en IFA</span>
+                    <span><strong>${totalPaneles}</strong> uds. en paneles</span>
+                    <span><strong>${totalMm}</strong> mm de retráctil</span>
+                </div>
+            </div>
+            ${totalPendientes > 0 ? `<div class="ifa-aviso">⚠️ Hay <strong>${totalPendientes}</strong> uds. que los operarios han propuesto no poner y siguen sin aprobar. Están incluidas en «Cantidad IFA»: si se aprueban, esa cantidad baja. Se resuelven en Admin → Propuestas de engastado.</div>` : ''}
+            <h4 class="ifa-subtitulo">Terminales</h4>
+            <div class="ifa-tabla-wrap">
+                <table class="ifa-tabla">
+                    <thead><tr><th>Referencia</th><th class="num">Cantidad IFA</th><th class="num">Cantidad paneles</th><th class="num">Pendientes de aprobar</th><th>Máquina</th></tr></thead>
+                    <tbody>
+                        ${visibles.map(f => `
+                        <tr class="${f.colocados > 0 ? '' : 'ifa-solo-paneles'}">
+                            <td class="ifa-terminal">${_ifaEsc(f.terminal)}</td>
+                            <td class="num">${f.colocados}</td>
+                            <td class="num">${f.paneles}</td>
+                            <td class="num${f.pendientes > 0 ? ' ifa-pendiente' : ''}">${f.pendientes}</td>
+                            <td>${f.maquina ? _ifaEsc(f.maquina) : '<span class="ifa-sin-maquina">Sin asignar</span>'}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <h4 class="ifa-subtitulo">Retráctil de preparación de mangueras</h4>
+            ${c.propuestas_mangueras > 0 ? `<div class="ifa-aviso">⚠️ Hay <strong>${c.propuestas_mangueras}</strong> propuestas de mangueras sin resolver en este corte: si se aprueban, estos mm pueden cambiar.</div>` : ''}
+            ${retractiles.length === 0 ? '<p class="ifa-vacio">Este corte no lleva retráctil en sus mangueras.</p>' : `
+            <div class="ifa-tabla-wrap">
+                <table class="ifa-tabla">
+                    <thead><tr><th>Referencia</th><th class="num">Total mm</th><th class="num">Piezas</th></tr></thead>
+                    <tbody>
+                        ${retractiles.map(r => `
+                        <tr>
+                            <td class="ifa-terminal">${_ifaEsc(r.retractil)}</td>
+                            <td class="num">${r.mm}</td>
+                            <td class="num">${r.piezas}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>`}
+        </div>`;
+    }).join('');
+}
+
+function exportarExcelIfa() {
+    const corte = document.getElementById('ifa-corte').value;
+    window.location.href = '/api/ifa/export-excel' + (corte ? '?codigo=' + encodeURIComponent(corte) : '');
 }
 
 // ================================

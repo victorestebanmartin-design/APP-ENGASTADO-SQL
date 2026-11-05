@@ -715,6 +715,8 @@ def _get_mangueras(self, filename: str) -> list:
             'para':              inst_para,
             'retractil_de':      _parse_retractiles(val_ret_de),
             'retractil_para':    _parse_retractiles(val_ret_para),
+            'retractil_de_raw':   val_ret_de,
+            'retractil_para_raw': val_ret_para,
         })
 
     return resultado

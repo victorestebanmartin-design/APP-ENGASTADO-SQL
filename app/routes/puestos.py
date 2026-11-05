@@ -38,7 +38,8 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
-from app.routes.progreso import _crimps_por_terminal_archivo
+from app.routes.progreso import _crimps_por_terminal_archivo, _lados_por_terminal_archivo
+from app.routes.manguitos import _mangueras_a_preparar
 
 
 # ==================== PUESTOS Y MÁQUINAS ====================
@@ -895,7 +896,14 @@ def api_eliminar_pdf_regulacion(maquina_id):
 
 @bp.route('/api/estadisticas-tipo-operacion', methods=['GET'])
 def api_estadisticas_tipo_operacion():
-    """Estadísticas de tipo de operación por archivo Excel / corte de cable"""
+    """Estadísticas de tipo de operación por archivo Excel / corte de cable.
+
+    Solo cuenta lo que se coloca en esta área, como IFA y engastado: un terminal que
+    en ese corte solo aparece con '*' no cuenta, ni tampoco los ignorados. Cada
+    archivo cuenta sus terminales, pero el global cuenta terminales DISTINTOS: un
+    terminal usado en varios cortes es uno solo, así que el global es menor que la
+    suma de los archivos.
+    """
     try:
         codigo_repo = CodigoCorteRepository(db)
         codigos = codigo_repo.obtener_todos_codigos()
@@ -908,11 +916,16 @@ def api_estadisticas_tipo_operacion():
         for maquina in maquinas:
             tipo = maquina.get('tipo_operacion') or 'MANUAL'
             for terminal in maquina_repo.obtener_terminales_asignados(maquina['id']):
-                terminal_tipo[terminal] = tipo
+                terminal_tipo[terminal.upper()] = tipo
+
+        ignorados = {r[0].upper() for r in db.session.execute(
+            text("SELECT terminal_codigo FROM terminales_ignorados")
+        ).fetchall()}
 
         upload_folder = current_app.config['UPLOAD_FOLDER']
         por_archivo = []
         g = {'MANUAL': 0, 'AUTOMATICA': 0, 'SEMI-AUTOMATICA': 0, 'sin_asignar': 0, 'total': 0}
+        terminales_global = set()
 
         for codigo in codigos:
             archivo = codigo['archivo_excel']
@@ -920,16 +933,13 @@ def api_estadisticas_tipo_operacion():
             if not os.path.exists(filepath):
                 continue
             try:
-                df = leer_excel_cacheado(filepath)
-                terminales_archivo = set()
-                for col in df.columns:
-                    if 'terminal' in str(col).lower():
-                        for t in df[col].dropna().unique():
-                            t = str(t).strip()
-                            if t and not t.endswith('*'):
-                                terminales_archivo.add(t)
+                lados = _lados_por_terminal_archivo(archivo)
+                if lados is None:
+                    continue
+                terminales_archivo = {t for t, n in lados.items()
+                                      if n['colocados'] > 0 and t not in ignorados}
 
-                stats = {'MANUAL': 0, 'AUTOMATICA': 0, 'SEMI-AUTOMATICA': 0, 'sin_asignar': 0}
+                stats ={'MANUAL': 0, 'AUTOMATICA': 0, 'SEMI-AUTOMATICA': 0, 'sin_asignar': 0}
                 for t in terminales_archivo:
                     tipo = terminal_tipo.get(t)
                     if tipo:
@@ -938,9 +948,7 @@ def api_estadisticas_tipo_operacion():
                         stats['sin_asignar'] += 1
 
                 total = len(terminales_archivo)
-                for k in stats:
-                    g[k] = g.get(k, 0) + stats[k]
-                g['total'] += total
+                terminales_global |= terminales_archivo
 
                 nombre = os.path.splitext(archivo)[0]
 
@@ -959,6 +967,11 @@ def api_estadisticas_tipo_operacion():
 
         por_archivo.sort(key=lambda x: x['archivo'])
 
+        for t in terminales_global:
+            clave = terminal_tipo.get(t) or 'sin_asignar'
+            g[clave] = g.get(clave, 0) + 1
+        g['total'] = len(terminales_global)
+
         return jsonify({
             'success': True,
             'por_archivo': por_archivo,
@@ -966,6 +979,184 @@ def api_estadisticas_tipo_operacion():
         })
     except Exception as e:
         return error_interno(e, 'Error al calcular estadísticas de tipo de operación')
+
+
+# ==================== IFA: TERMINALES POR CORTE PARA SAP ====================
+#
+# Listado para que actualicen en SAP los terminales que se colocan en esta área,
+# corte a corte. Los lados con '*' en su elemento se terminan en los paneles: se
+# enseñan aparte para poder cuadrar la lista, pero no suman como colocados.
+#
+# Una propuesta de engastado aprobada ya baja la cantidad, porque escribe el '*'
+# en el Excel. Una pendiente no cambia nada todavía: se enseña al lado, para que
+# se vea qué cantidades pueden moverse antes de pasarlas a SAP.
+#
+# El retráctil se cuenta de la preparación de mangueras: cada manguera lleva por
+# lado una lista de código_mm, y aquí se suman los mm de cada código por corte.
+
+def _retractiles_corte(codigo: str, archivo: str, avisos: list) -> list:
+    """Piezas y mm de cada código de retráctil del corte. Lo que no se puede leer va
+    a 'avisos' en vez de perderse: el total saldría corto sin que nadie lo notara."""
+    try:
+        mangueras = _mangueras_a_preparar(archivo)
+    except Exception as e:
+        current_app.logger.warning(f"IFA: error leyendo mangueras de {archivo}: {e}")
+        avisos.append({'codigo': codigo, 'archivo': archivo,
+                       'motivo': 'No se han podido leer las mangueras: su retráctil no está en la lista'})
+        return []
+
+    totales = {}
+    for manguera in mangueras:
+        for lado in ('de', 'para'):
+            retractiles = manguera[f'retractil_{lado}']
+            for retractil in retractiles:
+                total = totales.setdefault(retractil['codigo'], {'piezas': 0, 'mm': 0})
+                total['piezas'] += 1
+                total['mm'] += retractil['medida']
+            crudo = manguera[f'retractil_{lado}_raw']
+            if len([t for t in crudo.split('/') if t.strip()]) != len(retractiles):
+                avisos.append({'codigo': codigo, 'archivo': archivo,
+                               'motivo': f"Fila {manguera['fila_excel']}: el retráctil «{crudo}» tiene "
+                                         'algo sin formato código_mm que no se ha sumado'})
+
+    return [{'codigo': codigo, 'archivo': archivo, 'retractil': retractil,
+             'piezas': totales[retractil]['piezas'], 'mm': totales[retractil]['mm']}
+            for retractil in sorted(totales)]
+
+
+def _datos_ifa(codigo_filtro: str = '') -> dict:
+    """Terminales y retráctil por corte. Un corte que no se puede leer va a 'avisos':
+    en una lista para SAP, si falta en silencio parecería un corte sin material.
+    """
+    codigos = CodigoCorteRepository(db).obtener_todos_codigos()
+    if codigo_filtro:
+        codigos = [c for c in codigos if c['codigo'] == codigo_filtro]
+
+    maquina_repo = MaquinaRepository(db)
+    terminal_maquina = {}
+    for maquina in maquina_repo.obtener_todas_maquinas():
+        for terminal in maquina_repo.obtener_terminales_asignados(maquina['id']):
+            terminal_maquina[terminal.upper()] = maquina
+
+    ignorados = {r[0].upper() for r in db.session.execute(
+        text("SELECT terminal_codigo FROM terminales_ignorados")
+    ).fetchall()}
+
+    pendientes = {(r[0], r[1]): r[2] for r in db.session.execute(text(
+        "SELECT c.archivo, UPPER(c.terminal), COUNT(*) FROM engastado_propuestas_cables c "
+        "JOIN engastado_propuestas p ON p.id = c.propuesta_id "
+        "WHERE p.estado = 'pendiente' GROUP BY c.archivo, UPPER(c.terminal)"
+    )).fetchall()}
+
+    propuestas_mangueras = {r[0]: r[1] for r in db.session.execute(text(
+        "SELECT archivo, COUNT(*) FROM mangueras_propuestas WHERE estado = 'pendiente' GROUP BY archivo"
+    )).fetchall()}
+
+    filas, retractiles, avisos = [], [], []
+    for codigo in codigos:
+        archivo = codigo['archivo_excel']
+        try:
+            lados = _lados_por_terminal_archivo(archivo)
+        except Exception as e:
+            current_app.logger.warning(f"IFA: error leyendo {archivo}: {e}")
+            lados = None
+        if lados is None:
+            avisos.append({'codigo': codigo['codigo'], 'archivo': archivo,
+                           'motivo': 'No se ha podido leer el Excel: este corte no está en la lista'})
+            continue
+
+        retractiles.extend(_retractiles_corte(codigo['codigo'], archivo, avisos))
+
+        for terminal in sorted(lados):
+            if terminal in ignorados:
+                continue
+            maquina = terminal_maquina.get(terminal)
+            filas.append({
+                'codigo': codigo['codigo'],
+                'archivo': archivo,
+                'terminal': terminal,
+                'colocados': lados[terminal]['colocados'],
+                'paneles': lados[terminal]['paneles'],
+                'pendientes': pendientes.get((archivo, terminal), 0),
+                'maquina': maquina['nombre'] if maquina else None,
+                'tipo_operacion': (maquina.get('tipo_operacion') or 'MANUAL') if maquina else None,
+            })
+
+    return {
+        'cortes': [{'codigo': c['codigo'], 'archivo': c['archivo_excel'],
+                    'propuestas_mangueras': propuestas_mangueras.get(c['archivo_excel'], 0)}
+                   for c in codigos],
+        'filas': filas,
+        'retractiles': retractiles,
+        'avisos': avisos,
+    }
+
+
+@bp.route('/api/ifa/terminales-por-corte', methods=['GET'])
+def api_ifa_terminales_por_corte():
+    """Terminales y retráctil que se colocan en esta área, por código de corte."""
+    try:
+        return jsonify(dict(_datos_ifa(request.args.get('codigo', '').strip()), success=True))
+    except Exception as e:
+        return error_interno(e, 'Error al calcular los datos de IFA')
+
+
+@bp.route('/api/ifa/export-excel', methods=['GET'])
+def api_ifa_export_excel():
+    """Excel de IFA: referencia y cantidad por corte, listo para llevar a SAP."""
+    try:
+        codigo_filtro = request.args.get('codigo', '').strip()
+        datos = _datos_ifa(codigo_filtro)
+
+        columnas_terminales = ['Código corte', 'Referencia', 'Cantidad IFA', 'Cantidad paneles',
+                               'Pendientes de aprobar', 'Máquina', 'Tipo', 'Archivo']
+
+        def _terminales(filas):
+            return pd.DataFrame([{
+                'Código corte': f['codigo'],
+                'Referencia': f['terminal'],
+                'Cantidad IFA': f['colocados'],
+                'Cantidad paneles': f['paneles'],
+                'Pendientes de aprobar': f['pendientes'],
+                'Máquina': f['maquina'] or 'Sin asignar',
+                'Tipo': f['tipo_operacion'] or 'Sin asignar',
+                'Archivo': f['archivo'],
+            } for f in filas], columns=columnas_terminales)
+
+        hojas = {
+            'Terminales': _terminales([f for f in datos['filas'] if f['colocados'] > 0]),
+            'Retráctil': pd.DataFrame([{
+                'Código corte': r['codigo'],
+                'Referencia': r['retractil'],
+                'Total mm': r['mm'],
+                'Piezas': r['piezas'],
+                'Archivo': r['archivo'],
+            } for r in datos['retractiles']], columns=['Código corte', 'Referencia', 'Total mm', 'Piezas', 'Archivo']),
+            'Solo en paneles': _terminales([f for f in datos['filas'] if f['colocados'] == 0]),
+        }
+        if datos['avisos']:
+            hojas['Avisos'] = pd.DataFrame(datos['avisos'])
+
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            for nombre_hoja, df_hoja in hojas.items():
+                df_hoja.to_excel(writer, index=False, sheet_name=nombre_hoja)
+                ws = writer.sheets[nombre_hoja]
+                for col_cells in ws.columns:
+                    max_len = max((len(str(c.value or '')) for c in col_cells), default=10)
+                    ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 4, 50)
+        buf.seek(0)
+
+        fecha = datetime.now().strftime('%Y%m%d')
+        corte = secure_filename(codigo_filtro)
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f"ifa_{corte + '_' if corte else ''}{fecha}.xlsx",
+        )
+    except Exception as e:
+        return error_interno(e, 'Error al exportar el Excel de IFA')
 
 
 @bp.route('/api/terminales-disponibles', methods=['GET'])

@@ -511,25 +511,22 @@ def api_bonos_progreso_por_carro(nombre_bono):
         return error_interno(e)
 
 
-def _crimps_por_terminal_archivo(archivo: str) -> dict:
+def _lados_por_terminal_archivo(archivo: str):
     """
-    Calcula el nº de crimps (terminales a engastar) por terminal de un archivo Excel,
-    usando EXACTAMENTE la misma lógica que la vista de engastado
-    (excel_manager.agrupar_por_cable_elemento): cada lado sin '*' = 1 crimp; si el
-    terminal está en ambos lados de la fila sin '*' = 2 crimps. Los lados con '*'
-    (terminal no se engasta) o terminales vacíos/'S/T' no cuentan.
+    Cuenta los lados de cable de cada terminal de un archivo Excel, separando los
+    que se engastan aquí de los que llevan '*' en su elemento (no se engastan en
+    esta área). Los terminales vacíos/'S/T' no cuentan en ninguno de los dos.
 
-    Devuelve {TERMINAL_UPPER: num_crimps}. Esto refleja el trabajo REAL del operario,
-    a diferencia del antiguo cálculo que solo miraba 'De Terminal' y descartaba los
-    grupos cuyo terminal estaba en el lado 'Para' (de_terminal vacío/S/T).
+    Devuelve {TERMINAL_UPPER: {'colocados': n, 'paneles': m}}, o None si el Excel
+    no se ha podido leer (distinto de un Excel leído que no tiene terminales).
     """
     upload_folder = current_app.config['UPLOAD_FOLDER']
     mgr = ExcelManager(upload_folder)
     if not mgr.cargar_excel_directo(archivo):
-        return {}
+        return None
     df = mgr.current_df
     if df is None:
-        return {}
+        return None
 
     def _valido(t):
         return t and t not in ('NAN', 'S/T', '')
@@ -550,24 +547,28 @@ def _crimps_por_terminal_archivo(archivo: str) -> dict:
         de_np   = str(row.get('De Elemento', '')).strip().endswith('*')
         para_np = str(row.get('Para Elemento', '')).strip().endswith('*')
 
-        tiene_o = _valido(de_t)
-        tiene_d = _valido(para_t)
-
-        if tiene_o and tiene_d and de_t == para_t:
-            # Terminal en ambos lados de la misma fila
-            if de_np and para_np:
-                pass
-            elif de_np or para_np:
-                cont[de_t] = cont.get(de_t, 0) + 1
-            else:
-                cont[de_t] = cont.get(de_t, 0) + 2
-        else:
-            if tiene_o and not de_np:
-                cont[de_t] = cont.get(de_t, 0) + 1
-            if tiene_d and not para_np:
-                cont[para_t] = cont.get(para_t, 0) + 1
+        for terminal, no_poner in ((de_t, de_np), (para_t, para_np)):
+            if _valido(terminal):
+                lados = cont.setdefault(terminal, {'colocados': 0, 'paneles': 0})
+                lados['paneles' if no_poner else 'colocados'] += 1
 
     return cont
+
+
+def _crimps_por_terminal_archivo(archivo: str) -> dict:
+    """
+    Calcula el nº de crimps (terminales a engastar) por terminal de un archivo Excel,
+    usando EXACTAMENTE la misma lógica que la vista de engastado
+    (excel_manager.agrupar_por_cable_elemento): cada lado sin '*' = 1 crimp; si el
+    terminal está en ambos lados de la fila sin '*' = 2 crimps. Los lados con '*'
+    (terminal no se engasta) o terminales vacíos/'S/T' no cuentan.
+
+    Devuelve {TERMINAL_UPPER: num_crimps}. Esto refleja el trabajo REAL del operario,
+    a diferencia del antiguo cálculo que solo miraba 'De Terminal' y descartaba los
+    grupos cuyo terminal estaba en el lado 'Para' (de_terminal vacío/S/T).
+    """
+    lados = _lados_por_terminal_archivo(archivo) or {}
+    return {t: n['colocados'] for t, n in lados.items() if n['colocados'] > 0}
 
 
 @bp.route('/api/bonos/<nombre_bono>/progreso-ponderado', methods=['GET'])

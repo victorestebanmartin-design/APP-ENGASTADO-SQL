@@ -260,6 +260,28 @@ def _ordenar_mangueras_por_paquete(mangueras):
     return [manguera for _, manguera in sorted(enumerate(mangueras), key=clave)]
 
 
+def _mangueras_a_preparar(archivo):
+    """Mangueras que ve el operario: las filas con instrucciones del Excel, sin las
+    filas hijas (activos y mallas) ya vinculadas a su manguera."""
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/cortes')
+    resultado = ExcelManager(upload_folder).get_mangueras(archivo)
+
+    if archivo.lower().endswith(('.xlsx', '.xlsm')):
+        ruta = _ruta_upload_segura(archivo)
+        if ruta and os.path.isfile(ruta):
+            with open(ruta, 'rb') as fichero:
+                datos_preparacion = leer_preparacion(fichero.read(), os.path.basename(ruta))
+            filas_hijas_confirmadas = {
+                hijo['fila']
+                for manguera in datos_preparacion['filas']
+                if manguera['vinculacion'].get('confirmados')
+                for hijo in manguera['vinculacion']['activos'] + manguera['vinculacion'].get('mallas', [])
+            }
+            resultado = [manguera for manguera in resultado
+                         if manguera.get('fila_excel') not in filas_hijas_confirmadas]
+    return resultado
+
+
 @bp.route('/api/mangueras/datos', methods=['POST'])
 def api_mangueras_datos():
     """Carga las filas del Excel con instrucciones de pelado en Observaciones"""
@@ -268,23 +290,7 @@ def api_mangueras_datos():
     if not archivo:
         return jsonify({'success': False, 'error': 'Archivo no especificado'})
     try:
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/cortes')
-        em = ExcelManager(upload_folder)
-        resultado = em.get_mangueras(archivo)
-
-        if archivo.lower().endswith(('.xlsx', '.xlsm')):
-            ruta = _ruta_upload_segura(archivo)
-            if ruta and os.path.isfile(ruta):
-                with open(ruta, 'rb') as fichero:
-                    datos_preparacion = leer_preparacion(fichero.read(), os.path.basename(ruta))
-                filas_hijas_confirmadas = {
-                    hijo['fila']
-                    for manguera in datos_preparacion['filas']
-                    if manguera['vinculacion'].get('confirmados')
-                    for hijo in manguera['vinculacion']['activos'] + manguera['vinculacion'].get('mallas', [])
-                }
-                resultado = [manguera for manguera in resultado
-                             if manguera.get('fila_excel') not in filas_hijas_confirmadas]
+        resultado = _mangueras_a_preparar(archivo)
 
         # Enriquecer con numero_etiqueta desde la BD (mismo patrón que manguitos)
         try:
