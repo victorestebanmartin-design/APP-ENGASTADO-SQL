@@ -1116,6 +1116,12 @@ def api_pick_to_light_encender():
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta,
                             'motivo': 'El terminal %s no tiene gaveta con luz en este puesto' % terminal})
 
+        # La herramienta con etiqueta en su máquina se comprueba aparte, con o sin
+        # PTL (v3-maquina-rfid.js): aquí solo la luz. Si la placa quedara en modo
+        # verificar, se quedaría con la lectura y habría que pasarla dos veces.
+        if tipo == 'herramienta' and datos.get('rfid_aparte'):
+            uid_rfid = uid_rfid_2 = None
+
         device_id, ip = _placa_del_puesto(puesto_id)
         if not device_id:
             return jsonify({'success': True, 'activo': False, 'gaveta': gaveta, 'led': led,

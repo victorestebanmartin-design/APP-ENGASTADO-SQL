@@ -59,6 +59,17 @@ def validar_inspeccion(crudo):
         return None, 'La fecha de validez de la inspección no es correcta'
 
 
+@bp.route('/api/maquinas/<maquina_id>/inspeccion', methods=['GET'])
+def api_maquina_inspeccion(maquina_id):
+    """Lo que engastado pregunta al elegir máquina. Ver app/inspeccion.py."""
+    from app import inspeccion
+    try:
+        with db.engine.connect() as conn:
+            return jsonify({'success': True, **inspeccion.estado_maquina(conn, maquina_id)})
+    except Exception as e:
+        return error_interno(e, 'Error al consultar la inspección')
+
+
 # ==================== ETIQUETA: ALTA DESDE GESTIÓN DE PUESTOS ====================
 
 def _lector_listo(device_id):

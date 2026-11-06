@@ -54,30 +54,95 @@ function _apuntarMaquinaLeida(maquina) {
 
 
 /**
- * Paso común al elegir máquina: la gaveta de la herramienta, si la tiene, y
- * después la lectura. Devuelve false si el operario prefiere elegir otra.
+ * Paso común al elegir máquina: la inspección, la gaveta de la herramienta si la
+ * tiene (solo la luz) y la lectura, que se pide una sola vez, haya PTL o no.
+ * Devuelve false si no se puede usar o el operario prefiere elegir otra.
  * 'yaLeida' es que la han elegido pasándola por el lector.
  */
 async function identificarMaquina(maquina, yaLeida) {
     maquinaOrigen = 'pantalla';
-    // Con el RFID del pick-to-light ya la ha leído el lector: no se pide dos veces.
-    const confirmadaPorGaveta = await verificarMaquinaPtl(maquina);
+    if (!await _comprobarInspeccion(maquina)) return false;
+
+    const pideLectura = (maquina.tipo_operacion || 'MANUAL') === 'MANUAL' && !!maquina.tag_uid;
+    const yaPasada = yaLeida || !!(_maquinaLeida && _maquinaLeida.id === maquina.id
+                                   && _maquinaLeida.operario === operarioActual);
+
+    // El punto de partida se toma antes de la gaveta: si la pasa nada más cogerla,
+    // esa lectura tiene que contar.
+    let inicio = null;
+    if (pideLectura && !yaPasada && puestoSeleccionado && puestoSeleccionado.id) {
+        try { inicio = await _consultarMaquinaLeida(); } catch (e) { /* sin servidor se sigue */ }
+    }
+
+    const confirmadaPorGaveta = await verificarMaquinaPtl(maquina, pideLectura);
     if (yaLeida || confirmadaPorGaveta) {
         _apuntarMaquinaLeida(maquina);
         return true;
     }
-    if ((maquina.tipo_operacion || 'MANUAL') !== 'MANUAL' || !maquina.tag_uid) return true;
-    if (_maquinaLeida && _maquinaLeida.id === maquina.id && _maquinaLeida.operario === operarioActual) {
+    if (!pideLectura) return true;
+    if (yaPasada) {
         maquinaOrigen = 'rfid';
         return true;
     }
-    if (!puestoSeleccionado || !puestoSeleccionado.id) return true;
-
-    let inicio = null;
-    try { inicio = await _consultarMaquinaLeida(); } catch (e) { /* sin servidor se sigue */ }
     if (!inicio || !inicio.activo) return true;
 
     return await _esperarLecturaMaquina(maquina, inicio.ahora);
+}
+
+
+/**
+ * Avisa si la inspección caduca pronto, cada vez que se usa la máquina, y no deja
+ * seguir si ha caducado. Pregunta al servidor para ver la fecha de ahora. Sin
+ * respuesta se sigue: el bloqueo de verdad está en datos_trabajo_v3.
+ */
+async function _comprobarInspeccion(maquina) {
+    let d = null;
+    try {
+        const r = await fetch(`/api/maquinas/${encodeURIComponent(maquina.id)}/inspeccion`);
+        d = await r.json();
+    } catch (e) { return true; }
+    if (!d || !d.success || (d.estado !== 'aviso' && !d.bloquea)) return true;
+    await _panelInspeccion(maquina, d);
+    return !d.bloquea;
+}
+
+
+function _panelInspeccion(maquina, d) {
+    const overlay = document.createElement('div');
+    overlay.id = 'maquina-inspeccion-overlay';
+    overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 10000;
+        background: rgba(0,0,0,0.75);
+        display: flex; align-items: center; justify-content: center;
+    `;
+    overlay.innerHTML = `
+        <div style="background:#fff; border-radius:14px; padding:32px 40px; max-width:520px;
+                    text-align:center; box-shadow:0 10px 40px rgba(0,0,0,0.35);">
+            <div style="font-size:3em; line-height:1;">${d.bloquea ? '⛔' : '⚠️'}</div>
+            <h2 style="margin:12px 0 4px; color:${d.bloquea ? '#dc3545' : '#b45309'};">
+                ${d.bloquea ? 'No se puede usar esta máquina' : 'Inspección a punto de caducar'}
+            </h2>
+            <div style="font-size:1.4em; font-weight:bold; color:#212529; margin:10px 0;">
+                🔧 ${_textoMaquina(maquina)}
+            </div>
+            <div class="inspeccion-motivo" style="font-weight:600; color:#212529; margin-bottom:8px;"></div>
+            <div class="inspeccion-consejo" style="color:#6c757d; margin-bottom:18px;"></div>
+            <button id="maquina-inspeccion-ok" type="button"
+                    style="background:#0d6efd; color:#fff; border:none; border-radius:8px;
+                           padding:10px 18px; cursor:pointer; font-size:0.95em;">
+                ${d.bloquea ? 'Elegir otra máquina' : 'Entendido'}
+            </button>
+        </div>
+    `;
+    overlay.querySelector('.inspeccion-motivo').textContent = d.motivo;
+    overlay.querySelector('.inspeccion-consejo').textContent = d.consejo;
+    document.body.appendChild(overlay);
+    return new Promise(resolve => {
+        overlay.querySelector('#maquina-inspeccion-ok').onclick = () => {
+            overlay.remove();
+            resolve();
+        };
+    });
 }
 
 
@@ -145,8 +210,8 @@ function _esperarLecturaMaquina(maquina, desde) {
                     return;
                 }
                 const aviso = overlay.querySelector('#maquina-rfid-aviso');
-                aviso.textContent = `Esa es ${_textoMaquina(d.lectura.maquina)}, no ${maquina.nombre}. `
-                                  + 'Pasa la correcta o elige otra máquina.';
+                aviso.textContent = `⚠️ Esa herramienta es ${_textoMaquina(d.lectura.maquina)}. `
+                                  + `Pasa ${_textoMaquina(maquina)} o elige otra máquina.`;
                 aviso.style.display = 'block';
             } catch (e) { /* un sondeo perdido no rompe nada */ }
         }, MAQUINA_SONDEO_MS);

@@ -70,9 +70,15 @@ def datos_trabajo_v3():
         # aquí y no solo en la pantalla para que un F5 o una petición directa
         # no se lo salten (el modal vive en static/js/v3/v3-ensayos.js).
         if maquina and request.args.get('iniciar_sesion', '').lower() in ('1', 'true'):
-            from app import ensayos
+            from app import ensayos, inspeccion
             with db.engine.connect() as conn:
+                insp = inspeccion.estado_maquina(conn, maquina)
                 est = ensayos.estado(conn, maquina, terminal)
+            # Inspección caducada: ni siquiera toca ensayar con esta máquina.
+            if insp['bloquea']:
+                return jsonify({'success': False, 'inspeccion_caducada': True,
+                                'message': f"{insp['motivo']}. {insp['consejo']}",
+                                'motivo': insp['motivo'], 'consejo': insp['consejo']}), 409
             if est['bloquea']:
                 return jsonify({'success': False, 'ensayo_requerido': True,
                                 'message': est['motivo'], 'motivo': est['motivo'],

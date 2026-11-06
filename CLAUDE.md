@@ -88,8 +88,13 @@ puesto y no crea login.
 
 - **Solo se pide pasarla si** es manual, tiene etiqueta y el puesto tiene lector
   vivo. Las manuales son móviles: pasar una en la lista la elige aunque sea de
-  otro puesto. Una con RFID de PTL ya confirmado no se pide otra vez.
-- **No bloquea:** «Continuar sin confirmar» sigue adelante, y el report lo dice.
+  otro puesto.
+- **Se pasa una sola vez, con o sin PTL:** la comprueba `identificarMaquina`. La
+  gaveta solo pone la luz (`rfid_aparte` en `/api/pick-to-light/encender`): si la
+  placa quedara en modo verificar, se quedaría con la lectura. Solo pide etiqueta
+  por su cuenta si está únicamente en el canal, sin registrar en la máquina.
+- **La etiqueta no bloquea:** «Continuar sin confirmar» sigue adelante, y el report
+  lo dice.
 - **El report guarda copias** (`carros_registro`: `maquina_nombre`,
   `maquina_matricula`, `maquina_origen`). Un registro antiguo sale con «—»: no
   deduzcas la máquina de la asignación actual de terminales, sería inventárselo.
@@ -99,8 +104,11 @@ puesto y no crea login.
   herramienta a un canal vacío se copia a su `uid_rfid` (el enlace es por nombre,
   como en `verificarMaquinaPtl`), y cambiarla o quitarla en la máquina actualiza
   ese canal. Una etiqueta distinta puesta a mano en el canal no se pisa.
-- **La inspección solo avisa:** `maquinas.inspeccion_valida_hasta` se ve en la
-  tarjeta de Gestión de Puestos (caducada o a 30 días). No bloquea el engastado.
+- **La inspección sí bloquea** (`app/inspeccion.py`): a 2 meses o menos avisa cada
+  vez que se elige la máquina; caducada, `datos_trabajo_v3` responde 409 con
+  `inspeccion_caducada` y no hay botón para saltárselo: se levanta anotando la
+  fecha nueva en la ficha. Sin fecha (NULL) ni avisa ni bloquea, para que desplegar
+  no pare la planta. Guardar progreso no se bloquea: el trabajo hecho no se pierde.
 
 ## Version de la app: `VERSION`, semver, la sube el asistente
 

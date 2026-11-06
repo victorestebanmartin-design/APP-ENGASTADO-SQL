@@ -577,18 +577,21 @@ function mostrarModalMaquina(maquinaId = null) {
     modal.classList.add('active');
 }
 
-const INSPECCION_DIAS_AVISO = 30;
+const INSPECCION_MESES_AVISO = 2;   // el mismo que MESES_AVISO en app/inspeccion.py
 
 /** Línea de la tarjeta con la validez de la inspección. Es válida todo su último día. */
 function lineaInspeccion(hasta) {
     if (!hasta) return '<p class="maquina-modelo">Inspección sin anotar</p>';
     const [anio, mes, dia] = hasta.split('-').map(Number);
-    const hoy = new Date();
-    const dias = Math.round((Date.UTC(anio, mes - 1, dia)
-                             - Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())) / 86400000);
+    const fin = new Date(anio, mes - 1, dia);
+    const ahora = new Date();
+    const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    // Mismo día N meses después; si ese mes es más corto, su último día.
+    const limite = new Date(hoy.getFullYear(), hoy.getMonth() + INSPECCION_MESES_AVISO + 1, 0);
+    limite.setDate(Math.min(hoy.getDate(), limite.getDate()));
     const fecha = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${anio}`;
-    if (dias < 0) return `<p class="maquina-modelo" style="color:#f87171;font-weight:600;">⛔ Inspección caducada el ${fecha}</p>`;
-    if (dias <= INSPECCION_DIAS_AVISO) return `<p class="maquina-modelo" style="color:#fbbf24;font-weight:600;">⚠️ Inspección vence el ${fecha}</p>`;
+    if (fin < hoy) return `<p class="maquina-modelo" style="color:#f87171;font-weight:600;">⛔ Inspección caducada el ${fecha}: bloqueada</p>`;
+    if (fin <= limite) return `<p class="maquina-modelo" style="color:#fbbf24;font-weight:600;">⚠️ Inspección vence el ${fecha}</p>`;
     return `<p class="maquina-modelo">🗓️ Inspección hasta ${fecha}</p>`;
 }
 

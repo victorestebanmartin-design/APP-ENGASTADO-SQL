@@ -359,3 +359,45 @@ def test_inspeccion_se_guarda_se_valida_y_se_quita(planta, admin_client):
     assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03-31'
     r = admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': ''})
     assert r.get_json()['maquina']['inspeccion_valida_hasta'] is None
+
+
+def test_inspeccion_avisa_a_dos_meses_y_caduca_el_dia_siguiente():
+    from datetime import date
+    from app.inspeccion import calcular
+    hoy = date(2026, 11, 6)
+    assert calcular(None, hoy)['estado'] == 'sin_anotar'
+    assert calcular('2027-01-07', hoy)['estado'] == 'vigente'
+    assert calcular('2027-01-06', hoy)['estado'] == 'aviso'
+    assert calcular('2026-11-06', hoy)['estado'] == 'aviso'   # vale todo su último día
+    assert calcular('2026-11-06', hoy)['bloquea'] is False
+    caducada = calcular('2026-11-05', hoy)
+    assert caducada['estado'] == 'caducada' and caducada['bloquea'] is True
+    assert '05/11/2026' in caducada['motivo'] and caducada['consejo']
+    # Dos meses desde el 31 de diciembre acaban el último día de febrero
+    assert calcular('2027-02-28', date(2026, 12, 31))['estado'] == 'aviso'
+    assert calcular('2027-03-01', date(2026, 12, 31))['estado'] == 'vigente'
+
+
+def _datos_trabajo(client):
+    return client.get('/api/datos_trabajo_v3?archivo=x.xlsx&terminal=T1&maquina=m1&iniciar_sesion=true')
+
+
+def test_servidor_bloquea_inspeccion_caducada_hasta_anotar_la_nueva(planta, client, admin_client):
+    _sql("UPDATE maquinas SET inspeccion_valida_hasta = '2020-01-01' WHERE id = 'm1'")
+    r = _datos_trabajo(client)
+    d = r.get_json()
+    assert r.status_code == 409 and d['inspeccion_caducada'] is True and d['consejo']
+    assert '01/01/2020' in d['message']
+    assert client.get('/api/maquinas/m1/inspeccion').get_json()['bloquea'] is True
+
+    # La ficha lo levanta en cuanto se anota la nueva
+    admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': '2099-01-01'})
+    assert not _datos_trabajo(client).get_json().get('inspeccion_caducada')
+    assert client.get('/api/maquinas/m1/inspeccion').get_json()['estado'] == 'vigente'
+
+
+def test_sin_fecha_de_inspeccion_ni_avisa_ni_bloquea(planta, client):
+    assert not _datos_trabajo(client).get_json().get('inspeccion_caducada')
+    d = client.get('/api/maquinas/m1/inspeccion').get_json()
+    assert d['estado'] == 'sin_anotar' and d['bloquea'] is False
+    assert client.get('/api/maquinas/noexiste/inspeccion').get_json()['bloquea'] is False

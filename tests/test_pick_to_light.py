@@ -2064,3 +2064,36 @@ def test_cierre_sin_nada_encendido_no_hace_nada_ni_falla(app, client, con_placa)
     r = client.post('/api/pick-to-light/cierre', json={'puesto_id': 'puesto_001'})
     assert r.status_code == 200 and r.get_json()['gaveta'] is False
     assert client.post('/api/pick-to-light/cierre', json={}).status_code == 200
+
+
+def test_herramienta_con_rfid_aparte_solo_pone_la_luz(app, client, admin_client, con_placa):
+    """Con etiqueta en la ficha de la máquina, la comprueba engastado: si la placa
+    quedara en modo verificar se quedaría con la lectura y habría que pasarla dos veces."""
+    device_id = _registrar_lector(app)
+    admin_client.put('/api/pick-to-light/canal',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'terminal': 'Pelacables 3',
+                           'etiqueta_gaveta': 'A-12', 'tipo': 'herramienta'})
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 7, 'uid': 'AABBCCDD'})
+
+    def _encender(**extra):
+        d = client.post('/api/pick-to-light/encender',
+                        json={'puesto_id': 'puesto_001', 'terminal': 'Pelacables 3', **extra}).get_json()
+        orden = client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json()
+        return d['rfid'], orden.get('rfid_modo')
+
+    rfid, modo = _encender()
+    assert rfid is True and modo
+    rfid, modo = _encender(rfid_aparte=True)
+    assert rfid is False and not modo
+
+
+def test_rfid_aparte_no_afecta_a_la_gaveta_de_un_terminal(app, client, admin_client, con_placa):
+    device_id = _registrar_lector(app)
+    _asignar_canal(admin_client, 'puesto_001', 5, '640204')
+    admin_client.put('/api/pick-to-light/canal/rfid',
+                     json={'puesto_id': 'puesto_001', 'canal': 5, 'uid': 'AABBCCDD'})
+    d = client.post('/api/pick-to-light/encender',
+                    json={'puesto_id': 'puesto_001', 'terminal': '640204', 'rfid_aparte': True}).get_json()
+    assert d['rfid'] is True
+    assert client.get('/api/esp32/rfid/gaveta/orden?device_id=' + device_id).get_json().get('rfid_modo')

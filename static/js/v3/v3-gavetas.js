@@ -35,8 +35,9 @@ let _gavetaUltimoRecogidaAvisada = null;
  *
  * 'modo' es 'fijo' (por defecto: "es esta, aun no hace falta cogerla") o
  * 'parpadeo' ("cogela ya"). De fijo a parpadeo se pasa con destellarGaveta().
+ * 'rfidAparte' es que la etiqueta se comprueba fuera de esta puerta.
  */
-async function encenderGavetaTerminal(terminal, modo) {
+async function encenderGavetaTerminal(terminal, modo, rfidAparte) {
     gavetaLuzActual = null;
     if (!puestoSeleccionado || !puestoSeleccionado.id) return;
     try {
@@ -44,7 +45,7 @@ async function encenderGavetaTerminal(terminal, modo) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ puesto_id: puestoSeleccionado.id, terminal: terminal,
-                                   modo: modo || 'fijo' })
+                                   modo: modo || 'fijo', rfid_aparte: !!rfidAparte })
         });
         const d = await r.json();
         if (d && d.success) gavetaLuzActual = d;
@@ -70,9 +71,11 @@ async function destellarGaveta() {
 
 
 /**
- * Primer paso tras elegir máquina: si está censada con pick-to-light + RFID,
- * la luz de su cajón parpadea en verde, el operario la coge y la acerca al
- * lector, y solo entonces se sigue con la elección de terminal.
+ * Primer paso tras elegir máquina: si está censada con pick-to-light, la luz de
+ * su cajón parpadea en verde y el operario la coge. Si la máquina tiene etiqueta
+ * en su ficha ('rfidAparte'), esto se queda en la luz y la comprueba
+ * identificarMaquina (v3-maquina-rfid.js): se pasa una sola vez, haya PTL o no.
+ * Solo una etiqueta que únicamente esté en el canal se pide aquí.
  *
  * Una máquina se considera censada cuando hay una herramienta del puesto con
  * su mismo nombre (el alta de Admin las elige del catálogo de máquinas). Si no
@@ -83,7 +86,7 @@ async function destellarGaveta() {
  *
  * Devuelve true solo si el lector ha confirmado su etiqueta en este paso.
  */
-async function verificarMaquinaPtl(maquina) {
+async function verificarMaquinaPtl(maquina, rfidAparte) {
     if (!maquina || !puestoSeleccionado || !puestoSeleccionado.id) return false;
     // Admin guarda el código recortado a 40 caracteres y sin espacios.
     const nombreMaq = (maquina.nombre || '').trim().slice(0, 40);
@@ -98,7 +101,7 @@ async function verificarMaquinaPtl(maquina) {
     if (!censada) return false;
 
     avisarAtencionGaveta();
-    await encenderGavetaTerminal(censada.codigo, 'parpadeo');
+    await encenderGavetaTerminal(censada.codigo, 'parpadeo', rfidAparte);
     const habiaLuz = !!(gavetaLuzActual && (gavetaLuzActual.activo || gavetaLuzActual.pendiente));
     await esperarRecogidaGaveta();
     const rfidConfirmado = !!(gavetaLuzActual && gavetaLuzActual.rfid_confirmado);
