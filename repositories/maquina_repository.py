@@ -33,7 +33,7 @@ class MaquinaRepository(BaseRepository):
             descripcion: Descripción (opcional)
             tipo_operacion: MANUAL, AUTOMATICA o SEMI-AUTOMATICA
             matricula: Matrícula física de la máquina (opcional)
-            inspeccion_valida_hasta: Validez de la inspección, AAAA-MM-DD (opcional)
+            inspeccion_valida_hasta: Mes hasta el que vale la inspección, AAAA-MM (opcional)
 
         Returns:
             True si se creó correctamente

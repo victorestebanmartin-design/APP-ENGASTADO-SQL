@@ -49,14 +49,14 @@ def validar_matricula(crudo, excluir_id=None):
 
 
 def validar_inspeccion(crudo):
-    """(fecha AAAA-MM-DD, error). Vacía es válida: aún no se ha anotado."""
-    fecha = str(crudo or '').strip()
-    if not fecha:
+    """(mes AAAA-MM, error). Vacía es válida: aún no se ha anotado."""
+    mes = str(crudo or '').strip()
+    if not mes:
         return '', None
     try:
-        return datetime.strptime(fecha, '%Y-%m-%d').strftime('%Y-%m-%d'), None
+        return datetime.strptime(mes, '%Y-%m').strftime('%Y-%m'), None
     except ValueError:
-        return None, 'La fecha de validez de la inspección no es correcta'
+        return None, 'El mes de validez de la inspección no es correcto'
 
 
 @bp.route('/api/maquinas/<maquina_id>/inspeccion', methods=['GET'])

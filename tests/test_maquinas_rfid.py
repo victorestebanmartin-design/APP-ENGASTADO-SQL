@@ -340,42 +340,56 @@ def test_cambiar_la_etiqueta_respeta_la_puesta_a_mano(planta, admin_client):
 
 # ==================== validez de la inspección ====================
 
-def test_inspeccion_se_guarda_se_valida_y_se_quita(planta, admin_client):
+def test_inspeccion_se_guarda_como_mes_se_valida_y_se_quita(planta, admin_client):
     r = admin_client.post('/api/maquinas', json={'puesto_id': 'p1', 'nombre': 'NUEVA',
-                                                 'inspeccion_valida_hasta': '2027-03-31'})
-    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03-31'
+                                                 'inspeccion_valida_hasta': '2027-03'})
+    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03'
 
-    r = admin_client.put('/api/maquinas/m1', json={'inspeccion_valida_hasta': '31/03/2027'})
-    assert r.status_code == 400 and 'inspección' in r.get_json()['message']
+    for mal in ('03/2027', '2027-13', '2027-03-31'):
+        r = admin_client.put('/api/maquinas/m1', json={'inspeccion_valida_hasta': mal})
+        assert r.status_code == 400 and 'inspección' in r.get_json()['message'], mal
 
-    r = admin_client.put('/api/maquinas/m1', json={'inspeccion_valida_hasta': '2027-02-30'})
-    assert r.status_code == 400
-
-    r = admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': '2027-03-31'})
-    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03-31'
+    r = admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': '2027-3'})
+    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03'
 
     # Sin el campo no se toca; vacío la quita.
     r = admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA'})
-    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03-31'
+    assert r.get_json()['maquina']['inspeccion_valida_hasta'] == '2027-03'
     r = admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': ''})
     assert r.get_json()['maquina']['inspeccion_valida_hasta'] is None
 
 
-def test_inspeccion_avisa_a_dos_meses_y_caduca_el_dia_siguiente():
+def test_inspeccion_vale_el_mes_entero_y_avisa_a_dos_meses_de_su_final():
     from datetime import date
     from app.inspeccion import calcular
-    hoy = date(2026, 11, 6)
-    assert calcular(None, hoy)['estado'] == 'sin_anotar'
-    assert calcular('2027-01-07', hoy)['estado'] == 'vigente'
-    assert calcular('2027-01-06', hoy)['estado'] == 'aviso'
-    assert calcular('2026-11-06', hoy)['estado'] == 'aviso'   # vale todo su último día
-    assert calcular('2026-11-06', hoy)['bloquea'] is False
-    caducada = calcular('2026-11-05', hoy)
+    assert calcular(None, date(2026, 11, 6))['estado'] == 'sin_anotar'
+    # Enero de 2027 vale hasta el 31; el aviso empieza cuando quedan dos meses
+    # contando el actual (diciembre y enero), el 1 de diciembre
+    assert calcular('2027-01', date(2026, 11, 30))['estado'] == 'vigente'
+    assert calcular('2027-01', date(2026, 12, 1))['estado'] == 'aviso'
+    assert calcular('2027-02', date(2026, 12, 31))['estado'] == 'vigente'
+    assert calcular('2027-01', date(2027, 1, 31))['estado'] == 'aviso'
+    assert calcular('2027-01', date(2027, 1, 31))['bloquea'] is False
+    caducada = calcular('2027-01', date(2027, 2, 1))
     assert caducada['estado'] == 'caducada' and caducada['bloquea'] is True
-    assert '05/11/2026' in caducada['motivo'] and caducada['consejo']
-    # Dos meses desde el 31 de diciembre acaban el último día de febrero
-    assert calcular('2027-02-28', date(2026, 12, 31))['estado'] == 'aviso'
-    assert calcular('2027-03-01', date(2026, 12, 31))['estado'] == 'vigente'
+    assert 'enero de 2027' in caducada['motivo'] and caducada['consejo']
+    # Febrero bisiesto: vale hasta el 29
+    assert calcular('2028-02', date(2028, 2, 29))['bloquea'] is False
+    assert calcular('2028-02', date(2028, 3, 1))['bloquea'] is True
+
+
+def test_fecha_antigua_con_dia_se_queda_con_su_mes(app):
+    """La 1.30.0 guardaba AAAA-MM-DD: al arrancar se recorta al mes."""
+    from app import inspeccion
+    assert inspeccion.calcular('2027-01-15', __import__('datetime').date(2027, 1, 31))['bloquea'] is False
+    with app.app_context():
+        _sql("INSERT INTO puestos (id, nombre) VALUES ('px', 'PX')")
+        _sql("INSERT INTO maquinas (id, puesto_id, nombre, inspeccion_valida_hasta) "
+             "VALUES ('mx', 'px', 'VIEJA', '2027-01-15')")
+        from app import _apply_migrations
+        _apply_migrations(app.config['DB_PATH'])
+        with db.engine.connect() as conn:
+            assert conn.execute(text("SELECT inspeccion_valida_hasta FROM maquinas WHERE id='mx'")).scalar() == '2027-01'
 
 
 def _datos_trabajo(client):
@@ -383,15 +397,15 @@ def _datos_trabajo(client):
 
 
 def test_servidor_bloquea_inspeccion_caducada_hasta_anotar_la_nueva(planta, client, admin_client):
-    _sql("UPDATE maquinas SET inspeccion_valida_hasta = '2020-01-01' WHERE id = 'm1'")
+    _sql("UPDATE maquinas SET inspeccion_valida_hasta = '2020-01' WHERE id = 'm1'")
     r = _datos_trabajo(client)
     d = r.get_json()
     assert r.status_code == 409 and d['inspeccion_caducada'] is True and d['consejo']
-    assert '01/01/2020' in d['message']
+    assert 'enero de 2020' in d['message']
     assert client.get('/api/maquinas/m1/inspeccion').get_json()['bloquea'] is True
 
     # La ficha lo levanta en cuanto se anota la nueva
-    admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': '2099-01-01'})
+    admin_client.put('/api/maquinas/m1', json={'nombre': 'AMP ROJA', 'inspeccion_valida_hasta': '2099-01'})
     assert not _datos_trabajo(client).get_json().get('inspeccion_caducada')
     assert client.get('/api/maquinas/m1/inspeccion').get_json()['estado'] == 'vigente'
 

@@ -104,8 +104,9 @@ puesto y no crea login.
   herramienta a un canal vacío se copia a su `uid_rfid` (el enlace es por nombre,
   como en `verificarMaquinaPtl`), y cambiarla o quitarla en la máquina actualiza
   ese canal. Una etiqueta distinta puesta a mano en el canal no se pisa.
-- **La inspección sí bloquea** (`app/inspeccion.py`): a 2 meses o menos avisa cada
-  vez que se elige la máquina; caducada, `datos_trabajo_v3` responde 409 con
+- **La inspección sí bloquea** (`app/inspeccion.py`). Se guarda el mes de la
+  etiqueta (`AAAA-MM`) y vale ese mes entero. Cuando quedan 2 meses o menos,
+  contando el actual, avisa cada vez que se elige la máquina; caducada, `datos_trabajo_v3` responde 409 con
   `inspeccion_caducada` y no hay botón para saltárselo: se levanta anotando la
   fecha nueva en la ficha. Sin fecha (NULL) ni avisa ni bloquea, para que desplegar
   no pare la planta. Guardar progreso no se bloquea: el trabajo hecho no se pierde.

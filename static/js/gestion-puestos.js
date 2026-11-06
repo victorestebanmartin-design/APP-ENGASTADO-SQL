@@ -579,20 +579,22 @@ function mostrarModalMaquina(maquinaId = null) {
 
 const INSPECCION_MESES_AVISO = 2;   // el mismo que MESES_AVISO en app/inspeccion.py
 
-/** Línea de la tarjeta con la validez de la inspección. Es válida todo su último día. */
+const MESES_TEXTO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                     'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** Línea de la tarjeta con la validez de la inspección: vale el mes entero (AAAA-MM). */
 function lineaInspeccion(hasta) {
     if (!hasta) return '<p class="maquina-modelo">Inspección sin anotar</p>';
-    const [anio, mes, dia] = hasta.split('-').map(Number);
-    const fin = new Date(anio, mes - 1, dia);
+    const [anio, mes] = hasta.split('-').map(Number);
+    const fin = new Date(anio, mes, 0);   // último día de ese mes
     const ahora = new Date();
     const hoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-    // Mismo día N meses después; si ese mes es más corto, su último día.
-    const limite = new Date(hoy.getFullYear(), hoy.getMonth() + INSPECCION_MESES_AVISO + 1, 0);
-    limite.setDate(Math.min(hoy.getDate(), limite.getDate()));
-    const fecha = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${anio}`;
-    if (fin < hoy) return `<p class="maquina-modelo" style="color:#f87171;font-weight:600;">⛔ Inspección caducada el ${fecha}: bloqueada</p>`;
-    if (fin <= limite) return `<p class="maquina-modelo" style="color:#fbbf24;font-weight:600;">⚠️ Inspección vence el ${fecha}</p>`;
-    return `<p class="maquina-modelo">🗓️ Inspección hasta ${fecha}</p>`;
+    // Meses que quedan, contando el actual: con enero en la etiqueta, en diciembre quedan 2.
+    const quedan = (anio - hoy.getFullYear()) * 12 + mes - (hoy.getMonth() + 1) + 1;
+    const texto = `${MESES_TEXTO[mes - 1]} de ${anio}`;
+    if (fin < hoy) return `<p class="maquina-modelo" style="color:#f87171;font-weight:600;">⛔ Inspección caducada (valía hasta ${texto}): bloqueada</p>`;
+    if (quedan <= INSPECCION_MESES_AVISO) return `<p class="maquina-modelo" style="color:#fbbf24;font-weight:600;">⚠️ Inspección vence a final de ${texto}</p>`;
+    return `<p class="maquina-modelo">🗓️ Inspección hasta ${texto}</p>`;
 }
 
 

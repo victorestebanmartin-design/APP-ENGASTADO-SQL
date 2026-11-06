@@ -1,11 +1,14 @@
 """
 Inspección periódica de las máquinas (como la ITV): hasta cuándo vale.
 
-La fecha está en maquinas.inspeccion_valida_hasta, y es válida todo ese día:
-  - NULL             -> sin anotar: ni avisa ni bloquea (desplegar no para la planta)
-  - faltan > 2 meses -> nada
-  - faltan <= 2 meses -> aviso cada vez que se usa, sin parar a nadie
-  - ya ha pasado     -> no se puede usar hasta anotar la nueva en la ficha
+maquinas.inspeccion_valida_hasta guarda el mes (AAAA-MM) que marca la etiqueta
+de la máquina, y la inspección vale ese mes entero, hasta su último día:
+  - NULL               -> sin anotar: ni avisa ni bloquea (desplegar no para la planta)
+  - quedan > 2 meses   -> nada
+  - quedan <= 2 meses  -> aviso cada vez que se usa, sin parar a nadie
+Los meses que quedan cuentan el actual: con la etiqueta en enero, en diciembre
+quedan dos (diciembre y enero) y empieza el aviso.
+  - ya ha pasado el mes -> no se puede usar hasta anotar el nuevo en la ficha
 
 Como en los ensayos, el bloqueo lo pone el servidor (datos_trabajo_v3); la
 pantalla (v3-maquina-rfid.js) es la cara amable.
@@ -23,8 +26,11 @@ except Exception:
 
 MESES_AVISO = 2
 
+MESES = ('enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+         'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre')
+
 CONSEJO_CADUCADA = ('Elige otra máquina y avisa al responsable. Cuando pase la inspección, '
-                    'hay que anotar la nueva fecha en Gestión de Puestos → Máquinas.')
+                    'hay que anotar el nuevo mes en Gestión de Puestos → Máquinas.')
 CONSEJO_AVISO = 'Avisa al responsable para que programe la inspección.'
 
 
@@ -32,37 +38,36 @@ def _hoy():
     return datetime.now(_TZ_LOCAL).date() if _TZ_LOCAL else date.today()
 
 
-def _sumar_meses(dia, meses):
-    """Mismo día N meses después; si ese mes es más corto, su último día."""
-    total = dia.month - 1 + meses
-    anio, mes = dia.year + total // 12, total % 12 + 1
-    return date(anio, mes, min(dia.day, calendar.monthrange(anio, mes)[1]))
+def _ultimo_dia(anio, mes):
+    return date(anio, mes, calendar.monthrange(anio, mes)[1])
 
 
 def calcular(hasta, hoy=None):
-    """Situación de una fecha: {estado, bloquea, hasta, dias, motivo, consejo}.
+    """Situación de un mes de validez: {estado, bloquea, hasta, dias, motivo, consejo}.
 
-    'estado' es 'sin_anotar', 'vigente', 'aviso' o 'caducada'.
+    'estado' es 'sin_anotar', 'vigente', 'aviso' o 'caducada'. 'dias' son los
+    que quedan hasta el último día del mes.
     """
     hoy = hoy or _hoy()
     resultado = {'estado': 'sin_anotar', 'bloquea': False, 'hasta': hasta or None,
                  'dias': None, 'motivo': None, 'consejo': None}
     try:
-        fecha = datetime.strptime(hasta or '', '%Y-%m-%d').date()
+        mes = datetime.strptime((hasta or '')[:7], '%Y-%m')
     except ValueError:
         return resultado
 
-    dias = (fecha - hoy).days
+    fin = _ultimo_dia(mes.year, mes.month)
+    dias = (fin - hoy).days
     resultado['dias'] = dias
-    texto = fecha.strftime('%d/%m/%Y')
+    texto = f'{MESES[mes.month - 1]} de {mes.year}'
     if dias < 0:
         resultado.update(estado='caducada', bloquea=True,
-                         motivo=f'La inspección de esta máquina caducó el {texto}',
+                         motivo=f'La inspección de esta máquina valía hasta {texto} y ha caducado',
                          consejo=CONSEJO_CADUCADA)
-    elif fecha <= _sumar_meses(hoy, MESES_AVISO):
+    elif (mes.year - hoy.year) * 12 + mes.month - hoy.month + 1 <= MESES_AVISO:
         cuando = 'hoy' if dias == 0 else ('mañana' if dias == 1 else f'en {dias} días')
         resultado.update(estado='aviso',
-                         motivo=f'La inspección de esta máquina caduca {cuando} ({texto})',
+                         motivo=f'La inspección de esta máquina vale hasta {texto}: caduca {cuando}',
                          consejo=CONSEJO_AVISO)
     else:
         resultado['estado'] = 'vigente'
