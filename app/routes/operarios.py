@@ -269,18 +269,37 @@ def api_operarios_get():
         with db.engine.connect() as conn:
             rows = conn.execute(text(
                 "SELECT id, nombre, activo, created_at, tag_uid, modulos_permitidos, "
-                "clave_personal_hash IS NOT NULL "
+                "clave_personal_hash IS NOT NULL, numero_empleado "
                 "FROM operarios ORDER BY nombre"
             )).fetchall()
         return jsonify({'success': True, 'operarios': [
             {'id': r[0], 'nombre': r[1], 'activo': r[2], 'created_at': r[3], 'tag_uid': r[4],
              # null = todos los modulos; lista = justo esos (ver base.py:modulos_permitidos_de)
              'modulos_permitidos': json.loads(r[5]) if r[5] else None,
-             'clave_personal_configurada': bool(r[6])}
+             'clave_personal_configurada': bool(r[6]),
+             'numero_empleado': r[7]}
             for r in rows
         ]})
     except Exception as e:
         return error_interno(e)
+
+
+def _normalizar_numero_empleado(crudo):
+    """Devuelve (numero, error). Número vacío -> (None, None): el dato es opcional."""
+    numero = str(crudo or '').strip().upper()
+    if not numero:
+        return None, None
+    if not re.fullmatch(r'[A-Z0-9._/-]{1,20}', numero):
+        return None, 'El número de empleado solo admite letras, números y . _ / - (hasta 20)'
+    return numero, None
+
+
+def _dueno_numero_empleado(conn, numero, op_id=None):
+    """Nombre de OTRO operario que ya tiene ese número, o None."""
+    fila = conn.execute(text(
+        "SELECT id, nombre FROM operarios WHERE numero_empleado = :n"
+    ), {'n': numero}).fetchone()
+    return fila[1] if fila and fila[0] != op_id else None
 
 
 @bp.route('/api/operarios', methods=['POST'])
@@ -292,13 +311,23 @@ def api_operarios_create():
         nombre = (data.get('nombre') or '').strip()
         if not nombre:
             return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+        numero, error = _normalizar_numero_empleado(data.get('numero_empleado'))
+        if error:
+            return jsonify({'success': False, 'error': error}), 400
         op_id = str(uuid.uuid4())[:8]
         with db.engine.connect() as conn:
+            dueno = _dueno_numero_empleado(conn, numero) if numero else None
+            if dueno:
+                return jsonify({'success': False,
+                                'error': f'Ese número de empleado ya es de "{dueno}"'}), 409
             conn.execute(text(
-                "INSERT INTO operarios (id, nombre) VALUES (:id, :nombre)"
-            ), {'id': op_id, 'nombre': nombre})
+                "INSERT INTO operarios (id, nombre, numero_empleado) VALUES (:id, :nombre, :numero)"
+            ), {'id': op_id, 'nombre': nombre, 'numero': numero})
             conn.commit()
-        return jsonify({'success': True, 'operario': {'id': op_id, 'nombre': nombre, 'activo': 1}})
+        return jsonify({'success': True, 'operario': {'id': op_id, 'nombre': nombre, 'activo': 1,
+                                                      'numero_empleado': numero}})
+    except IntegrityError:
+        return jsonify({'success': False, 'error': 'Ese número de empleado ya es de otro operario'}), 409
     except Exception as e:
         return error_interno(e)
 
@@ -346,14 +375,26 @@ def api_operarios_update(op_id):
                 return jsonify({'success': False,
                                 'error': 'modulos_permitidos debe ser una lista o null'}), 400
 
-        # Si solo se toca la tarjeta o los modulos, el nombre no es obligatorio.
+        # Número de empleado: texto, o null/'' para quitarlo.
+        numero, tocar_numero = None, 'numero_empleado' in data
+        if tocar_numero:
+            numero, error = _normalizar_numero_empleado(data.get('numero_empleado'))
+            if error:
+                return jsonify({'success': False, 'error': error}), 400
+
+        # Si solo se toca la tarjeta, los modulos o el numero, el nombre no es obligatorio.
         nombre = None
-        if 'nombre' in data or not (tocar_tag or tocar_modulos):
+        if 'nombre' in data or not (tocar_tag or tocar_modulos or tocar_numero):
             nombre = (data.get('nombre') or '').strip()
             if not nombre:
                 return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
 
         with db.engine.connect() as conn:
+            if numero:
+                dueno = _dueno_numero_empleado(conn, numero, op_id)
+                if dueno:
+                    return jsonify({'success': False,
+                                    'error': f'Ese número de empleado ya es de "{dueno}"'}), 409
             if tocar_tag and not limpiar_tag:
                 ocupado = _operario_por_tag(conn, tag_uid)
                 if ocupado and ocupado[0] != op_id:
@@ -374,9 +415,15 @@ def api_operarios_update(op_id):
             if tocar_modulos:
                 conn.execute(text("UPDATE operarios SET modulos_permitidos=:m WHERE id=:id"),
                              {'m': modulos_json, 'id': op_id})
+            if tocar_numero:
+                conn.execute(text("UPDATE operarios SET numero_empleado=:n WHERE id=:id"),
+                             {'n': numero, 'id': op_id})
             conn.commit()
         return jsonify({'success': True})
-    except IntegrityError:
+    except IntegrityError as e:
+        if 'numero_empleado' in str(e):
+            return jsonify({'success': False,
+                            'error': 'Ese número de empleado ya es de otro operario'}), 409
         return jsonify({'success': False,
                         'error': 'Esa tarjeta ya está asignada a otro operario'}), 409
     except Exception as e:

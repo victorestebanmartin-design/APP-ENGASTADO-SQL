@@ -38,7 +38,12 @@ from app.routes.base import (
     bp, db, error_interno, allowed_file, _ruta_upload_segura,
     _ahora_iso, _detectar_hoja, _es_error_nombre_bono_duplicado,
 )
-from app.routes.progreso import _crimps_por_terminal_archivo
+from app.routes.progreso import (
+    _crimps_por_terminal_archivo,
+    _numeros_empleado,
+    _terminal_descartado,
+    _terminales_ignorados,
+)
 
 
 # ==================== REPORTS / TRAZABILIDAD ====================
@@ -198,6 +203,10 @@ def report_carros_bono(nombre_bono):
             except Exception:
                 progreso = {}
 
+        ignorados = _terminales_ignorados()
+        # Para lo guardado antes de copiar el número en cada registro. Aquí sí se
+        # puede mirar la ficha actual: el número es de la persona, no de aquel día.
+        numeros_empleado = _numeros_empleado()
         _cache_crimps = {}
         carros = []
 
@@ -221,10 +230,16 @@ def report_carros_bono(nombre_bono):
                 ccs = [str(c) for c in (prog_t.get('carros_completados') or [])]
                 completado = (carro_key in ccs) or (prog_t.get('estado') == 'completado')
 
+                # Lo que no se pone por decisión no sale. Si llegó a engastarse
+                # (se desactivó después), se queda: es trazabilidad de algo que pasó.
+                if not completado and _terminal_descartado(terminal, ignorados):
+                    continue
+
                 # Datos de registro por carro (fecha/operario exactos si existen)
                 registro = (prog_t.get('carros_registro') or {}).get(carro_key, {})
                 fecha_iso = registro.get('fecha') or prog_t.get('fecha_ultima_actualizacion', '')
                 operario = registro.get('operario') or prog_t.get('operario', '')
+                numero = registro.get('operario_numero') or numeros_empleado.get(operario)
                 fecha, hora = _fmt_fecha_es(fecha_iso) if completado else ('', '')
 
                 if completado:
@@ -233,7 +248,7 @@ def report_carros_bono(nombre_bono):
                 filas.append({
                     'terminal': terminal,
                     'crimps': int(n_crimps),
-                    'operario': operario if completado else '',
+                    'operario': ' · '.join(p for p in (operario, numero) if p) if completado else '',
                     'maquina': _etiqueta_maquina(registro) if completado else '',
                     'maquina_sin_confirmar': completado and registro.get('maquina_origen') == 'sin_confirmar',
                     'fecha': fecha,

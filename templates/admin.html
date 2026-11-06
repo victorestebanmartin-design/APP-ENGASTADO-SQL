@@ -168,6 +168,9 @@
                             <input type="text" id="op-nuevo-nombre" placeholder="Nombre del operario"
                                 style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
                                 onkeypress="if(event.key==='Enter')crearOperario()">
+                            <input type="text" id="op-nuevo-numero" placeholder="Nº de empleado (opcional)" maxlength="20"
+                                style="width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
+                                onkeypress="if(event.key==='Enter')crearOperario()">
                             <button onclick="crearOperario()" class="btn-primary" style="white-space:nowrap;">+ Añadir</button>
                         </div>
                         <div id="op-msg" style="margin-top:8px;font-size:0.88em;display:none;"></div>
@@ -1205,6 +1208,12 @@
                                 onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
                         </td>
                         <td>
+                            <span id="op-numero-${op.id}" style="color:${op.numero_empleado ? '#f1f5f9' : '#64748b'};">${op.numero_empleado || 'Sin número'}</span>
+                            <input type="text" id="op-edit-numero-${op.id}" value="${op.numero_empleado || ''}" maxlength="20"
+                                style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:110px;"
+                                onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
+                        </td>
+                        <td>
                             <span id="op-tag-${op.id}" style="font-family:monospace;color:${op.tag_uid ? '#f1f5f9' : '#64748b'};">${op.tag_uid ? '🏷️ ' + op.tag_uid : 'Sin tarjeta'}</span>
                             <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Elegir lector RFID para asignar la tarjeta" style="margin-left:6px;">📡</button>
                             ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta" style="margin-left:4px;">🗑️</button>` : ''}
@@ -1243,6 +1252,7 @@
                             <thead>
                                 <tr>
                                     <th>Nombre</th>
+                                    <th>Nº empleado</th>
                                     <th>Tarjeta NFC</th>
                                     <th>Estado</th>
                                     <th>Contrase&ntilde;a Admin</th>
@@ -1320,15 +1330,17 @@
     function crearOperario() {
         const input = document.getElementById('op-nuevo-nombre');
         const msg = document.getElementById('op-msg');
+        const inputNumero = document.getElementById('op-nuevo-numero');
         const nombre = (input.value || '').trim();
         if (!nombre) { _opMsg('Introduce un nombre.', 'error'); return; }
         fetch('/api/operarios', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre })
+            body: JSON.stringify({ nombre, numero_empleado: inputNumero.value })
         }).then(r => r.json()).then(data => {
             if (data.success) {
                 input.value = '';
+                inputNumero.value = '';
                 _opMsg('Operario añadido.', 'ok');
                 cargarOperariosAdmin();
             } else {
@@ -1340,6 +1352,8 @@
     function editarOperario(id) {
         document.getElementById('op-nombre-' + id).style.display = 'none';
         document.getElementById('op-edit-' + id).style.display = 'inline-block';
+        document.getElementById('op-numero-' + id).style.display = 'none';
+        document.getElementById('op-edit-numero-' + id).style.display = 'inline-block';
         document.getElementById('op-btns-' + id).style.display = 'none';
         document.getElementById('op-edit-btns-' + id).style.display = 'inline';
         document.getElementById('op-edit-' + id).focus();
@@ -1348,17 +1362,20 @@
     function cancelarEditarOperario(id) {
         document.getElementById('op-nombre-' + id).style.display = 'inline';
         document.getElementById('op-edit-' + id).style.display = 'none';
+        document.getElementById('op-numero-' + id).style.display = 'inline';
+        document.getElementById('op-edit-numero-' + id).style.display = 'none';
         document.getElementById('op-btns-' + id).style.display = 'inline';
         document.getElementById('op-edit-btns-' + id).style.display = 'none';
     }
 
     function guardarOperario(id) {
         const nombre = (document.getElementById('op-edit-' + id).value || '').trim();
+        const numero_empleado = document.getElementById('op-edit-numero-' + id).value;
         if (!nombre) return;
         fetch(`/api/operarios/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nombre })
+            body: JSON.stringify({ nombre, numero_empleado })
         }).then(r => r.json()).then(data => {
             if (data.success) { _opMsg('Guardado.', 'ok'); cargarOperariosAdmin(); }
             else _opMsg(data.error || 'Error.', 'error');

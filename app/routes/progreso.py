@@ -18,6 +18,7 @@ import hashlib
 import traceback
 import tempfile
 import threading
+from collections import Counter
 from datetime import datetime
 import pandas as pd
 
@@ -185,12 +186,48 @@ def _terminales_trabajables(terminales):
         WHERE mt.activo = 1 AND m.activo = 1
     """)).fetchall()
     asignados = {r[0] for r in filas}
-    ignorados = {r[0].upper() for r in db.session.execute(
-        text("SELECT terminal_codigo FROM terminales_ignorados")).fetchall()}
+    ignorados = _terminales_ignorados()
     return {t for t in terminales
             if t.upper() in asignados
-            and t.upper() not in ignorados
-            and not t.upper().startswith('KN-')}
+            and not _terminal_descartado(t, ignorados)}
+
+
+def _terminales_ignorados():
+    """Códigos (en mayúsculas) desactivados en Admin -> Terminales."""
+    return {r[0].upper() for r in db.session.execute(
+        text("SELECT terminal_codigo FROM terminales_ignorados")).fetchall()}
+
+
+def _terminal_descartado(terminal, ignorados):
+    """True si el terminal no se pone por decisión: pelados (KN-...) o desactivado."""
+    t = terminal.upper()
+    return t.startswith('KN-') or t in ignorados
+
+
+def _numeros_empleado():
+    """{nombre: número de empleado} de los operarios que lo tienen.
+
+    Engastado identifica al operario por el nombre, así que un nombre repetido
+    queda fuera: elegir uno de los dos sería inventarse quién fue. Un fallo aquí
+    no puede impedir guardar el progreso ni sacar el report.
+    """
+    try:
+        filas = db.session.execute(text("SELECT nombre, numero_empleado FROM operarios")).fetchall()
+    except Exception:
+        current_app.logger.exception('No se pudieron leer los números de empleado')
+        return {}
+    veces = Counter(f[0] for f in filas)
+    return {f[0]: f[1] for f in filas if f[1] and veces[f[0]] == 1}
+
+
+def _operario_para_registro(nombre):
+    """Campos del operario para carros_registro. El número va copiado, como la
+    máquina: el report sigue diciendo el de aquel día aunque luego cambie."""
+    campos = {'operario': nombre}
+    numero = _numeros_empleado().get(nombre)
+    if numero:
+        campos['operario_numero'] = numero
+    return campos
 
 
 def _bono_finalizado(nombre_bono, terminales=None):
@@ -353,7 +390,7 @@ def api_bonos_progreso_post(nombre_bono):
             # (para el report de trazabilidad por carro). Idempotente por carro_key.
             registro = progreso[terminal].get('carros_registro', {})
             registro[str(carro)] = {
-                'operario': operario or progreso[terminal].get('operario', ''),
+                **_operario_para_registro(operario or progreso[terminal].get('operario', '')),
                 'fecha': _ahora_iso(),
                 **maquina_registro
             }
@@ -443,7 +480,7 @@ def api_bonos_progreso_parcial(nombre_bono):
                 if carro is not None:
                     registro = progreso[terminal].get('carros_registro', {})
                     registro[carro_key] = {
-                        'operario': operario or progreso[terminal].get('operario', ''),
+                        **_operario_para_registro(operario or progreso[terminal].get('operario', '')),
                         'fecha': _ahora_iso(),
                         **maquina_registro
                     }

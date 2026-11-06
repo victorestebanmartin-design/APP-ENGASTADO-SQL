@@ -252,9 +252,15 @@ def _apply_migrations(db_path):
         ('aprobar_mangueras', 'INTEGER NOT NULL DEFAULT 0'),
         ('clave_intentos', 'INTEGER NOT NULL DEFAULT 0'),
         ('clave_bloqueada_hasta', 'REAL NOT NULL DEFAULT 0'),
+        # Código o número de empleado: sale en el report. NULL = aún sin poner.
+        ('numero_empleado', 'TEXT'),
     ):
         if columna not in op_cols:
             cur.execute(f'ALTER TABLE operarios ADD COLUMN {columna} {definicion}')
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_operarios_numero_empleado
+        ON operarios(numero_empleado) WHERE numero_empleado IS NOT NULL
+    """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS mangueras_propuestas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
