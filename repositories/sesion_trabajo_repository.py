@@ -10,14 +10,67 @@ operario termine o salte el paquete.
 """
 import uuid
 import json
+import threading
+import time
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .base_repository import BaseRepository
 
 
+# Una sesión que ha dejado de dar señales ya no bloquea: el PC se apagó, perdió
+# la red o el navegador murió sin avisar. El puesto late cada minuto
+# (static/js/v3/v3-estado.js), así que 10 minutos aguantan un microcorte y una
+# pestaña en segundo plano. La que nunca ha latido (página abierta desde antes
+# de existir el latido, o caída en el primer minuto) se da por muerta al cabo
+# de un turno largo, para no quitarle el bloqueo a quien sigue trabajando.
+CADUCIDAD_SIN_LATIDO_MIN = 10
+CADUCIDAD_NUNCA_LATIO_H = 12
+
+# El barrido es un UPDATE y verificar_bloqueos se sondea cada 5 s desde cada
+# puesto que espera: con este freno se hace como mucho una vez cada 30 s.
+_BARRIDO_CADA_S = 30
+_ultimo_barrido = [float('-inf')]
+_barrido_lock = threading.Lock()
+
+
 class SesionTrabajoRepository(BaseRepository):
     """Gestiona sesiones de trabajo activas para bloqueo de paquetes."""
+
+    # ------------------------------------------------------------------
+    # Latido / caducidad
+    # ------------------------------------------------------------------
+
+    def latido(self, sesion_id: str) -> bool:
+        """Anota que el puesto de esta sesión sigue ahí. False si la sesión ya
+        no está activa (liberada, caducada o sustituida por otra)."""
+        filas = self.execute_update(
+            "UPDATE sesiones_trabajo SET ultimo_latido = :ahora WHERE id = :id AND activo = 1",
+            {'ahora': datetime.now().isoformat(), 'id': sesion_id}
+        )
+        return filas > 0
+
+    def caducar_sesiones(self, forzar: bool = False) -> int:
+        """Libera las sesiones que han dejado de latir. Devuelve cuántas."""
+        if not forzar:
+            ahora_mono = time.monotonic()
+            with _barrido_lock:
+                if ahora_mono - _ultimo_barrido[0] < _BARRIDO_CADA_S:
+                    return 0
+                _ultimo_barrido[0] = ahora_mono
+        ahora = datetime.now()
+        return self.execute_update(
+            """
+            UPDATE sesiones_trabajo SET activo = 0
+            WHERE activo = 1
+              AND ((ultimo_latido IS NOT NULL AND ultimo_latido < :limite)
+                OR (ultimo_latido IS NULL AND timestamp_inicio < :limite_sin_latido))
+            """,
+            {
+                'limite': (ahora - timedelta(minutes=CADUCIDAD_SIN_LATIDO_MIN)).isoformat(),
+                'limite_sin_latido': (ahora - timedelta(hours=CADUCIDAD_NUNCA_LATIO_H)).isoformat(),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Creación / liberación
@@ -198,6 +251,11 @@ class SesionTrabajoRepository(BaseRepository):
         """
         if not paquetes:
             return {}
+
+        try:
+            self.caducar_sesiones()
+        except Exception:
+            pass  # el barrido es una ayuda: si falla, se comprueba igual
 
         try:
             ambito = self._ambito(orden_id, archivo)

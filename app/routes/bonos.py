@@ -70,7 +70,14 @@ def api_obtener_bonos():
             })
 
         for bono in bonos:
-            bono['finalizado'] = _bono_finalizado(bono.get('nombre'))
+            # Solo los activos pueden estar "a punto de cerrarse": calcularlo
+            # recorre sus Excel fila a fila. Un bono cerrado ya no cambia, y
+            # hacerlo con todo el histórico en cada sondeo de Visualización
+            # dejaba el listado en decenas de segundos.
+            if bono.get('estado') == 'activo':
+                bono['finalizado'] = _bono_finalizado(bono.get('nombre'))
+            else:
+                bono['finalizado'] = bono.get('estado') == 'completado'
             bono['ordenes_resumen'] = por_bono.get(bono['id'], [])
 
         return jsonify({
@@ -147,11 +154,19 @@ def api_eliminar_bono(nombre):
         if not ok:
             return jsonify({'success': False, 'error': 'No se pudo eliminar el bono'}), 500
 
-        # Borrar fichero de progreso si existe
-        import os
+        # El progreso es también el report de trazabilidad (quién, con qué
+        # máquina y cuándo hizo cada carro): no se tira, se aparta. Fuera de
+        # data/ a secas para que un bono nuevo con el mismo nombre no lo herede.
+        from app.routes.progreso import _obtener_lock_progreso, _reemplazar_con_reintento
         progreso_path = _ruta_progreso_bono(nombre)
-        if os.path.exists(progreso_path):
-            os.remove(progreso_path)
+        with _obtener_lock_progreso(nombre):
+            if os.path.exists(progreso_path):
+                apartados = os.path.join(current_app.config['DATA_DIR'], 'progreso_bonos_borrados')
+                os.makedirs(apartados, exist_ok=True)
+                sello = datetime.now().strftime('%Y%m%d_%H%M%S')
+                destino = os.path.join(
+                    apartados, f'{sello}_{os.path.basename(progreso_path)}')
+                _reemplazar_con_reintento(progreso_path, destino)
 
         return jsonify({'success': True, 'message': f'Bono {nombre} eliminado correctamente'})
 
@@ -421,9 +436,8 @@ def api_generar_bono_desde_carros():
             )
             conn.execute(text("UPDATE bonos SET numeracion_carros = 'fisica' WHERE id = :id"), {'id': bono_id})
 
-            # Cambiar estado de las órdenes a 'en_bono' y guardar carro_numero
+            # Guardar carro_numero (crear_bono ya las dejó en 'en_bono')
             for idx, (numero_orden, carro_info) in enumerate(zip(ordenes_ids, carros_info)):
-                orden_repo.cambiar_estado(numero_orden, 'en_bono', conn=conn)
                 # Guardar el carro_numero en la orden para que el dashboard ponderado funcione
                 conn.execute(
                     text("UPDATE ordenes_produccion SET carro_numero=:carro WHERE numero=:numero AND bono_id=:bono_id"),

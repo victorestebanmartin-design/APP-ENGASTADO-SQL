@@ -171,17 +171,24 @@ class BonoRepository(BaseRepository):
         """Eliminar bono, desasociar sus órdenes y dejar libres sus carros.
 
         Sin liberar los carros quedaban en 'en_proceso' sin bono: ocupados para
-        siempre y sin forma de verlo desde el asistente."""
-        self.execute_update(
-            "UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE bono_id = :bono_id",
-            {'bono_id': bono_id}
-        )
-        self.execute_update(
-            "UPDATE ordenes_produccion SET bono_id = NULL, carro_numero = NULL, estado = 'pendiente' "
-            "WHERE bono_id = :bono_id",
-            {'bono_id': bono_id}
-        )
-        rows = self.execute_update("DELETE FROM bonos WHERE id = :id", {'id': bono_id})
+        siempre y sin forma de verlo desde el asistente.
+
+        Las órdenes ya completadas o canceladas se quedan como están (y con su
+        carro, que usan los reports): borrar un bono viejo no puede devolver a
+        «pendiente» trabajo que ya se hizo. Todo en una transacción.
+        """
+        with self.db.engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE carros SET bono_id = NULL, estado = 'disponible' WHERE bono_id = :bono_id"
+            ), {'bono_id': bono_id})
+            conn.execute(text(
+                "UPDATE ordenes_produccion SET bono_id = NULL, carro_numero = NULL, estado = 'pendiente' "
+                "WHERE bono_id = :bono_id AND estado NOT IN ('completado', 'cancelado')"
+            ), {'bono_id': bono_id})
+            conn.execute(text(
+                "UPDATE ordenes_produccion SET bono_id = NULL WHERE bono_id = :bono_id"
+            ), {'bono_id': bono_id})
+            rows = conn.execute(text("DELETE FROM bonos WHERE id = :id"), {'id': bono_id}).rowcount
         return rows > 0
 
 

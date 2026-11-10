@@ -204,3 +204,24 @@ llama antes de `serve()`. Dos detalles que no se pueden tocar:
 El log de arranque deja escrito si llegó a aplicarse (`Suspension del PC:
 evitada / SIN evitar`). El plan de energía de Windows se configura además a
 mano, como refuerzo: ver `INSTRUCCIONES_IT.md`.
+
+## El progreso del bono es un fichero, y se guarda de verdad o se avisa
+
+`data/progreso_bono_<nombre>.json` es el avance del bono **y** el report de
+trazabilidad; no está en la base de datos. Tres cosas que ya han fallado:
+
+- **En el JS, todo guardado pasa por `guardarProgresoBono`**
+  (`static/js/v3/v3-estado.js`), que mira la respuesta y reintenta. Un `fetch`
+  a secas enseñaba «✅ Carro completado» aunque el servidor diera 500. Lo vigila
+  `tests/test_revision_fiabilidad.py`.
+- **Leerlo, con `leer_progreso`** (`app/routes/progreso.py`): en Windows no se
+  puede sustituir un fichero que otro hilo tiene abierto. El escritor además
+  reintenta (`_reemplazar_con_reintento`).
+- **Borrar un bono lo aparta** a `data/progreso_bonos_borrados/`, no lo tira, y
+  las órdenes ya completadas se quedan completadas.
+
+`/api/bonos` solo calcula «finalizado» para los bonos activos: hacerlo con todo
+el histórico en cada sondeo de Visualización tardaba decenas de segundos.
+
+Las sesiones de bloqueo (`sesiones_trabajo`) caducan si el puesto deja de latir
+(`/api/sesion/latido`, cada minuto; 10 minutos de margen).

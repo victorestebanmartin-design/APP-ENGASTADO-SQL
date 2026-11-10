@@ -56,6 +56,24 @@ def _obtener_lock_progreso(nombre_bono: str) -> threading.Lock:
         return _progreso_locks[nombre_bono]
 
 
+def _reemplazar_con_reintento(tmp: str, path: str, intentos: int = 20, espera: float = 0.05) -> None:
+    """os.replace que aguanta a un lector en Windows.
+
+    Allí no se puede sustituir un fichero que otro hilo o proceso tiene abierto
+    (un GET del progreso, la copia automática, el antivirus): falla con
+    PermissionError. El lector lo suelta en milisegundos, así que basta con
+    volver a intentarlo; sin esto se perdía el carro que se estaba guardando.
+    """
+    for intento in range(intentos):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if intento == intentos - 1:
+                raise
+            time.sleep(espera)
+
+
 def _escribir_progreso_atomico(path: str, progreso: dict) -> None:
     """Escribe el JSON de progreso de forma atómica (tempfile + os.replace).
     Evita dejar un archivo truncado si el proceso falla durante la escritura."""
@@ -64,7 +82,7 @@ def _escribir_progreso_atomico(path: str, progreso: dict) -> None:
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(progreso, f, indent=2, ensure_ascii=False)
-        os.replace(tmp, path)
+        _reemplazar_con_reintento(tmp, path)
     except Exception:
         try:
             os.unlink(tmp)
@@ -73,23 +91,25 @@ def _escribir_progreso_atomico(path: str, progreso: dict) -> None:
         raise
 
 
+def leer_progreso(nombre_bono: str) -> dict:
+    """Progreso guardado de un bono ({} si aún no hay), leído bajo su candado
+    para no tener el fichero abierto justo cuando otro hilo lo sustituye."""
+    path = _ruta_progreso_bono(nombre_bono)
+    with _obtener_lock_progreso(nombre_bono):
+        if not os.path.exists(path):
+            return {}
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+
 # ==================== API DE PROGRESO ====================
 
-@bp.route('/api/bonos/<nombre_bono>/progreso', methods=['GET'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso', methods=['GET'])
 def api_bonos_progreso_get(nombre_bono):
     """Obtener progreso guardado de un bono"""
     try:
-        progreso_path = _ruta_progreso_bono(nombre_bono)
-        
-        if not os.path.exists(progreso_path):
-            return jsonify({
-                'success': True,
-                'progreso': {}
-            })
-        
-        with open(progreso_path, 'r', encoding='utf-8') as f:
-            progreso = json.load(f)
-        
+        progreso = leer_progreso(nombre_bono)
+
         return jsonify({
             'success': True,
             'progreso': progreso
@@ -245,12 +265,9 @@ def _bono_finalizado(nombre_bono, terminales=None):
         if not terminales:
             return False
 
-        progreso_path = _ruta_progreso_bono(nombre_bono)
-        if not os.path.exists(progreso_path):
+        progreso = leer_progreso(nombre_bono)
+        if not progreso:
             return False
-
-        with open(progreso_path, 'r', encoding='utf-8') as f:
-            progreso = json.load(f)
 
         for terminal in terminales:
             info = progreso.get(terminal)
@@ -301,7 +318,7 @@ def _liberar_si_finalizado(nombre_bono):
         return []
 
 
-@bp.route('/api/bonos/<nombre_bono>/terminales-disponibles', methods=['GET'])
+@bp.route('/api/bonos/<path:nombre_bono>/terminales-disponibles', methods=['GET'])
 def api_bonos_terminales_disponibles(nombre_bono):
     """Obtener terminales que tienen datos en los archivos del bono"""
     try:
@@ -342,7 +359,7 @@ def _maquina_para_registro(data):
     return campos
 
 
-@bp.route('/api/bonos/<nombre_bono>/progreso', methods=['POST'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso', methods=['POST'])
 def api_bonos_progreso_post(nombre_bono):
     """Guardar progreso de un terminal/carro en un bono"""
     try:
@@ -418,7 +435,7 @@ def api_bonos_progreso_post(nombre_bono):
     except Exception as e:
         return error_interno(e, 'Error al guardar progreso')
 
-@bp.route('/api/bonos/<nombre_bono>/progreso/parcial', methods=['POST'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso/parcial', methods=['POST'])
 def api_bonos_progreso_parcial(nombre_bono):
     """Guardar progreso parcial de un carro (cancelado a mitad, con paquetes saltados)"""
     try:
@@ -504,7 +521,7 @@ def api_bonos_progreso_parcial(nombre_bono):
         return error_interno(e)
 
 
-@bp.route('/api/bonos/<nombre_bono>/progreso/estado', methods=['POST'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso/estado', methods=['POST'])
 def api_bonos_progreso_estado(nombre_bono):
     """Actualizar solo el estado de un terminal (en_proceso / completado)"""
     try:
@@ -551,15 +568,11 @@ def api_bonos_progreso_estado(nombre_bono):
         return error_interno(e)
 
 
-@bp.route('/api/bonos/<nombre_bono>/progreso-por-carro', methods=['GET'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso-por-carro', methods=['GET'])
 def api_bonos_progreso_por_carro(nombre_bono):
     """Progreso agrupado por carro: {carro_id: {terminales_completados: [...]}}"""
     try:
-        progreso_path = _ruta_progreso_bono(nombre_bono)
-        progreso = {}
-        if os.path.exists(progreso_path):
-            with open(progreso_path, 'r', encoding='utf-8') as f:
-                progreso = json.load(f)
+        progreso = leer_progreso(nombre_bono)
 
         por_carro = {}
         for terminal, data in progreso.items():
@@ -635,7 +648,7 @@ def _crimps_por_terminal_archivo(archivo: str) -> dict:
     return {t: n['colocados'] for t, n in lados.items() if n['colocados'] > 0}
 
 
-@bp.route('/api/bonos/<nombre_bono>/progreso-ponderado', methods=['GET'])
+@bp.route('/api/bonos/<path:nombre_bono>/progreso-ponderado', methods=['GET'])
 def api_bonos_progreso_ponderado(nombre_bono):
     """
     Progreso ponderado del bono usando num_terminales como peso.
@@ -678,11 +691,7 @@ def api_bonos_progreso_ponderado(nombre_bono):
                 )
 
         # Leer progreso guardado
-        progreso_path = _ruta_progreso_bono(nombre_bono)
-        progreso = {}
-        if os.path.exists(progreso_path):
-            with open(progreso_path, 'r', encoding='utf-8') as f:
-                progreso = json.load(f)
+        progreso = leer_progreso(nombre_bono)
 
         # Calcular métricas por terminal
         resumen_terminales = []

@@ -393,51 +393,49 @@ async function mostrarPaqueteExpandido() {
  * Paquete completado - continuar con siguiente carro o finalizar
  */
 async function paqueteCompletado() {
+    const carroActual = carrosDelBono[carroActualIndex];
+    const numSaltados = paquetesSaltados.length;
+    let guardado = false;
     try {
-        const carroActual = carrosDelBono[carroActualIndex];
-        const numSaltados = paquetesSaltados.length;
-
         if (numSaltados > 0) {
             // Hay saltados: guardar como pendientes, el carro NO se marca completado
-            await fetch(`/api/bonos/${bonoActual.nombre}/progreso/parcial`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    terminal: terminalActual,
-                    carro: carroActual.carro,
-                    operario: operarioActual || '',
-                    ...datosMaquinaProgreso(),
-                    paquetes_hechos: paqueteActualIndex,
-                    paquetes_pendientes: paquetesSaltados.map(p => ({
-                        elemento: p.elemento,
-                        cod_cable: p.cod_cable,
-                        num_cables: p.num_cables,
-                        bloqueado: !!p.bloqueado
-                    }))
-                })
+            guardado = await guardarProgresoBono('/parcial', {
+                terminal: terminalActual,
+                carro: carroActual.carro,
+                operario: operarioActual || '',
+                ...datosMaquinaProgreso(),
+                paquetes_hechos: paqueteActualIndex,
+                paquetes_pendientes: paquetesSaltados.map(p => ({
+                    elemento: p.elemento,
+                    cod_cable: p.cod_cable,
+                    num_cables: p.num_cables,
+                    bloqueado: !!p.bloqueado
+                }))
             });
-            const lista = paquetesSaltados.map(p => `• ${p.elemento} (${p.num_cables} cables)`).join('\n');
-            mostrarMensaje(`⚠️ Carro ${carroActual.carro}: ${numSaltados} paquete${numSaltados>1?'s':''} pendiente${numSaltados>1?'s':''}. Deberás volver a este carro para completarlos:\n${lista}`, 'warning');
+            if (guardado) {
+                const lista = paquetesSaltados.map(p => `• ${p.elemento} (${p.num_cables} cables)`).join('\n');
+                mostrarMensaje(`⚠️ Carro ${carroActual.carro}: ${numSaltados} paquete${numSaltados>1?'s':''} pendiente${numSaltados>1?'s':''}. Deberás volver a este carro para completarlos:\n${lista}`, 'warning');
+            }
         } else {
             // Sin saltados: marcar carro como completado
-            await fetch(`/api/bonos/${bonoActual.nombre}/progreso`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    terminal: terminalActual,
-                    carro: carroActual.carro,
-                    operario: operarioActual || '',
-                    ...datosMaquinaProgreso(),
-                    terminales_proyecto: [terminalActual]
-                })
+            guardado = await guardarProgresoBono('', {
+                terminal: terminalActual,
+                carro: carroActual.carro,
+                operario: operarioActual || '',
+                ...datosMaquinaProgreso(),
+                terminales_proyecto: [terminalActual]
             });
-            mostrarMensaje(`✅ Carro ${carroActual.carro} completado.`, 'success');
+            if (guardado) mostrarMensaje(`✅ Carro ${carroActual.carro} completado.`, 'success');
         }
-
-        console.log(`${numSaltados > 0 ? '⚠️' : '✅'} Carro ${carroActual.carro} guardado (saltados: ${numSaltados})`);
-
     } catch (error) {
         console.error('Error al guardar progreso del carro:', error);
+    }
+
+    if (!guardado) {
+        // alert y no mensaje: se va solo a los 5 s y esto no puede pasar desapercibido
+        alert(`❌ No se ha podido guardar el carro ${carroActual?.carro}.\n\n` +
+              'Seguirá apareciendo como pendiente: vuelve a entrar en él y confírmalo otra vez. ' +
+              'Si se repite, avisa al encargado (puede que el servidor no responda).');
     }
 
     // Carro terminado (completo o parcial): liberar este puesto en la pantalla
@@ -475,13 +473,13 @@ async function terminarTerminal() {
     console.log(`✅ Terminal ${terminalActual} completado en todos sus carros`);
     
     // Marcar el terminal como 'completado' en el backend
-    try {
-        await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminal: terminalActual, estado: 'completado', operario: operarioActual || '' })
-        });
-    } catch (e) { /* ignorar si falla */ }
+    const terminalGuardado = await guardarProgresoBono('/estado',
+        { terminal: terminalActual, estado: 'completado', operario: operarioActual || '' });
+    if (!terminalGuardado) {
+        alert(`❌ No se ha podido marcar el terminal ${terminalActual} como completado.\n\n` +
+              'Seguirá apareciendo como pendiente: vuelve a entrar y termínalo otra vez. ' +
+              'Si se repite, avisa al encargado.');
+    }
     
     // Recargar progreso desde el backend para obtener estado actualizado
     await cargarProgresoDelBono(bonoActual.nombre);

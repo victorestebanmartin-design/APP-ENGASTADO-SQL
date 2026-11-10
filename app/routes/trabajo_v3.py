@@ -420,8 +420,10 @@ def api_liberar_sesion():
     Llamado cuando el operario termina el terminal o navega fuera.
     """
     try:
-        data = request.get_json() or {}
-        sesion_id = data.get('sesion_id', '').strip()
+        # force: al cerrar la pestaña esto llega por sendBeacon, y una página
+        # que siga abierta con el JS anterior lo manda como texto plano.
+        data = request.get_json(silent=True, force=True) or {}
+        sesion_id = str(data.get('sesion_id') or '').strip()
 
         if not sesion_id:
             return jsonify({'success': False, 'message': 'sesion_id es obligatorio'}), 400
@@ -430,6 +432,21 @@ def api_liberar_sesion():
         sesion_repo.liberar_sesion(sesion_id)
         return jsonify({'success': True})
 
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/sesion/latido', methods=['POST'])
+def api_latido_sesion():
+    """El puesto sigue trabajando con esta sesión. Sin latidos durante un rato,
+    sus paquetes dejan de estar bloqueados para los demás."""
+    try:
+        data = request.get_json(silent=True) or {}
+        sesion_id = str(data.get('sesion_id') or '').strip()
+        if not sesion_id:
+            return jsonify({'success': False, 'message': 'sesion_id es obligatorio'}), 400
+        activa = SesionTrabajoRepository(db).latido(sesion_id)
+        return jsonify({'success': True, 'activa': activa})
     except Exception as e:
         return error_interno(e)
 
@@ -548,6 +565,7 @@ def api_sesiones_activas():
         filtro_bono = request.args.get('bono', '').strip() or None
 
         sesion_repo = SesionTrabajoRepository(db)
+        sesion_repo.caducar_sesiones(forzar=True)
         # Extender la consulta para incluir bono a través de carro
         query = """
             SELECT st.id, st.maquina_id, st.terminal_codigo,

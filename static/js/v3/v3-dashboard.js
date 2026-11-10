@@ -152,7 +152,7 @@ async function mostrarBonosDisponibles() {
  */
 async function cargarProgresoDelBono(nombreBono) {
     try {
-        const response = await fetch(`/api/bonos/${nombreBono}/progreso`);
+        const response = await fetch(`/api/bonos/${encodeURIComponent(nombreBono)}/progreso`);
         const data = await response.json();
         
         if (data.success && data.progreso) {

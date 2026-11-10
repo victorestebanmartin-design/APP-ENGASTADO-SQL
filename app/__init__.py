@@ -352,8 +352,14 @@ def _apply_migrations(db_path):
     # orden_id: el bloqueo solo vale dentro de la misma orden (que es de un solo
     # bono). Sin él, dos bonos con un paquete del mismo nombre se bloqueaban.
     cur.execute("PRAGMA table_info(sesiones_trabajo)")
-    if 'orden_id' not in {row[1] for row in cur.fetchall()}:
+    st_cols = {row[1] for row in cur.fetchall()}
+    if 'orden_id' not in st_cols:
         cur.execute("ALTER TABLE sesiones_trabajo ADD COLUMN orden_id TEXT")
+    # ultimo_latido: el puesto avisa cada minuto de que sigue ahí. Sin él, un PC
+    # apagado a mitad dejaba sus paquetes bloqueados hasta que alguien los
+    # liberaba a mano (ver SesionTrabajoRepository.caducar_sesiones).
+    if 'ultimo_latido' not in st_cols:
+        cur.execute("ALTER TABLE sesiones_trabajo ADD COLUMN ultimo_latido TEXT")
     conn.commit()
 
     # Migración: identificación del puesto en la pantalla del carro

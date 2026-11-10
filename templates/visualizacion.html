@@ -1059,7 +1059,9 @@
         
         async function cargarBonos() {
             try {
-                const response = await fetch('/api/bonos');
+                // Solo los activos: son los unicos que se pintan, y pedir todo el
+                // historico cada 5 s cargaba el servidor sin necesidad.
+                const response = await fetch('/api/bonos?estado=activo');
                 const data = await response.json();
                 
                 if (data.success) {

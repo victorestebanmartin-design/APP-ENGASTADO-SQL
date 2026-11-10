@@ -895,26 +895,23 @@ async function cancelarModalPaquetes() {
     const hayProgreso = paquetesRealmenteHechos > 0 || todosPendientes.length > 0;
     if (hayProgreso && bonoActual && carrosDelBono[carroActualIndex]) {
         const carro = carrosDelBono[carroActualIndex];
-        try {
-            await fetch(`/api/bonos/${bonoActual.nombre}/progreso/parcial`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    terminal: terminalActual,
-                    carro: carro.carro,
-                    operario: operarioActual || '',
-                    ...datosMaquinaProgreso(),
-                    paquetes_hechos: paquetesRealmenteHechos,
-                    paquetes_saltados: paquetesSaltados.map(p => ({ elemento: p.elemento, cod_cable: p.cod_cable, num_cables: p.num_cables })),
-                    paquetes_pendientes: todosPendientes
-                })
-            });
+        const guardado = await guardarProgresoBono('/parcial', {
+            terminal: terminalActual,
+            carro: carro.carro,
+            operario: operarioActual || '',
+            ...datosMaquinaProgreso(),
+            paquetes_hechos: paquetesRealmenteHechos,
+            paquetes_saltados: paquetesSaltados.map(p => ({ elemento: p.elemento, cod_cable: p.cod_cable, num_cables: p.num_cables })),
+            paquetes_pendientes: todosPendientes
+        });
+        if (guardado) {
             const msg = todosPendientes.length > 0
                 ? `⚠️ Cancelado. ${paquetesRealmenteHechos} hechos, ${todosPendientes.length} pendiente${todosPendientes.length > 1 ? 's' : ''} guardados.`
                 : `💾 Cancelado. Progreso (${paquetesRealmenteHechos} paquetes) guardado.`;
             mostrarMensaje(msg, 'warning');
-        } catch (e) {
-            console.error('Error guardando progreso parcial:', e);
+        } else {
+            alert(`❌ No se ha podido guardar lo hecho en el carro ${carro.carro}.\n\n` +
+                  'Al volver a entrar aparecerá como sin empezar. Si se repite, avisa al encargado.');
         }
     }
     // Liberar sesión de trabajo al cancelar

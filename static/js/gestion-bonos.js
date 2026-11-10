@@ -186,7 +186,7 @@ async function eliminarBono(nombreBono) {
             alert('✅ Bono eliminado correctamente');
             cargarBonosGestion();
         } else {
-            alert(`❌ Error: ${data.message}`);
+            alert(`❌ Error: ${data.error || data.message || 'no se pudo eliminar'}`);
         }
     } catch (error) {
         alert('❌ Error al eliminar el bono');

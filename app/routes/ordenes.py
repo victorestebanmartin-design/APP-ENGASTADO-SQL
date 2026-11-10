@@ -95,9 +95,25 @@ def api_crear_orden():
         proyecto = data.get('proyecto', '') or proyecto_nombre or ''
         
         orden_repo = OrdenRepository(db)
+        # El número identifica a la orden al montar el bono (se asigna por
+        # número): dos órdenes con el mismo acabarían las dos en el bono.
+        numero = str(data['numero']).strip()
+        if not numero:
+            return jsonify({
+                'success': False,
+                'message': 'El número de orden no puede estar vacío'
+            }), 400
+        if orden_repo.execute_select(
+                "SELECT 1 FROM ordenes_produccion WHERE numero = :numero LIMIT 1",
+                {'numero': numero}):
+            return jsonify({
+                'success': False,
+                'message': f'Ya existe una orden con el número {numero}. '
+                           'Si es otra distinta, cambia el número de una de las dos.'
+            }), 409
         orden_id = orden_repo.crear_orden(
             codigo_corte=data['codigo_corte'],
-            numero=data['numero'],
+            numero=numero,
             descripcion=data.get('descripcion', ''),
             cantidad=data.get('cantidad', 1),
             fecha_entrega=data.get('fecha_entrega'),

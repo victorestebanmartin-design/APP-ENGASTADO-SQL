@@ -129,6 +129,33 @@ function mostrarMensaje(mensaje, tipo = 'info') {
     }, 5000);
 }
 
+// ── Guardado del progreso del bono ───────────────────────────────────────────
+// Devuelve true solo si el servidor confirma que lo ha guardado. Un fallo de
+// red o un error del servidor se reintenta un par de veces antes de rendirse:
+// quien llama decide qué decirle al operario, pero nunca "guardado" a ciegas.
+async function guardarProgresoBono(sufijo, cuerpo, intentos = 3) {
+    if (!bonoActual) return false;
+    const url = `/api/bonos/${encodeURIComponent(bonoActual.nombre)}/progreso${sufijo}`;
+    for (let i = 0; i < intentos; i++) {
+        try {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo)
+            });
+            const data = await r.json().catch(() => null);
+            if (r.ok && data && data.success) return true;
+            // Un 4xx es una decisión del servidor: repetirlo no la cambia
+            if (r.status >= 400 && r.status < 500) return false;
+            console.error('Progreso no guardado:', r.status, data);
+        } catch (e) {
+            console.error('Progreso no guardado (red):', e);
+        }
+        if (i < intentos - 1) await new Promise(res => setTimeout(res, 1000));
+    }
+    return false;
+}
+
 // ── Login exclusivo de operario ──────────────────────────────────────────────
 // Latido periódico para que el servidor sepa que este operario sigue dentro.
 // Si el login caducó (p.ej. el PC se quedó dormido), se intenta recuperar;
@@ -168,6 +195,19 @@ function _iniciarLatidoOperario() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Latido de la sesión de trabajo: mientras este puesto tenga paquetes
+// reclamados, avisa cada minuto de que sigue aquí. Si el PC se apaga o pierde
+// la red, el servidor deja de recibirlo y a los 10 minutos libera los paquetes
+// (SesionTrabajoRepository.caducar_sesiones) en vez de dejarlos bloqueados.
+setInterval(() => {
+    if (!sesionActualId) return;
+    fetch('/api/sesion/latido', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sesion_id: sesionActualId })
+    }).catch(() => { /* sin red: lo intentará el siguiente */ });
+}, 60000);
+
 // Liberar la sesión si el operario cierra o refresca la pestaña
 window.addEventListener('beforeunload', function() {
     if (operarioLoginId) {
@@ -176,8 +216,10 @@ window.addEventListener('beforeunload', function() {
             new Blob([JSON.stringify({ login_id: operarioLoginId })], { type: 'application/json' }));
     }
     if (sesionActualId) {
+        // Blob con su tipo: un texto a secas sale como text/plain y el
+        // servidor lo rechazaba, dejando los paquetes bloqueados.
         navigator.sendBeacon('/api/sesion/liberar',
-            JSON.stringify({ sesion_id: sesionActualId }));
+            new Blob([JSON.stringify({ sesion_id: sesionActualId })], { type: 'application/json' }));
         // Limpiar tambien la pantalla ESP32 del carro en curso (sendBeacon
         // porque un fetch normal se cancela al cerrar la pestaña)
         const carro = (typeof carrosDelBono !== 'undefined' && carrosDelBono[carroActualIndex]?.carro) || '';

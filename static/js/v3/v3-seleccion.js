@@ -617,13 +617,9 @@ async function seleccionarTerminalTrabajo(terminal) {
     await encenderGavetaTerminal(terminal);
 
     // Marcar terminal como 'en_proceso' en el backend de inmediato
-    try {
-        await fetch(`/api/bonos/${bonoActual.nombre}/progreso/estado`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminal: terminal, estado: 'en_proceso' })
-        });
-    } catch (e) { /* ignorar si falla */ }
+    // (si falla no se avisa: es solo el aviso de "empezado", el trabajo se
+    // guarda carro a carro)
+    await guardarProgresoBono('/estado', { terminal: terminal, estado: 'en_proceso' }, 1);
     
     // Actualizar visualización local inmediatamente
     if (!terminalesEnProceso.includes(terminal)) {

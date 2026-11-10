@@ -7,6 +7,9 @@ lanza un hilo de fondo que cada ``AUTO_BACKUP_HORAS`` (6 por defecto):
 * copia ``data/engastado.db`` con la API de backup online de SQLite (segura
   con la base en uso, WAL incluido);
 * copia los JSON de estado vivo de ``data/`` (latidos, pick-to-light...);
+* copia el avance de cada bono (``progreso_bono_*.json``, que es además el
+  report de trazabilidad) y los Excel de ``data/cortes``: nada de eso vive en
+  la base de datos, y sin ello una copia no devuelve la planta a como estaba;
 * deja todo en ``data/backups_auto/backup_AAAAmmdd_HHMMSS/`` y conserva solo
   los últimos ``AUTO_BACKUP_RETENER`` (20).
 
@@ -50,13 +53,31 @@ def _una_copia(data_dir, logger):
                 closing(sqlite3.connect(os.path.join(destino, 'engastado.db'))) as dst:
             src.backup(dst)
 
-    for nombre in _JSON_ESTADO:
+    try:
+        progresos = [n for n in os.listdir(data_dir)
+                     if n.startswith('progreso_bono_') and n.endswith('.json')]
+    except OSError:
+        progresos = []
+    for nombre in list(_JSON_ESTADO) + progresos:
         ruta = os.path.join(data_dir, nombre)
-        if os.path.exists(ruta):
+        if os.path.isfile(ruta):
             try:
                 shutil.copy2(ruta, os.path.join(destino, nombre))
             except OSError:
                 pass
+
+    cortes = os.path.join(data_dir, 'cortes')
+    try:
+        excels = [n for n in os.listdir(cortes) if n.lower().endswith(('.xlsx', '.xls'))]
+    except OSError:
+        excels = []
+    if excels:
+        os.makedirs(os.path.join(destino, 'cortes'), exist_ok=True)
+    for nombre in excels:
+        try:
+            shutil.copy2(os.path.join(cortes, nombre), os.path.join(destino, 'cortes', nombre))
+        except OSError:
+            pass
 
     logger.info('Backup automatico -> %s', destino)
     return destino_base
@@ -81,7 +102,11 @@ def _podar(destino_base, retener, logger):
 def _bucle(app):
     logger = app.logger
     data_dir = app.config['DATA_DIR']
-    horas = float(app.config.get('AUTO_BACKUP_HORAS', 6) or 6)
+    try:
+        horas = float(app.config.get('AUTO_BACKUP_HORAS', 6) or 6)
+    except (TypeError, ValueError):
+        logger.warning('AUTO_BACKUP_HORAS no es un numero: se usan 6 h')
+        horas = 6.0
     retener = int(app.config.get('AUTO_BACKUP_RETENER', 20) or 20)
     intervalo_s = max(600, int(horas * 3600))
 
