@@ -9,7 +9,9 @@ lanza un hilo de fondo que cada ``AUTO_BACKUP_HORAS`` (6 por defecto):
 * copia los JSON de estado vivo de ``data/`` (latidos, pick-to-light...);
 * copia el avance de cada bono (``progreso_bono_*.json``, que es además el
   report de trazabilidad) y los Excel de ``data/cortes``: nada de eso vive en
-  la base de datos, y sin ello una copia no devuelve la planta a como estaba;
+  la base de datos, y sin ello una copia no devuelve la planta a como estaba.
+  De los Excel solo se copian los que han cambiado desde la copia anterior;
+  el resto se enlaza al fichero que ya había en ella (ver ``_copiar_excels``);
 * deja todo en ``data/backups_auto/backup_AAAAmmdd_HHMMSS/`` y conserva solo
   los últimos ``AUTO_BACKUP_RETENER`` (20).
 
@@ -39,6 +41,73 @@ _JSON_ESTADO = (
 )
 
 
+def _copia_anterior(destino_base, destino):
+    """Carpeta de la copia inmediatamente anterior a ``destino``, o None."""
+    actual = os.path.basename(destino)
+    try:
+        previas = sorted(
+            d for d in os.listdir(destino_base)
+            if d.startswith('backup_') and d < actual
+            and os.path.isdir(os.path.join(destino_base, d))
+        )
+    except OSError:
+        return None
+    return os.path.join(destino_base, previas[-1]) if previas else None
+
+
+def _sin_cambios(origen, copia):
+    """True si ``copia`` es el mismo Excel que ``origen``: mismo tamaño y misma
+    fecha de modificación (copy2 la conserva; se dejan 2 s de margen porque no
+    todos los discos la guardan con la misma precisión)."""
+    try:
+        a, b = os.stat(origen), os.stat(copia)
+    except OSError:
+        return False
+    return a.st_size == b.st_size and abs(a.st_mtime - b.st_mtime) < 2
+
+
+def _copiar_excels(cortes, destino, anterior, logger):
+    """Deja en ``destino/cortes`` todos los Excel, copiando solo los que han
+    cambiado desde la copia anterior.
+
+    Los Excel casi nunca cambian y hay 20 copias: copiarlos todos cada 6 h
+    multiplicaba por 20 lo que ocupa la carpeta de cortes. El que no ha
+    cambiado se enlaza (enlace duro) al que ya está en la copia anterior: no
+    ocupa sitio otra vez, y cada carpeta de copia sigue teniendo dentro todos
+    sus ficheros, así que restaurar es igual que antes y purgar una copia
+    vieja no rompe las siguientes. Se enlaza contra la copia, nunca contra el
+    fichero vivo de data/cortes, que puede reescribirse.
+
+    Si el disco no admite enlaces (FAT, algunas unidades de red), se copia.
+    """
+    try:
+        excels = sorted(n for n in os.listdir(cortes) if n.lower().endswith(('.xlsx', '.xls')))
+    except OSError:
+        return
+    if not excels:
+        return
+    destino_cortes = os.path.join(destino, 'cortes')
+    os.makedirs(destino_cortes, exist_ok=True)
+    copiados = enlazados = 0
+    for nombre in excels:
+        origen = os.path.join(cortes, nombre)
+        nuevo = os.path.join(destino_cortes, nombre)
+        previo = os.path.join(anterior, 'cortes', nombre) if anterior else None
+        if previo and _sin_cambios(origen, previo):
+            try:
+                os.link(previo, nuevo)
+                enlazados += 1
+                continue
+            except OSError:
+                pass  # sin enlaces en este disco: se copia como siempre
+        try:
+            shutil.copy2(origen, nuevo)
+            copiados += 1
+        except OSError:
+            pass
+    logger.info('Backup automatico: %d Excel copiados, %d sin cambios', copiados, enlazados)
+
+
 def _una_copia(data_dir, logger):
     destino_base = os.path.join(data_dir, 'backups_auto')
     os.makedirs(destino_base, exist_ok=True)
@@ -66,18 +135,8 @@ def _una_copia(data_dir, logger):
             except OSError:
                 pass
 
-    cortes = os.path.join(data_dir, 'cortes')
-    try:
-        excels = [n for n in os.listdir(cortes) if n.lower().endswith(('.xlsx', '.xls'))]
-    except OSError:
-        excels = []
-    if excels:
-        os.makedirs(os.path.join(destino, 'cortes'), exist_ok=True)
-    for nombre in excels:
-        try:
-            shutil.copy2(os.path.join(cortes, nombre), os.path.join(destino, 'cortes', nombre))
-        except OSError:
-            pass
+    _copiar_excels(os.path.join(data_dir, 'cortes'), destino,
+                   _copia_anterior(destino_base, destino), logger)
 
     logger.info('Backup automatico -> %s', destino)
     return destino_base

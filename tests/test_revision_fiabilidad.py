@@ -193,3 +193,57 @@ def test_backup_automatico_lleva_progreso_y_excel(app):
     copia = os.path.join(base, os.listdir(base)[0])
     assert os.path.isfile(os.path.join(copia, 'progreso_bono_B1.json'))
     assert os.path.isfile(os.path.join(copia, 'cortes', 'corte.xlsx'))
+
+
+def test_backup_automatico_solo_copia_los_excel_que_cambian(app, tmp_path):
+    from app.backup_auto import _copiar_excels, _podar
+    cortes = app.config['UPLOAD_FOLDER']
+    for nombre in ('igual.xlsx', 'cambia.xlsx'):
+        with open(os.path.join(cortes, nombre), 'wb') as f:
+            f.write(b'version 1')
+    base = tmp_path / 'backups_auto'
+    primera, segunda = str(base / 'backup_1'), str(base / 'backup_2')
+    os.makedirs(primera)
+    os.makedirs(segunda)
+
+    _copiar_excels(cortes, primera, None, app.logger)
+    with open(os.path.join(cortes, 'cambia.xlsx'), 'wb') as f:
+        f.write(b'version 2, mas larga')
+    with open(os.path.join(cortes, 'nuevo.xlsx'), 'wb') as f:
+        f.write(b'nuevo')
+    _copiar_excels(cortes, segunda, primera, app.logger)
+
+    def en(copia, nombre):
+        return os.path.join(copia, 'cortes', nombre)
+
+    # La segunda copia está completa...
+    assert sorted(os.listdir(os.path.join(segunda, 'cortes'))) == ['cambia.xlsx', 'igual.xlsx', 'nuevo.xlsx']
+    # ...pero el que no ha cambiado es el mismo fichero en disco, no otro
+    assert os.path.samefile(en(primera, 'igual.xlsx'), en(segunda, 'igual.xlsx'))
+    assert not os.path.samefile(en(primera, 'cambia.xlsx'), en(segunda, 'cambia.xlsx'))
+    # y cada copia conserva la versión de su momento
+    assert open(en(primera, 'cambia.xlsx'), 'rb').read() == b'version 1'
+    assert open(en(segunda, 'cambia.xlsx'), 'rb').read() == b'version 2, mas larga'
+
+    # Purgar la copia vieja no rompe la nueva
+    _podar(str(base), 1, app.logger)
+    assert not os.path.exists(primera)
+    assert open(en(segunda, 'igual.xlsx'), 'rb').read() == b'version 1'
+
+
+def test_backup_automatico_copia_si_el_disco_no_admite_enlaces(app, tmp_path, monkeypatch):
+    from app import backup_auto
+    cortes = app.config['UPLOAD_FOLDER']
+    with open(os.path.join(cortes, 'igual.xlsx'), 'wb') as f:
+        f.write(b'excel')
+    primera, segunda = str(tmp_path / 'backup_1'), str(tmp_path / 'backup_2')
+    os.makedirs(primera)
+    os.makedirs(segunda)
+    backup_auto._copiar_excels(cortes, primera, None, app.logger)
+
+    def sin_enlaces(origen, destino):
+        raise OSError('este disco no admite enlaces')
+    monkeypatch.setattr(backup_auto.os, 'link', sin_enlaces)
+    backup_auto._copiar_excels(cortes, segunda, primera, app.logger)
+
+    assert open(os.path.join(segunda, 'cortes', 'igual.xlsx'), 'rb').read() == b'excel'
