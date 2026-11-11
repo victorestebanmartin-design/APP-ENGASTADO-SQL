@@ -16,7 +16,7 @@ class BonoRepository(BaseRepository):
         
         Args:
             nombre: Nombre del bono
-            ordenes_ids: Lista de IDs de órdenes a incluir
+            ordenes_ids: Lista de IDs (no números) de las órdenes a incluir
             descripcion: Descripción del bono (opcional)
             conn: Conexión/transacción existente (opcional). Si se pasa, las
                   queries se ejecutan sobre ella SIN commit ni conexión propia.
@@ -45,9 +45,9 @@ class BonoRepository(BaseRepository):
         # Asignar órdenes al bono
         from .orden_repository import OrdenRepository
         orden_repo = OrdenRepository(self.db)
-        for numero_orden in ordenes_ids:
-            # Usar asignar_a_bono_por_numero ya que ordenes_ids contiene números de orden
-            orden_repo.asignar_a_bono_por_numero(numero_orden, bono_id, conn=conn)
+        for orden_id in ordenes_ids:
+            # Por id, nunca por número: el número puede estar repetido.
+            orden_repo.asignar_a_bono(orden_id, bono_id, conn=conn)
         
         return bono_id
     

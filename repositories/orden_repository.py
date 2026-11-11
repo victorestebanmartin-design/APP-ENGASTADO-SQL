@@ -11,6 +11,14 @@ class NumeroOrdenDuplicado(ValueError):
     """Ya existe otra orden con ese número."""
 
 
+class OrdenAmbigua(ValueError):
+    """Varias órdenes abiertas comparten ese número: hay que decir cuál por su id."""
+
+
+class OrdenNoEncontrada(ValueError):
+    """Ninguna orden (por id) ni orden abierta (por número) responde a esa referencia."""
+
+
 class OrdenRepository(BaseRepository):
     """Repositorio para gestión de órdenes de producción"""
     
@@ -95,14 +103,51 @@ class OrdenRepository(BaseRepository):
         """Obtener todas las órdenes pendientes"""
         return self.obtener_ordenes_por_estado('pendiente')
     
-    def asignar_a_bono(self, orden_id: str, bono_id: str) -> bool:
+    def resolver_id(self, referencia: str, conn=None) -> str:
+        """Id de la orden a la que se refiere `referencia`.
+
+        Lo normal es que ya sea un id. Se admite también el número (así llegan
+        los proyectos antiguos sin orden_id, cuyo nombre es "NUMERO - código"),
+        pero solo si señala a UNA orden que todavía puede entrar en un bono:
+        sin bono y sin completar ni cancelar. El número no es único en la BD,
+        y asignar "todas las que se llamen así" metía en el bono nuevo órdenes
+        terminadas hace meses.
+
+        Raises:
+            OrdenNoEncontrada, OrdenAmbigua
         """
-        Asignar orden a un bono
-        
+        referencia = str(referencia or '').strip()
+
+        def _consultar(c):
+            if c.execute(text("SELECT 1 FROM ordenes_produccion WHERE id = :r"),
+                         {'r': referencia}).fetchone():
+                return [referencia]
+            return [f[0] for f in c.execute(text(
+                "SELECT id FROM ordenes_produccion WHERE TRIM(numero) = :r "
+                "AND bono_id IS NULL AND estado NOT IN ('completado', 'cancelado')"
+            ), {'r': referencia})]
+
+        if conn is not None:
+            ids = _consultar(conn)
+        else:
+            with self.db.engine.connect() as c:
+                ids = _consultar(c)
+        if not ids:
+            raise OrdenNoEncontrada(referencia)
+        if len(ids) > 1:
+            raise OrdenAmbigua(referencia)
+        return ids[0]
+
+    def asignar_a_bono(self, orden_id: str, bono_id: str, conn=None) -> bool:
+        """
+        Asignar orden a un bono, por su id
+
         Args:
             orden_id: ID de la orden
             bono_id: ID del bono
-        
+            conn: Conexión/transacción existente (opcional). Si se pasa, la
+                  query se ejecuta sobre ella SIN commit ni conexión propia.
+
         Returns:
             True si se asignó correctamente
         """
@@ -114,33 +159,8 @@ class OrdenRepository(BaseRepository):
             WHERE id = :orden_id
         """
         params = {'orden_id': orden_id, 'bono_id': bono_id}
-        rows = self.execute_update(query, params)
-        return rows > 0
-    
-    def asignar_a_bono_por_numero(self, numero_orden: str, bono_id: str, conn=None) -> bool:
-        """
-        Asignar orden a un bono usando el número de orden
-        
-        Args:
-            numero_orden: Número de orden (ej: "60245848")
-            bono_id: ID del bono
-            conn: Conexión/transacción existente (opcional). Si se pasa, la
-                  query se ejecuta sobre ella SIN commit ni conexión propia.
-        
-        Returns:
-            True si se asignó correctamente
-        """
-        query = """
-            UPDATE ordenes_produccion 
-            SET bono_id = :bono_id,
-                estado = 'en_bono',
-                fecha_inicio_bono = datetime('now')
-            WHERE numero = :numero_orden
-        """
-        params = {'numero_orden': numero_orden, 'bono_id': bono_id}
         if conn is not None:
-            result = conn.execute(text(query), params)
-            return result.rowcount > 0
+            return conn.execute(text(query), params).rowcount > 0
         rows = self.execute_update(query, params)
         return rows > 0
     

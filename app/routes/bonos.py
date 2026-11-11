@@ -19,7 +19,7 @@ from datetime import datetime
 import pandas as pd
 
 from repositories.proyecto_repository import ProyectoRepository
-from repositories.orden_repository import OrdenRepository
+from repositories.orden_repository import OrdenRepository, OrdenAmbigua, OrdenNoEncontrada
 from repositories.codigo_corte_repository import CodigoCorteRepository
 from repositories.bono_repository import BonoRepository, CarroRepository
 from repositories.puesto_repository import PuestoRepository
@@ -270,10 +270,27 @@ def api_crear_bono():
             }), 400
 
         bono_repo = BonoRepository(db)
+        orden_repo = OrdenRepository(db)
         with db.engine.begin() as conn:
+            # Cada referencia se resuelve a UNA orden (ver resolver_id): se
+            # acepta el número por compatibilidad, pero no si es ambiguo.
+            try:
+                ordenes_ids = [orden_repo.resolver_id(ref, conn=conn)
+                               for ref in data.get('ordenes_ids') or []]
+            except OrdenNoEncontrada as e:
+                return jsonify({
+                    'success': False,
+                    'message': f'No hay ninguna orden disponible con la referencia {e}.'
+                }), 404
+            except OrdenAmbigua as e:
+                return jsonify({
+                    'success': False,
+                    'message': f'Hay varias órdenes con el número {e}. Borra la que sobre o '
+                               'cámbiale el número en la pantalla de Órdenes.'
+                }), 409
             bono_id = bono_repo.crear_bono(
                 nombre=nombre,
-                ordenes_ids=data['ordenes_ids'],
+                ordenes_ids=ordenes_ids,
                 descripcion=data.get('descripcion'),
                 conn=conn
             )
@@ -394,25 +411,12 @@ def api_generar_bono_desde_carros():
                 'message': f'No se pueden incluir más de {MAX_CARROS_POR_BONO} carros en un bono'
             }), 400
         
-        # Extraer números de orden de los proyectos
-        ordenes_ids = []
-        carros_info = []
-        
-        for proyecto in proyectos_en_carros:
-            # Extraer número de orden del nombre del proyecto (formato: "60245848 - H0068722")
-            try:
-                numero_orden = proyecto['nombre'].split(' - ')[0].strip()
-            except Exception:
-                numero_orden = proyecto['nombre']
-            
-            ordenes_ids.append(numero_orden)
-            
-            carros_info.append({
-                'carro': proyecto['carro_asignado'],
-                'proyecto_nombre': proyecto['nombre'],
-                'archivo_excel': proyecto['archivo']
-            })
-        
+        carros_info = [{
+            'carro': proyecto['carro_asignado'],
+            'proyecto_nombre': proyecto['nombre'],
+            'archivo_excel': proyecto['archivo']
+        } for proyecto in proyectos_en_carros]
+
         # CREAR EL BONO + ACTUALIZAR ÓRDENES + LIBERAR CARROS DE FORMA ATÓMICA
         # Todo dentro de un único engine.begin(): se commitea junto o se
         # revierte junto si cualquier paso falla.
@@ -428,20 +432,43 @@ def api_generar_bono_desde_carros():
                     orden = conn.execute(text('SELECT * FROM ordenes_produccion WHERE id = :id'), {'id': proyecto['orden_id']}).mappings().first()
                     if not orden or orden['bono_id'] or orden['estado'] != 'en_proceso':
                         return jsonify(success=False, message='Una orden ya no esta disponible para este bono'), 409
+            # La orden de cada carro, por su id. El proyecto la guarda
+            # (orden_id); los antiguos solo la llevan en el nombre
+            # ("60245848 - H0068722"), y ahí el número tiene que señalar a una
+            # sola orden abierta. Un carro cargado a mano sin orden no aporta
+            # ninguna, como hasta ahora.
+            ordenes_ids = []
+            for proyecto in proyectos_en_carros:
+                if proyecto['orden_id']:
+                    ordenes_ids.append(proyecto['orden_id'])
+                    continue
+                numero_orden = proyecto['nombre'].split(' - ')[0].strip()
+                try:
+                    ordenes_ids.append(orden_repo.resolver_id(numero_orden, conn=conn))
+                except OrdenNoEncontrada:
+                    ordenes_ids.append(None)
+                except OrdenAmbigua:
+                    return jsonify(
+                        success=False,
+                        message=f'Hay varias órdenes con el número {numero_orden} (carro '
+                                f"{proyecto['carro_asignado']}). Borra la que sobre o cámbiale "
+                                'el número en la pantalla de Órdenes.'), 409
             bono_id = bono_repo.crear_bono(
                 nombre=nombre_bono,
-                ordenes_ids=ordenes_ids,
+                ordenes_ids=[oid for oid in ordenes_ids if oid],
                 descripcion=descripcion,
                 conn=conn
             )
             conn.execute(text("UPDATE bonos SET numeracion_carros = 'fisica' WHERE id = :id"), {'id': bono_id})
 
             # Guardar carro_numero (crear_bono ya las dejó en 'en_bono')
-            for idx, (numero_orden, carro_info) in enumerate(zip(ordenes_ids, carros_info)):
+            for orden_id, carro_info in zip(ordenes_ids, carros_info):
+                if not orden_id:
+                    continue
                 # Guardar el carro_numero en la orden para que el dashboard ponderado funcione
                 conn.execute(
-                    text("UPDATE ordenes_produccion SET carro_numero=:carro WHERE numero=:numero AND bono_id=:bono_id"),
-                    {'carro': carro_info['carro'], 'numero': numero_orden, 'bono_id': bono_id}
+                    text("UPDATE ordenes_produccion SET carro_numero=:carro WHERE id=:id AND bono_id=:bono_id"),
+                    {'carro': carro_info['carro'], 'id': orden_id, 'bono_id': bono_id}
                 )
 
             # Liberar los carros (establecer carro_asignado a NULL)

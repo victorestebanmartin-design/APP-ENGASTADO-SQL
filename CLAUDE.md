@@ -228,8 +228,14 @@ Las sesiones de bloqueo (`sesiones_trabajo`) caducan si el puesto deja de latir
 
 ## Órdenes con el número repetido
 
-El bono se monta por **número** de orden, así que dos órdenes con el mismo
-acaban las dos dentro. Crear ya lo impide (409). Las que quedaron de antes las
+El número de orden no es único en la base de datos, y el bono se montaba por
+número: dos órdenes con el mismo acababan las dos dentro. Ahora **el bono
+asigna por id** (`BonoRepository.crear_bono` recibe ids; quien solo tenga el
+número pasa por `OrdenRepository.resolver_id`, que exige que señale a una sola
+orden abierta y si no devuelve 409). No vuelvas a escribir un
+`UPDATE ordenes_produccion ... WHERE numero = ...`.
+
+Crear una orden repetida ya lo impide un 409. Las que quedaron de antes las
 limpia `app/ordenes_duplicadas.py` en cada arranque, y solo las copias vacías:
 pendientes, sin bono ni carro y sin nada colgando, con el mismo código de corte
 que la que se queda. Antes guarda `data/engastado_backup_antes_duplicadas_*.db`.
