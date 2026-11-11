@@ -121,6 +121,103 @@ def test_propuesta_aprobacion_trazada(client, admin_client, app):
     }).status_code == 409
 
 
+def _con_celda(contenido, celda, valor):
+    libro = load_workbook(io.BytesIO(contenido))
+    libro['Format'][celda] = valor
+    salida = io.BytesIO()
+    libro.save(salida)
+    return salida.getvalue()
+
+
+def _proponer(client, ruta, indice, medida):
+    contenido = ruta.read_bytes()
+    datos = leer_preparacion(contenido, 'corte.xlsx')
+    cambio = deepcopy(datos['filas'][indice])
+    cambio['de']['pm'] = medida
+    respuesta = client.post('/api/mangueras/propuestas', json={
+        'archivo': 'corte.xlsx', 'revision': datos['revision'], 'cambios': [cambio],
+        'motivo_categoria': 'Fallo en documentacion', 'motivo': 'Medida verificada',
+    })
+    assert respuesta.status_code == 201, respuesta.get_json()
+    return respuesta.get_json()['id']
+
+
+def _resolver(client, identificador, accion='aprobar'):
+    ruta = 'restaurar' if accion == 'restaurar' else 'resolver'
+    return client.post(f'/api/mangueras/propuestas/{identificador}/{ruta}',
+                       json={'accion': accion, 'motivo': 'Comprobado en taller'})
+
+
+def _pm_de(ruta, fila):
+    return next(m for m in leer_preparacion(ruta.read_bytes(), 'corte.xlsx')['filas'] if m['fila'] == fila)['de']['pm']
+
+
+def test_aprobar_una_no_caduca_las_de_otras_mangueras(client, admin_client, app):
+    """Antes, aprobar una propuesta cambiaba el Excel y las demas del mismo corte
+    daban 'El Excel ha cambiado'. Cada una toca su manguera: se reaplica."""
+    primera, ruta, original = preparar_propuesta(client, admin_client, app, indice_manguera=1)
+    segunda = _proponer(client, ruta, 2, 95)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert _resolver(client, primera).status_code == 200
+    respuesta = _resolver(client, segunda)
+    assert respuesta.status_code == 200, respuesta.get_json()
+    assert _pm_de(ruta, 3) == 80
+    assert _pm_de(ruta, 5) == 95
+    assert _pm_de(ruta, 2) == 100  # la manguera que nadie toco sigue igual
+    estados = {p['id']: p['estado'] for p in client.get('/api/mangueras/propuestas').get_json()['propuestas']}
+    assert estados == {primera: 'aprobada', segunda: 'aprobada'}
+
+
+def test_restaurar_devuelve_la_manguera_a_como_estaba(client, admin_client, app):
+    primera, ruta, original = preparar_propuesta(client, admin_client, app, indice_manguera=1)
+    segunda = _proponer(client, ruta, 2, 95)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert _resolver(client, primera).status_code == 200
+    assert _resolver(client, segunda).status_code == 200
+    antes = ruta.read_bytes()
+
+    respuesta = _resolver(client, primera, 'restaurar')
+    assert respuesta.status_code == 200, respuesta.get_json()
+    assert _pm_de(ruta, 3) is None
+    assert _pm_de(ruta, 5) == 95  # la otra propuesta aceptada no se toca
+    assert Path(str(ruta) + f'.backup_mangueras_restauracion_{primera}').read_bytes() == antes
+    propuesta = next(p for p in client.get('/api/mangueras/propuestas').get_json()['propuestas'] if p['id'] == primera)
+    assert propuesta['estado'] == 'restaurada'
+    assert propuesta['restaurada_por_nombre'] == 'Jefe'
+    assert propuesta['motivo_restauracion'] == 'Comprobado en taller'
+    assert _resolver(client, primera, 'restaurar').status_code == 409
+
+
+def test_restaurar_exige_deshacer_antes_el_cambio_mas_reciente(client, admin_client, app):
+    primera, ruta, original = preparar_propuesta(client, admin_client, app, indice_manguera=1)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert _resolver(client, primera).status_code == 200
+    with client.session_transaction() as sesion:
+        sesion['operario_actual'] = 'Operario'
+        sesion['operario_login_id'] = 'login-autor'
+    segunda = _proponer(client, ruta, 1, 60)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert _resolver(client, segunda).status_code == 200
+    despues = ruta.read_bytes()
+
+    respuesta = _resolver(client, primera, 'restaurar')
+    assert respuesta.status_code == 409
+    assert 'mas reciente' in respuesta.get_json()['error']
+    assert ruta.read_bytes() == despues
+    assert _resolver(client, segunda, 'restaurar').status_code == 200
+    assert _pm_de(ruta, 3) == 80
+    assert _resolver(client, primera, 'restaurar').status_code == 200
+    assert _pm_de(ruta, 3) is None
+
+
+def test_restaurar_exige_admin_y_propuesta_aceptada(client, admin_client, app):
+    identificador, ruta, original = preparar_propuesta(client, admin_client, app)
+    assert _resolver(client, identificador, 'restaurar').status_code == 401
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert _resolver(client, identificador, 'restaurar').status_code == 409
+    assert ruta.read_bytes() == original
+
+
 def test_propuesta_no_autoaprobacion_ni_revision_antigua(client, admin_client, app):
     identificador, ruta, original = preparar_propuesta(client, admin_client, app)
     admin_client.put('/api/operarios/autor', json={'modulos_permitidos': ['admin', 'mangueras']})
@@ -129,13 +226,16 @@ def test_propuesta_no_autoaprobacion_ni_revision_antigua(client, admin_client, a
     assert client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
         'accion': 'aprobar', 'motivo': 'Yo lo propuse',
     }).status_code == 403
-    ruta.write_bytes(original + b'cambio posterior')
+    # Otro cambio en la MISMA manguera desde la propuesta: ya no vale.
+    cambiado = _con_celda(original, 'E3', 'Nota cambiada en el Excel')
+    ruta.write_bytes(cambiado)
     client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
     respuesta = client.post(f'/api/mangueras/propuestas/{identificador}/resolver', json={
         'accion': 'aprobar', 'motivo': 'Medida comprobada',
     })
     assert respuesta.status_code == 409
-    assert ruta.read_bytes() == original + b'cambio posterior'
+    assert 'fila 3' in respuesta.get_json()['error']
+    assert ruta.read_bytes() == cambiado
     assert client.get('/api/mangueras/propuestas').get_json()['pendientes'] == 1
 
 

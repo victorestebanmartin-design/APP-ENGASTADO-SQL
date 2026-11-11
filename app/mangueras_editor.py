@@ -555,6 +555,50 @@ def exportar_preparacion(contenido, nombre, cambios, revision, solo_modificadas=
         libro.close()
 
 
+CAMPOS_PREPARACION = ('de', 'para', 'retractil_de', 'retractil_para',
+                      'observaciones_mangueras', 'aviso_mangueras')
+
+
+def _manguera_comparable(fila, solo_preparacion=False):
+    """Lo que identifica el estado de una manguera, sin depender del resto del Excel.
+
+    Las celdas vacías se descartan: aplicar la propuesta de otra manguera puede
+    crear columnas nuevas (Observaciones/Aviso Mangueras) vacías en esta fila.
+    `solo_preparacion` compara lo que el responsable ve en la propuesta."""
+    if fila is None:
+        return None
+    if solo_preparacion:
+        return {campo: fila.get(campo) for campo in CAMPOS_PREPARACION}
+    comparable = {clave: valor for clave, valor in fila.items() if clave != 'campos'}
+    comparable['campos'] = {cabecera: valor for cabecera, valor in (fila.get('campos') or {}).items() if valor}
+    return comparable
+
+
+def reaplicar_cambios(contenido_base, contenido_actual, nombre, cambios, resultado_esperado):
+    """Aplica sobre el Excel actual unos cambios preparados sobre `contenido_base`.
+
+    Cada propuesta toca una sola manguera: que se haya aprobado otra entre medias
+    no la invalida. Solo se reaplica si esa manguera (fila, activos y mallas)
+    está igual que cuando se preparó el cambio, y el resultado tiene que ser el
+    que se enseñó al aprobar. Si no, ValueError: hay que preparar otra."""
+    base = {fila['fila']: fila for fila in leer_preparacion(contenido_base, nombre)['filas']}
+    actual = leer_preparacion(contenido_actual, nombre)
+    filas_actuales = {fila['fila']: fila for fila in actual['filas']}
+    for cambio in cambios:
+        fila = cambio.get('fila')
+        if _manguera_comparable(base.get(fila)) != _manguera_comparable(filas_actuales.get(fila)):
+            raise ValueError(f'La manguera de la fila {fila} ha cambiado en el Excel desde entonces. '
+                             'Rechaza esta propuesta y solicita una nueva revision.')
+    salida = exportar_preparacion(contenido_actual, nombre, cambios, actual['revision'],
+                                  solo_modificadas=True).getvalue()
+    obtenidas = {fila['fila']: fila for fila in leer_preparacion(salida, nombre)['filas']}
+    for fila, esperada in resultado_esperado.items():
+        if _manguera_comparable(obtenidas.get(fila), True) != _manguera_comparable(esperada, True):
+            raise ValueError(f'No se puede reproducir el cambio de la fila {fila} sobre el Excel actual. '
+                             'Rechaza esta propuesta y solicita una nueva revision.')
+    return salida
+
+
 def _identidad_edicion_manguera(manguera):
     def normalizar(valor):
         texto = _texto(valor)

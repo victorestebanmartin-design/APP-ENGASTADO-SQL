@@ -114,10 +114,14 @@
       var acciones = propuesta.estado === 'pendiente' ? '<div class="mp-actions">' +
         '<button type="button" class="mp-aprobar" data-resolver="' + propuesta.id + '" data-accion="aprobar"' + (puedeResolver ? '' : ' disabled') + '>Aprobar</button>' +
         '<button type="button" class="mp-rechazar" data-resolver="' + propuesta.id + '" data-accion="rechazar"' + (puedeResolver ? '' : ' disabled') + '>Rechazar</button></div>' +
-        (avisoResolucion ? '<p class="mp-resolution-warning">' + esc(avisoResolucion) + '</p>' : '') : '';
+        (avisoResolucion ? '<p class="mp-resolution-warning">' + esc(avisoResolucion) + '</p>' : '') :
+        propuesta.estado === 'aprobada' ? '<div class="mp-actions">' +
+        '<button type="button" class="mp-restaurar" data-resolver="' + propuesta.id + '" data-accion="restaurar"' + (puedeAprobar ? '' : ' disabled') + '>Restaurar como estaba</button></div>' +
+        (puedeAprobar ? '' : '<p class="mp-resolution-warning">Sesion personal de Administracion requerida.</p>') : '';
       return '<article class="mp-propuesta"><h2>#' + propuesta.id + ' · ' + esc(propuesta.archivo) + ' · ' + esc(propuesta.estado) + '</h2>' +
         '<p>' + esc(propuesta.autor_nombre + ' · ' + propuesta.creada_at) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p>' + comparaciones +
         (propuesta.resuelta_at ? '<p>' + esc(propuesta.responsable_nombre + ' · ' + propuesta.resuelta_at + '\n' + propuesta.motivo_resolucion) + '</p>' : '') +
+        (propuesta.restaurada_at ? '<p>Restaurada: ' + esc(propuesta.restaurada_por_nombre + ' \u00b7 ' + propuesta.restaurada_at + '\n' + propuesta.motivo_restauracion) + '</p>' : '') +
         acciones + '</article>';
     }).join('') || '<p>No hay propuestas en este estado.</p>';
   }
@@ -143,7 +147,9 @@
     if (!boton) return;
     document.getElementById('mp-resolucion-form').dataset.id = boton.dataset.resolver;
     document.getElementById('mp-resolucion-form').dataset.accion = boton.dataset.accion;
-    document.getElementById('mp-resolucion-titulo').textContent = (boton.dataset.accion === 'aprobar' ? 'Aprobar' : 'Rechazar') + ' propuesta #' + boton.dataset.resolver;
+    var titulos = { aprobar: 'Aprobar', rechazar: 'Rechazar', restaurar: 'Restaurar' };
+    document.getElementById('mp-resolucion-titulo').textContent = titulos[boton.dataset.accion] + ' propuesta #' + boton.dataset.resolver;
+    document.getElementById('mp-resolucion-ayuda').hidden = boton.dataset.accion !== 'restaurar';
     document.getElementById('mp-resolucion-motivo').value = '';
     document.getElementById('mp-resolucion-error').textContent = '';
     resolucion.showModal();
@@ -154,19 +160,23 @@
     var boton = evento.target.querySelector('[type=submit]');
     boton.disabled = true;
     try {
-      var respuesta = await fetch('/api/mangueras/propuestas/' + evento.target.dataset.id + '/resolver', {
+      var accion = evento.target.dataset.accion;
+      var restaurar = accion === 'restaurar';
+      var respuesta = await fetch('/api/mangueras/propuestas/' + evento.target.dataset.id + (restaurar ? '/restaurar' : '/resolver'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          accion: evento.target.dataset.accion, motivo: document.getElementById('mp-resolucion-motivo').value
+          accion: accion, motivo: document.getElementById('mp-resolucion-motivo').value
         })
       });
       var datos = await respuesta.json();
       if (!respuesta.ok) throw new Error(datos.error);
-      var aprobada = evento.target.dataset.accion === 'aprobar';
       resolucion.close();
-      document.getElementById('mp-filtro').value = aprobada ? 'aprobada' : 'rechazada';
+      document.getElementById('mp-filtro').value = { aprobar: 'aprobada', rechazar: 'rechazada', restaurar: 'restaurada' }[accion];
       await cargar();
-      estado.textContent = aprobada ? 'Propuesta aceptada. La nueva preparacion ya esta aplicada al corte.' :
-        'Propuesta rechazada. Se conserva la preparacion vigente sin los cambios sugeridos.';
+      estado.textContent = {
+        aprobar: 'Propuesta aceptada. La nueva preparacion ya esta aplicada al corte.',
+        rechazar: 'Propuesta rechazada. Se conserva la preparacion vigente sin los cambios sugeridos.',
+        restaurar: 'Manguera restaurada como estaba antes de la propuesta. Regenera las etiquetas del corte para que engastado lo vea.'
+      }[accion];
       await actualizarContadores();
       try { localStorage.setItem('mangueras-propuestas-resueltas', String(Date.now())); } catch (error) { return; }
     } catch (error) { document.getElementById('mp-resolucion-error').textContent = error.message; }

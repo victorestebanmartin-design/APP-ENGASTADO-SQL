@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash
 
 from app.auth import requiere_pin_admin, administrador_actual, sesion_admin_valida
 from app.excel_manager import invalidar_cache_excel
-from app.mangueras_editor import exportar_preparacion, leer_preparacion
+from app.mangueras_editor import exportar_preparacion, leer_preparacion, reaplicar_cambios
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
 from app.routes.manguitos import _MANGUERAS_EDITOR_LOCK
 
@@ -123,7 +123,8 @@ def api_mangueras_propuestas():
         with db.engine.connect() as conn:
             filas = conn.execute(text(
                 'SELECT id, archivo, autor_id, autor_nombre, creada_at, motivo, estado, '
-                'original_json, sugerido_json, responsable_nombre, resuelta_at, motivo_resolucion '
+                'original_json, sugerido_json, responsable_nombre, resuelta_at, motivo_resolucion, '
+                'restaurada_por_nombre, restaurada_at, motivo_restauracion '
                 'FROM mangueras_propuestas ORDER BY id DESC'
             )).mappings().all()
             buscadores = numeros_paquete(conn, [fila['archivo'] for fila in filas])
@@ -194,9 +195,68 @@ def api_mangueras_propuestas():
         return jsonify(success=False, error=str(exc)), 400
 
 
+class _ExcelCambiado(Exception):
+    """El corte no está como se esperaba: 409, hay que revisar antes de seguir."""
+
+
+def _filas_de_cambios(filas, cambios):
+    """{fila: manguera} de las filas que toca la propuesta."""
+    numeros = {cambio['fila'] for cambio in cambios}
+    return {fila['fila']: fila for fila in filas if fila['fila'] in numeros}
+
+
+def _contenido_reaplicado(base, actual, nombre, cambios, esperado):
+    try:
+        return reaplicar_cambios(base, actual, nombre, cambios, esperado)
+    except BadZipFile:
+        raise _ExcelCambiado('El Excel del corte no se puede leer. Revisalo antes de aplicar cambios.')
+    except ValueError as exc:
+        raise _ExcelCambiado(str(exc))
+
+
+def _sustituir_excel(ruta, original, nuevo, backup, metadatos):
+    """Sustituye el corte por `nuevo` dejando antes `backup` (+ .json con la traza).
+
+    Comprueba justo antes de sustituir que nadie ha tocado el fichero desde que
+    se leyó `original`."""
+    if not os.path.exists(backup):
+        with open(backup, 'xb') as fichero:
+            fichero.write(original)
+            fichero.flush()
+            os.fsync(fichero.fileno())
+    temporal = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
+            temporal = fichero.name
+            fichero.write(nuevo)
+            fichero.flush()
+            os.fsync(fichero.fileno())
+        with open(backup + '.json', 'w', encoding='utf-8') as fichero:
+            json.dump(metadatos, fichero, ensure_ascii=False)
+            fichero.flush()
+            os.fsync(fichero.fileno())
+        with open(ruta, 'rb') as fichero:
+            if fichero.read() != original:
+                raise _ExcelCambiado('El Excel ha cambiado durante la aprobacion.')
+        os.replace(temporal, ruta)
+        temporal = None
+        invalidar_cache_excel(ruta)
+    finally:
+        if temporal and os.path.exists(temporal):
+            os.unlink(temporal)
+
+
+def _volver_a_poner(ruta, original):
+    """Si la BD falla después de sustituir el Excel, el fichero vuelve a como estaba."""
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
+        temporal = fichero.name
+        fichero.write(original)
+    os.replace(temporal, ruta)
+    invalidar_cache_excel(ruta)
+
+
 @bp.route('/api/mangueras/propuestas/<int:propuesta_id>/resolver', methods=['POST'])
 def resolver_propuesta_mangueras(propuesta_id):
-    temporal = None
     reemplazado = False
     original = None
     ruta = None
@@ -221,6 +281,7 @@ def resolver_propuesta_mangueras(propuesta_id):
                 if propuesta['autor_id'] == responsable['id']:
                     return jsonify(success=False, error='No puedes resolver tu propia propuesta.'), 403
                 backup = None
+                sugerido_excel = propuesta['sugerido_excel']
                 if accion == 'aprobar':
                     ruta = _ruta_upload_segura(propuesta['archivo'])
                     if not ruta or not os.path.isfile(ruta):
@@ -228,56 +289,108 @@ def resolver_propuesta_mangueras(propuesta_id):
                     with open(ruta, 'rb') as fichero:
                         original = fichero.read()
                     if hashlib.sha256(original).hexdigest() != propuesta['revision']:
-                        return jsonify(success=False, error='El Excel ha cambiado. Rechaza esta propuesta y solicita una nueva revision.'), 409
+                        # Desde que se preparó se ha aprobado otra propuesta del mismo
+                        # corte (u otro cambio): se reaplica sobre el Excel actual si
+                        # su manguera sigue igual.
+                        sugerido = json.loads(propuesta['sugerido_json'])
+                        sugerido_excel = _contenido_reaplicado(
+                            propuesta['original_excel'], original, os.path.basename(ruta), sugerido['cambios'],
+                            _filas_de_cambios(sugerido['filas'], sugerido['cambios']))
                     backup = ruta + '.backup_mangueras_propuesta_' + str(propuesta_id)
-                    if not os.path.exists(backup):
-                        with open(backup, 'xb') as fichero:
-                            fichero.write(original)
-                            fichero.flush()
-                            os.fsync(fichero.fileno())
-                    with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
-                        temporal = fichero.name
-                        fichero.write(propuesta['sugerido_excel'])
-                        fichero.flush()
-                        os.fsync(fichero.fileno())
-                    with open(backup + '.json', 'w', encoding='utf-8') as fichero:
-                        json.dump({'propuesta_id': propuesta_id, 'archivo': propuesta['archivo'],
-                                   'autor_id': propuesta['autor_id'], 'autor': propuesta['autor_nombre'],
-                                   'responsable_id': responsable['id'], 'responsable': responsable['nombre'],
-                                   'fecha_autorizacion': _ahora_iso(), 'motivo': motivo.strip(),
-                                   'revision_original': propuesta['revision'],
-                                   'revision_autorizada': hashlib.sha256(propuesta['sugerido_excel']).hexdigest()},
-                                  fichero, ensure_ascii=False)
-                        fichero.flush()
-                        os.fsync(fichero.fileno())
-                    with open(ruta, 'rb') as fichero:
-                        if hashlib.sha256(fichero.read()).hexdigest() != propuesta['revision']:
-                            return jsonify(success=False, error='El Excel ha cambiado durante la aprobacion.'), 409
-                    os.replace(temporal, ruta)
-                    temporal = None
+                    _sustituir_excel(ruta, original, sugerido_excel, backup, {
+                        'propuesta_id': propuesta_id, 'archivo': propuesta['archivo'],
+                        'autor_id': propuesta['autor_id'], 'autor': propuesta['autor_nombre'],
+                        'responsable_id': responsable['id'], 'responsable': responsable['nombre'],
+                        'fecha_autorizacion': _ahora_iso(), 'motivo': motivo.strip(),
+                        'revision_original': hashlib.sha256(original).hexdigest(),
+                        'revision_autorizada': hashlib.sha256(sugerido_excel).hexdigest()})
                     reemplazado = True
-                    invalidar_cache_excel(ruta)
+                # sugerido_excel queda como lo que se escribió de verdad: es la base
+                # con la que se comprueba una restauración.
                 conn.execute(text(
                     'UPDATE mangueras_propuestas SET estado=:estado, responsable_id=:responsable, '
-                    'responsable_nombre=:nombre, resuelta_at=:fecha, motivo_resolucion=:motivo, backup=:backup '
-                    'WHERE id=:id'
+                    'responsable_nombre=:nombre, resuelta_at=:fecha, motivo_resolucion=:motivo, backup=:backup, '
+                    'sugerido_excel=:sugerido_excel WHERE id=:id'
                 ), {'id': propuesta_id, 'estado': 'aprobada' if accion == 'aprobar' else 'rechazada',
                     'responsable': responsable['id'], 'nombre': responsable['nombre'], 'fecha': _ahora_iso(),
-                    'motivo': motivo.strip(), 'backup': os.path.basename(backup) if backup else None})
+                    'motivo': motivo.strip(), 'backup': os.path.basename(backup) if backup else None,
+                    'sugerido_excel': sugerido_excel})
         return jsonify(success=True)
+    except _ExcelCambiado as exc:
+        return jsonify(success=False, error=str(exc)), 409
     except PermissionError as exc:
         return jsonify(success=False, error=str(exc)), 403
     except ValueError as exc:
         return jsonify(success=False, error=str(exc)), 400
     except Exception:
         if reemplazado:
-            with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
-                temporal = fichero.name
-                fichero.write(original)
-            os.replace(temporal, ruta)
-            temporal = None
-            invalidar_cache_excel(ruta)
+            _volver_a_poner(ruta, original)
         raise
-    finally:
-        if temporal and os.path.exists(temporal):
-            os.unlink(temporal)
+
+
+@bp.route('/api/mangueras/propuestas/<int:propuesta_id>/restaurar', methods=['POST'])
+def restaurar_propuesta_mangueras(propuesta_id):
+    """Deshace una propuesta aceptada: la manguera vuelve a como estaba antes.
+
+    Solo si es el último cambio de esa manguera (sigue como la dejó la
+    propuesta); si hubo otro después, se restaura primero ese. Lo hace un
+    administrador con motivo, y queda copia del Excel previo y la traza."""
+    reemplazado = False
+    original = None
+    ruta = None
+    try:
+        datos = _json_peticion()
+        responsable = administrador_actual()
+        if not responsable:
+            return jsonify(success=False, error='Entra en Admin con tu operario y contrasena para restaurar.'), 401
+        motivo = datos.get('motivo', '')
+        if not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:
+            raise ValueError('Indica el motivo de la restauracion (5 a 2000 caracteres).')
+        with _MANGUERAS_EDITOR_LOCK:
+            with db.engine.begin() as conn:
+                conn.exec_driver_sql('BEGIN IMMEDIATE')
+                propuesta = conn.execute(text('SELECT * FROM mangueras_propuestas WHERE id=:id'),
+                                         {'id': propuesta_id}).mappings().first()
+                if not propuesta:
+                    return jsonify(success=False, error='Propuesta no encontrada.'), 404
+                if propuesta['estado'] != 'aprobada':
+                    return jsonify(success=False, error='Solo se puede restaurar una propuesta aceptada.'), 409
+                ruta = _ruta_upload_segura(propuesta['archivo'])
+                if not ruta or not os.path.isfile(ruta):
+                    return jsonify(success=False, error='El corte ya no existe.'), 409
+                with open(ruta, 'rb') as fichero:
+                    original = fichero.read()
+                cambios = json.loads(propuesta['sugerido_json'])['cambios']
+                anteriores = _filas_de_cambios(json.loads(propuesta['original_json']), cambios)
+                try:
+                    restaurado = _contenido_reaplicado(
+                        propuesta['sugerido_excel'], original, os.path.basename(ruta),
+                        list(anteriores.values()), anteriores)
+                except _ExcelCambiado as exc:
+                    raise _ExcelCambiado(str(exc).split(' Rechaza')[0] + ' Restaura antes el cambio '
+                                         'aceptado mas reciente de esta manguera, o corrigela con una propuesta nueva.')
+                backup = ruta + '.backup_mangueras_restauracion_' + str(propuesta_id)
+                _sustituir_excel(ruta, original, restaurado, backup, {
+                    'restauracion_de_propuesta': propuesta_id, 'archivo': propuesta['archivo'],
+                    'responsable_id': responsable['id'], 'responsable': responsable['nombre'],
+                    'fecha_restauracion': _ahora_iso(), 'motivo': motivo.strip(),
+                    'revision_original': hashlib.sha256(original).hexdigest(),
+                    'revision_restaurada': hashlib.sha256(restaurado).hexdigest()})
+                reemplazado = True
+                conn.execute(text(
+                    "UPDATE mangueras_propuestas SET estado='restaurada', restaurada_por_id=:responsable, "
+                    'restaurada_por_nombre=:nombre, restaurada_at=:fecha, motivo_restauracion=:motivo '
+                    'WHERE id=:id'
+                ), {'id': propuesta_id, 'responsable': responsable['id'], 'nombre': responsable['nombre'],
+                    'fecha': _ahora_iso(), 'motivo': motivo.strip()})
+        return jsonify(success=True)
+    except _ExcelCambiado as exc:
+        return jsonify(success=False, error=str(exc)), 409
+    except PermissionError as exc:
+        return jsonify(success=False, error=str(exc)), 403
+    except ValueError as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    except Exception:
+        if reemplazado:
+            _volver_a_poner(ruta, original)
+        raise

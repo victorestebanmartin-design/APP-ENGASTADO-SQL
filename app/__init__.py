@@ -284,6 +284,12 @@ def _apply_migrations(db_path):
     """)
     cur.execute('CREATE INDEX IF NOT EXISTS idx_mangueras_propuestas_estado '
                 'ON mangueras_propuestas(estado, archivo)')
+    # Migración: restaurar una propuesta aceptada (estado 'restaurada').
+    cur.execute('PRAGMA table_info(mangueras_propuestas)')
+    columnas_propuestas = {fila[1] for fila in cur.fetchall()}
+    for columna in ('restaurada_por_id', 'restaurada_por_nombre', 'restaurada_at', 'motivo_restauracion'):
+        if columna not in columnas_propuestas:
+            cur.execute(f'ALTER TABLE mangueras_propuestas ADD COLUMN {columna} TEXT')
 
     # Migración: propuestas de engastado ("este terminal no se pone en este
     # cable"). Una propuesta por paquete; cada cable es una fila de
