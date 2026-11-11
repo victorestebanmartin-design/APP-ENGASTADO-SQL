@@ -225,3 +225,13 @@ el histórico en cada sondeo de Visualización tardaba decenas de segundos.
 
 Las sesiones de bloqueo (`sesiones_trabajo`) caducan si el puesto deja de latir
 (`/api/sesion/latido`, cada minuto; 10 minutos de margen).
+
+## Órdenes con el número repetido
+
+El bono se monta por **número** de orden, así que dos órdenes con el mismo
+acaban las dos dentro. Crear ya lo impide (409). Las que quedaron de antes las
+limpia `app/ordenes_duplicadas.py` en cada arranque, y solo las copias vacías:
+pendientes, sin bono ni carro y sin nada colgando, con el mismo código de corte
+que la que se queda. Antes guarda `data/engastado_backup_antes_duplicadas_*.db`.
+Las que tienen trabajo hecho solo se avisan en el log: no amplíes el criterio
+para "terminar de limpiar", elegir cuál vale es cosa de una persona.

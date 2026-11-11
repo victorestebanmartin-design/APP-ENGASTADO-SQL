@@ -711,6 +711,14 @@ def _apply_migrations(db_path):
     conn.commit()
     conn.close()
 
+    # Órdenes con el número repetido que se crearon antes de impedirlo. Va lo
+    # último (necesita todas las tablas) y nunca para el arranque.
+    try:
+        from app.ordenes_duplicadas import limpiar
+        limpiar(db_path, logging.getLogger(__name__))
+    except Exception:
+        logging.getLogger(__name__).exception('No se pudieron revisar las ordenes duplicadas')
+
 
 def _migrar_ensayos_traccion(cur):
     """Tablas del módulo Ensayos de tracción (ver app/ensayos.py).
