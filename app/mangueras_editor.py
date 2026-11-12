@@ -35,6 +35,24 @@ def listar_biblioteca_retractiles(carpeta):
     return sorted(codigos, key=str.casefold)
 
 
+def es_seccion_manguera(seccion):
+    """La sección dice que la fila es una manguera (varios hilos bajo una cubierta).
+
+    '2X0,5+P', '3 x 1': N hilos. 'AWG22/7+P': calibre americano, no dice cuántos
+    hilos lleva, pero el '+P' (pantalla) sí dice que es manguera."""
+    seccion = _texto(seccion)
+    return bool(re.match(r'^\s*\d+\s*[xX×]', seccion) or
+                re.match(r'^\s*AWG', seccion, re.I) or
+                re.search(r'\+\s*P\b', seccion, re.I))
+
+
+def _longitud(hoja, columnas, fila):
+    try:
+        return float(_valor(hoja, columnas, fila, 'Longitud').replace(',', '.'))
+    except ValueError:
+        return 0.0
+
+
 def _texto(valor):
     return '' if valor is None else str(valor).strip()
 
@@ -122,7 +140,7 @@ def _vinculos_mangueras(hoja, columnas):
         except ValueError:
             continue
         seccion = _valor(hoja, columnas, fila, 'Sección')
-        if longitud > 0 and re.match(r'^\s*\d+\s*[xX\u00d7]', seccion) and marca and elemento and codigo:
+        if longitud > 0 and es_seccion_manguera(seccion) and marca and elemento and codigo:
             base = re.sub(r'-P$', '', marca, flags=re.I).upper()
             clave = (base, codigo, elemento, serie)
             padres[fila] = clave
@@ -383,7 +401,11 @@ def leer_preparacion(contenido, nombre):
             ret_de = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[2])
             ret_para = _valor(hoja, columnas, fila, PREPARACION_COLUMNAS[3])
             obs = _valor(hoja, columnas, fila, 'Observaciones')
-            sugerida = bool(re.match(r'^\s*\d+\s*[xX\u00d7]', seccion))
+            # 'Nx' ya dice que es manguera aunque la fila no traiga longitud; AWG y
+            # '+P' también los llevan sus hilos (longitud 0), así que ahí solo
+            # cuenta la cubierta, que es la fila con longitud.
+            sugerida = bool(re.match(r'^\s*\d+\s*[xX×]', seccion)) or (
+                es_seccion_manguera(seccion) and _longitud(hoja, columnas, fila) > 0)
             if not sugerida and not any((inst_de, inst_para, ret_de, ret_para, '<-' in obs, '->' in obs)):
                 continue
             if inst_de or inst_para:

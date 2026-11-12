@@ -1267,3 +1267,29 @@ def test_api_mangueras_oculta_hijos_confirmados_y_conserva_padres(client, tmp_pa
     mangueras = respuesta.get_json()['mangueras']
     assert [manguera['cable_marca'] for manguera in mangueras] == ['2705', '2706']
     assert all(manguera['fila_excel'] in (2, 5) for manguera in mangueras)
+
+def test_manguera_awg_con_pantalla_se_reconoce_y_engancha_sus_hilos():
+    """'AWG22/7+P' no dice cuantos hilos lleva: antes no salia en el editor y
+    sus hilos quedaban sin manguera (la M del Zefiro). Sus hilos llevan la
+    misma seccion con longitud 0: no son mangueras."""
+    from app.mangueras_editor import es_seccion_manguera
+    assert es_seccion_manguera('AWG22/7+P') and es_seccion_manguera('3X0,5+P')
+    assert es_seccion_manguera('2x0,5') and not es_seccion_manguera('0,5')
+    assert not es_seccion_manguera('') and not es_seccion_manguera(None)
+
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Format'
+    hoja.append(['Cable / Marca', 'Sección', 'Cod. cable', 'De Elemento', 'De Terminal',
+                 'Para Elemento', 'Para Terminal', 'Observaciones', 'Longitud'])
+    hoja.append(['M', 'AWG22/7+P', 'C9', 'X3', 'S/T', 'J10', 'S/T', 'MANGUERA M', 1.7])
+    for color in ('YELLOW', 'WHITE'):
+        hoja.append([f'M ({color})', None, 'C9', 'X3', '641M10078', 'J10', 'KN', 'MANG.', 0])
+    hoja.append(['SUELTO', 'AWG22/7+P', 'C8', 'X4', '641M10078', 'J11', 'KN', None, 0])
+    salida = io.BytesIO()
+    libro.save(salida)
+
+    filas = leer_preparacion(salida.getvalue(), 'corte.xlsx')['filas']
+    assert [fila['fila'] for fila in filas] == [2]
+    vinculo = filas[0]['vinculacion']
+    assert vinculo['confirmados'] and [activo['fila'] for activo in vinculo['activos']] == [3, 4]
