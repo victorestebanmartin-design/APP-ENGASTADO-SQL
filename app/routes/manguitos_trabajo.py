@@ -13,6 +13,7 @@ from flask import jsonify, request, session
 from sqlalchemy import text
 
 from app.auth import sesion_admin_valida
+from app.codigo_orden import separar_codigo_orden
 from app.routes.base import bp, db, operario_puede
 from app.routes.mangueras_propuestas import _identidad, _json_peticion
 from app.routes.mangueras_trabajo import fin_de_pausa
@@ -61,11 +62,10 @@ def escanear_manguitos():
         return jsonify(success=False, error='No tienes permiso de manguitos.'), 403
     try:
         datos = _json_peticion()
-        codigo = datos.get('codigo')
-        coincidencia = re.fullmatch(r'([A-Za-z0-9_]+)-(\d+)-([1-9]\d*)', codigo.strip() if isinstance(codigo, str) else '')
-        if not coincidencia:
+        partes = separar_codigo_orden(datos.get('codigo'))
+        if not partes:
             raise ValueError('Codigo no valido. Se requiere corte-orden-cantidad, por ejemplo H0174891-60238442-1.')
-        corte, numero, cantidad_texto = coincidencia.groups()
+        corte, numero, cantidad_texto = partes
         cantidad = int(cantidad_texto)
         with db.engine.begin() as conn:
             conn.exec_driver_sql('BEGIN IMMEDIATE')

@@ -65,6 +65,9 @@ def test_orden_codigo_invalido_o_inexistente(operario):
     assert operario.post('/api/bonos/asistente/orden', json={'codigo': 'H1-6001-5'}).status_code == 409
     d = operario.post('/api/bonos/asistente/orden', json={'codigo': 'H1-6001-1'}).get_json()
     assert d['success'] and d['orden']['id'] == 'o1'
+    # Etiqueta Code 39 extendido: la pistola entrega el guion como /M.
+    d = operario.post('/api/bonos/asistente/orden', json={'codigo': 'H1/M6001/M1'}).get_json()
+    assert d['success'] and d['orden']['id'] == 'o1'
 
 
 def test_crear_bono_ocupa_carros_y_ordenes(operario, app):

@@ -16,6 +16,16 @@ def preparador(client, app):
     return client
 
 
+def test_etiqueta_code39_extendido_es_la_misma_orden(preparador, app):
+    """La pistola lee el guion de algunas etiquetas como /M."""
+    primera = preparador.post('/api/mangueras/trabajo/escanear', json={'codigo': 'H0174891/M60238442/M1'})
+    assert primera.status_code == 200
+    segunda = preparador.post('/api/mangueras/trabajo/escanear', json={'codigo': 'H0174891-60238442-1'})
+    assert segunda.get_json()['orden']['id'] == primera.get_json()['orden']['id']
+    with sqlite3.connect(app.config['DB_PATH']) as conn:
+        assert conn.execute('SELECT numero FROM ordenes_produccion').fetchall() == [('60238442',)]
+
+
 def test_escaneo_registra_orden_y_relectura_no_duplica(preparador, app):
     primera = preparador.post('/api/mangueras/trabajo/escanear', json={'codigo': 'H0174891-60238442-1'})
     assert primera.status_code == 200

@@ -106,7 +106,9 @@ function mostrarInfoArchivo() {
 async function procesarCodigoBarras(e) {
     e.preventDefault();
     
-    const codigoCompleto = document.getElementById('codigo-barras-orden').value.trim();
+    // Algunas etiquetas Code 39 "extendido" llevan el guion como /M y la
+    // pistola lo entrega tal cual (ver app/codigo_orden.py).
+    const codigoCompleto = document.getElementById('codigo-barras-orden').value.trim().replace(/\/m/gi, '-');
     
     if (!codigoCompleto) {
         mostrarMensaje('mensaje-escaneo', 'Por favor escanea un código de barras', 'error');

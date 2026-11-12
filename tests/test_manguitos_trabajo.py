@@ -35,6 +35,13 @@ def reloj(monkeypatch):
     return instantes
 
 
+def test_etiqueta_code39_extendido_llega_a_la_orden(operario):
+    """Con /M en vez de guion se reconoce la orden (y pide preparar mangueras)."""
+    respuesta = operario.post('/api/manguitos/trabajo/escanear', json={'codigo': 'H0174891/M60238442/M1'})
+    assert respuesta.status_code == 409
+    assert 'preparar las mangueras' in respuesta.get_json()['error']
+
+
 def test_sin_mangueras_preparadas_pide_prepararlas_primero(operario, app):
     respuesta = operario.post('/api/manguitos/trabajo/escanear', json={'codigo': CODIGO})
     assert respuesta.status_code == 409

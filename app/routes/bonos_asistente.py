@@ -17,12 +17,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import sesion_admin_valida
+from app.codigo_orden import separar_codigo_orden
 from app.fases_orden import motivo_fases_pendientes
 from app.routes.carros import MAX_CARROS_POR_BONO, liberar_carro_en_conn, numero_carro_valido
 from app.routes.base import bp, db, error_interno, operario_puede, _es_error_nombre_bono_duplicado
 from app.routes.mangueras_propuestas import _identidad, _json_peticion
 
-_CODIGO_ORDEN = re.compile(r'([A-Za-z0-9_]+)-(\d+)-([1-9]\d*)')
 _NOMBRE_BONO_NUEVO = re.compile(r'^(\d{7})_(\d{4})$')
 
 
@@ -108,12 +108,11 @@ def asistente_bono_orden():
         return error
     try:
         datos = _json_peticion()
-        codigo = datos.get('codigo')
-        coincidencia = _CODIGO_ORDEN.fullmatch(codigo.strip() if isinstance(codigo, str) else '')
-        if not coincidencia:
+        partes = separar_codigo_orden(datos.get('codigo'))
+        if not partes:
             return jsonify(success=False, error='Código de orden no válido.',
                            consejo='Escanea la etiqueta de la orden, por ejemplo H0174891-60238442-1.'), 400
-        corte, numero, cantidad = coincidencia.groups()
+        corte, numero, cantidad = partes
         with db.engine.connect() as conn:
             orden = conn.execute(text('SELECT * FROM ordenes_produccion WHERE numero = :n'),
                                  {'n': numero}).mappings().first()
