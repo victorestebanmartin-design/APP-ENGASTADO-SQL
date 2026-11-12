@@ -8,6 +8,7 @@ en config.py, para que se pueda leer la version remota con
 app/routes/sistema.py:api_comprobar_actualizaciones).
 """
 import os
+import re
 
 _RUTA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'VERSION')
 
@@ -30,3 +31,31 @@ def actual():
         except OSError:
             pass
     return _cache
+
+
+_RUTA_CAMBIOS = os.path.join(os.path.dirname(_RUTA), 'CAMBIOS.md')
+_RE_CABECERA = re.compile(r'^##\s+(\S+)(?:\s+[-·]\s+(\S+))?')
+
+
+def historial():
+    """Entradas de CAMBIOS.md, la mas nueva primero.
+
+    Cada una es {'version', 'fecha', 'cambios': [str, ...]}. Lo que no sea
+    una cabecera `## X.Y.Z - AAAA-MM-DD` o una linea `- texto` se ignora (la
+    introduccion del fichero, lineas en blanco). Sin fichero, lista vacia:
+    la insignia tiene que seguir funcionando aunque falte.
+    """
+    try:
+        with open(_RUTA_CAMBIOS, 'r', encoding='utf-8') as f:
+            lineas = f.read().splitlines()
+    except OSError:
+        return []
+    entradas = []
+    for linea in lineas:
+        linea = linea.strip()
+        m = _RE_CABECERA.match(linea)
+        if m:
+            entradas.append({'version': m.group(1), 'fecha': m.group(2) or '', 'cambios': []})
+        elif linea.startswith('- ') and entradas:
+            entradas[-1]['cambios'].append(linea[2:].strip())
+    return entradas

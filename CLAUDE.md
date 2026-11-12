@@ -136,6 +136,12 @@ las pantallas solo sirve si sube: es lo que le permite a cualquiera, con un
 vistazo, confirmar que ese puesto está en lo último (y notar si no lo está).
 No apliques esto a cambios que no vayan a `main` (ramas de prueba, WIP local).
 
+**Al subir `VERSION`, añade su entrada arriba del todo en `CAMBIOS.md`**
+(`## X.Y.Z - AAAA-MM-DD` y una línea `- ` por cambio). Es lo que sale al pulsar
+la insignia, así que va en palabras de planta: qué cambia para quien usa la
+app, no cómo está hecho. `tests/test_historial_cambios.py` falla si la versión
+de `VERSION` no es la primera del historial.
+
 ## Rechazos de tarjeta: el mensaje es parte del arreglo
 
 El operario que pasa la tarjeta no puede hacer nada con un "error interno". Cada

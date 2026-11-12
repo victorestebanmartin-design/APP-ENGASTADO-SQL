@@ -1,7 +1,93 @@
 {# Insignia discreta con la version de la app (X.Y.Z, ver VERSION en la raiz
    y app/version.py). Se incluye justo tras <body> en cada plantilla para que
    de un vistazo a cualquier pantalla se pueda confirmar que esta en la
-   ultima version, sin tener que entrar en Admin. #}
-<div style="position:fixed;right:6px;bottom:4px;font-size:11px;line-height:1;
-            color:#9ca3af;opacity:.55;pointer-events:none;z-index:9999;
+   ultima version, sin tener que entrar en Admin.
+
+   Al pulsarla abre el historial de cambios (CAMBIOS.md, servido por
+   /api/version/cambios). Todo va aqui dentro y con prefijo vbadge- para no
+   depender de los estilos ni del JS de cada pantalla. #}
+<div id="vbadge-insignia" role="button" tabindex="0" title="Ver qué ha cambiado"
+     style="position:fixed;right:6px;bottom:4px;font-size:11px;line-height:1;
+            color:#9ca3af;opacity:.55;cursor:pointer;z-index:9999;padding:2px;
             font-family:monospace;user-select:none;">v{{ version_app }}</div>
+<div id="vbadge-fondo" style="display:none;position:fixed;inset:0;z-index:10000;
+     background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px;">
+  <div role="dialog" aria-modal="true" aria-labelledby="vbadge-titulo"
+       style="background:#fff;color:#1f2937;border-radius:10px;width:100%;max-width:560px;
+              max-height:85vh;display:flex;flex-direction:column;
+              font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+              box-shadow:0 10px 30px rgba(0,0,0,.3);">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:14px 18px;border-bottom:1px solid #e5e7eb;">
+      <strong id="vbadge-titulo" style="font-size:17px;">Qué ha cambiado</strong>
+      <button type="button" id="vbadge-cerrar" aria-label="Cerrar"
+              style="border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:#6b7280;">&times;</button>
+    </div>
+    <div id="vbadge-lista" style="overflow-y:auto;padding:6px 18px 16px;font-size:14px;line-height:1.45;"></div>
+  </div>
+</div>
+<script>
+(function () {
+  var insignia = document.getElementById('vbadge-insignia');
+  var fondo = document.getElementById('vbadge-fondo');
+  var lista = document.getElementById('vbadge-lista');
+  if (!insignia || !fondo || !lista) return;
+  var cargado = false;
+
+  function el(tag, estilo, texto) {
+    var e = document.createElement(tag);
+    if (estilo) e.style.cssText = estilo;
+    if (texto != null) e.textContent = texto;
+    return e;
+  }
+
+  function pintar(datos) {
+    lista.innerHTML = '';
+    var hist = (datos && datos.historial) || [];
+    if (!hist.length) {
+      lista.appendChild(el('p', 'color:#6b7280;', 'No hay historial de cambios.'));
+      return;
+    }
+    hist.forEach(function (v, i) {
+      var bloque = el('div', 'padding:12px 0;' + (i ? 'border-top:1px solid #f3f4f6;' : ''));
+      var cab = el('div', 'display:flex;gap:8px;align-items:baseline;margin-bottom:4px;');
+      cab.appendChild(el('span', 'font-weight:600;font-family:monospace;font-size:15px;', 'v' + v.version));
+      if (v.version === datos.version) {
+        cab.appendChild(el('span', 'font-size:11px;background:#dcfce7;color:#166534;border-radius:4px;padding:1px 6px;', 'la de este puesto'));
+      }
+      if (v.fecha) cab.appendChild(el('span', 'margin-left:auto;color:#9ca3af;font-size:12px;', v.fecha));
+      bloque.appendChild(cab);
+      var ul = el('ul', 'margin:0;padding-left:20px;');
+      (v.cambios || []).forEach(function (c) { ul.appendChild(el('li', null, c)); });
+      bloque.appendChild(ul);
+      lista.appendChild(bloque);
+    });
+  }
+
+  function abrir() {
+    fondo.style.display = 'flex';
+    if (cargado) return;
+    lista.innerHTML = '';
+    lista.appendChild(el('p', 'color:#6b7280;', 'Cargando…'));
+    fetch('/api/version/cambios', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { cargado = true; pintar(d); })
+      .catch(function () {
+        lista.innerHTML = '';
+        lista.appendChild(el('p', 'color:#b91c1c;', 'No se ha podido cargar el historial. Prueba otra vez en un momento.'));
+      });
+  }
+
+  function cerrar() { fondo.style.display = 'none'; }
+
+  insignia.addEventListener('click', abrir);
+  insignia.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); }
+  });
+  document.getElementById('vbadge-cerrar').addEventListener('click', cerrar);
+  fondo.addEventListener('click', function (e) { if (e.target === fondo) cerrar(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && fondo.style.display !== 'none') cerrar();
+  });
+})();
+</script>

@@ -53,6 +53,17 @@ from app.config_manager import ConfigManager
 
 # ==================== SALUD DEL SISTEMA ====================
 
+@bp.route('/api/version/cambios')
+def api_version_cambios():
+    """Historial de CAMBIOS.md para el panel que abre la insignia de version.
+
+    Sin login ni PIN: lo pulsa cualquiera desde cualquier pantalla, y no
+    cuenta nada que no se vea ya en la propia app.
+    """
+    from app.version import actual as _version_actual, historial as _historial
+    return jsonify({'version': _version_actual(), 'historial': _historial()})
+
+
 @bp.route('/health')
 def health():
     """Health check endpoint"""
