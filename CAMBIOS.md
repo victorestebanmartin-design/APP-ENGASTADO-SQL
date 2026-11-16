@@ -6,6 +6,14 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.34.0 - 2026-11-16
+- Engastado: nuevo boton EMBALAJE, se enciende cuando hay alguna orden con todas sus maquinas acabadas
+- La primera vez de cada codigo de corte se eligen las cajas y que paquetes van en cada una; la siguiente orden de esa referencia sale ya guiada
+- Los carteles de las cajas salen en A4 horizontal, una hoja por caja, por la impresora de red antes de empezar a embalar: corte, denominacion, orden, cantidad y los paquetes de esa caja dibujados como sus etiquetas
+- Cada paquete puede llevar una observacion (lo que hay que hacerle antes de meterlo en la caja): sale con * en la pantalla y en el cartel, y la pone o la cambia un supervisor
+- Las cajas se pueden renombrar (por ejemplo "Conectores"); el cartel sigue diciendo CAJA 1 de 3 y debajo el nombre. Tambien con supervisor
+- Embalar una orden con paquetes pendientes, o cambiar un reparto guardado, lo autoriza un supervisor con su tarjeta o su clave
+
 ## 1.33.2 - 2026-11-16
 - Cambio interno: las comprobaciones automaticas de la app tardan cinco veces menos. Nada cambia en las pantallas
 

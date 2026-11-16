@@ -77,6 +77,9 @@
                         <span class="opcion-desc">Selecciona de la lista de bonos activos</span>
                     </button>
                 </div>
+                <!-- Solo se enciende si hay órdenes terminadas (static/js/v3/v3-embalaje.js) -->
+                <button type="button" onclick="abrirEmbalaje()" class="btn-embalaje btn-embalaje-grande" disabled
+                        title="No hay órdenes terminadas">📦 EMBALAJE</button>
             </div>
 
             <!-- Vista 2: introducir código -->
@@ -224,6 +227,7 @@
             <h1>🚀 Sistema de Engastado V3.0</h1>
             <div class="header-actions">
                 <span id="badge-operario" class="badge-operario hidden"></span>
+                <button type="button" onclick="abrirEmbalaje()" class="btn-embalaje" disabled title="No hay órdenes terminadas">📦 EMBALAJE</button>
                 <button onclick="abrirDashboardProgreso()" class="btn-secondary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; cursor: pointer;">📊 Dashboard Progreso</button>
                 <a href="{{ url_for('main.modules') }}" class="btn-secondary">🔙 Inicio</a>
                 <a href="{{ url_for('main.admin') }}" class="btn-admin">⚙️ Admin</a>
@@ -344,5 +348,6 @@
     <script src="{{ url_for('static', filename='js/v3/v3-paquete-expandido.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-no-poner.js') }}"></script>
     <script src="{{ url_for('static', filename='js/v3/v3-ensayos.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/v3/v3-embalaje.js') }}"></script>
 </body>
 </html>

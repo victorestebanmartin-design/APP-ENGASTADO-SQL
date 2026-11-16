@@ -178,6 +178,38 @@ modal está en `static/js/v3/v3-ensayos.js`. Al revés que el pick-to-light:
   ahí tiene que fijar `tipo` y `ref` también en el `ON CONFLICT`, o hereda los
   de la anterior.
 
+## Embalaje: el reparto es del código de corte, no de la orden
+
+Botón EMBALAJE de engastado (`app/embalaje.py`, `app/routes/embalaje.py`,
+`static/js/v3/v3-embalaje.js`). Reglas que decidió planta:
+
+- **Un paquete es una etiqueta de primer nivel** de `etiquetas_elementos`
+  (`sub_numero = 0`): los sueltos y cada serie entera como un bulto. La clave
+  es `cod_cable|elemento`, estable entre órdenes del mismo corte.
+- **Orden lista = todas sus máquinas han acabado ese carro**, con el mismo
+  número de carro que engastado y el report (`numeracion_carros`). Los
+  terminales sin máquina no cuentan, como en `_bono_finalizado`. Con
+  `carros_con_pendientes` en ese carro hace falta supervisor
+  (`ensayos_supervisor`, el mismo que en ensayos).
+- **El reparto se guarda por `codigo_corte`** y la siguiente orden lo hereda.
+  Rehacerlo pide supervisor y deja el anterior con `activo = 0`, no se borra.
+  Completarlo con paquetes nuevos del Excel no pide supervisor. Si la cantidad
+  no coincide, se avisa y se deja elegir.
+- **Los carteles se imprimen antes de embalar**; el guiado no bloquea paquete a
+  paquete. Cada impresión queda en `embalajes` con datos copiados.
+- **Observaciones y nombres de caja van aparte del reparto**, también por
+  `codigo_corte` (`embalaje_observaciones`, `embalaje_cajas_nombres`):
+  rehacer el reparto no los borra. Ponerlos o cambiarlos sí pide supervisor
+  (lo decidió planta: son instrucciones para quien embala) y queda apuntado
+  quién. El nombre se añade a «CAJA n de N», no lo sustituye.
+- **El cartel es una hoja A4 apaisada por caja.** Cabecera y datos tienen alto
+  fijo y `_REJILLA_ALTO_MM` cuenta con él: si tocas la cabecera, rehaz la
+  cuenta. Las etiquetas se encogen para caber pero nunca pasan del tamaño
+  real (`_ESCALA_MAX`), y las observaciones iguales van en una sola línea.
+- La tarjeta del operario es otra captura armada (`tipo='operario_embalaje'`);
+  la del supervisor reutiliza `supervisor_ensayo` con `ref='embalaje:<orden>'`.
+  La autorización vale 15 minutos en la sesión del navegador.
+
 ## Tests
 
 ```bash

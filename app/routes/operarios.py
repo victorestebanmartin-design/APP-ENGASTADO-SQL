@@ -100,7 +100,8 @@ def _operario_tag_captura_para_device(device_id):
         # Tarjeta de supervisor tras un ensayo NOK (app/routes/ensayos.py) o
         # etiqueta de máquina (maquinas_rfid.py): no se registra a nadie, así
         # que no hay operario que comprobar.
-        sin_operario = {'supervisor_ensayo': 'SUPERVISOR', 'maquina': 'MAQUINA'}.get(fila['tipo'])
+        sin_operario = {'supervisor_ensayo': 'SUPERVISOR', 'maquina': 'MAQUINA',
+                        'operario_embalaje': 'EMBALAJE'}.get(fila['tipo'])
         if not sin_operario and (not fila['nombre'] or not fila['activo']):
             _captura_tag_resultado(conn, fila, 'error', 'El operario ya no está activo')
             return None
@@ -230,6 +231,10 @@ def api_esp32_operario_captura_resultado():
             if fila['tipo'] == 'supervisor_ensayo':
                 from app.routes.ensayos import resolver_tarjeta_supervisor
                 respuesta, status = resolver_tarjeta_supervisor(conn, fila, uid)
+                return jsonify(respuesta), status
+            if fila['tipo'] == 'operario_embalaje':
+                from app.routes.embalaje import resolver_tarjeta_operario
+                respuesta, status = resolver_tarjeta_operario(conn, fila, uid)
                 return jsonify(respuesta), status
             if fila['tipo'] == 'maquina':
                 from app.routes.maquinas_rfid import resolver_captura_maquina

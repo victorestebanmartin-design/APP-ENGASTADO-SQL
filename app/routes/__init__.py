@@ -38,6 +38,7 @@ def init_routes(app):
         progreso,
         pick_to_light,
         ensayos,
+        embalaje,
     )
 
     app.register_blueprint(bp)

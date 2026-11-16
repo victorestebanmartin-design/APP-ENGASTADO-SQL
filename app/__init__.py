@@ -714,6 +714,9 @@ def _apply_migrations(db_path):
             )
 
     _migrar_ensayos_traccion(cur)
+    from app.embalaje import SQL_MIGRACION as _sql_embalaje, migrar_columnas as _migrar_embalaje
+    cur.executescript(_sql_embalaje)
+    _migrar_embalaje(cur)
     conn.commit()
     conn.close()
 
