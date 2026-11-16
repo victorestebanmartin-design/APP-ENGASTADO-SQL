@@ -1,5 +1,5 @@
 """
-Genera el hash SHA-256 de un PIN de administración.
+Genera el hash (con sal) de un PIN de administración.
 
 Ya no hace falta para el uso normal: si el PC no tiene PIN fijado, la app lo
 pide sola la primera vez que se entra en /admin. Este script sigue sirviendo
@@ -16,8 +16,9 @@ en el fichero .env del proyecto:
 
 El PIN en claro NUNCA se guarda ni se muestra; solo su hash.
 """
-import hashlib
 import getpass
+
+from werkzeug.security import generate_password_hash
 
 
 def main():
@@ -32,7 +33,9 @@ def main():
         print("ERROR: los PIN no coinciden.")
         return
 
-    hash_pin = hashlib.sha256(pin.encode("utf-8")).hexdigest()
+    # Con sal, igual que app/auth.py:hash_pin. Los SHA-256 que generaba antes
+    # este script siguen valiendo en el .env; este formato aguanta mejor.
+    hash_pin = generate_password_hash(pin)
 
     print()
     print("Añade (o reemplaza) esta línea en tu fichero .env:")

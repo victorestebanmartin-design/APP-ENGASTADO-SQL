@@ -201,7 +201,8 @@ class Config:
     # =====================================================
     # PROTECCIÓN MÓDULO ADMINISTRACIÓN (PIN)
     # =====================================================
-    # Hash SHA-256 del PIN de administración de ESTA instalación. Opcional:
+    # Hash del PIN de administración de ESTA instalación (con sal, o el
+    # SHA-256 de versiones anteriores, que sigue valiendo). Opcional:
     # si se deja vacío aquí, la app pide fijar uno la primera vez que se
     # visita /admin (app/auth.py:requiere_pin_admin) y lo guarda en
     # data/admin_pin.json (gitignored), administrable luego desde el propio

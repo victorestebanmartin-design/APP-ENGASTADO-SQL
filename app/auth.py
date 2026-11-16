@@ -20,12 +20,13 @@ import os
 import json
 import hashlib
 import hmac
+import re
 import time
 from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import session, redirect, url_for, request, jsonify, current_app
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 # Claves usadas dentro de la sesión de Flask
 SESSION_KEY = 'admin_verificado'
@@ -57,7 +58,47 @@ def guardar_pin_admin(pin_hash):
 
 
 def hash_pin(pin):
-    return hashlib.sha256(pin.encode('utf-8')).hexdigest()
+    """Hash con sal y lento a propósito, el mismo que las claves personales.
+
+    Antes era un SHA-256 a secas: con un PIN de cuatro cifras, quien leyera
+    data/admin_pin.json (o una copia de seguridad) lo sacaba probando las
+    10.000 combinaciones en un instante."""
+    return generate_password_hash(pin)
+
+
+_SHA256_HEX = re.compile(r'[0-9a-f]{64}')
+
+
+def _es_hash_antiguo(guardado):
+    """True si es un SHA-256 a secas, como se guardaba hasta la 1.35."""
+    return bool(_SHA256_HEX.fullmatch((guardado or '').lower()))
+
+
+def _pin_coincide(pin, guardado):
+    """Compara el PIN con un hash guardado, sea del formato nuevo o del antiguo."""
+    if not guardado:
+        return False
+    if _es_hash_antiguo(guardado):
+        introducido = hashlib.sha256(pin.encode('utf-8')).hexdigest()
+        return hmac.compare_digest(introducido, guardado.lower())
+    try:
+        return check_password_hash(guardado, pin)
+    except Exception:
+        return False   # hash ilegible: no vale, pero tampoco tumba el login
+
+
+def _renovar_hash_antiguo(pin, guardado):
+    """Pasa al formato nuevo el PIN de data/admin_pin.json, aprovechando que
+    acaba de introducirse bien (es el único momento en que se conoce). El del
+    .env no se toca: ese fichero lo lleva quien instala."""
+    if not _es_hash_antiguo(guardado):
+        return
+    if (current_app.config.get('ADMIN_PIN_HASH') or '').strip():
+        return
+    try:
+        guardar_pin_admin(hash_pin(pin))
+    except OSError:
+        current_app.logger.exception('No se pudo renovar el hash del PIN de administración')
 
 
 def pin_es_correcto(pin):
@@ -67,14 +108,12 @@ def pin_es_correcto(pin):
     Comparación en tiempo constante para no filtrar info por timing."""
     if not pin:
         return False
-    introducido = hash_pin(pin)
     correcto = _pin_hash_guardado()
-    if correcto and hmac.compare_digest(introducido, correcto):
+    if _pin_coincide(pin, correcto):
+        _renovar_hash_antiguo(pin, correcto)
         return True
     maestro = (current_app.config.get('ADMIN_MASTER_PIN_HASH') or '').strip()
-    if maestro and hmac.compare_digest(introducido, maestro):
-        return True
-    return False
+    return _pin_coincide(pin, maestro)
 
 
 def proteccion_activa():

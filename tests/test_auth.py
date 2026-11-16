@@ -44,6 +44,75 @@ def test_bloqueo_tras_cinco_intentos_fallidos(client):
     assert r.status_code == 302
 
 
+def _pin_en_fichero(app, pin_hash):
+    """Deja el PIN en data/admin_pin.json, como en una instalación sin .env."""
+    import json
+    import os
+    app.config['ADMIN_PIN_HASH'] = ''
+    with open(os.path.join(app.config['DATA_DIR'], 'admin_pin.json'), 'w', encoding='utf-8') as f:
+        json.dump({'pin_hash': pin_hash}, f)
+
+
+def _hash_en_fichero(app):
+    import json
+    import os
+    with open(os.path.join(app.config['DATA_DIR'], 'admin_pin.json'), encoding='utf-8') as f:
+        return json.load(f)['pin_hash']
+
+
+def test_el_pin_nuevo_se_guarda_con_sal(app, client):
+    import hashlib
+    app.config['ADMIN_PIN_HASH'] = ''
+    r = client.post('/admin/pin/configurar', data={'pin': '4821', 'pin2': '4821'})
+    assert r.status_code == 302
+    guardado = _hash_en_fichero(app)
+    assert guardado != hashlib.sha256(b'4821').hexdigest()
+    assert '$' in guardado           # método$sal$hash, no un SHA-256 a secas
+
+    otro = app.test_client()
+    assert otro.post('/admin/pin', data={'pin': '4821'}).status_code == 302
+    assert 'PIN incorrecto' in app.test_client().post(
+        '/admin/pin', data={'pin': '4822'}).get_data(as_text=True)
+
+
+def test_un_pin_antiguo_sigue_entrando_y_se_renueva(app, client):
+    """Instalaciones ya en marcha: no se les puede pedir que fijen el PIN otra vez."""
+    import hashlib
+    antiguo = hashlib.sha256(b'4821').hexdigest()
+    _pin_en_fichero(app, antiguo)
+
+    assert 'PIN incorrecto' in client.post('/admin/pin', data={'pin': '0000'}).get_data(as_text=True)
+    assert _hash_en_fichero(app) == antiguo      # un fallo no renueva nada
+
+    assert client.post('/admin/pin', data={'pin': '4821'}).status_code == 302
+    assert _hash_en_fichero(app) != antiguo
+    assert app.test_client().post('/admin/pin', data={'pin': '4821'}).status_code == 302
+
+
+def test_el_pin_del_env_antiguo_sigue_valiendo_y_no_se_toca(app, client):
+    """El de conftest es un SHA-256 en ADMIN_PIN_HASH: entra y no escribe nada."""
+    import os
+    assert client.post('/admin/pin', data={'pin': PIN_TEST}).status_code == 302
+    assert not os.path.exists(os.path.join(app.config['DATA_DIR'], 'admin_pin.json'))
+
+
+def test_cambiar_el_pin_desde_admin_lo_deja_con_sal(app, admin_client):
+    import hashlib
+    _pin_en_fichero(app, hashlib.sha256(b'4821').hexdigest())
+    r = admin_client.post('/api/sistema/admin_pin', json={
+        'pin_actual': '4821', 'pin_nuevo': '9517', 'pin_nuevo_confirmar': '9517'})
+    assert r.get_json()['success'], r.get_json()
+    assert '$' in _hash_en_fichero(app)
+    assert app.test_client().post('/admin/pin', data={'pin': '9517'}).status_code == 302
+
+
+def test_un_hash_ilegible_no_tumba_el_login(app, client):
+    _pin_en_fichero(app, 'esto-no-es-un-hash')
+    r = client.post('/admin/pin', data={'pin': '4821'})
+    assert r.status_code == 200
+    assert 'PIN incorrecto' in r.get_data(as_text=True)
+
+
 def test_logout_cierra_sesion(admin_client):
     assert admin_client.get('/admin').status_code == 200
     admin_client.get('/admin/logout')

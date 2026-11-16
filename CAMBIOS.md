@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.35.1 - 2026-11-16
+- El PIN de Administracion se guarda mejor protegido. No cambia nada al usarlo: el PIN de siempre sigue valiendo y se actualiza solo la primera vez que se introduce bien
+
 ## 1.35.0 - 2026-11-16
 - Dar de alta, cambiar o dar de baja operarios y sus tarjetas solo se puede hacer desde Administracion, con el PIN o la clave personal
 - Un PC solo se puede configurar como "Servidor" desde el propio PC servidor; desde otro equipo hay que entrar antes en Administracion
