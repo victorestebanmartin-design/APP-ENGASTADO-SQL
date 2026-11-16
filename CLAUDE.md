@@ -274,7 +274,9 @@ trazabilidad; no está en la base de datos. Tres cosas que ya han fallado:
   `tests/test_revision_fiabilidad.py`.
 - **Leerlo, con `leer_progreso`** (`app/routes/progreso.py`): en Windows no se
   puede sustituir un fichero que otro hilo tiene abierto. El escritor además
-  reintenta (`_reemplazar_con_reintento`).
+  reintenta (`reemplazar_con_reintento`, en `app/ficheros.py`). Los Excel de
+  corte se sustituyen con la misma función: un `os.replace` a secas sobre un
+  fichero que alguien lee es un error intermitente en planta.
 - **Borrar un bono lo aparta** a `data/progreso_bonos_borrados/`, no lo tira, y
   las órdenes ya completadas se quedan completadas.
 

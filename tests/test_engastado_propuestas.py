@@ -172,6 +172,33 @@ def test_ed_nueva_hereda_el_asterisco_aunque_cambien_las_filas(app, admin_client
     assert load_workbook(ruta)['Format']['D4'].value == 'X1'
 
 
+def test_revertir_aguanta_que_el_excel_este_abierto_un_instante(app, admin_client, monkeypatch):
+    """En Windows no se puede sustituir un fichero que otro tiene abierto: al
+    jefe le salia un error al revertir aunque no pasara nada."""
+    import os
+    from app import ficheros
+    ruta, operario, jefe = preparar(app, admin_client)
+    identificador = avisar(operario, [{'fila': 2, 'lado': 'de'}]).get_json()['id']
+    jefe.post(f'/api/engastado/propuestas/{identificador}/resolver', json={'accion': 'aprobar', 'motivo': 'Comprobado'})
+    assert load_workbook(ruta)['Format']['D2'].value == 'X1*'
+
+    real = os.replace
+    fallos = [3]
+
+    def replace_ocupado(origen, destino):
+        if fallos[0]:
+            fallos[0] -= 1
+            raise PermissionError(13, 'El proceso no tiene acceso al archivo')
+        return real(origen, destino)
+
+    monkeypatch.setattr(ficheros.os, 'replace', replace_ocupado)
+    monkeypatch.setattr(ficheros.time, 'sleep', lambda s: None)
+    respuesta = jefe.post(f'/api/engastado/propuestas/{identificador}/revertir', json={'motivo': 'Revertir'})
+    assert respuesta.status_code == 200, respuesta.get_json()
+    assert fallos == [0]
+    assert load_workbook(ruta)['Format']['D2'].value == 'X1'
+
+
 def test_ed_nueva_sin_el_cable_no_lo_hereda(app, admin_client):
     ruta, operario, jefe = preparar(app, admin_client)
     identificador = avisar(operario, [{'fila': 2, 'lado': 'de'}]).get_json()['id']

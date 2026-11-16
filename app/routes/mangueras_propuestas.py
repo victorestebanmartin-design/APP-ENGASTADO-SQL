@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash
 
 from app.auth import requiere_pin_admin, administrador_actual, sesion_admin_valida
 from app.excel_manager import invalidar_cache_excel
+from app.ficheros import reemplazar_con_reintento
 from app.mangueras_editor import exportar_preparacion, leer_preparacion, reaplicar_cambios
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
 from app.routes.manguitos import _MANGUERAS_EDITOR_LOCK
@@ -238,7 +239,7 @@ def _sustituir_excel(ruta, original, nuevo, backup, metadatos):
         with open(ruta, 'rb') as fichero:
             if fichero.read() != original:
                 raise _ExcelCambiado('El Excel ha cambiado durante la aprobacion.')
-        os.replace(temporal, ruta)
+        reemplazar_con_reintento(temporal, ruta)
         temporal = None
         invalidar_cache_excel(ruta)
     finally:
@@ -251,7 +252,7 @@ def _volver_a_poner(ruta, original):
     with tempfile.NamedTemporaryFile(dir=os.path.dirname(ruta), delete=False) as fichero:
         temporal = fichero.name
         fichero.write(original)
-    os.replace(temporal, ruta)
+    reemplazar_con_reintento(temporal, ruta)
     invalidar_cache_excel(ruta)
 
 

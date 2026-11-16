@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.34.1 - 2026-11-16
+- Aprobar o revertir una propuesta, aplicar el editor de mangueras o subir un Excel ya no dan error si el fichero esta ocupado un instante: se reintenta solo
+
 ## 1.34.0 - 2026-11-16
 - Engastado: nuevo boton EMBALAJE, se enciende cuando hay alguna orden con todas sus maquinas acabadas
 - La primera vez de cada codigo de corte se eligen las cajas y que paquetes van en cada una; la siguiente orden de esa referencia sale ya guiada

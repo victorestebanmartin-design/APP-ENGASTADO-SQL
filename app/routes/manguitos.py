@@ -29,6 +29,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, leer_excel_cacheado, _serie_str
+from app.ficheros import reemplazar_con_reintento
 from app.mangueras_editor import (
     leer_preparacion, exportar_preparacion, listar_biblioteca_retractiles,
 )
@@ -231,7 +232,7 @@ def api_mangueras_editor_aplicar():
             backup = ruta + '.backup_mangueras_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             with open(backup, 'xb') as fichero:
                 fichero.write(original)
-            os.replace(temporal, ruta)
+            reemplazar_con_reintento(temporal, ruta)
             temporal = None
             from app.excel_manager import invalidar_cache_excel
             invalidar_cache_excel(ruta)

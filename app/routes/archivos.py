@@ -28,6 +28,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, validar_excel_columnas, invalidar_cache_excel
+from app.ficheros import reemplazar_con_reintento
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -56,7 +57,7 @@ def _guardar_excel_migrado(filepath, contenido, respaldo):
             fichero.write(contenido)
             fichero.flush()
             os.fsync(fichero.fileno())
-        os.replace(temporal, filepath)
+        reemplazar_con_reintento(temporal, filepath)
         temporal = None
         invalidar_cache_excel(filepath)
         return os.path.basename(respaldo_path)

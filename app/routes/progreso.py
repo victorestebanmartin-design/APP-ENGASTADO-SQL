@@ -30,6 +30,7 @@ from repositories.puesto_repository import PuestoRepository
 from repositories.maquina_repository import MaquinaRepository
 from repositories.sesion_trabajo_repository import SesionTrabajoRepository
 from app.excel_manager import ExcelManager, leer_excel_cacheado
+from app.ficheros import reemplazar_con_reintento as _reemplazar_con_reintento
 from app.auth import (
     requiere_pin_admin,
     proteccion_activa,
@@ -54,24 +55,6 @@ def _obtener_lock_progreso(nombre_bono: str) -> threading.Lock:
         if nombre_bono not in _progreso_locks:
             _progreso_locks[nombre_bono] = threading.Lock()
         return _progreso_locks[nombre_bono]
-
-
-def _reemplazar_con_reintento(tmp: str, path: str, intentos: int = 20, espera: float = 0.05) -> None:
-    """os.replace que aguanta a un lector en Windows.
-
-    Allí no se puede sustituir un fichero que otro hilo o proceso tiene abierto
-    (un GET del progreso, la copia automática, el antivirus): falla con
-    PermissionError. El lector lo suelta en milisegundos, así que basta con
-    volver a intentarlo; sin esto se perdía el carro que se estaba guardando.
-    """
-    for intento in range(intentos):
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if intento == intentos - 1:
-                raise
-            time.sleep(espera)
 
 
 def _escribir_progreso_atomico(path: str, progreso: dict) -> None:

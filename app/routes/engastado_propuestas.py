@@ -19,6 +19,7 @@ from sqlalchemy import text
 from app.auth import administrador_actual, sesion_admin_valida
 from app.engastado_bloqueos import aplicar_bloqueos, leer_cable, quitar_bloqueos, LADOS
 from app.excel_manager import invalidar_cache_excel
+from app.ficheros import reemplazar_con_reintento
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
 from app.routes.mangueras_propuestas import _identidad, _json_peticion, numeros_paquete
 from app.routes.manguitos import _MANGUERAS_EDITOR_LOCK
@@ -42,7 +43,7 @@ def _escribir_excel(ruta, contenido, sufijo_backup):
             fichero.write(contenido)
             fichero.flush()
             os.fsync(fichero.fileno())
-        os.replace(temporal, ruta)
+        reemplazar_con_reintento(temporal, ruta)
         temporal = None
         invalidar_cache_excel(ruta)
     finally:
