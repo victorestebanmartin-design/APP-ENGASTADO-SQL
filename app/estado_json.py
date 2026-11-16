@@ -30,6 +30,7 @@ Uso:
 """
 import json
 import os
+from app.ficheros import reemplazar_con_reintento
 import tempfile
 import threading
 
@@ -79,7 +80,7 @@ def _escribir_sin_candado(path: str, datos) -> None:
             json.dump(datos, f, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        reemplazar_con_reintento(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)

@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import os
+from app.ficheros import reemplazar_con_reintento
 import json
 import re
 import socket
@@ -644,7 +645,7 @@ def _esp32_write_channel(path, data, ts):
         try:
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump({'ops': ops}, f)
-            os.replace(tmp, path)
+            reemplazar_con_reintento(tmp, path)
         except Exception:
             try:
                 os.unlink(tmp)

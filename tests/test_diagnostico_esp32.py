@@ -3,9 +3,12 @@ físicos (botones + NFC) usado para verificar hardware sin depender solo
 del 'online'."""
 
 
+from conftest import admin_de
+
+
 def _operario_con_tag(client, nombre, tag):
-    op = client.post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
-    client.put(f'/api/operarios/{op["id"]}', json={'tag_uid': tag})
+    op = admin_de(client).post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
+    admin_de(client).put(f'/api/operarios/{op["id"]}', json={'tag_uid': tag})
     return op
 
 

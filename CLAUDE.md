@@ -32,6 +32,15 @@ Los arranques (`run_sql.py`, `wsgi.py`) llaman a `consola_utf8.forzar_utf8()` lo
 primero de todo, y `run.bat` fija `PYTHONIOENCODING=utf-8`. Lo vigila
 `tests/test_encoding_consola.py`. No metas nada por delante de esa llamada.
 
+**Ningún `os.replace` a secas en `app/`.** En Windows lanza `PermissionError`
+si en ese instante alguien tiene abierto el destino; se sustituye siempre con
+`app.ficheros.reemplazar_con_reintento` (lo vigila `tests/test_ficheros.py`).
+
+El reintento no salva un fichero que dejamos abierto nosotros. **`pd.ExcelFile`
+va siempre en un `with`**: sin cerrar, el Excel sigue cogido hasta que pase el
+recolector de basura, y revertir una propuesta justo después de subir un corte
+devolvía 403 solo a veces (dependía de cuándo tocara recolectar).
+
 ## Regenerar es sustituir
 
 Al rehacer datos derivados de un Excel (`_regenerar_etiquetas_archivo`), calcula
@@ -236,8 +245,20 @@ Para que siga siendo rápida:
 - `python -m pytest --durations=15 -n 0` enseña los más lentos si vuelve a
   engordar.
 
-Cada test recibe su propia BD SQLite temporal creada desde `schema_sqlite.sql`
-(ver `tests/conftest.py`); nunca se toca `data/engastado.db`.
+Cada test recibe su propia BD SQLite temporal (ver `tests/conftest.py`); nunca
+se toca `data/engastado.db`. La BD no se crea desde cero cada vez: se copia de
+una plantilla ya migrada que se hace una vez por proceso desde
+`schema_sqlite.sql`.
+
+Como red de seguridad, `sin_placas_de_verdad` (autouse, en `conftest.py`) hace
+que `mpremote`, `esptool` y el puerto serie respondan en todos los tests como
+si no hubiera nada enchufado: un test nuevo que olvide el `monkeypatch` ya no
+puede flashear ni borrar la placa que haya en ese puerto. Para simular una
+placa que contesta, parchea `subprocess.run` en el propio test.
+
+Los operarios y sus tarjetas solo se dan de alta con sesión de administración:
+en un test, `admin_de(client)` da un cliente admin sobre la misma app sin
+convertir en admin al cliente que hace de operario.
 
 ## El PC servidor no puede dormirse
 

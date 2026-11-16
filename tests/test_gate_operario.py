@@ -1,5 +1,6 @@
 """Tests del gate de login global: permisos por operario, cookie PC<->puesto,
 sondeo de logins filtrado por puesto y el interruptor OPERARIO_GATE_ENABLED."""
+from conftest import admin_de
 import json
 
 
@@ -15,7 +16,7 @@ def test_api_modulos_lista_todos_los_modulos(client):
 
 
 def _crear_operario(client, nombre='Test Op'):
-    return client.post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
+    return admin_de(client).post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
 
 
 def test_operario_nuevo_tiene_modulos_permitidos_null(client):
@@ -81,7 +82,7 @@ def test_reasignar_con_pin_funciona(admin_client):
 
 def _crear_operario_con_tag(client, nombre, tag_uid):
     op = _crear_operario(client, nombre)
-    client.put(f"/api/operarios/{op['id']}", json={'tag_uid': tag_uid})
+    admin_de(client).put(f"/api/operarios/{op['id']}", json={'tag_uid': tag_uid})
     return op
 
 

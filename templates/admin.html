@@ -1178,6 +1178,13 @@
         finally { boton.disabled = false; }
     });
 
+    // Todo texto que venga de la BD se escapa antes de meterlo en innerHTML:
+    // un nombre con HTML se ejecutaría aquí con la sesión de administración.
+    function _opEsc(valor) {
+        return String(valor ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     function cargarOperariosAdmin() {
         Promise.all([fetch('/api/operarios').then(r => r.json()), _cargarModulosApp()])
             .then(([data, modulos]) => {
@@ -1202,8 +1209,8 @@
                     return `
                     <tr id="op-row-${op.id}">
                         <td>
-                            <span id="op-nombre-${op.id}">${op.nombre}</span>
-                            <input type="text" id="op-edit-${op.id}" value="${op.nombre}"
+                            <span id="op-nombre-${op.id}">${_opEsc(op.nombre)}</span>
+                            <input type="text" id="op-edit-${op.id}" value="${_opEsc(op.nombre)}"
                                 style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:180px;"
                                 onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
                         </td>
@@ -1296,8 +1303,8 @@
                 }
                 const filas = data.logins.map(l => `
                     <tr>
-                        <td>${l.operario}</td>
-                        <td>${(l.desde || '').replace('T', ' ').slice(0, 16)}</td>
+                        <td>${_opEsc(l.operario)}</td>
+                        <td>${_opEsc((l.desde || '').replace('T', ' ').slice(0, 16))}</td>
                         <td>
                             <button onclick="liberarLoginAdmin('${l.id}')" class="btn-accion-del" title="Liberar login">🚪 Liberar</button>
                         </td>

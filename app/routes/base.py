@@ -144,8 +144,10 @@ def _ahora_iso() -> str:
 
 def _detectar_hoja(filepath: str) -> str:
     """Devuelve 'Format' si existe en el archivo, sino la primera hoja disponible."""
-    xl = pd.ExcelFile(filepath)
-    return 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
+    # with: sin cerrarlo, el Excel se queda abierto hasta que pase el
+    # recolector y en Windows no se puede sustituir ni borrar mientras tanto.
+    with pd.ExcelFile(filepath) as xl:
+        return 'Format' if 'Format' in xl.sheet_names else xl.sheet_names[0]
 
 
 def allowed_file(filename):

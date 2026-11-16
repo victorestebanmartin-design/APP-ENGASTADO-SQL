@@ -851,13 +851,13 @@ function mostrarListaPuestos(puestos) {
             ${puestos.map(puesto => `
                 <div class="puesto-card" data-id="${puesto.id}">
                     <div class="puesto-header">
-                        <h4>${puesto.nombre}</h4>
+                        <h4>${_dispEsc(puesto.nombre)}</h4>
                         <div class="puesto-actions">
                             <button class="btn-icon" onclick="editarPuesto('${puesto.id}')" title="Editar">✏️</button>
                             <button class="btn-icon" onclick="eliminarPuesto('${puesto.id}')" title="Eliminar">🗑️</button>
                         </div>
                     </div>
-                    <p>${puesto.descripcion}</p>
+                    <p>${_dispEsc(puesto.descripcion)}</p>
                     <div class="puesto-stats">
                         <span class="stat">📱 ${puesto.maquinas.length} máquinas</span>
                         <span class="stat-status ${puesto.activo ? 'activo' : 'inactivo'}">

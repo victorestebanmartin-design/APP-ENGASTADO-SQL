@@ -1,6 +1,7 @@
 """
 Configuración de la aplicación Flask con SQL Server
 """
+import glob
 import os
 import secrets
 import time
@@ -230,6 +231,20 @@ class Config:
     # desplegar. También hay un interruptor visible en Admin -> Sistema que
     # sobreescribe esto en caliente sin tocar el .env.
     OPERARIO_GATE_ENABLED = os.environ.get('OPERARIO_GATE_ENABLED', 'False').lower() == 'true'
+
+    # =====================================================
+    # PROXY INVERSO (X-Forwarded-For)
+    # =====================================================
+    # La identidad de cada PC va por su IP (app/routes/puestos.py). La
+    # cabecera X-Forwarded-For solo es de fiar si la pone un proxy nuestro;
+    # sin proxy la escribe el propio cliente y serviría para suplantar a otro
+    # equipo. En planta (waitress directo) va desactivado. En PythonAnywhere
+    # hay proxy siempre, y sin la cabecera todos los clientes compartirían la
+    # IP del proxy: por eso allí se activa solo. CONFIAR_PROXY=true/false en
+    # el .env manda sobre la detección (p. ej. al poner un proxy TLS local).
+    _confiar_proxy_env = os.environ.get('CONFIAR_PROXY', '').strip().lower()
+    CONFIAR_PROXY = (_confiar_proxy_env == 'true') if _confiar_proxy_env \
+        else bool(glob.glob('/var/www/*_wsgi.py'))
 
     # Rutas de directorios
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))

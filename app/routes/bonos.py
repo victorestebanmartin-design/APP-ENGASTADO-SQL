@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import os
+from app.ficheros import reemplazar_con_reintento
 import json
 import re
 import subprocess
@@ -240,11 +241,11 @@ def api_actualizar_bono(nombre):
                         text("UPDATE bonos SET nombre = :n, estado = :e WHERE id = :id"),
                         {'n': nuevo_nombre, 'e': estado, 'id': bono['id']})
                     if renombrar and os.path.exists(ruta_vieja):
-                        os.replace(ruta_vieja, ruta_nueva)
+                        reemplazar_con_reintento(ruta_vieja, ruta_nueva)
                         movido = True
             except Exception:
                 if movido and os.path.exists(ruta_nueva) and not os.path.exists(ruta_vieja):
-                    os.replace(ruta_nueva, ruta_vieja)
+                    reemplazar_con_reintento(ruta_nueva, ruta_vieja)
                 raise
 
         return jsonify({'success': True, 'nombre': nuevo_nombre, 'estado': estado})

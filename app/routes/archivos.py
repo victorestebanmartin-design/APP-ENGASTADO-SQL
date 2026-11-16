@@ -190,9 +190,12 @@ def upload_file():
             codigo_extraido = None
             edicion_extraida = None
             try:
-                xl = pd.ExcelFile(filepath)
+                # with: sin cerrarlo, el Excel se queda abierto hasta que pase
+                # el recolector y en Windows no se puede sustituir ni borrar.
+                with pd.ExcelFile(filepath) as xl:
+                    hojas = list(xl.sheet_names)
                 import re as _re
-                for sheet in xl.sheet_names:
+                for sheet in hojas:
                     m = _re.match(r'^([A-Za-z0-9]+)_([A-Za-z0-9]+)$', sheet.strip())
                     if m:
                         hoja_codigo = sheet.strip()

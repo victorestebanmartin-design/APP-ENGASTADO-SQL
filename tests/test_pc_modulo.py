@@ -7,6 +7,7 @@ Cubre lo que se pidio al rediseñar el arranque:
   - Los permisos por operario mandan por encima del PC: dedicar un equipo a
     manguitos NO da acceso a manguitos.
 """
+from conftest import admin_de
 import time
 
 import pytest
@@ -32,7 +33,7 @@ def _operario_dentro(app, client, nombre, modulos=None, modulo_login=None, puest
     from datetime import datetime
     from sqlalchemy import text
 
-    op = client.post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
+    op = admin_de(client).post('/api/operarios', json={'nombre': nombre}).get_json()['operario']
 
     login_id = str(uuid.uuid4())
     ahora = datetime.now().isoformat()
@@ -412,7 +413,7 @@ def test_lector_compartido_login_rfid(app, client, admin_client, permitidos):
     assert admin_client.post('/api/esp32/rfid/devices/aabbccddeeff', json={
         'puesto_id': 'modulo:manguitos_mangueras',
     }).get_json()['success']
-    operario = client.post('/api/operarios', json={'nombre': 'Tarjeta compartida'}).get_json()['operario']
+    operario = admin_de(client).post('/api/operarios', json={'nombre': 'Tarjeta compartida'}).get_json()['operario']
     admin_client.put(f"/api/operarios/{operario['id']}", json={
         'tag_uid': 'A1B2C3D4', 'modulos_permitidos': permitidos,
     })
@@ -499,8 +500,8 @@ def test_tarjeta_no_registrada_dice_el_motivo_y_que_hacer(app, client, admin_cli
 
 def test_lector_sin_asignar_avisa_en_todas_las_pantallas(app, client):
     """El lector que nadie ha casado no es de ningún PC: el aviso va a todos."""
-    op = client.post('/api/operarios', json={'nombre': 'Nora'}).get_json()['operario']
-    client.put(f"/api/operarios/{op['id']}", json={'tag_uid': 'AABBCCDD'})
+    op = admin_de(client).post('/api/operarios', json={'nombre': 'Nora'}).get_json()['operario']
+    admin_de(client).put(f"/api/operarios/{op['id']}", json={'tag_uid': 'AABBCCDD'})
 
     _pasar_tarjeta(client, 'AABBCCDD', device_id='huerfano')
 
@@ -514,7 +515,7 @@ def test_sin_permiso_se_rechaza_en_el_lector_con_su_motivo(app, client, admin_cl
     """Mejor rechazar en el lector que crear un login y rebotarlo después."""
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
-    op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
+    op = admin_de(client).post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
     admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
 
@@ -591,7 +592,7 @@ def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, ad
 
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
-    op = client.post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
+    op = admin_de(client).post('/api/operarios', json={'nombre': 'Olga'}).get_json()['operario']
     admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['engastado']})
 
@@ -615,7 +616,7 @@ def test_los_rechazos_no_dependen_de_la_codificacion_del_sistema(app, client, ad
 def test_con_permiso_si_entra(app, client, admin_client):
     _activar_gate(app)
     _asignar_lector(app, 'lector01', 'modulo:manguitos')
-    op = client.post('/api/operarios', json={'nombre': 'Pau'}).get_json()['operario']
+    op = admin_de(client).post('/api/operarios', json={'nombre': 'Pau'}).get_json()['operario']
     admin_client.put(f"/api/operarios/{op['id']}",
                json={'tag_uid': 'AABBCCDD', 'modulos_permitidos': ['manguitos']})
 

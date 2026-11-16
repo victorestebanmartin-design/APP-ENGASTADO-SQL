@@ -6,6 +6,12 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.35.0 - 2026-11-16
+- Dar de alta, cambiar o dar de baja operarios y sus tarjetas solo se puede hacer desde Administracion, con el PIN o la clave personal
+- Un PC solo se puede configurar como "Servidor" desde el propio PC servidor; desde otro equipo hay que entrar antes en Administracion
+- El nombre de un operario ya no admite los simbolos < ni > y tiene un maximo de 60 caracteres
+- Subir un Excel de corte ya no lo deja ocupado: revertir una propuesta justo despues ya no da error de vez en cuando
+
 ## 1.34.1 - 2026-11-16
 - Aprobar o revertir una propuesta, aplicar el editor de mangueras o subir un Excel ya no dan error si el fichero esta ocupado un instante: se reintenta solo
 

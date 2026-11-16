@@ -307,15 +307,38 @@ def _dueno_numero_empleado(conn, numero, op_id=None):
     return fila[1] if fila and fila[0] != op_id else None
 
 
+NOMBRE_OPERARIO_MAX = 60
+
+
+def _error_nombre_operario(nombre):
+    """Motivo por el que ese nombre no vale, o None si vale.
+
+    El nombre se pinta en muchas pantallas (Admin, login, report, placas): se
+    rechaza aquí lo que no puede ser un nombre de persona, además de escaparlo
+    al pintarlo, para que un nombre con HTML no llegue nunca a la BD."""
+    if not nombre:
+        return 'Nombre es obligatorio'
+    if len(nombre) > NOMBRE_OPERARIO_MAX:
+        return f'El nombre no puede pasar de {NOMBRE_OPERARIO_MAX} caracteres'
+    if any(c in '<>' or ord(c) < 32 for c in nombre):
+        return 'El nombre no puede llevar los símbolos < ni >'
+    return None
+
+
+# Alta, cambio y baja de operarios: solo desde Administración. Sin esto,
+# cualquier equipo de la red podía cambiarle la tarjeta a otro operario (y
+# firmar con ella) o dar de baja a toda la plantilla.
 @bp.route('/api/operarios', methods=['POST'])
+@requiere_pin_admin
 def api_operarios_create():
     """Crear nuevo operario"""
     try:
         import uuid
-        data = request.get_json() or {}
-        nombre = (data.get('nombre') or '').strip()
-        if not nombre:
-            return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+        data = request.get_json(silent=True) or {}
+        nombre = str(data.get('nombre') or '').strip()
+        error_nombre = _error_nombre_operario(nombre)
+        if error_nombre:
+            return jsonify({'success': False, 'error': error_nombre}), 400
         numero, error = _normalizar_numero_empleado(data.get('numero_empleado'))
         if error:
             return jsonify({'success': False, 'error': error}), 400
@@ -338,6 +361,7 @@ def api_operarios_create():
 
 
 @bp.route('/api/operarios/<op_id>', methods=['PUT'])
+@requiere_pin_admin
 def api_operarios_update(op_id):
     """Actualizar operario: nombre, su tarjeta NFC y/o sus módulos permitidos."""
     try:
@@ -390,9 +414,10 @@ def api_operarios_update(op_id):
         # Si solo se toca la tarjeta, los modulos o el numero, el nombre no es obligatorio.
         nombre = None
         if 'nombre' in data or not (tocar_tag or tocar_modulos or tocar_numero):
-            nombre = (data.get('nombre') or '').strip()
-            if not nombre:
-                return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
+            nombre = str(data.get('nombre') or '').strip()
+            error_nombre = _error_nombre_operario(nombre)
+            if error_nombre:
+                return jsonify({'success': False, 'error': error_nombre}), 400
 
         with db.engine.connect() as conn:
             if numero:
@@ -436,6 +461,7 @@ def api_operarios_update(op_id):
 
 
 @bp.route('/api/operarios/<op_id>', methods=['DELETE'])
+@requiere_pin_admin
 def api_operarios_delete(op_id):
     """Desactivar operario"""
     try:
@@ -450,6 +476,7 @@ def api_operarios_delete(op_id):
 
 
 @bp.route('/api/operarios/<op_id>/activar', methods=['POST'])
+@requiere_pin_admin
 def api_operarios_activar(op_id):
     """Reactivar operario desactivado"""
     try:

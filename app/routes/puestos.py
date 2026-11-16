@@ -100,11 +100,61 @@ MODULOS_APP_LABEL = {
 
 
 def _ip_cliente():
-    """IP real del cliente considerando cabeceras de proxy."""
-    forwarded = request.headers.get('X-Forwarded-For', '')
-    if forwarded:
-        return forwarded.split(',')[0].strip()
+    """IP real del cliente.
+
+    X-Forwarded-For solo se cree si hay un proxy delante (CONFIAR_PROXY, ver
+    config.py). En planta no lo hay: los PCs hablan directos con waitress, y
+    esa cabecera la escribe quien hace la petición. Creérsela dejaba que
+    cualquier equipo se hiciera pasar por la IP de otro -- la del servidor
+    incluida, que entra sin tarjeta.
+    """
+    if current_app.config.get('CONFIAR_PROXY'):
+        forwarded = request.headers.get('X-Forwarded-For', '')
+        if forwarded:
+            return forwarded.split(',')[0].strip()
     return (request.remote_addr or '').strip()
+
+
+# ---- El rol servidor no se puede autoproclamar ----
+#
+# El servidor entra sin tarjeta y sin permisos de operario, así que ser
+# "servidor" tiene que ser algo que decide la instalación, no el navegador.
+# Vale en tres casos: la petición sale del propio PC servidor (localhost), la
+# IP está anotada como servidor en pc_equipos, o el navegador trae la cookie
+# FIRMADA que se le dio al configurarlo. La cookie pc_modulo=servidor a secas
+# no basta: esa la puede escribir cualquiera.
+COOKIE_PC_SERVIDOR = 'pc_servidor'
+
+
+def _es_equipo_local(ip=None):
+    """True si la petición viene del mismo PC donde corre el servidor."""
+    ip = _ip_cliente() if ip is None else ip
+    return ip == '::1' or ip.startswith('127.')
+
+
+def _firmador_servidor():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(current_app.config['SECRET_KEY'], salt='pc-servidor')
+
+
+def _cookie_servidor_valida():
+    crudo = request.cookies.get(COOKIE_PC_SERVIDOR) or ''
+    if not crudo:
+        return False
+    try:
+        return _firmador_servidor().loads(crudo) == ROL_SERVIDOR
+    except Exception:
+        return False
+
+
+def _fijar_cookie_servidor(resp, es_servidor):
+    """Entrega (o retira) la cookie firmada que acredita el rol servidor."""
+    if es_servidor:
+        resp.set_cookie(COOKIE_PC_SERVIDOR, _firmador_servidor().dumps(ROL_SERVIDOR),
+                        max_age=COOKIE_PUESTO_PC_MAX_AGE, httponly=True, samesite='Lax')
+    else:
+        resp.set_cookie(COOKIE_PC_SERVIDOR, '', max_age=0, expires=0,
+                        httponly=True, samesite='Lax')
 
 
 def _pc_equipo_por_ip(ip):
@@ -172,6 +222,9 @@ def _pc_identidad():
     # 3. Cookies. El rol puede no llevar puesto (mangueras/manguitos/servidor);
     #    si es engastado hace falta ademas un puesto valido.
     modulo_cookie = (request.cookies.get(COOKIE_PC_MODULO) or '').strip().lower()
+    if modulo_cookie == ROL_SERVIDOR and not (_es_equipo_local(ip) or _cookie_servidor_valida()):
+        # Cookie de servidor sin acreditar: se ignora (ver COOKIE_PC_SERVIDOR).
+        modulo_cookie = ''
     if modulo_cookie in ROLES_SIN_PUESTO:
         return modulo_cookie, None, None
 
@@ -246,6 +299,14 @@ def api_pc_configurar():
                             'error': 'Este equipo ya está configurado. '
                                      'Hace falta el PIN de administración para cambiarlo.'}), 401
 
+        # El servidor entra sin tarjeta: no puede declararse servidor un
+        # equipo cualquiera de la nave, ni siquiera la primera vez.
+        if modulo == ROL_SERVIDOR and not (_es_equipo_local() or sesion_admin_valida()):
+            return jsonify({'success': False,
+                            'error': 'Solo el propio PC servidor puede configurarse como '
+                                     'servidor. Desde otro equipo, entra antes en '
+                                     'Administración con el PIN y vuelve a intentarlo.'}), 401
+
         puesto_id, puesto_nombre = None, None
         if modulo == 'engastado':
             puesto_id = (data.get('puesto_id') or '').strip()
@@ -269,6 +330,7 @@ def api_pc_configurar():
         })
         resp.set_cookie(COOKIE_PC_MODULO, modulo, max_age=COOKIE_PUESTO_PC_MAX_AGE,
                         httponly=True, samesite='Lax')
+        _fijar_cookie_servidor(resp, modulo == ROL_SERVIDOR)
         if puesto_id:
             resp.set_cookie(COOKIE_PUESTO_PC, puesto_id, max_age=COOKIE_PUESTO_PC_MAX_AGE,
                             httponly=True, samesite='Lax')
@@ -364,6 +426,7 @@ def api_puesto_pc_liberar():
                         httponly=True, samesite='Lax')
         resp.set_cookie(COOKIE_PC_MODULO, '', max_age=0, expires=0,
                         httponly=True, samesite='Lax')
+        _fijar_cookie_servidor(resp, False)
         return resp
     except Exception as e:
         return error_interno(e)

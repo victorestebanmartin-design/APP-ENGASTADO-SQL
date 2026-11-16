@@ -1,4 +1,5 @@
 """Smoke tests: las páginas y APIs básicas responden."""
+from conftest import admin_de
 import pytest
 
 
@@ -59,7 +60,7 @@ def test_carros_iniciales_seis_libres(client):
 
 
 def test_operarios_crud(client):
-    r = client.post('/api/operarios', json={'nombre': 'OPERARIO TEST'})
+    r = admin_de(client).post('/api/operarios', json={'nombre': 'OPERARIO TEST'})
     d = r.get_json()
     assert d['success'], d
     op_id = d['operario']['id']
@@ -67,10 +68,10 @@ def test_operarios_crud(client):
     nombres = [o['nombre'] for o in client.get('/api/operarios').get_json()['operarios']]
     assert 'OPERARIO TEST' in nombres
 
-    r = client.put(f'/api/operarios/{op_id}', json={'nombre': 'OPERARIO CAMBIADO'})
+    r = admin_de(client).put(f'/api/operarios/{op_id}', json={'nombre': 'OPERARIO CAMBIADO'})
     assert r.get_json()['success']
 
-    r = client.delete(f'/api/operarios/{op_id}')
+    r = admin_de(client).delete(f'/api/operarios/{op_id}')
     assert r.get_json()['success']
 
 

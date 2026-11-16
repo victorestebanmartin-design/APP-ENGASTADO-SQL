@@ -1,4 +1,5 @@
 """La hoja report de engastado: qué terminales salen y cómo sale el operario."""
+from conftest import admin_de
 import pandas as pd
 import pytest
 from sqlalchemy import text
@@ -44,58 +45,58 @@ def test_desactivado_despues_de_engastarlo_sigue_saliendo(bono, client):
 
 
 def test_operario_sale_con_su_numero(bono, client):
-    assert client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': ' e-12 '}).status_code == 200
+    assert admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': ' e-12 '}).status_code == 200
     client.post('/api/bonos/B1/progreso', json={'terminal': 'T_OK', 'carro': 1, 'operario': 'Ana'})
     assert 'Ana · E-12' in _report(client)
 
 
 def test_operario_sin_numero_sale_solo_con_nombre(bono, client):
-    client.post('/api/operarios', json={'nombre': 'Ana'})
+    admin_de(client).post('/api/operarios', json={'nombre': 'Ana'})
     client.post('/api/bonos/B1/progreso', json={'terminal': 'T_OK', 'carro': 1, 'operario': 'Ana'})
     html = _report(client)
     assert 'Ana' in html and 'Ana ·' not in html
 
 
 def test_el_registro_guarda_copia_del_numero(bono, client):
-    r = client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
+    r = admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
     op_id = r.get_json()['operario']['id']
     client.post('/api/bonos/B1/progreso', json={'terminal': 'T_OK', 'carro': 1, 'operario': 'Ana'})
-    client.put(f'/api/operarios/{op_id}', json={'numero_empleado': '99'})
+    admin_de(client).put(f'/api/operarios/{op_id}', json={'numero_empleado': '99'})
     assert 'Ana · 12' in _report(client)
 
 
 def test_registro_antiguo_coge_el_numero_de_la_ficha(bono, client):
     """Lo engastado antes de dar de alta los números también sale con él."""
-    r = client.post('/api/operarios', json={'nombre': 'Ana'})
+    r = admin_de(client).post('/api/operarios', json={'nombre': 'Ana'})
     client.post('/api/bonos/B1/progreso', json={'terminal': 'T_OK', 'carro': 1, 'operario': 'Ana'})
-    client.put(f"/api/operarios/{r.get_json()['operario']['id']}", json={'numero_empleado': '12'})
+    admin_de(client).put(f"/api/operarios/{r.get_json()['operario']['id']}", json={'numero_empleado': '12'})
     assert 'Ana · 12' in _report(client)
 
 
 def test_nombre_repetido_no_se_inventa_el_numero(bono, client):
-    client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
-    client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '13'})
+    admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
+    admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '13'})
     client.post('/api/bonos/B1/progreso', json={'terminal': 'T_OK', 'carro': 1, 'operario': 'Ana'})
     html = _report(client)
     assert 'Ana · 12' not in html and 'Ana · 13' not in html
 
 
 def test_numero_de_empleado_no_se_repite(client):
-    client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
-    r = client.post('/api/operarios', json={'nombre': 'Luis', 'numero_empleado': '12'})
+    admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
+    r = admin_de(client).post('/api/operarios', json={'nombre': 'Luis', 'numero_empleado': '12'})
     assert r.status_code == 409 and 'Ana' in r.get_json()['error']
 
-    otro = client.post('/api/operarios', json={'nombre': 'Luis'}).get_json()['operario']['id']
-    r = client.put(f'/api/operarios/{otro}', json={'numero_empleado': '12'})
+    otro = admin_de(client).post('/api/operarios', json={'nombre': 'Luis'}).get_json()['operario']['id']
+    r = admin_de(client).put(f'/api/operarios/{otro}', json={'numero_empleado': '12'})
     assert r.status_code == 409 and 'Ana' in r.get_json()['error']
 
 
 def test_numero_de_empleado_se_puede_quitar_y_valida_formato(client):
-    r = client.post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
+    r = admin_de(client).post('/api/operarios', json={'nombre': 'Ana', 'numero_empleado': '12'})
     op_id = r.get_json()['operario']['id']
 
-    assert client.put(f'/api/operarios/{op_id}', json={'numero_empleado': '<b>'}).status_code == 400
-    assert client.put(f'/api/operarios/{op_id}', json={'numero_empleado': ''}).get_json()['success']
+    assert admin_de(client).put(f'/api/operarios/{op_id}', json={'numero_empleado': '<b>'}).status_code == 400
+    assert admin_de(client).put(f'/api/operarios/{op_id}', json={'numero_empleado': ''}).get_json()['success']
 
     ops = client.get('/api/operarios').get_json()['operarios']
     assert ops[0]['nombre'] == 'Ana' and ops[0]['numero_empleado'] is None
