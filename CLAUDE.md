@@ -181,8 +181,28 @@ modal está en `static/js/v3/v3-ensayos.js`. Al revés que el pick-to-light:
 ## Tests
 
 ```bash
-python -m pytest          # la suite entera, ~2 min
+python -m pytest                             # la suite entera, en paralelo: ~1 min
+python -m pytest tests/test_auth.py -n 0     # un fichero suelto, sin paralelo
 ```
+
+Mientras trabajas en un cambio, pasa solo los ficheros de test de lo que tocas;
+la suite entera, una vez, antes del commit. `pytest.ini` lleva `-n auto`
+(pytest-xdist, en `requirements-dev.txt`): reparte los tests entre los núcleos
+del PC. Con `-n 0` va en un solo proceso, que arranca antes para pocos tests y
+es lo que hace falta para depurar con `pdb` o ver los `print`.
+
+Para que siga siendo rápida:
+
+- **Ningún test espera de verdad ni toca hardware.** Dos tests de flasheo
+  lanzaban `mpremote` contra COM5 y agotaban los reintentos: 35 s cada uno (y
+  con una placa enchufada en ese puerto la habrían flasheado). Si una ruta
+  duerme o llama a `subprocess`, el test lo sustituye con `monkeypatch`; las
+  pausas del código van en una constante del módulo (`_PIN_PAUSA_FALLO_SEG`,
+  `ESPERA_APAGADO_S`) para poder bajarlas desde el test.
+- **Nada compartido entre tests fuera de `tmp_path`.** Corren en varios procesos
+  a la vez: un fichero en `data/` del repo o un puerto fijo los haría chocar.
+- `python -m pytest --durations=15 -n 0` enseña los más lentos si vuelve a
+  engordar.
 
 Cada test recibe su propia BD SQLite temporal creada desde `schema_sqlite.sql`
 (ver `tests/conftest.py`); nunca se toca `data/engastado.db`.

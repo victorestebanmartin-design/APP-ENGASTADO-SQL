@@ -4,6 +4,27 @@ La red de planta cambio de 192.168.1.x a 192.168.50.x: si el firmware se
 sirve con el host del repo, la placa conecta al WiFi pero no encuentra al
 servidor y nunca aparece en el admin.
 """
+import pytest
+
+
+@pytest.fixture
+def sin_placa(monkeypatch):
+    """Ningun test habla con un puerto serie de verdad.
+
+    Sin esto la ruta lanzaba mpremote contra COM5 y agotaba sus reintentos
+    (35 s por test); y en un PC con una placa enchufada en ese puerto, la
+    habria flasheado.
+    """
+    from app.routes import sistema
+
+    class SinPlaca:
+        returncode = 1
+        stdout = ''
+        stderr = 'no se puede abrir el puerto COM5'
+
+    monkeypatch.setattr(sistema, '_interrumpir_placa', lambda puerto: False)
+    monkeypatch.setattr(sistema, '_leer_device_id_usb', lambda *args: '')
+    monkeypatch.setattr(sistema.subprocess, 'run', lambda *args, **kwargs: SinPlaca())
 
 
 def _fijar_host(admin_client, host):
@@ -160,10 +181,11 @@ def test_flash_usb_rfid_rechaza_host_invalido(admin_client):
 
 
 
-def test_flash_usb_rfid_laboratorio_no_exige_ip_fija(admin_client):
+def test_flash_usb_rfid_laboratorio_no_exige_ip_fija(admin_client, sin_placa):
     r = admin_client.post('/api/esp32/rfid/flash_usb',
                           json={'puerto': 'COM5', 'entorno': 'laboratorio', 'ssid': 'MOVISTAR_8A70'})
     assert r.status_code == 200
+    assert 'firmware gen4' in r.get_json()['message']   # llego hasta el puerto
     assert 'IP estática es obligatoria' not in r.get_json()['message']
 
 
@@ -311,13 +333,14 @@ def test_el_error_lleva_un_consejo_accionable():
 
 # ── WebREPL apagado por defecto ───────────────────────────────────────────
 
-def test_flash_rfid_ya_no_exige_webrepl(admin_client):
+def test_flash_rfid_ya_no_exige_webrepl(admin_client, sin_placa):
     """Se quito del formulario: sin el, la validacion debe pasar de largo y
     fallar por otra cosa (el puerto), no por la contrasena que ya no se pide."""
     r = admin_client.post('/api/esp32/rfid/flash_usb',
                           json={'puerto': 'COM5', 'ssid': 'COJO', 'password': 'x',
                                 'ip_estatica': '192.168.50.21',
                                 'host_servidor': '192.168.50.1'})
+    assert 'firmware gen4' in r.get_json()['message']   # llego hasta el puerto
     assert 'WebREPL' not in (r.get_json().get('message') or '')
 
 

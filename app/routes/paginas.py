@@ -288,6 +288,8 @@ def admin_pin_configurar():
 _PIN_INTENTOS = {}  # ip -> (num_fallos, bloqueado_hasta_timestamp)
 _PIN_MAX_INTENTOS = 5
 _PIN_BLOQUEO_SEG = 15 * 60
+# Pausa tras cada PIN fallado: frena la fuerza bruta. Los tests la ponen a 0.
+_PIN_PAUSA_FALLO_SEG = 1
 
 
 def _destino_pin_seguro(crudo):
@@ -343,7 +345,7 @@ def admin_pin():
             current_app.logger.warning(f'PIN admin: IP {ip} bloqueada {_PIN_BLOQUEO_SEG // 60} min tras {fallos} fallos')
         else:
             _PIN_INTENTOS[ip] = (fallos, 0.0)
-        time.sleep(1)
+        time.sleep(_PIN_PAUSA_FALLO_SEG)
         error = 'PIN incorrecto'
 
     return render_template('admin-pin.html', error=error, next=destino, force=forzar)

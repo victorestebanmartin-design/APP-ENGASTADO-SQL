@@ -6,8 +6,17 @@ apagado mataría al propio pytest sin informe ni resto de la suite.
 import os
 import threading
 
+import pytest
+
 import servidor_pid
+from app.routes import sistema
 from app.routes.sistema import CODIGO_SALIDA_APAGADO
+
+
+@pytest.fixture(autouse=True)
+def _apagado_rapido(monkeypatch):
+    """El segundo de cortesia antes de morir no hace falta esperarlo aqui."""
+    monkeypatch.setattr(sistema, 'ESPERA_APAGADO_S', 0.05)
 
 
 def _capturar_exit(monkeypatch):
@@ -27,7 +36,7 @@ def test_apagar_sin_sesion_devuelve_401(client, monkeypatch):
     llamado, _ = _capturar_exit(monkeypatch)
     r = client.post('/api/apagar_servidor')
     assert r.status_code == 401
-    assert not llamado.wait(2), 'un anónimo no puede apagar el servidor'
+    assert not llamado.wait(0.5), 'un anónimo no puede apagar el servidor'
 
 
 def test_apagar_responde_antes_de_salir_con_codigo_43(admin_client, monkeypatch):

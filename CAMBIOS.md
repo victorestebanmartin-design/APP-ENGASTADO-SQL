@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.33.2 - 2026-11-16
+- Cambio interno: las comprobaciones automaticas de la app tardan cinco veces menos. Nada cambia en las pantallas
+
 ## 1.33.1 - 2026-11-12
 - La pistola ya lee las etiquetas de orden aunque el guion salga como /M (mangueras, manguitos, generar bono y registro de ordenes)
 

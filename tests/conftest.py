@@ -6,6 +6,7 @@ Cada test recibe una app Flask con su propia base de datos SQLite temporal
 """
 import hashlib
 import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -31,11 +32,19 @@ def _crear_bd_temporal(db_path):
     conn.close()
 
 
+@pytest.fixture(scope='session')
+def _bd_plantilla(tmp_path_factory):
+    """El esquema se ejecuta una sola vez por proceso; cada test lo copia."""
+    ruta = str(tmp_path_factory.mktemp('plantilla') / 'plantilla.db')
+    _crear_bd_temporal(ruta)
+    return ruta
+
+
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, _bd_plantilla, monkeypatch):
     """App Flask con BD y carpetas de datos temporales."""
     db_path = str(tmp_path / 'engastado_test.db')
-    _crear_bd_temporal(db_path)
+    shutil.copyfile(_bd_plantilla, db_path)
 
     data_dir = tmp_path / 'data'
     upload_dir = data_dir / 'cortes'
@@ -63,6 +72,8 @@ def app(tmp_path):
     # El contador anti fuerza bruta del PIN es global: limpiarlo entre tests
     from app.routes import paginas
     paginas._PIN_INTENTOS.clear()
+    # La pausa de 1 s tras cada PIN fallado solo es tiempo perdido en los tests
+    monkeypatch.setattr(paginas, '_PIN_PAUSA_FALLO_SEG', 0)
 
     # Igual el freno del barrido de logins caducados: es global del módulo y,
     # si otro test barrió hace menos de 30 s, el de este se salta el barrido.
