@@ -21,7 +21,7 @@ from app.engastado_bloqueos import aplicar_bloqueos, leer_cable, quitar_bloqueos
 from app.excel_manager import invalidar_cache_excel
 from app.ficheros import reemplazar_con_reintento
 from app.routes.base import bp, db, _ahora_iso, _ruta_upload_segura, operario_puede
-from app.routes.mangueras_propuestas import _identidad, _json_peticion, numeros_paquete
+from app.routes.mangueras_propuestas import _identidad, _json_peticion, comentario_opcional, numeros_paquete
 from app.routes.manguitos import _MANGUERAS_EDITOR_LOCK
 
 MOTIVOS = ('Plano / documentacion', 'Indicacion del cliente', 'Error listado terminal no corresponde con seccion (fallo IFA)', 'Otros')
@@ -175,13 +175,7 @@ def api_engastado_propuestas():
         return jsonify(success=False, error=str(exc)), 400
 
 
-def _decision(datos):
-    """Comentario del admin al resolver o revertir. Es opcional: lo normal es
-    aprobar o rechazar de un clic, y quien decide ya queda apuntado."""
-    motivo = datos.get('motivo') or ''
-    if not isinstance(motivo, str) or len(motivo.strip()) > 2000:
-        raise ValueError('El comentario no puede pasar de 2000 caracteres.')
-    return motivo.strip() or None
+_decision = comentario_opcional
 
 
 @bp.route('/api/engastado/propuestas/<int:propuesta_id>/resolver', methods=['POST'])

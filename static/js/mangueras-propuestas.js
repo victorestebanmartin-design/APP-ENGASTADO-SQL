@@ -93,94 +93,59 @@
     return '<div class="mp-medidas">' + lados + '</div>' + notas;
   };
 
-  var lista = document.getElementById('mp-lista');
-  if (!lista) return;
-  var estado = document.getElementById('mp-status');
-  var propuestas = [];
-  var puedeAprobar = false;
-  var identidadId = null;
-  function render() {
-    var filtro = document.getElementById('mp-filtro').value;
-    lista.innerHTML = propuestas.filter(function (propuesta) { return !filtro || propuesta.estado === filtro; }).map(function (propuesta) {
-      var filas = propuesta.sugerido.filas;
-      var comparaciones = propuesta.sugerido.cambios.map(function (cambio) {
-        var original = propuesta.original.find(function (fila) { return fila.fila === cambio.fila; });
-        var sugerido = filas.find(function (fila) { return fila.fila === cambio.fila; });
-        return '<h3>' + (original.paquete ? 'Paquete ' + esc(original.paquete) + ' / ' : '') + esc(original.cable_marca + ' / ' + original.cod_cable + ' / ' + original.de_elemento + ' / Fila ' + original.fila) + '</h3>' + window.comparacionMangueras(original, sugerido);
+  // ── Pantalla de Propuestas de mangueras (lista común en propuestas-lista.js)
+  if (!document.getElementById('ep-lista') || !window.listaPropuestas) return;
+
+  // Cada cambio de la propuesta con su fila tal como estaba y como se propone
+  function cambiosDe(p) {
+    return p.sugerido.cambios.map(function (cambio) {
+      return {
+        original: p.original.find(function (fila) { return fila.fila === cambio.fila; }) || { fila: cambio.fila },
+        sugerido: p.sugerido.filas.find(function (fila) { return fila.fila === cambio.fila; }) || {}
+      };
+    });
+  }
+
+  window.listaPropuestas({
+    api: '/api/mangueras/propuestas',
+    columnas: 7,
+    estados: ['pendiente', 'aprobada', 'rechazada', 'restaurada'],
+    claveAviso: 'mangueras-propuestas-resueltas',
+    alResolver: function () { actualizarContadores(true); },
+    aprobar: { boton: 'Aceptar', hecho: 'Aceptó ', verbos: { gerundio: 'Aceptando', hecho: 'aceptada', hechos: 'aceptadas' } },
+    ayudaAprobar: 'Aceptar: se aplica al Excel del corte',
+    ayudaRechazar: 'Rechazar: la preparación sigue como está',
+    deshacer: {
+      accion: 'restaurar', boton: 'Restaurar', etiqueta: 'Restauró',
+      ayuda: 'La manguera vuelve a como estaba antes de la propuesta (se guarda copia del Excel)',
+      verbos: { gerundio: 'Restaurando', hecho: 'restaurada', hechos: 'restauradas' },
+      campos: { at: 'restaurada_at', por: 'restaurada_por_nombre', motivo: 'motivo_restauracion' }
+    },
+    mensajes: {
+      aprobar: 'La nueva preparación ya está aplicada al corte.',
+      restaurar: 'Regenera las etiquetas del corte para que engastado lo vea.'
+    },
+    buscar: function (p) {
+      return cambiosDe(p).map(function (c) {
+        var o = c.original;
+        return [o.paquete, o.cable_marca, o.cod_cable, o.de_elemento].join(' ');
+      }).join(' ');
+    },
+    celdas: function (p, h) {
+      var esc = h.esc;
+      var cambios = cambiosDe(p);
+      var paquetes = cambios.map(function (c) { return c.original.paquete; })
+        .filter(function (n, i, todos) { return n && todos.indexOf(n) === i; });
+      var detalle = cambios.map(function (c) {
+        var o = c.original;
+        return '<div class="ep-cambio"><h4>' + (o.paquete ? '<span class="extra">Paq ' + esc(o.paquete) + ' · </span>' : '') +
+          esc(o.cable_marca || '') + ' <span class="extra">· ' + esc(o.cod_cable || '') + ' · ' + esc(o.de_elemento || '') +
+          ' · fila ' + esc(o.fila) + '</span></h4>' + window.comparacionMangueras(o, c.sugerido) + '</div>';
       }).join('');
-      var puedeResolver = puedeAprobar && propuesta.autor_id !== identidadId;
-      var avisoResolucion = !puedeAprobar ? 'Sesion personal de Administracion requerida.' :
-        propuesta.autor_id === identidadId ? 'Esta propuesta debe resolverla otro administrador.' : '';
-      var acciones = propuesta.estado === 'pendiente' ? '<div class="mp-actions">' +
-        '<button type="button" class="mp-aprobar" data-resolver="' + propuesta.id + '" data-accion="aprobar"' + (puedeResolver ? '' : ' disabled') + '>Aprobar</button>' +
-        '<button type="button" class="mp-rechazar" data-resolver="' + propuesta.id + '" data-accion="rechazar"' + (puedeResolver ? '' : ' disabled') + '>Rechazar</button></div>' +
-        (avisoResolucion ? '<p class="mp-resolution-warning">' + esc(avisoResolucion) + '</p>' : '') :
-        propuesta.estado === 'aprobada' ? '<div class="mp-actions">' +
-        '<button type="button" class="mp-restaurar" data-resolver="' + propuesta.id + '" data-accion="restaurar"' + (puedeAprobar ? '' : ' disabled') + '>Restaurar como estaba</button></div>' +
-        (puedeAprobar ? '' : '<p class="mp-resolution-warning">Sesion personal de Administracion requerida.</p>') : '';
-      return '<article class="mp-propuesta"><h2>#' + propuesta.id + ' · ' + esc(propuesta.archivo) + ' · ' + esc(propuesta.estado) + '</h2>' +
-        '<p>' + esc(propuesta.autor_nombre + ' · ' + propuesta.creada_at) + '</p><p>Motivo: ' + esc(propuesta.motivo) + '</p>' + comparaciones +
-        (propuesta.resuelta_at ? '<p>' + esc(propuesta.responsable_nombre + ' · ' + propuesta.resuelta_at + '\n' + propuesta.motivo_resolucion) + '</p>' : '') +
-        (propuesta.restaurada_at ? '<p>Restaurada: ' + esc(propuesta.restaurada_por_nombre + ' \u00b7 ' + propuesta.restaurada_at + '\n' + propuesta.motivo_restauracion) + '</p>' : '') +
-        acciones + '</article>';
-    }).join('') || '<p>No hay propuestas en este estado.</p>';
-  }
-  async function cargar() {
-    try {
-      var respuesta = await fetch('/api/mangueras/propuestas');
-      var datos = await respuesta.json();
-      if (!respuesta.ok) throw new Error(datos.error);
-      propuestas = datos.propuestas;
-      puedeAprobar = datos.aprobar;
-      identidadId = datos.operario_id;
-      document.getElementById('mp-identidad-actual').textContent = datos.nombre + (datos.aprobar ? ' / Administraci\u00f3n' : datos.recuperacion ? '' : ' / Operario');
-      document.getElementById('mp-contador').textContent = datos.pendientes + (datos.pendientes === 1 ? ' pendiente' : ' pendientes');
-      estado.textContent = '';
-      render();
-    } catch (error) { estado.textContent = error.message; }
-  }
-  document.getElementById('mp-actualizar').addEventListener('click', cargar);
-  document.getElementById('mp-filtro').addEventListener('change', render);
-  var resolucion = document.getElementById('mp-resolucion');
-  lista.addEventListener('click', function (evento) {
-    var boton = evento.target.closest('[data-resolver]');
-    if (!boton) return;
-    document.getElementById('mp-resolucion-form').dataset.id = boton.dataset.resolver;
-    document.getElementById('mp-resolucion-form').dataset.accion = boton.dataset.accion;
-    var titulos = { aprobar: 'Aprobar', rechazar: 'Rechazar', restaurar: 'Restaurar' };
-    document.getElementById('mp-resolucion-titulo').textContent = titulos[boton.dataset.accion] + ' propuesta #' + boton.dataset.resolver;
-    document.getElementById('mp-resolucion-ayuda').hidden = boton.dataset.accion !== 'restaurar';
-    document.getElementById('mp-resolucion-motivo').value = '';
-    document.getElementById('mp-resolucion-error').textContent = '';
-    resolucion.showModal();
+      return '<td class="ep-term">' + esc(p.archivo) +
+        (paquetes.length ? '<small>Paquete ' + esc(paquetes.join(', ')) + '</small>' : '') +
+        '<small>' + cambios.length + (cambios.length === 1 ? ' manguera' : ' mangueras') + '</small></td>' +
+        '<td style="min-width:380px">' + detalle + '</td>';
+    }
   });
-  document.getElementById('mp-resolucion-cancelar').addEventListener('click', function () { resolucion.close(); });
-  document.getElementById('mp-resolucion-form').addEventListener('submit', async function (evento) {
-    evento.preventDefault();
-    var boton = evento.target.querySelector('[type=submit]');
-    boton.disabled = true;
-    try {
-      var accion = evento.target.dataset.accion;
-      var restaurar = accion === 'restaurar';
-      var respuesta = await fetch('/api/mangueras/propuestas/' + evento.target.dataset.id + (restaurar ? '/restaurar' : '/resolver'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          accion: accion, motivo: document.getElementById('mp-resolucion-motivo').value
-        })
-      });
-      var datos = await respuesta.json();
-      if (!respuesta.ok) throw new Error(datos.error);
-      resolucion.close();
-      document.getElementById('mp-filtro').value = { aprobar: 'aprobada', rechazar: 'rechazada', restaurar: 'restaurada' }[accion];
-      await cargar();
-      estado.textContent = {
-        aprobar: 'Propuesta aceptada. La nueva preparacion ya esta aplicada al corte.',
-        rechazar: 'Propuesta rechazada. Se conserva la preparacion vigente sin los cambios sugeridos.',
-        restaurar: 'Manguera restaurada como estaba antes de la propuesta. Regenera las etiquetas del corte para que engastado lo vea.'
-      }[accion];
-      await actualizarContadores();
-      try { localStorage.setItem('mangueras-propuestas-resueltas', String(Date.now())); } catch (error) { return; }
-    } catch (error) { document.getElementById('mp-resolucion-error').textContent = error.message; }
-    finally { boton.disabled = false; }
-  });
-  cargar();
 })();

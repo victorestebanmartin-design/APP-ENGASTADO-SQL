@@ -185,7 +185,7 @@ def api_mangueras_propuestas():
                     'sugerido_json, original_excel, sugerido_excel) '
                     'VALUES (:archivo, :revision, :autor, :nombre, :fecha, :motivo, :antes, :despues, :original, :sugerido)'
                 ), {'archivo': archivo, 'revision': antes['revision'], 'autor': identidad['id'],
-                    'nombre': identidad['nombre'], 'fecha': _ahora_iso(), 'motivo': motivo.strip(),
+                    'nombre': identidad['nombre'], 'fecha': _ahora_iso(), 'motivo': motivo,
                     'antes': json.dumps(antes['filas'], ensure_ascii=False),
                     'despues': json.dumps({'filas': despues['filas'], 'cambios': cambios}, ensure_ascii=False),
                     'original': original, 'sugerido': sugerido})
@@ -256,6 +256,15 @@ def _volver_a_poner(ruta, original):
     invalidar_cache_excel(ruta)
 
 
+def comentario_opcional(datos):
+    """Comentario del admin al resolver o restaurar. Es opcional: lo normal es
+    decidir de un clic, y quien decide ya queda apuntado."""
+    motivo = datos.get('motivo') or ''
+    if not isinstance(motivo, str) or len(motivo.strip()) > 2000:
+        raise ValueError('El comentario no puede pasar de 2000 caracteres.')
+    return motivo.strip() or None
+
+
 @bp.route('/api/mangueras/propuestas/<int:propuesta_id>/resolver', methods=['POST'])
 def resolver_propuesta_mangueras(propuesta_id):
     reemplazado = False
@@ -267,9 +276,9 @@ def resolver_propuesta_mangueras(propuesta_id):
         if not responsable:
             return jsonify(success=False, error='Entra en Admin con tu operario y contrasena para resolver propuestas.'), 401
         accion = datos.get('accion')
-        motivo = datos.get('motivo', '')
-        if accion not in ('aprobar', 'rechazar') or not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:
-            raise ValueError('Indica la decision y su motivo (5 a 2000 caracteres).')
+        if accion not in ('aprobar', 'rechazar'):
+            raise ValueError('Indica la decision.')
+        motivo = comentario_opcional(datos)
         with _MANGUERAS_EDITOR_LOCK:
             with db.engine.begin() as conn:
                 conn.exec_driver_sql('BEGIN IMMEDIATE')
@@ -302,7 +311,7 @@ def resolver_propuesta_mangueras(propuesta_id):
                         'propuesta_id': propuesta_id, 'archivo': propuesta['archivo'],
                         'autor_id': propuesta['autor_id'], 'autor': propuesta['autor_nombre'],
                         'responsable_id': responsable['id'], 'responsable': responsable['nombre'],
-                        'fecha_autorizacion': _ahora_iso(), 'motivo': motivo.strip(),
+                        'fecha_autorizacion': _ahora_iso(), 'motivo': motivo,
                         'revision_original': hashlib.sha256(original).hexdigest(),
                         'revision_autorizada': hashlib.sha256(sugerido_excel).hexdigest()})
                     reemplazado = True
@@ -314,7 +323,7 @@ def resolver_propuesta_mangueras(propuesta_id):
                     'sugerido_excel=:sugerido_excel WHERE id=:id'
                 ), {'id': propuesta_id, 'estado': 'aprobada' if accion == 'aprobar' else 'rechazada',
                     'responsable': responsable['id'], 'nombre': responsable['nombre'], 'fecha': _ahora_iso(),
-                    'motivo': motivo.strip(), 'backup': os.path.basename(backup) if backup else None,
+                    'motivo': motivo, 'backup': os.path.basename(backup) if backup else None,
                     'sugerido_excel': sugerido_excel})
         return jsonify(success=True)
     except _ExcelCambiado as exc:
@@ -335,7 +344,7 @@ def restaurar_propuesta_mangueras(propuesta_id):
 
     Solo si es el último cambio de esa manguera (sigue como la dejó la
     propuesta); si hubo otro después, se restaura primero ese. Lo hace un
-    administrador con motivo, y queda copia del Excel previo y la traza."""
+    administrador (comentario opcional), y queda copia del Excel previo y la traza."""
     reemplazado = False
     original = None
     ruta = None
@@ -344,9 +353,7 @@ def restaurar_propuesta_mangueras(propuesta_id):
         responsable = administrador_actual()
         if not responsable:
             return jsonify(success=False, error='Entra en Admin con tu operario y contrasena para restaurar.'), 401
-        motivo = datos.get('motivo', '')
-        if not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:
-            raise ValueError('Indica el motivo de la restauracion (5 a 2000 caracteres).')
+        motivo = comentario_opcional(datos)
         with _MANGUERAS_EDITOR_LOCK:
             with db.engine.begin() as conn:
                 conn.exec_driver_sql('BEGIN IMMEDIATE')
@@ -374,7 +381,7 @@ def restaurar_propuesta_mangueras(propuesta_id):
                 _sustituir_excel(ruta, original, restaurado, backup, {
                     'restauracion_de_propuesta': propuesta_id, 'archivo': propuesta['archivo'],
                     'responsable_id': responsable['id'], 'responsable': responsable['nombre'],
-                    'fecha_restauracion': _ahora_iso(), 'motivo': motivo.strip(),
+                    'fecha_restauracion': _ahora_iso(), 'motivo': motivo,
                     'revision_original': hashlib.sha256(original).hexdigest(),
                     'revision_restaurada': hashlib.sha256(restaurado).hexdigest()})
                 reemplazado = True
@@ -383,7 +390,7 @@ def restaurar_propuesta_mangueras(propuesta_id):
                     'restaurada_por_nombre=:nombre, restaurada_at=:fecha, motivo_restauracion=:motivo '
                     'WHERE id=:id'
                 ), {'id': propuesta_id, 'responsable': responsable['id'], 'nombre': responsable['nombre'],
-                    'fecha': _ahora_iso(), 'motivo': motivo.strip()})
+                    'fecha': _ahora_iso(), 'motivo': motivo})
         return jsonify(success=True)
     except _ExcelCambiado as exc:
         return jsonify(success=False, error=str(exc)), 409

@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.37.0 - 2026-11-17
+- Propuestas de mangueras con el mismo aspecto que las de engastado: pestanas por estado, buscador y encabezados fijos al bajar
+- Aceptar o rechazar propuestas de mangueras es de un clic: el comentario ya es opcional, tambien al restaurar
+- Se pueden marcar varias propuestas de mangueras y aceptarlas o rechazarlas de golpe
+
 ## 1.36.0 - 2026-11-17
 - Propuestas de engastado con el aspecto de Admin: tabla con pestanas por estado, buscador y encabezados que no se pierden al bajar
 - Aprobar o rechazar es de un clic: el comentario ya es opcional

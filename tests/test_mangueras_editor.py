@@ -121,6 +121,22 @@ def test_propuesta_aprobacion_trazada(client, admin_client, app):
     }).status_code == 409
 
 
+def test_aceptar_rechazar_y_restaurar_sin_comentario(client, admin_client, app):
+    """Decidir es de un clic: el comentario del admin es opcional."""
+    primera, ruta, original = preparar_propuesta(client, admin_client, app, indice_manguera=1)
+    segunda = _proponer(client, ruta, 2, 95)
+    client.post('/admin/login', data={'operario_id': 'jefe', 'clave': 'personal123'})
+    assert client.post(f'/api/mangueras/propuestas/{primera}/resolver', json={'accion': 'aprobar'}).status_code == 200
+    assert client.post(f'/api/mangueras/propuestas/{segunda}/resolver',
+                       json={'accion': 'rechazar', 'motivo': ' '}).status_code == 200
+    assert _pm_de(ruta, 3) == 80 and _pm_de(ruta, 5) != 95
+    assert client.post(f'/api/mangueras/propuestas/{primera}/restaurar', json={}).status_code == 200
+    propuestas = {p['id']: p for p in client.get('/api/mangueras/propuestas').get_json()['propuestas']}
+    assert propuestas[primera]['estado'] == 'restaurada'
+    assert propuestas[primera]['motivo_resolucion'] is None and propuestas[primera]['motivo_restauracion'] is None
+    assert propuestas[segunda]['estado'] == 'rechazada'
+
+
 def _con_celda(contenido, celda, valor):
     libro = load_workbook(io.BytesIO(contenido))
     libro['Format'][celda] = valor

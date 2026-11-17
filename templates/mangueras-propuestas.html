@@ -4,37 +4,78 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {% include '_head_pwa.html' %}
-  <title>Propuestas de mangueras</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-editor.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
+  <title>Propuestas de mangueras — COJOsw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/propuestas.css') }}">
 </head>
-<body class="me-app">
-  {% include '_version_badge.html' %}
-  <header class="me-topbar">
-    <div><img src="{{ url_for('static', filename='img/mangueras-icon.png') }}" width="36" height="36" alt=""><h1>Propuestas de mangueras</h1></div>
-    <nav><a href="{{ url_for('main.mangueras') }}">Volver a preparaci&oacute;n</a> <a href="{{ url_for('main.admin') }}">Volver a Administraci&oacute;n</a></nav>
+<body>
+{% include '_version_badge.html' %}
+<div class="admin-app">
+  <header class="admin-topbar">
+    <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
+    <div class="admin-topbar-title">Propuestas de mangueras</div>
+    <div class="admin-topbar-spacer"></div>
+    <span class="ep-identidad" id="ep-identidad-actual"></span>
+    <a href="{{ url_for('main.mangueras') }}" class="admin-back">&larr; Preparaci&oacute;n</a>
+    <a href="{{ url_for('main.admin') }}" class="admin-back">&larr; Administraci&oacute;n</a>
   </header>
-  <main class="me-main">
-    <div class="mp-filtros">
-      <a id="mp-entrar" href="{{ url_for('main.admin_login', next='/mangueras/propuestas') }}">Entrar en Administraci&oacute;n</a>
-      <span id="mp-identidad-actual"></span>
-      <label>Estado<select id="mp-filtro"><option value="pendiente">Pendientes</option><option value="aprobada">Propuestas aceptadas</option><option value="rechazada">Propuestas rechazadas</option><option value="restaurada">Propuestas restauradas</option><option value="">Todas</option></select></label>
-      <strong id="mp-contador"></strong>
-      <button id="mp-actualizar" type="button">Actualizar</button>
+
+  <main class="admin-content" style="max-width:1400px;margin:0 auto;width:100%;">
+    <div class="admin-section-head">
+      <h1>Propuestas de mangueras</h1>
+      <p>Cambios de preparaci&oacute;n que proponen los operarios. Entre par&eacute;ntesis, en <span style="color:#fbbf24;font-weight:700">amarillo</span>, lo que proponen. Aceptar lo aplica al Excel del corte (se guarda copia); restaurar deja la manguera como estaba.</p>
     </div>
-    <p id="mp-status" role="status" aria-live="polite"></p>
-    <div id="mp-lista"></div>
+
+    <div class="ep-aviso" id="ep-aviso-admin" hidden>
+      Para aceptar o rechazar tienes que <a id="ep-entrar" href="{{ url_for('main.admin_login', next='/mangueras/propuestas') }}">entrar en Administraci&oacute;n con tu usuario</a>.
+    </div>
+
+    <div class="card">
+      <div class="ep-toolbar">
+        <div class="ep-tabs" id="ep-tabs" role="tablist">
+          <button type="button" class="ep-tab activa" data-estado="pendiente">Pendientes<span class="n" id="ep-n-pendiente"></span></button>
+          <button type="button" class="ep-tab" data-estado="aprobada">Aceptadas<span class="n" id="ep-n-aprobada"></span></button>
+          <button type="button" class="ep-tab" data-estado="rechazada">Rechazadas<span class="n" id="ep-n-rechazada"></span></button>
+          <button type="button" class="ep-tab" data-estado="restaurada">Restauradas<span class="n" id="ep-n-restaurada"></span></button>
+          <button type="button" class="ep-tab" data-estado="">Todas</button>
+        </div>
+        <input type="text" class="ep-buscar" id="ep-buscar" placeholder="Buscar cable, paquete, archivo, operario&hellip;">
+        <button type="button" class="ep-btn" id="ep-actualizar">&#8635; Actualizar</button>
+      </div>
+      <p id="ep-status" class="mensaje error hidden" role="status" aria-live="polite"></p>
+      <div class="ep-tabla-envoltorio">
+        <table class="ep-tabla">
+          <thead>
+            <tr>
+              <th class="ep-check"><input type="checkbox" id="ep-todas" title="Seleccionar todas las que se ven"></th>
+              <th>#</th>
+              <th>Corte</th>
+              <th>Cambios (actual &rarr; propuesto)</th>
+              <th>Motivo</th>
+              <th>Aviso</th>
+              <th class="ep-acciones"></th>
+            </tr>
+          </thead>
+          <tbody id="ep-lista"><tr><td colspan="7" class="ep-vacio">Cargando&hellip;</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </main>
-  <dialog id="mp-resolucion" class="mp-dialog" aria-labelledby="mp-resolucion-titulo">
-    <form id="mp-resolucion-form">
-      <h2 id="mp-resolucion-titulo">Resolver propuesta</h2>
-      <p id="mp-resolucion-ayuda" hidden>La manguera vuelve a la preparaci&oacute;n que ten&iacute;a antes de esta propuesta: medidas, retr&aacute;ctiles y qu&eacute; terminales se piden. Se guarda copia del Excel actual.</p>
-      <label>Motivo de la decisi&oacute;n<textarea id="mp-resolucion-motivo" required minlength="5" maxlength="2000" rows="3"></textarea></label>
-      <p id="mp-resolucion-error" class="mp-error" role="alert"></p>
-      <div class="mp-actions"><button type="button" id="mp-resolucion-cancelar">Cancelar</button><button type="submit">Confirmar decisi&oacute;n</button></div>
-    </form>
-  </dialog>
-  <script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
+
+  <div class="ep-barra" id="ep-barra" aria-live="polite">
+    <span class="cuantas" id="ep-cuantas"></span>
+    <input type="text" id="ep-comentario" maxlength="2000" placeholder="Comentario (opcional)">
+    <button type="button" class="btn-primary" data-masivo="aprobar">&#10003; Aceptar</button>
+    <button type="button" class="btn-danger" data-masivo="rechazar">&#10007; Rechazar</button>
+    <button type="button" class="btn-secondary" data-masivo="restaurar" hidden>&#8634; Restaurar</button>
+    <button type="button" class="btn-secondary" id="ep-deseleccionar">Quitar selecci&oacute;n</button>
+  </div>
+
+  <p class="mensaje ep-toast" id="ep-toast" role="status" aria-live="polite"></p>
+</div>
+<script src="{{ url_for('static', filename='js/propuestas-lista.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mangueras-propuestas.js') }}"></script>
 </body>
 </html>

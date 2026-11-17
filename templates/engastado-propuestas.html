@@ -8,79 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
-  <style>
-    .ep-aviso { font-size: 13px; color: #fcd34d; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); border-radius: 9px; padding: 10px 14px; margin-bottom: 16px; }
-    .ep-aviso a { color: #fde68a; font-weight: 600; }
-
-    .ep-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
-    .ep-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-    .ep-tab { padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-muted); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
-    .ep-tab:hover { color: var(--text); border-color: var(--accent); }
-    .ep-tab.activa { background: rgba(59,130,246,.18); border-color: rgba(59,130,246,.55); color: #fff; }
-    .ep-tab .n { font-family: 'DM Mono', monospace; font-size: 11px; margin-left: 4px; opacity: .8; }
-    .admin-app .ep-toolbar .ep-buscar { flex: 1; min-width: 200px; width: auto; }
-    .ep-identidad { font-size: 12px; color: var(--text-dim); font-family: 'DM Mono', monospace; }
-
-    /* Encabezados fijos al bajar: el que hace scroll es .admin-content, así que
-       ni la tabla ni su envoltorio pueden recortar (overflow) o el sticky no va. */
-    .admin-app table.ep-tabla { overflow: visible; }
-    .ep-tabla thead th { position: sticky; top: 0; z-index: 5; background: var(--panel-2); box-shadow: 0 1px 0 var(--border); }
-    .ep-tabla td { vertical-align: top; }
-    .ep-tabla .ep-check { width: 36px; text-align: center; }
-    .ep-tabla input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); }
-    .ep-tabla input[type=checkbox]:disabled { cursor: not-allowed; opacity: .35; }
-    .ep-tabla tbody tr { cursor: default; }
-    .ep-tabla tbody tr.sel td { background: rgba(59,130,246,.09); }
-    .ep-id span { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text-dim) !important; white-space: nowrap; }
-    .ep-term { font-family: 'DM Mono', monospace; font-weight: 600; white-space: nowrap; }
-    .ep-term small, .ep-quien small { display: block; font-family: 'Inter', sans-serif; font-weight: 400; font-size: 11.5px; color: var(--text-dim) !important; }
-    .ep-cables { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
-    .ep-cables li { padding: 1px 0; white-space: nowrap; }
-    .ep-cables .marca { font-family: 'DM Mono', monospace; font-weight: 600; }
-    .ep-cables .extra { color: var(--text-dim) !important; }
-    .ep-cables .res { color: #fcd34d !important; font-style: italic; }
-    .ep-motivo { font-size: 13px; max-width: 320px; }
-    .ep-motivo .cat { font-weight: 600; }
-    .ep-motivo .det { display: block; color: var(--text-muted) !important; }
-    .ep-quien { font-size: 13px; white-space: nowrap; }
-    .ep-decision { font-size: 12px; color: var(--text-muted) !important; margin-top: 4px; white-space: normal; }
-
-    .ep-estado { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; font-family: 'DM Mono', monospace; white-space: nowrap; }
-    .ep-estado.pendiente { background: rgba(245,158,11,.15); color: #fcd34d !important; }
-    .ep-estado.aprobada  { background: rgba(34,197,94,.15);  color: #4ade80 !important; }
-    .ep-estado.rechazada { background: rgba(239,68,68,.15);  color: #fca5a5 !important; }
-    .ep-estado.revertida { background: rgba(100,116,139,.2); color: #94a3b8 !important; }
-
-    .ep-acciones { white-space: nowrap; text-align: right; }
-    .ep-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text) !important; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
-    .ep-btn + .ep-btn { margin-left: 6px; }
-    .ep-btn.ok:hover:not(:disabled) { background: rgba(34,197,94,.2); border-color: #22c55e; }
-    .ep-btn.ko:hover:not(:disabled) { background: rgba(239,68,68,.2); border-color: #ef4444; }
-    .ep-btn.rev:hover:not(:disabled) { border-color: var(--accent); }
-    .ep-btn:disabled { opacity: .35; cursor: not-allowed; }
-    .ep-propia { display: block; font-size: 11px; color: var(--text-dim) !important; margin-top: 4px; }
-
-    .ep-tabla td.ep-vacio { padding: 40px !important; text-align: center; }
-
-    /* Barra de la selección: aparece abajo al marcar alguna */
-    .ep-barra { position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 140%); transition: transform .18s ease; z-index: 50;
-      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 32px);
-      background: var(--panel); border: 1px solid rgba(59,130,246,.5); border-radius: 14px; padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-    .ep-barra.visible { transform: translate(-50%, 0); }
-    .ep-barra .cuantas { font-weight: 700; white-space: nowrap; }
-    .admin-app .ep-barra input { width: 260px; }
-    .ep-barra .btn-primary { background: #16a34a; }
-    .ep-barra .btn-primary:hover { background: #15803d; }
-
-    .ep-toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 60; max-width: min(640px, calc(100% - 32px)); margin: 0; display: none; white-space: pre-line; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-    .ep-toast.visible { display: block; }
-
-    @media (max-width: 760px) {
-      .ep-tabla-envoltorio { overflow-x: auto; }
-      .admin-app .ep-barra input { width: 100%; }
-      .ep-motivo { max-width: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/propuestas.css') }}">
 </head>
 <body>
 {% include '_version_badge.html' %}
@@ -146,6 +74,7 @@
 
   <p class="mensaje ep-toast" id="ep-toast" role="status" aria-live="polite"></p>
 </div>
+<script src="{{ url_for('static', filename='js/propuestas-lista.js') }}"></script>
 <script src="{{ url_for('static', filename='js/engastado-propuestas.js') }}"></script>
 </body>
 </html>
