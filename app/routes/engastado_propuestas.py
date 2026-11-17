@@ -176,10 +176,12 @@ def api_engastado_propuestas():
 
 
 def _decision(datos):
-    motivo = datos.get('motivo', '')
-    if not isinstance(motivo, str) or not 5 <= len(motivo.strip()) <= 2000:
-        raise ValueError('Indica el motivo (5 a 2000 caracteres).')
-    return motivo.strip()
+    """Comentario del admin al resolver o revertir. Es opcional: lo normal es
+    aprobar o rechazar de un clic, y quien decide ya queda apuntado."""
+    motivo = datos.get('motivo') or ''
+    if not isinstance(motivo, str) or len(motivo.strip()) > 2000:
+        raise ValueError('El comentario no puede pasar de 2000 caracteres.')
+    return motivo.strip() or None
 
 
 @bp.route('/api/engastado/propuestas/<int:propuesta_id>/resolver', methods=['POST'])

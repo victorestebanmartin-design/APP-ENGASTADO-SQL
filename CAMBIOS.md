@@ -6,6 +6,12 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.36.0 - 2026-11-17
+- Propuestas de engastado con el aspecto de Admin: tabla con pestanas por estado, buscador y encabezados que no se pierden al bajar
+- Aprobar o rechazar es de un clic: el comentario ya es opcional
+- Se pueden marcar varias propuestas (clic en la fila, Mayus+clic para un tramo, o todas las que se ven) y aprobarlas o rechazarlas de golpe
+- Al apagar el servidor ya no se queda abierta una ventana negra mas cada vez
+
 ## 1.35.3 - 2026-11-17
 - Admin → Operarios: el boton de leer tarjeta vuelve a funcionar. Antes daba "_opBoton is not defined" y no dejaba asignar la tarjeta al operario
 

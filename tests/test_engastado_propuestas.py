@@ -140,6 +140,23 @@ def test_rechazar_no_cambia_el_excel_y_no_se_resuelve_dos_veces(app, admin_clien
                      json={'motivo': 'No aprobada'}).status_code == 409
 
 
+def test_resolver_y_revertir_sin_comentario(app, admin_client):
+    """Aprobar o rechazar es de un clic: el comentario es opcional."""
+    ruta, operario, jefe = preparar(app, admin_client)
+    aprobar = avisar(operario, [{'fila': 2, 'lado': 'de'}]).get_json()['id']
+    rechazar = avisar(operario, [{'fila': 3, 'lado': 'de'}]).get_json()['id']
+    assert jefe.post(f'/api/engastado/propuestas/{aprobar}/resolver', json={'accion': 'aprobar'}).status_code == 200
+    assert jefe.post(f'/api/engastado/propuestas/{rechazar}/resolver',
+                     json={'accion': 'rechazar', 'motivo': '  '}).status_code == 200
+    assert load_workbook(ruta)['Format']['D2'].value == 'X1*'
+    estados = {p['id']: p for p in jefe.get('/api/engastado/propuestas').get_json()['propuestas']}
+    assert estados[aprobar]['estado'] == 'aprobada' and estados[aprobar]['motivo_resolucion'] is None
+    assert estados[rechazar]['estado'] == 'rechazada'
+    assert jefe.post(f'/api/engastado/propuestas/{aprobar}/revertir', json={}).status_code == 200
+    assert jefe.post(f'/api/engastado/propuestas/{rechazar}/resolver',
+                     json={'accion': 'aprobar', 'motivo': 'x' * 2001}).status_code in (400, 409)
+
+
 def test_aviso_duplicado_y_fila_que_no_cuadra(app, admin_client):
     ruta, operario, jefe = preparar(app, admin_client)
     assert avisar(operario, [{'fila': 2, 'lado': 'de'}]).status_code == 201

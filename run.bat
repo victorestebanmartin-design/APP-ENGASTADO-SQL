@@ -9,12 +9,16 @@ REM medio de la pantalla. Minimizada (no oculta) sigue estando en la barra de
 REM tareas: si algo peta se puede abrir y ver que dice.
 REM El argumento MINIMIZADO evita que se relance en bucle infinito.
 REM
+REM Va con `cmd /c` a proposito: `start` sobre un .bat a secas lo abre con
+REM `cmd /k`, y la ventana se quedaba abierta con el prompt al terminar
+REM (p. ej. tras "Apagar" desde la web), una mas cada vez.
+REM
 REM SILENCIOSO lo pone ARRANCAR.vbs, que ya ha lanzado esto SIN ventana:
 REM no hay que relanzar nada, y al terminar no se puede dejar la consola
 REM esperando una tecla porque no hay ventana donde pulsarla.
 set MODO=%~1
 if /i not "!MODO!"=="MINIMIZADO" if /i not "!MODO!"=="SILENCIOSO" (
-    start /min "" "%~f0" MINIMIZADO
+    start /min "" cmd /c ""%~f0" MINIMIZADO"
     exit /b
 )
 
