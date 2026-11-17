@@ -1469,6 +1469,93 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 // ============================================================================
+// COPIA AUTOMÁTICA — servidor y disco externo (app/backup_auto.py)
+// ============================================================================
+
+function _copiaFecha(iso) {
+    return iso ? String(iso).replace('T', ' ').slice(0, 16) : '—';
+}
+
+function _copiaLinea(titulo, r, sinDatos) {
+    if (!r) return `<li><strong>${titulo}:</strong> ${_dispEsc(sinDatos)}</li>`;
+    const icono = r.ok ? '✅' : '⚠️';
+    const ultimaOk = (!r.ok && r.ultima_ok) ? ` · última buena: ${_dispEsc(_copiaFecha(r.ultima_ok))}` : '';
+    return `<li><strong>${titulo}:</strong> ${icono} ${_dispEsc(_copiaFecha(r.fecha))} — ${_dispEsc(r.detalle)}${ultimaOk}</li>`;
+}
+
+function _pintarCopiaAuto(d) {
+    const cont = document.getElementById('copia-auto-estado');
+    const input = document.getElementById('copia-auto-ruta');
+    const guardar = document.getElementById('copia-auto-guardar');
+    if (!cont) return;
+    if (input && document.activeElement !== input) input.value = d.destino_externo || '';
+    if (input) input.disabled = !!d.destino_por_env;
+    if (guardar) guardar.disabled = !!d.destino_por_env;
+
+    const avisos = (d.avisos || []).map(a => `<li>${_dispEsc(a)}</li>`).join('');
+    cont.innerHTML = `
+        <ul style="margin:0 0 0 18px;line-height:1.7;">
+            <li>Cada ${_dispEsc(d.cada_horas)} h, se guardan las últimas ${_dispEsc(d.retiene)}.</li>
+            ${_copiaLinea('En el servidor', d.local, 'todavía ninguna')}
+            ${d.destino_externo ? _copiaLinea('En el disco externo', d.externo, 'todavía ninguna') : ''}
+        </ul>
+        ${d.destino_por_env ? '<p class="instruccion" style="margin-top:8px;">La carpeta del disco externo está fijada en el .env del servidor.</p>' : ''}
+        ${avisos ? `<div class="mensaje error" style="margin-top:10px;"><ul style="margin:0 0 0 18px;">${avisos}</ul></div>` : ''}`;
+}
+
+function _copiaMsg(texto, tipo) {
+    const el = document.getElementById('copia-auto-msg');
+    if (!el) return;
+    el.className = 'mensaje ' + tipo;
+    el.textContent = texto;
+    el.classList.toggle('hidden', !texto);
+}
+
+async function cargarCopiaAuto() {
+    try {
+        const r = await fetch('/api/sistema/copia_auto');
+        const d = await r.json();
+        if (d.success) _pintarCopiaAuto(d);
+        else _copiaMsg(d.message || 'No se pudo leer el estado de la copia.', 'error');
+    } catch (e) {
+        _copiaMsg('No se pudo leer el estado de la copia: ' + e.message, 'error');
+    }
+}
+
+async function _copiaPost(url, cuerpo, enCurso, hecho) {
+    _copiaMsg(enCurso, 'info');
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cuerpo || {})
+        });
+        const d = await r.json();
+        if (!d.success) { _copiaMsg(d.message || 'No se pudo.', 'error'); return; }
+        _pintarCopiaAuto(d);
+        _copiaMsg(hecho, 'success');
+    } catch (e) {
+        _copiaMsg('Error: ' + e.message, 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    if (!document.getElementById('copia-auto-estado')) return;
+    cargarCopiaAuto();
+    document.getElementById('copia-auto-guardar').addEventListener('click', function () {
+        const ruta = document.getElementById('copia-auto-ruta').value.trim();
+        _copiaPost('/api/sistema/copia_auto/destino', { ruta }, '⏳ Comprobando la carpeta…',
+                   ruta ? '✓ Carpeta guardada. Pulsa «Hacer copia ahora» para probarla.'
+                        : '✓ Disco externo quitado: las copias quedan solo en el servidor.');
+    });
+    document.getElementById('copia-auto-ahora').addEventListener('click', function () {
+        _copiaPost('/api/sistema/copia_auto/ahora', {}, '⏳ Haciendo la copia… puede tardar un poco.',
+                   '✓ Copia hecha. Mira arriba si ha ido bien en cada sitio.');
+    });
+});
+
+
+// ============================================================================
 // DISPLAY CARRO — pantallas ESP32 asignadas a carros
 // ============================================================================
 

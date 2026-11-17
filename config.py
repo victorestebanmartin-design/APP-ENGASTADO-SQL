@@ -318,6 +318,10 @@ class Config:
     # Cada cuántas horas se copia data/ a data/backups_auto/. 0 = desactivada.
     AUTO_BACKUP_HORAS = os.environ.get('AUTO_BACKUP_HORAS', '6')
     AUTO_BACKUP_RETENER = int(os.environ.get('AUTO_BACKUP_RETENER', '20'))
+    # Carpeta de un disco externo donde se hace ADEMÁS otra copia completa
+    # (p. ej. E:\CopiasCOJOsw). Lo normal es indicarla en Admin → Sistema;
+    # si se pone aquí, manda sobre lo de Admin. Vacío = solo en el servidor.
+    AUTO_BACKUP_DESTINO = os.environ.get('AUTO_BACKUP_DESTINO', '').strip()
     
     @staticmethod
     def init_app(app):

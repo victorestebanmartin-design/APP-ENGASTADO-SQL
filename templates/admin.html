@@ -1006,6 +1006,23 @@
                         <div id="bloqueos-lista" style="margin-top:14px;"></div>
                     </div>
 
+                    <!-- ===== COPIA AUTOMATICA (app/backup_auto.py) ===== -->
+                    <div class="card">
+                        <h2>🛟 Copia automática</h2>
+                        <p class="instruccion">El servidor se copia solo cada pocas horas: base de datos, avance de los bonos, Excel de corte y documentos de máquinas. Cada copia se comprueba al hacerla.</p>
+                        <div id="copia-auto-estado" style="margin-top:12px;"><p class="instruccion">Cargando…</p></div>
+                        <div class="input-group" style="margin-top:14px;">
+                            <label for="copia-auto-ruta">Carpeta del disco externo (por ejemplo <code>E:\CopiasCOJOsw</code>):</label>
+                            <input type="text" id="copia-auto-ruta" placeholder="Sin disco externo: solo se copia en el servidor"
+                                   style="padding:8px 10px;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:8px;width:100%;max-width:420px;">
+                        </div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                            <button type="button" id="copia-auto-guardar" class="btn-secondary">💾 Guardar carpeta</button>
+                            <button type="button" id="copia-auto-ahora" class="btn-primary">🛟 Hacer copia ahora</button>
+                        </div>
+                        <div id="copia-auto-msg" class="mensaje hidden" style="margin-top:12px;"></div>
+                    </div>
+
                     <!-- ===== EXPORTAR / IMPORTAR BD ===== -->
                     <div class="card">
                         <h2>💾 Exportar base de datos</h2>

@@ -307,6 +307,22 @@ el histórico en cada sondeo de Visualización tardaba decenas de segundos.
 Las sesiones de bloqueo (`sesiones_trabajo`) caducan si el puesto deja de latir
 (`/api/sesion/latido`, cada minuto; 10 minutos de margen).
 
+## Copia automática: el servidor siempre, el disco externo además
+
+`app/backup_auto.py` copia cada `AUTO_BACKUP_HORAS` en `data/backups_auto` y,
+si hay carpeta de disco externo (Admin → Sistema, o `AUTO_BACKUP_DESTINO` en el
+`.env`), hace otra copia completa allí. Cada copia se verifica
+(`integrity_check`) y el resultado se ve en Admin (`backup_auto_estado.json`).
+
+- **La copia del servidor no depende del disco externo.** Disco desenchufado,
+  de otra letra o que falla a mitad: se avisa en Admin y la del servidor se
+  hace igual. Nada de esto puede tumbar el servidor ni parar la planta.
+- **La carpeta externa no se crea sola.** Si no existe es que el disco no está;
+  crearla repartiría las copias por otro disco sin que nadie lo sepa.
+- Lo que no vive en la BD (progreso de bonos, `cortes`, `maquinas_pdf`,
+  `manguitos`) va en la copia: sin ello restaurar no devuelve la planta a como
+  estaba. Si añades otra carpeta de datos a `data/`, añádela a `_CARPETAS`.
+
 ## Órdenes con el número repetido
 
 El bono se monta por **número** de orden, así que dos órdenes con el mismo

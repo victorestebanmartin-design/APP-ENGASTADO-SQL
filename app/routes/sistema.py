@@ -3747,3 +3747,52 @@ def api_restaurar_backup():
         return jsonify({'success': resultado['éxito'], 'mensaje': resultado['mensaje']})
     except Exception as e:
         return error_interno(e, 'Error al restaurar backup', clave='error')
+
+# ==================== COPIA AUTOMATICA (app/backup_auto.py) ====================
+
+@bp.route('/api/sistema/copia_auto', methods=['GET'])
+@requiere_pin_admin
+def api_copia_auto_estado():
+    """Cómo fue la última copia automática, en el servidor y en el disco externo."""
+    try:
+        from app.backup_auto import resumen_estado
+        return jsonify({'success': True, **resumen_estado(current_app)})
+    except Exception as e:
+        return error_interno(e, 'Error al leer el estado de la copia automática')
+
+
+@bp.route('/api/sistema/copia_auto/destino', methods=['POST'])
+@requiere_pin_admin
+def api_copia_auto_destino():
+    """Fija (o quita, con ruta vacía) la carpeta del disco externo."""
+    try:
+        from app.backup_auto import (destino_fijado_por_env, error_destino,
+                                     guardar_destino, resumen_estado)
+        if destino_fijado_por_env(current_app):
+            return jsonify({'success': False,
+                            'message': 'La carpeta está fijada por AUTO_BACKUP_DESTINO en el .env: '
+                                       'cámbiala ahí y reinicia el servidor.'}), 400
+        ruta = str((request.get_json(silent=True) or {}).get('ruta') or '').strip()
+        if ruta:
+            motivo = error_destino(ruta, current_app.config['DATA_DIR'])
+            if motivo:
+                return jsonify({'success': False, 'message': motivo}), 400
+        guardar_destino(current_app, ruta)
+        return jsonify({'success': True, **resumen_estado(current_app)})
+    except Exception as e:
+        return error_interno(e, 'Error al guardar la carpeta del disco externo')
+
+
+@bp.route('/api/sistema/copia_auto/ahora', methods=['POST'])
+@requiere_pin_admin
+def api_copia_auto_ahora():
+    """Hace una ronda de copia en el momento (servidor y disco externo)."""
+    try:
+        from app.backup_auto import hacer_ronda, resumen_estado
+        if hacer_ronda(current_app) is None:
+            return jsonify({'success': False,
+                            'message': 'Ya hay una copia en marcha. Espera un momento y '
+                                       'vuelve a mirar el estado.'}), 409
+        return jsonify({'success': True, **resumen_estado(current_app)})
+    except Exception as e:
+        return error_interno(e, 'Error al hacer la copia')

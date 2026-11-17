@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.38.0 - 2026-11-17
+- Admin → Sistema tiene una tarjeta nueva, "Copia automatica": cuando fue la ultima copia, si ha salido bien y un boton para hacer una copia en el momento
+- Las copias automaticas se pueden hacer ademas en un disco externo: se indica su carpeta en esa tarjeta. Si el disco no esta enchufado se avisa, y el servidor sigue copiando igual
+- Cada copia se comprueba al hacerla, y ahora incluye tambien los documentos de las maquinas y los datos de manguitos
+
 ## 1.37.1 - 2026-11-17
 - Propuestas de mangueras: la tabla ya no se sale por la derecha. El nombre del corte se parte en varias lineas, las medidas no se cortan a mitad y los botones van uno encima de otro
 

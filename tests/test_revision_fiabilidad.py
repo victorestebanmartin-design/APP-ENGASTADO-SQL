@@ -188,9 +188,9 @@ def test_backup_automatico_lleva_progreso_y_excel(app):
     with open(os.path.join(app.config['UPLOAD_FOLDER'], 'corte.xlsx'), 'wb') as f:
         f.write(b'excel')
 
-    base = _una_copia(data, app.logger)
+    base, copia, _ = _una_copia(data, app.logger)
 
-    copia = os.path.join(base, os.listdir(base)[0])
+    assert copia == os.path.join(base, os.listdir(base)[0])
     assert os.path.isfile(os.path.join(copia, 'progreso_bono_B1.json'))
     assert os.path.isfile(os.path.join(copia, 'cortes', 'corte.xlsx'))
 

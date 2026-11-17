@@ -41,8 +41,11 @@ data/pick_to_light_rfid_armado.json
 data/pick_to_light_correspondencia.json
 data/rfid_maquina_lecturas.json
 data/.tmp_*.json
-# Copias de seguridad automáticas (app/backup_auto.py)
+# Copias de seguridad automáticas (app/backup_auto.py): las copias, la carpeta
+# del disco externo de cada instalación y cómo fue la última ronda.
 data/backups_auto/
+data/backup_auto.json
+data/backup_auto_estado.json
 
 # Datos reales de producción: nunca al repo (es público)
 # - Excel de cortes subidos por el usuario

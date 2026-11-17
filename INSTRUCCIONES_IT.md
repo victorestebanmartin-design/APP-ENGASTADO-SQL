@@ -123,6 +123,36 @@ hay cortes de madrugada:
 
 ---
 
+## Disco externo para las copias de seguridad
+
+La app se copia sola cada 6 horas (base de datos, avance de los bonos, Excel
+de corte y documentos de las máquinas) en `data\backups_auto`, **en el mismo
+disco que el servidor**. Si ese disco se estropea, se pierden la app y sus
+copias a la vez. Por eso se pide un disco externo donde la app haga además
+otra copia.
+
+Lo que hace falta:
+
+- **Un disco USB externo, de unos 64 GB o más**, conectado al PC servidor de
+  forma permanente (no uno que se lleve alguien a casa).
+- **Formateado en NTFS.** Con FAT32 o exFAT funciona, pero las copias ocupan
+  mucho más: en NTFS los Excel y PDF que no cambian no se vuelven a copiar.
+- **Siempre con la misma letra de unidad** (por ejemplo `E:`), fijada en
+  Administración de discos. Si cambia de letra, la app no lo encuentra y avisa.
+- **Sin BitLocker To Go que pida contraseña al arrancar**, o la app no podrá
+  escribir en él hasta que alguien lo desbloquee tras cada reinicio.
+- **Una carpeta creada en él**, por ejemplo `E:\CopiasCOJOsw`, en la que pueda
+  escribir el usuario de Windows con el que arranca la app.
+
+Después, en la app: **Admin → Sistema → Copia automática**, escribir la ruta de
+esa carpeta, pulsar **Guardar carpeta** y luego **Hacer copia ahora**. La
+tarjeta debe mostrar ✅ en «En el servidor» y en «En el disco externo».
+
+Si un día el disco no está enchufado, la app sigue copiando en el servidor y
+la tarjeta de Admin lo avisa en rojo; no se para nada en planta.
+
+---
+
 ## Comprobación
 Desde **OTRO** PC de la red, abrir en el navegador:
 
