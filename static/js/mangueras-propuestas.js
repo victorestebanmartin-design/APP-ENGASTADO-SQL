@@ -142,10 +142,10 @@
           esc(o.cable_marca || '') + ' <span class="extra">· ' + esc(o.cod_cable || '') + ' · ' + esc(o.de_elemento || '') +
           ' · fila ' + esc(o.fila) + '</span></h4>' + window.comparacionMangueras(o, c.sugerido) + '</div>';
       }).join('');
-      return '<td class="ep-term">' + esc(p.archivo) +
+      return '<td class="ep-term ep-corte">' + esc(p.archivo) +
         (paquetes.length ? '<small>Paquete ' + esc(paquetes.join(', ')) + '</small>' : '') +
         '<small>' + cambios.length + (cambios.length === 1 ? ' manguera' : ' mangueras') + '</small></td>' +
-        '<td style="min-width:380px">' + detalle + '</td>';
+        '<td class="ep-celda-cambios">' + detalle + '</td>';
     }
   });
 })();

@@ -91,7 +91,7 @@ window.listaPropuestas = function (config) {
       config.celdas(p, ayudas) +
       '<td class="ep-motivo">' + motivoHtml(p.motivo) + decisionHtml(p) + '</td>' +
       '<td class="ep-quien">' + esc(p.autor_nombre) + '<small>' + esc(fecha(p.creada_at)) + '</small></td>' +
-      '<td class="ep-acciones">' + botones + '</td></tr>';
+      '<td class="ep-acciones"><div class="ep-botones">' + botones + '</div></td></tr>';
   }
 
   function render() {

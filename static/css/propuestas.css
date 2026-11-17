@@ -43,9 +43,11 @@
 .ep-estado.rechazada { background: rgba(239,68,68,.15);  color: #fca5a5 !important; }
 .ep-estado.revertida { background: rgba(100,116,139,.2); color: #94a3b8 !important; }
 
-.ep-acciones { white-space: nowrap; text-align: right; }
+/* Botones uno encima de otro: la columna ocupa un botón de ancho */
+.ep-acciones { text-align: right; width: 1%; }
+.ep-botones { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .ep-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text) !important; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
-.ep-btn + .ep-btn { margin-left: 6px; }
+.ep-acciones .ep-btn { white-space: nowrap; }
 .ep-btn.ok:hover:not(:disabled) { background: rgba(34,197,94,.2); border-color: #22c55e; }
 .ep-btn.ko:hover:not(:disabled) { background: rgba(239,68,68,.2); border-color: #ef4444; }
 .ep-btn.rev:hover:not(:disabled) { border-color: var(--accent); }
@@ -76,12 +78,19 @@
 .ep-estado.restaurada { background: rgba(100,116,139,.2); color: #94a3b8 !important; }
 
 /* Comparacion antes / despues de mangueras (comparacionMangueras) */
+/* Nombre del corte: los de mangueras son larguísimos, se parten en vez de
+   empujar la tabla fuera del margen */
+.ep-term.ep-corte { white-space: normal; overflow-wrap: anywhere; max-width: 240px; font-size: 12.5px; }
+.ep-celda-cambios { min-width: 300px; }
 .ep-cambio + .ep-cambio { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .ep-cambio h4 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .ep-cambio h4 .extra { color: var(--text-dim) !important; font-weight: 400; }
-.ep-cambio .mp-medidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
+/* Un lado cambiado ocupa todo el ancho; dos, uno al lado del otro si caben */
+.ep-cambio .mp-medidas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; }
 .ep-cambio .mp-side h3 { margin: 4px 0; font-size: 11px; font-family: 'DM Mono', monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim) !important; font-weight: 500; }
-.ep-cambio .mp-line { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+/* Etiqueta a la izquierda en una columna fija y el valor seguido, sin partir */
+.ep-cambio .mp-line { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.ep-cambio .mp-line > span:last-child { white-space: nowrap; }
 .ep-cambio .inst-label { color: var(--text-muted) !important; }
 .ep-cambio .inst-val { font-family: 'DM Mono', monospace; }
 .ep-cambio .inst-unit { margin-left: 3px; color: var(--text-dim) !important; font-size: 11px; }

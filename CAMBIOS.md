@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.37.1 - 2026-11-17
+- Propuestas de mangueras: la tabla ya no se sale por la derecha. El nombre del corte se parte en varias lineas, las medidas no se cortan a mitad y los botones van uno encima de otro
+
 ## 1.37.0 - 2026-11-17
 - Propuestas de mangueras con el mismo aspecto que las de engastado: pestanas por estado, buscador y encabezados fijos al bajar
 - Aceptar o rechazar propuestas de mangueras es de un clic: el comentario ya es opcional, tambien al restaurar
