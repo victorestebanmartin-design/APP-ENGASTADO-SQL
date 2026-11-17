@@ -3,8 +3,32 @@ import sqlite3
 from datetime import datetime, timedelta
 
 
+from conftest import admin_de
+
+
 def _login(client, nombre='PEPE'):
+    """Entra por el login manual, dando antes de alta al operario si no existe."""
+    admin = admin_de(client)
+    if nombre not in [o['nombre'] for o in admin.get('/api/operarios').get_json()['operarios']]:
+        admin.post('/api/operarios', json={'nombre': nombre})
     return client.post('/api/operarios/login', json={'nombre': nombre})
+
+
+def test_no_entra_quien_no_esta_dado_de_alta(client):
+    r = client.post('/api/operarios/login', json={'nombre': 'Nadie'})
+    assert r.status_code == 403
+    assert 'dado de alta' in r.get_json()['error']
+    assert client.get('/api/operarios/logins').get_json()['logins'] == []
+
+
+def test_no_entra_un_operario_de_baja(client):
+    admin = admin_de(client)
+    op = admin.post('/api/operarios', json={'nombre': 'Marta'}).get_json()['operario']
+    admin.delete(f"/api/operarios/{op['id']}")
+    assert client.post('/api/operarios/login', json={'nombre': 'Marta'}).status_code == 403
+
+    admin.post(f"/api/operarios/{op['id']}/activar")
+    assert client.post('/api/operarios/login', json={'nombre': 'Marta'}).get_json()['success']
 
 
 def test_login_devuelve_login_id(client):

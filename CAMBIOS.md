@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.35.2 - 2026-11-17
+- Al entrar eligiendo el nombre de la lista (sin tarjeta), solo valen operarios dados de alta y activos. Si alguno sale como "no esta dado de alta", hay que darlo de alta o reactivarlo en Admin → Operarios
+
 ## 1.35.1 - 2026-11-16
 - El PIN de Administracion se guarda mejor protegido. No cambia nada al usarlo: el PIN de siempre sigue valiendo y se actualiza solo la primera vez que se introduce bien
 

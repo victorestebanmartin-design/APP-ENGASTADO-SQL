@@ -539,6 +539,20 @@ def api_operario_login():
             return jsonify({'success': False, 'error': 'Nombre es obligatorio'}), 400
 
         with db.engine.connect() as conn:
+            # Solo entra quien está dado de alta y activo. Las pantallas ya
+            # ofrecen únicamente esos nombres en su desplegable; sin esta
+            # comprobación, una petición hecha a mano entraba con cualquier
+            # texto, y ese texto es el que firma los carros en el report.
+            dado_de_alta = conn.execute(text(
+                "SELECT 1 FROM operarios WHERE nombre=:n AND activo=1"
+            ), {'n': nombre}).fetchone()
+            if not dado_de_alta:
+                return jsonify({
+                    'success': False,
+                    'error': 'Ese operario no está dado de alta o está de baja. '
+                             'Avisa al administrador (Admin → Operarios).'
+                }), 403
+
             _expirar_logins_fantasma(conn, forzar=True)
 
             existente = conn.execute(text(
