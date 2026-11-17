@@ -1473,14 +1473,14 @@
                 selector.appendChild(opcion);
             });
             control.appendChild(selector);
-            control.appendChild(_opBoton('Preparar lector', 'btn-secondary', () => {
+            control.appendChild(_opBotonCaptura('Preparar lector', 'btn-secondary', () => {
                 if (!selector.value) {
                     control.style.color = '#fbbf24';
                     return;
                 }
                 _iniciarCapturaTagOperario(id, selector.value, control);
             }));
-            control.appendChild(_opBoton('Cancelar', 'btn-secondary', () => { control.innerHTML = ''; }));
+            control.appendChild(_opBotonCaptura('Cancelar', 'btn-secondary', () => { control.innerHTML = ''; }));
         } catch (error) {
             control.textContent = error.message || 'No se pudieron cargar los lectores.';
             control.style.color = '#f87171';
@@ -1514,7 +1514,7 @@
         texto.textContent = `Lector preparado. Pasa la tarjeta (${restantes} s)`;
         texto.style.color = '#60a5fa';
         control.appendChild(texto);
-        control.appendChild(_opBoton('Cancelar', 'btn-secondary', () => {
+        control.appendChild(_opBotonCaptura('Cancelar', 'btn-secondary', () => {
             _pararCapturaTagOperario(true);
             control.textContent = 'Captura cancelada.';
             control.style.color = '#94a3b8';

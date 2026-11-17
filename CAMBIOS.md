@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.35.3 - 2026-11-17
+- Admin → Operarios: el boton de leer tarjeta vuelve a funcionar. Antes daba "_opBoton is not defined" y no dejaba asignar la tarjeta al operario
+
 ## 1.35.2 - 2026-11-17
 - Al entrar eligiendo el nombre de la lista (sin tarjeta), solo valen operarios dados de alta y activos. Si alguno sale como "no esta dado de alta", hay que darlo de alta o reactivarlo en Admin → Operarios
 
