@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.38.2 - 2026-11-18
+- En preparacion de mangueras se ve ahora la longitud de la manguera, en pequeño junto al contador
+
 ## 1.38.1 - 2026-11-18
 - Calidad tiene ahora el mismo aspecto oscuro que Administracion, y se leen bien los titulos de las tablas, que antes salian blanco sobre gris claro
 

@@ -393,6 +393,15 @@
     if (elemEl) elemEl.textContent = mg.de_elemento || '';
 
     lblContador.textContent = (idx + 1) + ' / ' + mangueras.length;
+    // Longitud: dato secundario, discreto junto al contador
+    var lonEl = document.getElementById('mg-longitud');
+    if (lonEl) {
+      var lon = parseFloat(mg.longitud);
+      lonEl.textContent = (!isNaN(lon) && lon > 0)
+        ? (Math.round(lon * 1000) / 1000).toString().replace('.', ',') + ' m'
+        : '';
+      lonEl.style.display = lonEl.textContent ? '' : 'none';
+    }
 
     // Info cable (terminales) — ocultar si no hay nada
     var infoHtmlStr = infoHtml(mg);

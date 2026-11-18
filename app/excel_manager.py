@@ -649,6 +649,15 @@ def _get_mangueras(self, filename: str) -> list:
     col_cod_cable     = _col(['Cod. cable', 'Cod.cable', 'Cod cable'])
     col_de_terminal   = _col(['De Terminal'])
     col_para_terminal = _col(['Para Terminal'])
+    col_longitud      = _col(['Longitud'])
+
+    def _longitud(v):
+        try:
+            if pd.isna(v):
+                return None
+            return float(str(v).replace(',', '.'))
+        except Exception:
+            return None
 
     # Al menos una fuente de instrucciones debe existir
     usa_columnas_nuevas = col_inst_de or col_inst_para
@@ -707,6 +716,7 @@ def _get_mangueras(self, filename: str) -> list:
             'de_elemento':       _safe(row[col_de_elemento])  if col_de_elemento  else '',
             'de_terminal':       _safe(row[col_de_terminal])  if col_de_terminal  else '',
             'para_terminal':     _safe(row[col_para_terminal]) if col_para_terminal else '',
+            'longitud':          _longitud(row[col_longitud]) if col_longitud else None,
             'observaciones_raw': obs_raw,
             'observaciones_mangueras': obs_mangueras,
             'aviso_mangueras': aviso_mangueras,

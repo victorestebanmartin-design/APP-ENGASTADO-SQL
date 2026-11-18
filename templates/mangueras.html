@@ -44,6 +44,7 @@
     .mg-nav-elemento { font-size: 30px; font-weight: 900; letter-spacing: 0.5px;
       text-align: left; color: #bbf7d0; }
     .mg-contador { font-size: 14px; opacity: 0.75; text-align: center; margin-top: 8px; }
+    .mg-longitud::before { content: '·'; margin: 0 8px; }
     .nav-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 12px 22px;
       border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 700; transition: background 0.15s; white-space: nowrap; }
     .nav-btn:hover:not(:disabled) { background: rgba(255,255,255,0.3); }
@@ -217,7 +218,7 @@
               <span class="mg-nav-paquete" id="mg-paquete-badge"></span>
               <span class="mg-nav-elemento" id="mg-elemento"></span>
             </div>
-            <div class="mg-contador" id="mg-contador"></div>
+            <div class="mg-contador"><span id="mg-contador"></span><span class="mg-longitud" id="mg-longitud" title="Longitud de la manguera" style="display:none"></span></div>
           </div>
           <button class="nav-btn" id="btn-mg-next">Siguiente →</button>
         </div>

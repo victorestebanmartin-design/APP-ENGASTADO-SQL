@@ -1309,3 +1309,14 @@ def test_manguera_awg_con_pantalla_se_reconoce_y_engancha_sus_hilos():
     assert [fila['fila'] for fila in filas] == [2]
     vinculo = filas[0]['vinculacion']
     assert vinculo['confirmados'] and [activo['fila'] for activo in vinculo['activos']] == [3, 4]
+
+
+def test_mangueras_traen_la_longitud(tmp_path):
+    libro = Workbook()
+    hoja = libro.active
+    hoja.append(['Cable / Marca', 'Cod. cable', 'De Elemento', 'Observaciones', 'Longitud'])
+    hoja.append(['MG1', 'C1', 'X1', '<-PM100 // PM200->', 2.35])
+    hoja.append(['MG2', 'C2', 'X2', '<-PM100 // PM200->', None])
+    libro.save(tmp_path / 'lon.xlsx')
+    mangueras = ExcelManager(str(tmp_path)).get_mangueras('lon.xlsx')
+    assert [m['longitud'] for m in mangueras] == [2.35, None]
