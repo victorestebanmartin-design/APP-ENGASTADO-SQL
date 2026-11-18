@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.39.0 - 2026-11-18
+- La pantalla de un carro vacío enseña su código QR al pulsar OK: se escanea con la pistola al generar un bono. Se cierra sola a los 10 segundos o con otro OK
+
 ## 1.38.2 - 2026-11-18
 - En preparacion de mangueras se ve ahora la longitud de la manguera, en pequeño junto al contador
 

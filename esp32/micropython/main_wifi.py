@@ -63,7 +63,7 @@ except ImportError:
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 # Version del firmware de aplicacion. SUBELA en cada release: el servidor la lee
 # para saber si una pantalla esta al dia y el OTA por WiFi la usa como identidad.
-FW_VERSION = "2026-10-29b"
+FW_VERSION = "2026-11-18a"
 
 SSID     = "YOUR_SSID"
 PASSWORD = "YOUR_PASSWORD"
@@ -97,6 +97,7 @@ AUTO_ADVANCE_S = 4     # segundos que se muestra cada paquete antes de rotar al 
 LONG_PRESS_MS = 1000   # umbral de pulsacion larga (los dos pulsadores)
 BONO_HOLD_MS = 3000    # mantener OK 3s con un bono en el carro = ver su QR y su detalle
 BONO_VISTA_S = 60      # la vista del bono se cierra sola a los 60 s
+CARRO_VISTA_S = 10     # el QR del carro vacio (OK corto) se cierra solo a los 10 s
 OTA_HOLD_MS = 5000     # mantener OK (boton 8) 5s EN REPOSO = actualizar por WiFi
 AVISO_PENDIENTE_S = 25 # cada cuanto recuerda con un pitido que hay un grupo
                        # esperando a que alguien vaya al carro a confirmarlo
@@ -439,12 +440,34 @@ carro_bono_info = None
 bono_vista      = False
 bono_vista_t0   = 0
 
+# Vista del carro: con el carro vacio (sin bono) y en reposo, un OK corto
+# ensena el QR del carro ("carro7"), el mismo codigo que espera el asistente
+# Generar bono al escanear un carro. Se cierra con otro OK o sola.
+carro_vista    = False
+carro_vista_t0 = 0
+
+def _vista_qr():
+    """True si la pantalla esta ensenando un QR (bono o carro): nada la pisa."""
+    return bono_vista or carro_vista
+
+def codigo_carro():
+    """Lo que lee la pistola: 'carro' + numero (asistente-bono.js lo acepta)."""
+    n = str(mi_carro or '').strip()
+    if n.lower().startswith('carro'):
+        return n
+    return 'carro' + n
+
 def draw_bono_qr():
     """Vista del bono: su codigo y un QR que lee la pistola. El QR se calcula
     aqui mismo (qr_mini), sin red: solo hace falta saber el codigo del bono."""
+    draw_qr("BONO", str(carro_bono or ''))
+
+def draw_carro_qr():
+    draw_qr("CARRO", codigo_carro())
+
+def draw_qr(titulo, nombre):
     rect(0, 0, 240, 320, BLACK)
-    nombre = str(carro_bono or '')
-    text_center(4, "BONO", _color_carro(), BLACK, scale=2)
+    text_center(4, titulo, _color_carro(), BLACK, scale=2)
     sc = 2 if len(nombre) * 18 <= 232 else 1
     text_center(26, nombre[:26], WHITE, BLACK, scale=sc)
     m = None
@@ -479,7 +502,7 @@ def draw_bono_qr():
 
 def draw_idle(msg=None):
     """Pantalla de reposo: sin contadores, solo identidad y estado."""
-    if bono_vista:
+    if _vista_qr():
         return
     if msg is None:
         msg = "Esperando paquetes..." if mi_carro else "Esperando carro..."
@@ -495,6 +518,8 @@ def draw_idle(msg=None):
         text_center(170, mi_carro, _color_carro(), BLACK, scale=s)
         draw_estado_carro(224)
     text_center(244, msg, LGRAY, BLACK, scale=1)
+    if mi_carro and not carro_bono:
+        text_center(273, "OK = QR del carro", DGRAY, BLACK, scale=1)
     # Estado del firmware: verde al dia, rojo desactualizada (OK 5s para actualizar)
     try:
         if _desactualizada():
@@ -602,6 +627,24 @@ def cerrar_vista_bono():
     else:
         draw_reposo()
     _reenviar_display_ahora()
+
+def abrir_vista_carro():
+    """QR del carro vacio (solo reposo). La P4 no cambia: no hay bono que ver."""
+    global carro_vista, carro_vista_t0
+    carro_vista = True
+    carro_vista_t0 = time.ticks_ms()
+    draw_carro_qr()
+    bip_seleccion()
+
+def cerrar_vista_carro():
+    global carro_vista
+    if not carro_vista:
+        return
+    carro_vista = False
+    if en_work_mode:
+        mostrar_lista()
+    else:
+        draw_reposo()
 
 def _enviar_display(ops, carro, fw, sel='', pide_ok=False, bono=None):
     """Publica una instantánea; una pantalla desconectada no bloquea el carro.
@@ -729,7 +772,7 @@ def draw_work_header(d, titulo='', extra=''):
 
 def draw_lista():
     """Pantalla por defecto en modo trabajo: quien tiene que venir al carro."""
-    if bono_vista:
+    if _vista_qr():
         return
     rect(0, 0, 240, 320, BLACK)
     text(4, Y_CARRO, 'CARRO ' + str(mi_carro or '')[:8], _color_carro() if carro_estado else WHITE, BLACK, scale=3)
@@ -1375,6 +1418,9 @@ def conectar_wifi():
 
 def draw_estado(msg, color=LGRAY):
     """Repinta solo la linea de estado del reposo (sin redibujar la pantalla)."""
+    if _vista_qr():
+        draw_wifi_bar()        # esa linea cae encima del QR: no pisarlo
+        return
     rect(0, 250, 240, 12, BLACK)
     text_center(250, msg, color, BLACK, scale=1)
     draw_wifi_bar()
@@ -1442,6 +1488,7 @@ btn_ok_last  = 0
 btn_ok_t0    = 0                  # inicio de la pulsacion de OK (para la larga)
 btn_ok_ota_hecho = False          # ya se lanzo el OTA en esta pulsacion larga
 btn_ok_bono_hecho = False         # ya se abrio la vista del bono en esta pulsacion larga
+btn_ok_corta  = False             # esta pulsacion puede abrir el QR del carro al soltar
 display_bono  = False             # ultimo estado de la vista del bono enviado a la P4
 btn_ok_hold_shown = -1            # segundo mostrado en la cuenta atras (-1 = ninguno)
 ultimo_avance = time.ticks_ms()   # timer de rotacion automatica de paquetes
@@ -1575,12 +1622,21 @@ while True:
             btn_ok_ota_hecho = False
             btn_ok_bono_hecho = False
             btn_ok_hold_shown = -1
-        elif btn_ok_hold_shown >= 0 and not en_work_mode:
-            btn_ok_hold_shown = -1
-            draw_reposo()          # soltado antes de los 5s: restaurar reposo
+        else:
+            if btn_ok_hold_shown >= 0 and not en_work_mode:
+                btn_ok_hold_shown = -1
+                draw_reposo()      # soltado antes de los 5s: restaurar reposo
+            # OK CORTO en reposo con el carro vacio (sin bono): QR del carro,
+            # para escanearlo en el asistente Generar bono. Al soltar, para
+            # no chocar con la pulsacion larga del OTA.
+            if btn_ok_corta and not en_work_mode and mi_carro and not carro_bono \
+                    and not _vista_qr() \
+                    and time.ticks_diff(now, btn_ok_t0) < LONG_PRESS_MS:
+                abrir_vista_carro()
+            btn_ok_corta = False
     # Pulsacion LARGA de OK, SOLO en reposo y con firmware desactualizado:
     # actualizar por WiFi. Nunca en modo trabajo (ahi OK solo confirma).
-    if b_ok == 0 and not en_work_mode \
+    if b_ok == 0 and not en_work_mode and not _vista_qr() \
             and _desactualizada() and not btn_ok_ota_hecho:
         falta = OTA_HOLD_MS - time.ticks_diff(now, btn_ok_t0)
         if falta <= 0:
@@ -1604,12 +1660,18 @@ while True:
         abrir_vista_bono()
     if bono_vista and time.ticks_diff(now, bono_vista_t0) >= BONO_VISTA_S * 1000:
         cerrar_vista_bono()
+    if carro_vista and time.ticks_diff(now, carro_vista_t0) >= CARRO_VISTA_S * 1000:
+        cerrar_vista_carro()
     if b_ok == 0 and btn_ok_prev == 1 and time.ticks_diff(now, btn_ok_last) > 250:
         btn_ok_last = now
         ultima_accion = now
         ultimo_avance = now
+        btn_ok_corta = not en_work_mode and not _vista_qr()
         if bono_vista:
             cerrar_vista_bono()              # este OK solo cierra la vista
+        elif carro_vista:
+            btn_ok_ota_hecho = True          # este OK solo cierra: ni OTA ni reabrir
+            cerrar_vista_carro()
         elif en_work_mode and vista == 'detalle':
             confirmar_ok()
         elif en_work_mode:
@@ -1737,6 +1799,7 @@ while True:
                     carro_bono   = nuevo_bono
                 if ca != mi_carro:
                     mi_carro = ca
+                    carro_vista = False           # el QR era del carro anterior
                     if not en_work_mode:
                         draw_reposo()
                         fw_servidor_shown = fw_servidor
@@ -1761,6 +1824,8 @@ while True:
                 reenvio = time.ticks_diff(now, display_ts) >= 5000
                 if bono_vista and not carro_bono:
                     cerrar_vista_bono()           # el bono se libero mientras se veia
+                if carro_vista and (carro_bono or ops):
+                    cerrar_vista_carro()          # el carro ya no esta vacio
                 if bono_vista:
                     pide_ok = False               # la vista del bono no pide OK
                 if fp != display_fp or sel_disp != display_sel \
