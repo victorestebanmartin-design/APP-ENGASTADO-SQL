@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.38.1 - 2026-11-18
+- Calidad tiene ahora el mismo aspecto oscuro que Administracion, y se leen bien los titulos de las tablas, que antes salian blanco sobre gris claro
+
 ## 1.38.0 - 2026-11-17
 - Admin → Sistema tiene una tarjeta nueva, "Copia automatica": cuando fue la ultima copia, si ha salido bien y un boton para hacer una copia en el momento
 - Las copias automaticas se pueden hacer ademas en un disco externo: se indica su carpeta en esa tarjeta. Si el disco no esta enchufado se avisa, y el servidor sigue copiando igual

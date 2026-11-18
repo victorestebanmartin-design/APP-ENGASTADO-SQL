@@ -4,51 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   {% include '_head_pwa.html' %}
-  <title>Calidad - Sistema de Engastado</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <style>
-    .ens-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-    .ens-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-    .ens-header h1 { margin: 0; }
-    .ens-aviso { background: #fff3cd; border: 1px solid #ffe69c; color: #664d03; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-    .ens-tabs { display: flex; gap: 6px; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; flex-wrap: wrap; }
-    .ens-tab { padding: 10px 18px; border: none; background: none; font-size: 1rem; font-weight: 600; color: #6c757d; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
-    .ens-tab.activa { color: #0d6efd; border-bottom-color: #0d6efd; }
-    .ens-panel { display: none; }
-    .ens-panel.activo { display: block; }
-    .ens-card { background: #fff; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .ens-maq-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .ens-maq-top h3 { margin: 0; }
-    .ens-maq-sub { color: #6c757d; font-size: .9rem; }
-    .ens-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .ens-chip { display: inline-flex; align-items: center; gap: 6px; background: #e7f1ff; border: 1px solid #b6d4fe; border-radius: 16px; padding: 4px 6px 4px 12px; font-size: .9rem; }
-    .ens-chip button { border: none; background: none; cursor: pointer; font-size: .95rem; padding: 0 4px; }
-    table.ens-tabla { width: 100%; border-collapse: collapse; font-size: .92rem; }
-    .ens-tabla th, .ens-tabla td { padding: 7px 9px; border-bottom: 1px solid #e9ecef; text-align: left; vertical-align: top; }
-    .ens-tabla th { background: #f8f9fa; font-weight: 600; position: sticky; top: 0; }
-    .ens-ok { color: #198754; font-weight: 700; }
-    .ens-nok { color: #dc3545; font-weight: 700; }
-    .ens-tipo { font-size: .8rem; padding: 2px 8px; border-radius: 10px; background: #e9ecef; }
-    .ens-tipo.regulacion { background: #e9d5ff; }
-    .ens-tipo.decision { background: #fde68a; }
-    .ens-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
-    .ens-form label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: #495057; font-weight: 600; }
-    .ens-form input, .ens-form select, .ens-row select, .ens-row input, .ens-form textarea { padding: 7px 9px; border: 1px solid #ced4da; border-radius: 6px; font-size: .95rem; font-family: inherit; }
-    .ens-scroll { max-height: 65vh; overflow: auto; }
-    .ens-vacio { color: #6c757d; font-style: italic; }
-    .ens-msg { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 8px; color: #fff; font-weight: 600; z-index: 1000; display: none; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .ens-tab-sep { width: 1px; background: #dee2e6; margin: 8px 6px; }
-    .ens-sub { margin: 18px 0 8px; font-size: 1.05rem; }
-    .rep-estado { font-size: .8rem; padding: 2px 8px; border-radius: 10px; background: #fff3cd; color: #664d03; }
-    .rep-estado.completado { background: #d1e7dd; color: #0f5132; }
-  </style>
+  <title>Calidad — COJOsw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/calidad.css') }}">
 </head>
 <body>
-<div class="ens-container">
-  <div class="ens-header">
-    <h1>🛡️ Calidad</h1>
-    <a href="{{ url_for('main.modules') }}" class="btn-secondary">← Volver</a>
+<div class="admin-app">
+  <header class="admin-topbar">
+    <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
+    <div class="admin-topbar-title">Calidad</div>
+    <div class="admin-topbar-spacer"></div>
+    <a href="{{ url_for('main.modules') }}" class="admin-back">&larr; Volver</a>
+  </header>
+
+  <main class="admin-content" style="max-width:1400px;margin:0 auto;width:100%;">
+  <div class="admin-section-head">
+    <h1>Calidad</h1>
+    <p>Trazabilidad del engastado y ensayos de tracción.</p>
   </div>
 
   {% if not puede_editar %}
@@ -171,6 +145,7 @@
       </table>
     </div>
   </div>
+  </main>
 </div>
 
 <div class="ens-msg" id="ens-msg"></div>
