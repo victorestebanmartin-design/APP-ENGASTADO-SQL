@@ -88,6 +88,20 @@ if !EXIT_CODE! == 42 (
     goto INICIO
 )
 
+REM Codigo 45 = reinicio pedido por un admin desde la web (Admin -> Sistema).
+REM Se relanza igual que el 42, pero SIN volver a abrir la ventana de la app
+REM en el PC servidor: quien lo ha pedido ya tiene su pantalla abierta, y
+REM cada reinicio dejaria una ventana mas.
+if !EXIT_CODE! == 45 (
+    echo. >> "!LOG!" 2>nul
+    echo  -- Reinicio solicitado desde el panel de administracion -- >> "!LOG!" 2>nul
+    echo.
+    echo  Reiniciando servidor a peticion del administrador...
+    set COJOSW_ABRIR_APP=
+    timeout /t 2 /nobreak >nul
+    goto INICIO
+)
+
 REM Codigo 44 = ya habia un servidor en marcha y este arranque sobraba (se
 REM ha pulsado el icono con la app ya funcionando). La ventana de la app ya
 REM se ha abierto contra el servidor bueno: aqui no hay nada que hacer.

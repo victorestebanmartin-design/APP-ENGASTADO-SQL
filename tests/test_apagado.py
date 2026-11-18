@@ -77,3 +77,41 @@ def test_pid_se_escribe_y_se_borra(tmp_path):
     assert not os.path.exists(servidor_pid.ruta(data_dir))
     # Borrar dos veces no revienta: el arranque puede encontrarlo ya limpio.
     assert not servidor_pid.borrar(data_dir)
+
+
+# ── Reiniciar ────────────────────────────────────────────────────────────────
+
+def test_reiniciar_sin_sesion_devuelve_401(client, monkeypatch):
+    llamado, _ = _capturar_exit(monkeypatch)
+    r = client.post('/api/reiniciar_servidor')
+    assert r.status_code == 401
+    assert not llamado.wait(0.5), 'un anónimo no puede reiniciar el servidor'
+
+
+def test_reiniciar_responde_antes_de_salir_con_codigo_45(app, admin_client, monkeypatch):
+    llamado, codigos = _capturar_exit(monkeypatch)
+    data_dir = app.config['DATA_DIR']
+    servidor_pid.escribir(data_dir)
+
+    r = admin_client.post('/api/reiniciar_servidor')
+
+    assert r.status_code == 200
+    assert r.get_json()['success'] is True
+    assert not llamado.is_set()
+    # El proceso nuevo escribe el suyo; el viejo no puede dejar el de un muerto.
+    assert not os.path.exists(servidor_pid.ruta(data_dir))
+
+    assert llamado.wait(5), 'el servidor no llegó a reiniciarse'
+    assert codigos == [sistema.CODIGO_SALIDA_REINICIO]
+    # Ni el código de apagar (no relanza) ni el de la OTA (dice otra cosa en el log).
+    assert sistema.CODIGO_SALIDA_REINICIO not in (CODIGO_SALIDA_APAGADO, 42)
+
+
+def test_run_bat_relanza_con_el_codigo_de_reinicio():
+    ruta = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'run.bat')
+    with open(ruta, encoding='utf-8', errors='replace') as f:
+        bat = f.read()
+    codigo = sistema.CODIGO_SALIDA_REINICIO
+    bloque = bat.split(f'if !EXIT_CODE! == {codigo} (', 1)
+    assert len(bloque) == 2, f'run.bat no trata el código {codigo}'
+    assert 'goto INICIO' in bloque[1].split(')', 1)[0]

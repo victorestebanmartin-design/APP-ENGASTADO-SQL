@@ -1289,6 +1289,47 @@ async function apagarServidor() {
     }
 }
 
+/**
+ * Reiniciar el servidor: lo mismo que Apagar y volver a arrancarlo en el PC
+ * servidor, sin tener que ir hasta él. run.bat lo relanza al ver el codigo 45.
+ */
+async function reiniciarServidor() {
+    const confirmar = confirm(
+        '🔁 REINICIAR EL SERVIDOR\n\n' +
+        'La app se apagará y volverá a arrancar sola.\n' +
+        'Durante unos segundos ningún puesto podrá usarla.\n\n' +
+        '¿Reiniciar ahora?'
+    );
+    if (!confirmar) return;
+
+    const statusDiv = document.getElementById('apagado-status');
+    statusDiv.className = 'mensaje info';
+    statusDiv.textContent = '🔁 Reiniciando el servidor...';
+    statusDiv.classList.remove('hidden');
+
+    try {
+        const response = await fetch('/api/reiniciar_servidor', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            statusDiv.innerHTML = `
+                <strong>✓ ${data.message}</strong>
+                <br><span id="reinicio-countdown" style="font-size:0.88em;">⏳ Esperando que el servidor arranque...</span>
+            `;
+            // Margen antes de sondear: si no, el primer intento podría contestarlo
+            // el servidor viejo, que aún no ha terminado de apagarse.
+            setTimeout(() => _esperarReinicio(60), 3000);
+        } else {
+            statusDiv.className = 'mensaje error';
+            statusDiv.textContent = '❌ ' + data.message;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        statusDiv.className = 'mensaje error';
+        statusDiv.textContent = '❌ No se ha podido contactar con el servidor.';
+    }
+}
+
 function _pantallaServidorApagado() {
     document.body.innerHTML = `
         <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;

@@ -971,15 +971,17 @@
                     </div>
 
                     <div class="card">
-                        <h2>⏻ Apagar el servidor</h2>
+                        <h2>⏻ Apagar o reiniciar el servidor</h2>
                         <p class="instruccion">
-                            Apaga la aplicación del PC servidor. <strong>La app dejará de estar disponible
-                            para TODOS los puestos de la nave</strong> — pantallas de carro, lectores de
-                            tarjeta y ordenadores incluidos. Para volver a encenderla hay que ir físicamente
-                            al PC servidor.
+                            <strong>Reiniciar</strong> apaga la app y la vuelve a arrancar sola: los puestos
+                            se quedan sin ella unos segundos y luego vuelven.
+                            <strong>Apagar</strong> la deja inaccesible para TODOS los puestos de la nave
+                            — pantallas de carro, lectores de tarjeta y ordenadores incluidos — y para volver
+                            a encenderla hay que ir físicamente al PC servidor.
                         </p>
                         <div id="apagado-status" class="mensaje hidden"></div>
-                        <button onclick="apagarServidor()" class="btn-danger" style="margin-top:8px;">⏻ Apagar servidor</button>
+                        <button onclick="reiniciarServidor()" class="btn-secondary" style="margin-top:8px;">🔁 Reiniciar servidor</button>
+                        <button onclick="apagarServidor()" class="btn-danger" style="margin-top:8px; margin-left:10px;">⏻ Apagar servidor</button>
                     </div>
 
                     <div class="card">

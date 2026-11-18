@@ -452,6 +452,47 @@ def apagar_servidor():
     })
 
 
+# Codigo de salida que run.bat entiende como "reinicio pedido por un admin":
+# relanza el servidor como el 42, pero sin abrir otra ventana de la app en el
+# PC servidor y dejando en el log que no viene de una actualizacion.
+CODIGO_SALIDA_REINICIO = 45
+
+
+@bp.route('/api/reiniciar_servidor', methods=['POST'])
+@requiere_pin_admin
+def reiniciar_servidor():
+    """Apaga y vuelve a arrancar el servidor: lo mismo que Apagar + ARRANCAR.vbs."""
+    import glob as _glob
+    wsgi_pa = _glob.glob('/var/www/*_wsgi.py')
+
+    current_app.logger.warning('Reinicio del servidor solicitado desde el panel de administración')
+
+    if wsgi_pa:
+        # En PythonAnywhere matar el proceso no recarga nada: se toca el WSGI,
+        # que equivale al boton Reload de la pestaña Web.
+        def _recargar_pa():
+            time.sleep(ESPERA_APAGADO_S)
+            for w in wsgi_pa:
+                try:
+                    os.utime(w, None)
+                except OSError:
+                    pass
+        threading.Thread(target=_recargar_pa, daemon=True).start()
+    else:
+        import servidor_pid
+        servidor_pid.borrar(current_app.config['DATA_DIR'])
+
+        def _reiniciar():
+            time.sleep(ESPERA_APAGADO_S)
+            os._exit(CODIGO_SALIDA_REINICIO)
+        threading.Thread(target=_reiniciar, daemon=True).start()
+
+    return jsonify({
+        'success': True,
+        'message': 'Reiniciando el servidor. Vuelve solo en unos segundos.'
+    })
+
+
 @bp.route('/api/stats', methods=['GET'])
 @requiere_pin_admin
 def api_stats():

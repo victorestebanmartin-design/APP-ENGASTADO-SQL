@@ -70,7 +70,7 @@ Tuyo en `sistema.py` es el principio y el final:
   PythonAnywhere; busca en rutas fijas, GitHub Desktop y Scoop. Si algo nuevo
   necesita git, úsalo desde aquí, no con `shutil.which` a pelo.
 - `/api/comprobar_actualizaciones` y `/api/actualizar_sistema`.
-- `/api/apagar_servidor`, `/api/stats`, `/api/sistema/gate_operario`,
+- `/api/apagar_servidor`, `/api/reiniciar_servidor`, `/api/stats`, `/api/sistema/gate_operario`,
   `/api/descargar_instalador`, exportar/importar BD y backups.
 
 Otras fronteras: los **modales** los conoce `modesto` (Admin usa el "sistema B",
@@ -85,6 +85,9 @@ Archivos los conoce `axel`; el flujo que ve el operario, `gastón`.
 - **42** — reinicio tras actualizar: relanza el servidor.
 - **43** (`CODIGO_SALIDA_APAGADO`) — apagado pedido desde Admin: deja constancia
   en el log y termina **sin relanzar y sin `pause`**.
+- **44** — ya había otro servidor en marcha: este arranque sobraba.
+- **45** (`CODIGO_SALIDA_REINICIO`) — reinicio pedido desde Admin: relanza como
+  el 42 pero sin volver a abrir la ventana de la app en el PC servidor.
 - Cualquier otro — caída de verdad.
 
 Si añades otra forma de terminar el proceso, elige código a conciencia y
