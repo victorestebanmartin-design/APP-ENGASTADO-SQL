@@ -437,6 +437,16 @@ def _apply_migrations(db_path):
     except Exception:
         pass  # ya existe
 
+    # Migración: pc_ip en operario_logins. Dos PCs del mismo modulo (dos
+    # puestos de mangueras/manguitos) adoptaban los dos el login de cualquier
+    # lector del modulo. Si el lector esta casado con la IP de su PC, el login
+    # la lleva y solo ese PC lo ve. NULL = todo el modulo, como antes.
+    try:
+        cur.execute("ALTER TABLE operario_logins ADD COLUMN pc_ip TEXT")
+        conn.commit()
+    except Exception:
+        pass  # ya existe
+
     # Migración: tabla pc_equipos (identidad de cada PC por IP).
     # La red de planta tiene IPs fijas (sin DHCP), asi que la IP identifica
     # al equipo mejor que una cookie: sobrevive a borrar la cache y a cambiar

@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.40.1 - 2026-11-19
+- Con dos PCs de mangueras y manguitos, cada lector RFID se puede asignar a su PC (Admin → Lectores RFID, opciones 💻 con la IP). Así, pasar la tarjeta abre solo la pantalla de ese PC y no las dos a la vez con el mismo operario
+- En Admin → Lectores RFID, cada opción del desplegable dice la IP del PC al que llega y el nombre que le pusiste en Admin → IPs, para saber qué pantalla se abrirá sin ir a mirarlo
+
 ## 1.40.0 - 2026-11-18
 - Admin → Sistema tiene un botón «Reiniciar servidor»: apaga la app y la vuelve a arrancar sola, sin tener que ir al PC servidor. Los puestos se quedan sin ella unos segundos
 

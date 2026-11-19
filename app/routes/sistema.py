@@ -2758,6 +2758,111 @@ def _rfid_registrar_dispositivo(dev_id, ip=None, fw=None, expansores=None):
     _rfid_devices_actualizar(_touch)
 
 
+def _ordenar_ips(ips):
+    import ipaddress
+    try:
+        return sorted(ips, key=ipaddress.ip_address)
+    except (ValueError, TypeError):
+        return sorted(ips)
+
+
+def _nombres_pc_por_ip():
+    """{ip: nombre} de los PCs que el admin ha bautizado en Admin -> IPs
+    (tipo 'PC de puesto'). Es el nombre con el que se les reconoce en planta."""
+    try:
+        return {f['ip']: f['nombre'] for f in _ips_estaticas_todas()
+                if f['tipo'] == 'pc' and f['nombre']}
+    except Exception:
+        return {}
+
+
+def _texto_ip(ip, nombres, vistos):
+    """'192.168.50.18 (PUESTO 8)'. Una IP que no se ha conectado en los
+    ultimos dias (_PC_OLVIDO_DIAS) se marca: suele ser la identidad vieja de
+    un PC al que se le cambio la IP, que sigue anotada en pc_equipos."""
+    texto = f'{ip} ({nombres[ip]})' if nombres.get(ip) else ip
+    return texto if ip in vistos else f'{texto} ⚠ sin conectarse en {_PC_OLVIDO_DIAS} días'
+
+
+def _texto_pcs(ips, nombres, vistos):
+    """'192.168.50.18 (PC MANGUERAS 1), 192.168.50.19' o 'sin PC configurado'."""
+    if not ips:
+        return 'sin PC configurado'
+    return ', '.join(_texto_ip(ip, nombres, vistos) for ip in _ordenar_ips(ips))
+
+
+def _pc_equipos_filas():
+    try:
+        with db.engine.connect() as conn:
+            return conn.execute(text("SELECT ip, modulo, puesto_id FROM pc_equipos")).fetchall()
+    except Exception:
+        return []
+
+
+def _pcs_sin_puesto():
+    """PCs de mangueras/manguitos conocidos por su IP (tabla pc_equipos).
+
+    Se anotan solos al configurar cada PC, asi que son los que se le pueden
+    asignar a un lector. Lista de {ip, modulo, nombre}, ordenada por IP; el
+    nombre lleva el que les puso el admin en Admin -> IPs, si lo tienen.
+    """
+    from app.routes.puestos import MODULOS_SIN_PUESTO, MODULOS_APP_LABEL
+    nombres = _nombres_pc_por_ip()
+    vistos = _pcs_vistos_activos()
+    pcs = {}
+    for ip, modulo, _ in _pc_equipos_filas():
+        if modulo not in MODULOS_SIN_PUESTO:
+            continue
+        etiqueta = MODULOS_APP_LABEL.get(modulo, modulo)
+        nombre = (f'{nombres[ip]} · {etiqueta} — {ip}' if nombres.get(ip)
+                  else f'{etiqueta} — PC {ip}')
+        if ip not in vistos:
+            nombre += f' ⚠ sin conectarse en {_PC_OLVIDO_DIAS} días'
+        pcs[ip] = {'ip': ip, 'modulo': modulo, 'nombre': nombre}
+    return [pcs[ip] for ip in _ordenar_ips(pcs)]
+
+
+def _opciones_destino_lector():
+    """Opciones del desplegable de Admin -> Lectores RFID, cada una con la IP
+    (y el nombre) de los PCs a los que llega: así se sabe qué pantalla se
+    abrirá al pasar la tarjeta sin tener que ir a mirarlo al puesto."""
+    nombres = _nombres_pc_por_ip()
+    vistos = _pcs_vistos_activos()
+    filas = _pc_equipos_filas()
+
+    ips_puesto, ips_modulo = {}, {}
+    for ip, modulo, puesto_id in filas:
+        if puesto_id:
+            ips_puesto.setdefault(puesto_id, set()).add(ip)
+        elif modulo:
+            ips_modulo.setdefault(modulo, set()).add(ip)
+
+    opciones = []
+    try:
+        for p in PuestoRepository(db).obtener_todos_puestos():
+            ips = set(ips_puesto.get(p['id'], set()))
+            if p.get('ip_fija'):
+                ips.add(p['ip_fija'])
+            opciones.append({'id': p['id'],
+                             'nombre': f"🔧 Engastado — {p['nombre']} · {_texto_pcs(ips, nombres, vistos)}"})
+    except Exception:
+        pass
+
+    # Mangueras y manguitos no tienen puestos: el lector se asigna al
+    # modulo entero (ver app/routes/puestos.py:_pc_identidad)...
+    for slug, texto in (('mangueras', '🌊 Mangueras (módulo completo)'),
+                        ('manguitos', '🔩 Manguitos (módulo completo)'),
+                        ('manguitos_mangueras', 'Manguitos y Mangueras (puesto compartido)')):
+        opciones.append({'id': f'modulo:{slug}',
+                         'nombre': f'{texto} · {_texto_pcs(ips_modulo.get(slug), nombres, vistos)}'})
+
+    # ...o a uno de sus PCs: con dos PCs en el mismo modulo, el lector tiene
+    # que ir a uno de ellos o se abren los dos.
+    opciones += [{'id': f'pc:{pc["ip"]}', 'nombre': f'💻 {pc["nombre"]}'}
+                 for pc in _pcs_sin_puesto()]
+    return opciones
+
+
 @bp.route('/api/esp32/rfid/devices', methods=['GET'])
 @requiere_pin_admin
 def api_esp32_rfid_devices():
@@ -2779,11 +2884,20 @@ def api_esp32_rfid_devices():
             # directamente a un MODULO (mangueras/manguitos, que no tienen
             # puestos). En el desplegable ambos casos son una sola lista: los
             # modulos viajan con el id 'modulo:<slug>'.
+            # Y un lector de modulo puede ir ademas a un PC concreto
+            # ('pc:<ip>'), cuando hay dos PCs dedicados al mismo modulo.
             modulo = d.get('modulo', '')
+            pc_ip = d.get('pc_ip', '') if modulo else ''
+            if pc_ip:
+                destino = f'pc:{pc_ip}'
+            elif modulo:
+                destino = f'modulo:{modulo}'
+            else:
+                destino = d.get('puesto_id', '')
             out.append({
                 'id': did,
                 'nombre': d.get('nombre', ''),
-                'puesto_id': f'modulo:{modulo}' if modulo else d.get('puesto_id', ''),
+                'puesto_id': destino,
                 'puesto_nombre': d.get('puesto_nombre', ''),
                 'ip': d.get('ip', ''),
                 'ip_estatica': _ip_estatica_de(did),
@@ -2799,18 +2913,7 @@ def api_esp32_rfid_devices():
                 # las ordenes). None = firmware viejo que aun no lo cuenta.
                 'ptl_http': d.get('ptl_http'),
             })
-        try:
-            puestos = [{'id': p['id'], 'nombre': f"🔧 Engastado — {p['nombre']}"}
-                      for p in PuestoRepository(db).obtener_todos_puestos()]
-        except Exception:
-            puestos = []
-        # Mangueras y manguitos no tienen puestos: el lector se asigna al
-        # modulo entero (ver app/routes/puestos.py:_pc_identidad).
-        puestos += [
-            {'id': 'modulo:mangueras', 'nombre': '🌊 Mangueras (módulo completo)'},
-            {'id': 'modulo:manguitos', 'nombre': '🔩 Manguitos (módulo completo)'},
-            {'id': 'modulo:manguitos_mangueras', 'nombre': 'Manguitos y Mangueras (puesto compartido)'},
-        ]
+        puestos = _opciones_destino_lector()
         return jsonify({'success': True, 'devices': out, 'puestos': puestos,
                         'firmware_version': version_srv})
     except Exception as e:
@@ -2831,7 +2934,20 @@ def api_esp32_rfid_device_update(device_id):
         if 'puesto_id' in data:
             from app.routes.puestos import MODULOS_SIN_PUESTO, MODULOS_APP_LABEL
             destino = (data.get('puesto_id') or '').strip()
-            if destino.startswith('modulo:'):
+            dev['pc_ip'] = ''
+            if destino.startswith('pc:'):
+                # Lector de un PC concreto de mangueras/manguitos
+                ip = destino.split(':', 1)[1]
+                pc = next((p for p in _pcs_sin_puesto() if p['ip'] == ip), None)
+                if not pc:
+                    return jsonify({'success': False,
+                                    'message': f'El PC {ip} no está configurado como '
+                                               'mangueras o manguitos'}), 404
+                dev['modulo'] = pc['modulo']
+                dev['pc_ip'] = ip
+                dev['puesto_id'] = ''
+                dev['puesto_nombre'] = MODULOS_APP_LABEL.get(pc['modulo'], pc['modulo'])
+            elif destino.startswith('modulo:'):
                 # Lector de un modulo sin puestos (mangueras/manguitos)
                 slug = destino.split(':', 1)[1]
                 if slug not in MODULOS_SIN_PUESTO:

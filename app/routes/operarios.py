@@ -662,21 +662,26 @@ def api_operario_logins_get():
         # Los PCs de mangueras/manguitos no tienen puesto: filtran por modulo,
         # que es lo que graba el lector RFID asignado a ese modulo.
         modulo = (request.args.get('modulo') or '').strip() or None
+        # Si el lector esta casado con un PC (ver _pc_del_lector), su login
+        # solo le sale al PC de esa IP: otro PC del mismo modulo no lo ve.
+        # La IP la pone el servidor, no el navegador: no se puede suplantar.
+        from app.routes.puestos import _ip_cliente
         with db.engine.connect() as conn:
             _expirar_logins_fantasma(conn)
             conn.commit()
             rows = conn.execute(text(
                 "SELECT ol.id, ol.operario_nombre, ol.timestamp_login, ol.ultimo_latido, "
-                "       ol.puesto_id, p.nombre, ol.modulo "
+                "       ol.puesto_id, p.nombre, ol.modulo, ol.pc_ip "
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
                 "WHERE ol.activo=1 "
                 "  AND (:puesto_id IS NULL OR ol.puesto_id = :puesto_id) "
                 "  AND (:modulo IS NULL OR ol.modulo = :modulo) "
+                "  AND (:modulo IS NULL OR ol.pc_ip IS NULL OR ol.pc_ip = :ip) "
                 "ORDER BY ol.timestamp_login"
-            ), {'puesto_id': puesto_id, 'modulo': modulo}).fetchall()
+            ), {'puesto_id': puesto_id, 'modulo': modulo, 'ip': _ip_cliente()}).fetchall()
         return jsonify({'success': True, 'logins': [
             {'id': r[0], 'operario': r[1], 'desde': r[2], 'ultimo_latido': r[3],
-             'puesto_id': r[4], 'puesto_nombre': r[5], 'modulo': r[6]}
+             'puesto_id': r[4], 'puesto_nombre': r[5], 'modulo': r[6], 'pc_ip': r[7]}
             for r in rows
         ]})
     except Exception as e:
@@ -705,11 +710,16 @@ def api_sesion_operario_adoptar():
             return jsonify({'success': False, 'error': 'login_id es obligatorio'}), 400
         with db.engine.connect() as conn:
             row = conn.execute(text(
-                "SELECT operario_nombre FROM operario_logins WHERE id=:id AND activo=1"
+                "SELECT operario_nombre, pc_ip FROM operario_logins WHERE id=:id AND activo=1"
             ), {'id': login_id}).fetchone()
         if not row:
             return jsonify({'success': False, 'error': 'Ese login ya no está activo'}), 404
-        nombre = row[0]
+        nombre, pc_ip = row
+        # La tarjeta se paso en el lector de otro PC: ese login es suyo.
+        from app.routes.puestos import _ip_cliente
+        if pc_ip and pc_ip != _ip_cliente():
+            return jsonify({'success': False,
+                            'error': 'Esa tarjeta se ha pasado en el lector de otro PC'}), 403
         session['operario_actual'] = nombre
         session['operario_login_id'] = login_id
 
@@ -862,6 +872,28 @@ def _destino_del_lector(device_id):
     return None, None, None
 
 
+def _pc_del_lector(device_id):
+    """IP del PC concreto al que va un lector de mangueras/manguitos, o None.
+
+    Dos PCs pueden estar dedicados al mismo modulo (dos puestos de mangueras
+    y manguitos), y sondeando solo por modulo los dos adoptaban el login de
+    cualquiera de los dos lectores: se abrian las dos pantallas con el mismo
+    operario. Con el lector casado a la IP de su PC (Admin -> Lectores RFID),
+    el login solo se le enseña a ese PC. Sin IP, como antes: todo el modulo.
+    """
+    if not device_id:
+        return None
+    try:
+        with open(_rfid_devices_file_path(), encoding='utf-8') as f:
+            devs = json.load(f)
+    except Exception:
+        return None
+    dev = devs.get(device_id) or {}
+    if not dev.get('modulo'):
+        return None
+    return (dev.get('pc_ip') or '').strip() or None
+
+
 def _rfid_estado_file_path():
     base = current_app.config.get('DATA_DIR') or os.path.join(os.path.dirname(current_app.root_path), 'data')
     return os.path.join(base, 'rfid_entrada_estado.json')
@@ -869,7 +901,7 @@ def _rfid_estado_file_path():
 
 def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag_uid=None,
                            puesto_id=None, puesto_nombre=None, operario_nombre=None,
-                           modulo=None, consejo=''):
+                           modulo=None, consejo='', pc_ip=None):
     """Guarda el ultimo estado de entrada RFID para mostrar feedback en UI.
 
     Se conserva un historial corto (ultimos 120) para tolerar que haya varias
@@ -891,6 +923,8 @@ def _rfid_estado_registrar(estado, motivo='', error_code='', device_id=None, tag
         'puesto_id': (puesto_id or '')[:24],
         'puesto_nombre': puesto_nombre or '',
         'modulo': (modulo or '')[:24],
+        # Solo en lectores casados con un PC concreto (ver _pc_del_lector)
+        'pc_ip': (pc_ip or '')[:45],
         'operario_nombre': operario_nombre or '',
     }
 
@@ -932,6 +966,9 @@ def api_rfid_entrada_estado():
         except Exception:
             eventos = []
 
+        from app.routes.puestos import _ip_cliente
+        ip = _ip_cliente()
+
         def _me_incumbe(ev):
             ev_puesto = (ev.get('puesto_id') or '').strip()
             ev_modulo = (ev.get('modulo') or '').strip()
@@ -940,7 +977,9 @@ def api_rfid_entrada_estado():
             if puesto_id and ev_puesto == puesto_id:
                 return True
             if modulo and ev_modulo == modulo:
-                return True
+                # Lector casado con un PC: el aviso es solo para ese PC
+                ev_pc = (ev.get('pc_ip') or '').strip()
+                return not ev_pc or ev_pc == ip
             # Un PC que no dice quien es (Engastado V3 clasico) lo ve todo
             return not puesto_id and not modulo
 
@@ -1002,7 +1041,7 @@ def api_engastado_v3_entrada():
     # sabiendo de que lector y de que tarjeta venia el escaneo, para que el
     # aviso llegue SOLO a la pantalla que le corresponde.
     tag_uid, device_id = '', None
-    puesto_id, puesto_nombre, modulo_lector = None, None, None
+    puesto_id, puesto_nombre, modulo_lector, pc_ip = None, None, None, None
     try:
         data = request.get_json(silent=True) or {}
         tag_uid = (data.get('tag_uid') or '').strip().upper()
@@ -1038,6 +1077,7 @@ def api_engastado_v3_entrada():
                 current_app.logger.exception('No se pudo registrar el evento de entrada RFID')
 
         puesto_id, puesto_nombre, modulo_lector = _destino_del_lector(device_id)
+        pc_ip = _pc_del_lector(device_id)
 
         # Todos los rechazos de aqui abajo comparten estos datos: se fijan una
         # vez para que ninguno se quede sin decir de que lector viene ni a que
@@ -1047,7 +1087,8 @@ def api_engastado_v3_entrada():
             _rfid_estado_registrar('rechazo', motivo, code, consejo=consejo,
                                    device_id=device_id, tag_uid=tag_uid,
                                    puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                   modulo=modulo_lector, operario_nombre=operario)
+                                   modulo=modulo_lector, operario_nombre=operario,
+                                   pc_ip=pc_ip)
 
         # Lector que nadie ha casado con un puesto ni con un modulo: el login
         # se crea igual (Engastado V3 clasico sondea sin filtrar y sigue
@@ -1121,20 +1162,28 @@ def api_engastado_v3_entrada():
             # Check if operario already has active session
             _expirar_logins_fantasma(conn, forzar=True)
             existente = conn.execute(text(
-                "SELECT ol.id, ol.puesto_id, ol.modulo, p.nombre "
+                "SELECT ol.id, ol.puesto_id, ol.modulo, p.nombre, ol.pc_ip "
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
                 "WHERE ol.activo=1 AND ol.operario_nombre=:n"
             ), {'n': nombre}).fetchone()
 
             if existente:
-                login_id, existente_puesto_id, existente_modulo, existente_puesto_nombre = existente
-                mismo_lector = (existente_puesto_id == puesto_id and existente_modulo == modulo_lector)
+                (login_id, existente_puesto_id, existente_modulo,
+                 existente_puesto_nombre, existente_pc_ip) = existente
+                mismo_lector = (existente_puesto_id == puesto_id
+                                and existente_modulo == modulo_lector
+                                and (existente_pc_ip or None) == pc_ip)
                 if not mismo_lector:
-                    # Tarjeta ya activa en OTRO puesto/módulo: no se mueve
+                    # Tarjeta ya activa en OTRO puesto/módulo/PC: no se mueve
                     # sola (un login "viajando" solo con pasar la tarjeta en
                     # cualquier lector -incluido el del carro- dejaría dos
                     # puestos creyendo tener al mismo operario a la vez).
-                    donde = existente_puesto_nombre or 'otro puesto'
+                    if existente_puesto_nombre:
+                        donde = existente_puesto_nombre
+                    elif existente_pc_ip:
+                        donde = f'otro PC ({existente_pc_ip})'
+                    else:
+                        donde = 'otro puesto'
                     motivo = f'{nombre} ya está activo en {donde}'
                     _rechazo(motivo, 'ALREADY_ACTIVE', operario=nombre,
                              consejo='Cierra la sesión en ese puesto antes de entrar aquí, '
@@ -1147,7 +1196,8 @@ def api_engastado_v3_entrada():
                 _rfid_estado_registrar('ok', 'Sesión existente reutilizada', 'OK_REUSED',
                                        device_id=device_id, tag_uid=tag_uid,
                                        puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                       modulo=modulo_lector, operario_nombre=nombre)
+                                       modulo=modulo_lector, operario_nombre=nombre,
+                                       pc_ip=pc_ip)
                 return jsonify({
                     'success': True,
                     'operario_nombre': nombre,
@@ -1164,9 +1214,10 @@ def api_engastado_v3_entrada():
             try:
                 conn.execute(text(
                     "INSERT INTO operario_logins "
-                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id, modulo) "
-                    "VALUES (:id, :n, :t, :t, 1, :p, :m)"
-                ), {'id': login_id, 'n': nombre, 't': ahora, 'p': puesto_id, 'm': modulo_lector})
+                    "(id, operario_nombre, timestamp_login, ultimo_latido, activo, puesto_id, modulo, pc_ip) "
+                    "VALUES (:id, :n, :t, :t, 1, :p, :m, :ip)"
+                ), {'id': login_id, 'n': nombre, 't': ahora, 'p': puesto_id, 'm': modulo_lector,
+                    'ip': pc_ip})
                 conn.commit()
             except IntegrityError:
                 # Race condition: operario logged in from another workstation
@@ -1180,7 +1231,8 @@ def api_engastado_v3_entrada():
             _rfid_estado_registrar('ok', 'Entrada registrada', 'OK_NEW',
                                    device_id=device_id, tag_uid=tag_uid,
                                    puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                                   modulo=modulo_lector, operario_nombre=nombre)
+                                   modulo=modulo_lector, operario_nombre=nombre,
+                                   pc_ip=pc_ip)
             return jsonify({
                 'success': True,
                 'operario_nombre': nombre,
@@ -1202,7 +1254,7 @@ def api_engastado_v3_entrada():
                 consejo='Vuelve a pasar la tarjeta. Si sigue igual, avisa al administrador.',
                 device_id=device_id, tag_uid=tag_uid,
                 puesto_id=puesto_id, puesto_nombre=puesto_nombre,
-                modulo=modulo_lector)
+                modulo=modulo_lector, pc_ip=pc_ip)
         except Exception:
             pass
         return error_interno(e, clave='error')
