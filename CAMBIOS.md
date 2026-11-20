@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.7 - 2026-11-20
+- Admin abre más rápido: cada apartado carga sus datos al pulsarlo, no todos a la vez al entrar. Al entrar ya no se buscan placas en los puertos USB del servidor (antes lo hacía cuatro veces aunque no fueras a grabar nada)
+
 ## 1.43.6 - 2026-11-20
 - Nueva entrada en Admin, «Preparar placa nueva»: para una placa recién sacada de la caja. Arriba los drivers USB (si Windows no le da puerto COM) y debajo grabarle MicroPython. Antes estaba mezclado con el diagnóstico y había que ir y volver entre pantallas
 - «Grabar pantalla grande (P4)» pasa a Pantallas de carro, debajo de «Subir firmware por USB»: todo lo de grabar pantallas queda junto

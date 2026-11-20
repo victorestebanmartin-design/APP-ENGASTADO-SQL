@@ -110,10 +110,7 @@ async function liberarCachePuestoPC() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-    if (!document.getElementById('gate-operario-toggle')) return;
-    cargarGateOperario();
-});
+adminAlAbrir('sistema', cargarGateOperario);
 
 // ============================================================================
 // WIFI DE LAS PLACAS — SSID/clave del punto de acceso de planta, guardados
@@ -178,15 +175,15 @@ async function _precargarHotspotEnFormulariosUSB() {
     } catch (e) { /* silencioso: si falla, el admin escribe a mano como siempre */ }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-    if (document.getElementById('hotspot-ssid')) cargarCredencialesHotspot();
-    _precargarHotspotEnFormulariosUSB();
-});
+adminAlAbrir('ips-placas', cargarCredencialesHotspot);
+adminAlAbrir('displays', _precargarHotspotEnFormulariosUSB);
+adminAlAbrir('lectores-rfid', _precargarHotspotEnFormulariosUSB);
 
 // Inicialización
+adminAlAbrir('archivos', cargarArchivos);
+adminAlAbrir('archivos', cargarCortes);
+
 document.addEventListener('DOMContentLoaded', function() {
-    cargarArchivos();
-    cargarCortes();
     
     // Event listener para formulario de upload
     const uploadForm = document.getElementById('upload-form');
@@ -1343,9 +1340,9 @@ async function _copiaPost(url, cuerpo, enCurso, hecho) {
     }
 }
 
+adminAlAbrir('datos', cargarCopiaAuto);
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('copia-auto-estado')) return;
-    cargarCopiaAuto();
     document.getElementById('copia-auto-guardar').addEventListener('click', function () {
         const ruta = document.getElementById('copia-auto-ruta').value.trim();
         _copiaPost('/api/sistema/copia_auto/destino', { ruta }, '⏳ Comprobando la carpeta…',
@@ -1642,9 +1639,9 @@ async function actualizarLectorRfid(id) {
     }
 }
 
+adminAlAbrir('lectores-rfid', cargarLectoresRfid);
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('lectores-rfid-lista')) return;
-    cargarLectoresRfid();
     setInterval(() => {
         if (!document.getElementById('sec-lectores-rfid')?.classList.contains('active')) return;
         if (document.activeElement && String(document.activeElement.id).startsWith('rfid-')) return;
@@ -1872,10 +1869,10 @@ async function _sugerirHostEnFormulariosUSB() {
     } catch (e) { /* silencioso: si falla, el admin la escribe a mano */ }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-    if (document.getElementById('ips-lista')) cargarIpsPlacas();
-    _sugerirIpEnFormulariosUSB();
-    _sugerirHostEnFormulariosUSB();
+adminAlAbrir('ips-placas', cargarIpsPlacas);
+['displays', 'lectores-rfid'].forEach(function (seccion) {
+    adminAlAbrir(seccion, function () { return _sugerirIpEnFormulariosUSB(); });
+    adminAlAbrir(seccion, _sugerirHostEnFormulariosUSB);
 });
 
 // ── Lectores RFID: configurar y subir por USB (primer flasheo) ─────────────
@@ -2009,8 +2006,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (document.getElementById('usb-entorno')) actualizarEntornoDisplay();
     if (!document.getElementById('usb-puerto-rfid')) return;
     actualizarEntornoRfid();
-    cargarPuertosUSBRfid();
 });
+adminAlAbrir('lectores-rfid', cargarPuertosUSBRfid);
 
 // ── Subir firmware por USB ──────────────────────────────────────────────────
 
@@ -2414,10 +2411,10 @@ async function subirDriverUSB() {
     }
 }
 
+adminAlAbrir('displays', cargarDisplays);
+adminAlAbrir('displays', cargarPuertosUSB);
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('displays-lista')) return;
-    cargarDisplays();
-    cargarPuertosUSB();
     // Refresco automático mientras la sección está visible (estado online/offline).
     // No refrescar si el admin está editando un campo de la tabla.
     setInterval(() => {
@@ -2539,13 +2536,11 @@ function _diagContador(texto) {
     if (el) el.textContent = texto;
 }
 
+adminAlAbrir('diagnostico', cargarDiagnosticoEsp32);
+adminAlAbrir('placa-nueva', cargarGrabadoMicroPython);
+adminAlAbrir('displays', cargarPantallaGrande);
 document.addEventListener('DOMContentLoaded', function () {
     if (!document.getElementById('diag-eventos-lista')) return;
-    cargarDiagnosticoEsp32();
-    // Puertos y firmwares viven ahora en esta misma sección (grabado de placas
-    // nuevas), asi que se cargan aqui y no con la seccion de Display Carro.
-    cargarGrabadoMicroPython();
-    cargarPantallaGrande();
     setInterval(() => {
         if (!document.getElementById('sec-diagnostico')?.classList.contains('active')) return;
         const auto = document.getElementById('diag-auto');
