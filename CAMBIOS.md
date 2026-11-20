@@ -6,6 +6,12 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.6 - 2026-11-20
+- Nueva entrada en Admin, «Preparar placa nueva»: para una placa recién sacada de la caja. Arriba los drivers USB (si Windows no le da puerto COM) y debajo grabarle MicroPython. Antes estaba mezclado con el diagnóstico y había que ir y volver entre pantallas
+- «Grabar pantalla grande (P4)» pasa a Pantallas de carro, debajo de «Subir firmware por USB»: todo lo de grabar pantallas queda junto
+- «Diagnóstico» se queda solo con el chequeo en vivo y pasa a llamarse «Diagnóstico en vivo»
+- El botón «Borrar y grabar MicroPython» sale en rojo: borra la placa entera
+
 ## 1.43.5 - 2026-11-20
 - «Sistema» de Admin se parte en tres, porque tenía diez cosas mezcladas: «Este PC» (el PIN y la caché del puesto de este ordenador), «Servidor» (actualizar, exigir tarjeta, quitar el aviso «No es seguro», instalar en otro PC y, al final, reiniciar o apagar) y «Datos y copias» (copia automática, exportar y, al final, importar)
 - «Quitar el aviso No es seguro» pasa de Red e IPs a Servidor: va de los PCs de puesto, no de las placas

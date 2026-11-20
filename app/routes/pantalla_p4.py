@@ -1,4 +1,4 @@
-"""Admin -> Diagnóstico ESP32: grabar la pantalla grande (P4) por USB.
+"""Admin -> Pantallas de carro: grabar la pantalla grande (P4) por USB.
 
 La lógica está en app/pantalla_p4.py; aquí solo las rutas.
 """
