@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.5 - 2026-11-20
+- «Sistema» de Admin se parte en tres, porque tenía diez cosas mezcladas: «Este PC» (el PIN y la caché del puesto de este ordenador), «Servidor» (actualizar, exigir tarjeta, quitar el aviso «No es seguro», instalar en otro PC y, al final, reiniciar o apagar) y «Datos y copias» (copia automática, exportar y, al final, importar)
+- «Quitar el aviso No es seguro» pasa de Red e IPs a Servidor: va de los PCs de puesto, no de las placas
+- El botón «Importar y reemplazar BD» sale en rojo como botón peligroso, y las copias bajadas de PythonAnywhere ya no se confunden de nombre con la copia automática
+
 ## 1.43.4 - 2026-11-20
 - Liberar paquetes bloqueados se hace ahora en Admin → Operarios, justo debajo de liberar logins colgados: los dos arreglan lo mismo, un puesto que se quedó a medias. Antes estaba en Sistema
 - En Admin → Red e IPs sale arriba la tabla de placas y PCs con su IP, que es lo que más se consulta. La WiFi y la explicación de la red van debajo

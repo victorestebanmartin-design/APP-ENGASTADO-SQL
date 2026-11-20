@@ -58,7 +58,9 @@
                 <a class="admin-nav-item" href="/calidad"><span class="ico">🛡️</span> Calidad (report) ↗</a>
 
                 <div class="admin-nav-label">Sistema</div>
-                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">⚙️</span> Sistema</button>
+                <button class="admin-nav-item" data-section="este-pc" onclick="adminNav('este-pc')"><span class="ico">💻</span> Este PC</button>
+                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">⚙️</span> Servidor</button>
+                <button class="admin-nav-item" data-section="datos" onclick="adminNav('datos')"><span class="ico">🛟</span> Datos y copias</button>
             </nav>
 
             <!-- Content -->
@@ -713,69 +715,6 @@
                         </div>
                     </div>
 
-                    <div class="card">
-                        <h2>🔓 Quitar el aviso «No es seguro» de un PC</h2>
-                        <p class="instruccion" style="margin-bottom:12px;">
-                            Ese aviso no lo pone la aplicación: lo pone el <strong>navegador</strong>, porque se
-                            entra por <code>http://</code> en vez de <code>https://</code>. Los navegadores marcan
-                            así todo lo que no sea https salvo <code>localhost</code> — por eso aquí en el servidor
-                            no sale y en los puestos sí. Da igual que la red esté aislada y sin internet.
-                            <br><br>
-                            Una página web <strong>no puede</strong> cambiar la configuración del ordenador que la
-                            abre: justo esa frontera es lo que hace seguro a un navegador. Así que esto hay que
-                            ejecutarlo <strong>una vez en cada PC de puesto</strong>. El archivo de abajo ya viene
-                            relleno con las direcciones correctas de este servidor: descárgalo en el PC del puesto,
-                            doble clic, aceptar, y <strong>cierra el navegador del todo</strong> antes de volver a
-                            abrirlo.
-                            <br><br>
-                            De paso arregla algo que no se ve: sobre <code>http</code> el navegador no deja
-                            registrar el <em>service worker</em>, así que en los puestos nunca aparecía
-                            <strong>«Instalar aplicación»</strong>. Después de esto, sí.
-                        </p>
-                        <div style="margin-bottom:10px;">
-                            <a class="btn-primary" href="/api/red/pc-puesto.bat"
-                               style="text-decoration:none;display:inline-block;"
-                               title="Pide la contraseña de administrador una vez y lo deja hecho para todas las cuentas">
-                                ⬇️ Descargar instalador (.bat) — todo el PC
-                            </a>
-                        </div>
-                        <p class="instruccion" style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;">
-                            <strong>Recomendado.</strong> Vale para <strong>todas las cuentas de Windows</strong>
-                            del equipo. Al abrirlo pide la contraseña de administrador una sola vez (aunque lo
-                            lances desde una cuenta normal), así que no hace falta iniciar sesión como
-                            administrador ni buscar «Ejecutar como administrador».
-                            <br>Al descargarlo el navegador avisará de que un <code>.bat</code> puede ser
-                            peligroso: dale a <em>Conservar</em> / <em>Mantener de todos modos</em>.
-                            <br>Después, <strong>cierra el navegador del todo</strong> y vuelve a abrirlo.
-                            Para comprobarlo: <code>edge://policy</code> o <code>chrome://policy</code>.
-                        </p>
-
-                        <details style="font-size:0.88em;color:#94a3b8;">
-                            <summary style="cursor:pointer;color:#cbd5e1;">Otras formas de aplicarlo</summary>
-                            <div style="margin-top:10px;line-height:1.7;">
-                                <strong>Solo para la cuenta actual</strong> (no necesita permisos, pero el
-                                aviso volverá a salir en cualquier otra cuenta de ese PC):
-                                <br>
-                                <a href="/api/red/pc-puesto.reg" style="color:#60a5fa;">
-                                    ⬇️ Descargar .reg de usuario
-                                </a> — doble clic y aceptar.
-                                <br><br>
-                                <strong>A mano, para todo el equipo:</strong>
-                                <a href="/api/red/pc-puesto.reg?ambito=equipo" style="color:#60a5fa;">
-                                    ⬇️ .reg de equipo
-                                </a>, y luego, en una consola abierta
-                                <strong>como administrador</strong>:
-                                <br><code>reg import "%USERPROFILE%\Downloads\COJOsw-pc-de-puesto-equipo.reg"</code>
-                                <br><span style="color:#fbbf24;">Ojo:</span> con este no vale el doble clic —
-                                falla con «error de acceso al registro», porque abrir un <code>.reg</code> no
-                                eleva permisos por sí solo.
-                                <br><br>
-                                <strong>Varios PCs de golpe</strong>, incluyendo el acceso directo sin barra
-                                de direcciones: <code>_scripts_utiles\configurar_pc_puesto.ps1</code>,
-                                como administrador.
-                            </div>
-                        </details>
-                    </div>
                 </section>
 
 
@@ -927,11 +866,11 @@
                 </section>
 
 
-                <!-- ============ SISTEMA ============ -->
-                <section id="sec-sistema" class="admin-section">
+                <!-- ============ ESTE PC ============ -->
+                <section id="sec-este-pc" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Sistema</h1>
-                        <p>Actualizaciones y bloqueos de paquetes activos</p>
+                        <h1>Este PC</h1>
+                        <p>Lo que solo afecta al ordenador desde el que estás ahora</p>
                     </div>
 
                     <div class="card">
@@ -953,7 +892,34 @@
                     </div>
 
                     <div class="card">
-                        <h2>🪪 Login con tarjeta (obligatorio para acceder a la app)</h2>
+                        <h2>🧹 Puesto de este PC (caché)</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Si quieres reasignar rápidamente este equipo a otro puesto, borra aquí la caché local.
+                            Al liberar, se cerrará también el operario actual de este navegador y al siguiente acceso
+                            se pedirá configurar puesto de nuevo.
+                        </p>
+                        <button onclick="liberarCachePuestoPC()" class="btn-secondary">🧹 Liberar caché de puesto</button>
+                        <div id="puesto-pc-cache-msg" style="margin-top:10px;font-size:0.88em;"></div>
+                    </div>
+                </section>
+
+                <!-- ============ SERVIDOR ============ -->
+                <section id="sec-sistema" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Servidor</h1>
+                        <p>Actualizar la app, exigir tarjeta en toda la planta, preparar PCs nuevos y, al final, reiniciar o apagar</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>🔄 Actualización del Sistema</h2>
+                        <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
+                        <div id="update-status" class="mensaje hidden"></div>
+                        <button onclick="comprobarActualizaciones()" class="btn-secondary">🔍 Comprobar Actualizaciones</button>
+                        <button onclick="actualizarSistema()" class="btn-primary" style="margin-left: 10px;">⬇️ Actualizar Ahora</button>
+                    </div>
+
+                    <div class="card">
+                        <h2>💳 Login con tarjeta (obligatorio para acceder a la app)</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Con esto activado, <strong>toda la app exige pasar la tarjeta</strong> antes de entrar
                             a cualquier módulo (según los permisos de cada operario, configurables en
@@ -967,22 +933,83 @@
                     </div>
 
                     <div class="card">
-                        <h2>🧹 Puesto de este PC (caché)</h2>
+                        <h2>🔓 Quitar el aviso «No es seguro» de un PC</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
-                            Si quieres reasignar rápidamente este equipo a otro puesto, borra aquí la caché local.
-                            Al liberar, se cerrará también el operario actual de este navegador y al siguiente acceso
-                            se pedirá configurar puesto de nuevo.
+                            Ese aviso no lo pone la aplicación: lo pone el <strong>navegador</strong>, porque se
+                            entra por <code>http://</code> en vez de <code>https://</code>. Los navegadores marcan
+                            así todo lo que no sea https salvo <code>localhost</code> — por eso aquí en el servidor
+                            no sale y en los puestos sí. Da igual que la red esté aislada y sin internet.
+                            <br><br>
+                            Una página web <strong>no puede</strong> cambiar la configuración del ordenador que la
+                            abre: justo esa frontera es lo que hace seguro a un navegador. Así que esto hay que
+                            ejecutarlo <strong>una vez en cada PC de puesto</strong>. El archivo de abajo ya viene
+                            relleno con las direcciones correctas de este servidor: descárgalo en el PC del puesto,
+                            doble clic, aceptar, y <strong>cierra el navegador del todo</strong> antes de volver a
+                            abrirlo.
+                            <br><br>
+                            De paso arregla algo que no se ve: sobre <code>http</code> el navegador no deja
+                            registrar el <em>service worker</em>, así que en los puestos nunca aparecía
+                            <strong>«Instalar aplicación»</strong>. Después de esto, sí.
                         </p>
-                        <button onclick="liberarCachePuestoPC()" class="btn-secondary">🧹 Liberar caché de puesto</button>
-                        <div id="puesto-pc-cache-msg" style="margin-top:10px;font-size:0.88em;"></div>
+                        <div style="margin-bottom:10px;">
+                            <a class="btn-primary" href="/api/red/pc-puesto.bat"
+                               style="text-decoration:none;display:inline-block;"
+                               title="Pide la contraseña de administrador una vez y lo deja hecho para todas las cuentas">
+                                ⬇️ Descargar instalador (.bat) — todo el PC
+                            </a>
+                        </div>
+                        <p class="instruccion" style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;">
+                            <strong>Recomendado.</strong> Vale para <strong>todas las cuentas de Windows</strong>
+                            del equipo. Al abrirlo pide la contraseña de administrador una sola vez (aunque lo
+                            lances desde una cuenta normal), así que no hace falta iniciar sesión como
+                            administrador ni buscar «Ejecutar como administrador».
+                            <br>Al descargarlo el navegador avisará de que un <code>.bat</code> puede ser
+                            peligroso: dale a <em>Conservar</em> / <em>Mantener de todos modos</em>.
+                            <br>Después, <strong>cierra el navegador del todo</strong> y vuelve a abrirlo.
+                            Para comprobarlo: <code>edge://policy</code> o <code>chrome://policy</code>.
+                        </p>
+
+                        <details style="font-size:0.88em;color:#94a3b8;">
+                            <summary style="cursor:pointer;color:#cbd5e1;">Otras formas de aplicarlo</summary>
+                            <div style="margin-top:10px;line-height:1.7;">
+                                <strong>Solo para la cuenta actual</strong> (no necesita permisos, pero el
+                                aviso volverá a salir en cualquier otra cuenta de ese PC):
+                                <br>
+                                <a href="/api/red/pc-puesto.reg" style="color:#60a5fa;">
+                                    ⬇️ Descargar .reg de usuario
+                                </a> — doble clic y aceptar.
+                                <br><br>
+                                <strong>A mano, para todo el equipo:</strong>
+                                <a href="/api/red/pc-puesto.reg?ambito=equipo" style="color:#60a5fa;">
+                                    ⬇️ .reg de equipo
+                                </a>, y luego, en una consola abierta
+                                <strong>como administrador</strong>:
+                                <br><code>reg import "%USERPROFILE%\Downloads\COJOsw-pc-de-puesto-equipo.reg"</code>
+                                <br><span style="color:#fbbf24;">Ojo:</span> con este no vale el doble clic —
+                                falla con «error de acceso al registro», porque abrir un <code>.reg</code> no
+                                eleva permisos por sí solo.
+                                <br><br>
+                                <strong>Varios PCs de golpe</strong>, incluyendo el acceso directo sin barra
+                                de direcciones: <code>_scripts_utiles\configurar_pc_puesto.ps1</code>,
+                                como administrador.
+                            </div>
+                        </details>
                     </div>
 
                     <div class="card">
-                        <h2>🔄 Actualización del Sistema</h2>
-                        <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
-                        <div id="update-status" class="mensaje hidden"></div>
-                        <button onclick="comprobarActualizaciones()" class="btn-secondary">🔍 Comprobar Actualizaciones</button>
-                        <button onclick="actualizarSistema()" class="btn-primary" style="margin-left: 10px;">⬇️ Actualizar Ahora</button>
+                        <h2>📦 Instalación en un PC local</h2>
+                        <p class="instruccion">
+                            Descarga el instalador para tener la app corriendo en un PC de la empresa (no solo en
+                            PythonAnywhere). Hace falta para flashear placas ESP32 por USB, ya que PythonAnywhere
+                            no tiene puerto USB — el instalador clona el repositorio, prepara el entorno y la base
+                            de datos automáticamente.
+                        </p>
+                        <a href="/api/descargar_instalador" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:8px;">⬇️ Descargar instalador (.bat)</a>
+                        <p class="instruccion" style="margin-top:10px;font-size:0.85em;">
+                            Requiere Python y Git instalados en ese PC (el instalador te avisa y enlaza a la
+                            descarga si te falta alguno). Ejecútalo con doble clic; al terminar deja un
+                            <code>run.bat</code> para arrancar la app cuando quieras.
+                        </p>
                     </div>
 
                     <div class="card">
@@ -998,21 +1025,13 @@
                         <button onclick="reiniciarServidor()" class="btn-secondary" style="margin-top:8px;">🔁 Reiniciar servidor</button>
                         <button onclick="apagarServidor()" class="btn-danger" style="margin-top:8px; margin-left:10px;">⏻ Apagar servidor</button>
                     </div>
+                </section>
 
-                    <div class="card">
-                        <h2>💻 Instalación en un PC local</h2>
-                        <p class="instruccion">
-                            Descarga el instalador para tener la app corriendo en un PC de la empresa (no solo en
-                            PythonAnywhere). Hace falta para flashear placas ESP32 por USB, ya que PythonAnywhere
-                            no tiene puerto USB — el instalador clona el repositorio, prepara el entorno y la base
-                            de datos automáticamente.
-                        </p>
-                        <a href="/api/descargar_instalador" class="btn-primary" style="display:inline-block;text-decoration:none;margin-top:8px;">⬇️ Descargar instalador (.bat)</a>
-                        <p class="instruccion" style="margin-top:10px;font-size:0.85em;">
-                            Requiere Python y Git instalados en ese PC (el instalador te avisa y enlaza a la
-                            descarga si te falta alguno). Ejecútalo con doble clic; al terminar deja un
-                            <code>run.bat</code> para arrancar la app cuando quieras.
-                        </p>
+                <!-- ============ DATOS Y COPIAS ============ -->
+                <section id="sec-datos" class="admin-section">
+                    <div class="admin-section-head">
+                        <h1>Datos y copias</h1>
+                        <p>Copias de seguridad de la base de datos y de los ficheros, y cómo restaurarlas</p>
                     </div>
 
                     <!-- ===== COPIA AUTOMATICA (app/backup_auto.py) ===== -->
@@ -1048,6 +1067,14 @@
                     </div>
 
                     <div class="card">
+                        <h2>🗂️ Copias bajadas de PythonAnywhere</h2>
+                        <p class="instruccion">Copias que se bajan de PythonAnywhere al publicar una versión nueva (no son las de la copia automática de arriba). Haz clic en una para restaurarla.</p>
+                        <button onclick="cargarBackups()" class="btn-secondary" style="margin-bottom:14px;">🔄 Ver backups disponibles</button>
+                        <div id="backups-status" class="mensaje hidden"></div>
+                        <div id="backups-lista"></div>
+                    </div>
+
+                    <div class="card">
                         <h2>📥 Importar base de datos</h2>
                         <p class="instruccion">Sube el ZIP exportado anteriormente. Se valida antes de aplicar y se guarda una copia recuperable. Hazlo cuando los puestos no estén trabajando. <strong style="color:#f87171;">⚠ REEMPLAZA todo lo actual</strong> por el contenido del ZIP.</p>
                         <form id="import-db-form" enctype="multipart/form-data" style="margin-top:14px;">
@@ -1061,19 +1088,12 @@
                                     <span>Restaurar también los Excel del ZIP (el avance y documentos se restauran siempre si están incluidos)</span>
                                 </label>
                             </div>
-                            <button type="submit" class="btn-primary" style="margin-top:12px;background:#dc2626;">📥 Importar y reemplazar BD</button>
+                            <button type="submit" class="btn-danger" style="margin-top:12px;">📥 Importar y reemplazar BD</button>
                         </form>
                         <div id="import-db-status" class="mensaje hidden" style="margin-top:12px;"></div>
                     </div>
-
-                    <div class="card">
-                        <h2>🗂️ Backups locales</h2>
-                        <p class="instruccion">Backups de PythonAnywhere descargados automáticamente en cada deploy. Haz clic en uno para restaurarlo.</p>
-                        <button onclick="cargarBackups()" class="btn-secondary" style="margin-bottom:14px;">🔄 Ver backups disponibles</button>
-                        <div id="backups-status" class="mensaje hidden"></div>
-                        <div id="backups-lista"></div>
-                    </div>
                 </section>
+
 
 
 
