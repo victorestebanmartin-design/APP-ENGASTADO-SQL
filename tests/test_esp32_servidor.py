@@ -400,13 +400,19 @@ def test_interrumpir_placa_no_revienta_sin_puerto(monkeypatch):
     assert sistema._interrumpir_placa('/dev/no-existe-este-puerto') is False
 
 
-def test_interrumpir_placa_manda_ctrl_c_aunque_no_haya_dtr_rts():
+def test_interrumpir_placa_manda_ctrl_c_aunque_no_haya_dtr_rts(monkeypatch):
     """Un pty no deja tocar DTR/RTS, igual que algunos puentes USB-serie
     reales. El reset por hardware es un extra: el Ctrl-C tiene que salir
     igualmente, que es lo que para una placa que esta en un time.sleep()."""
     import os
     import pytest
     pty = pytest.importorskip("pty", reason="PTY requiere un sistema Unix")
+    serialposix = pytest.importorskip("serial.serialposix")
+    import serial
+    # sin_placas_de_verdad (conftest) no deja abrir puertos serie. Aqui el
+    # puerto es un pty creado por el propio test, no una placa: se devuelve
+    # el Serial de verdad solo para este test.
+    monkeypatch.setattr(serial, 'Serial', serialposix.Serial)
     import threading
     import time as _t
     import pytest
