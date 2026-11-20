@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.4 - 2026-11-20
+- Liberar paquetes bloqueados se hace ahora en Admin → Operarios, justo debajo de liberar logins colgados: los dos arreglan lo mismo, un puesto que se quedó a medias. Antes estaba en Sistema
+- En Admin → Red e IPs sale arriba la tabla de placas y PCs con su IP, que es lo que más se consulta. La WiFi y la explicación de la red van debajo
+- Al grabar una placa por USB, la opción de laboratorio se llama igual en pantallas y en lectores: «Laboratorio: WiFi con Internet + PythonAnywhere»
+
 ## 1.43.3 - 2026-11-20
 - El menú de Admin se ordena en grupos: «Planta» (archivos, puestos, operarios, cables), «Placas y hardware» (pantallas, lectores, pick-to-light, red, diagnóstico), «Revisión» y «Sistema»
 - Nombres más claros: «Display Carro» pasa a «Pantallas de carro», «Red y placas» a «Red e IPs» (y así se llama también en los avisos que mandan allí) y «Cable» a «Cables»

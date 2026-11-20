@@ -168,6 +168,13 @@
                         </div>
                         <button class="btn-secondary" style="margin-top:10px;" onclick="cargarLoginsAdmin()">🔄 Actualizar</button>
                     </div>
+                    <div class="card">
+                        <h2>🔒 Paquetes bloqueados</h2>
+                        <p class="instruccion">Paquetes que tiene cogidos un puesto. Si el puesto se cerró sin terminar, libéralos aquí para que otro los pueda hacer (uno a uno o todos a la vez).</p>
+                        <div id="bloqueos-status" class="mensaje hidden"></div>
+                        <button onclick="cargarSesionesActivas()" class="btn-secondary">🔍 Ver bloqueos activos</button>
+                        <div id="bloqueos-lista" style="margin-top:14px;"></div>
+                    </div>
                 </section>
 
 
@@ -290,7 +297,7 @@
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
                             <select id="usb-entorno" onchange="actualizarEntornoDisplay()" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:250px;">
                                 <option value="produccion" selected>Nave: WiFi local + servidor (IP fija)</option>
-                                <option value="laboratorio">PAW: WiFi con Internet + PythonAnywhere</option>
+                                <option value="laboratorio">Laboratorio: WiFi con Internet + PythonAnywhere</option>
                             </select>
                             <select id="usb-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
@@ -381,7 +388,7 @@
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
                             <select id="usb-entorno-rfid" onchange="actualizarEntornoRfid()" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:250px;">
                                 <option value="produccion" selected>Nave: WiFi local + servidor (IP fija)</option>
-                                <option value="laboratorio">Laboratorio: Movistar + PythonAnywhere</option>
+                                <option value="laboratorio">Laboratorio: WiFi con Internet + PythonAnywhere</option>
                             </select>
                             <select id="usb-puerto-rfid" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
@@ -655,7 +662,26 @@
                 <section id="sec-ips-placas" class="admin-section">
                     <div class="admin-section-head">
                         <h1>Red e IPs</h1>
-                        <p>La WiFi a la que se conectan las ESP32 y qué IP tiene cada una, para que no se repitan</p>
+                        <p>Qué IP tiene cada placa y cada PC, para que no se repitan, y la WiFi a la que se conectan las placas</p>
+                    </div>
+
+                    <div class="card">
+                        <h2>🔢 Placas y su IP</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            Cambiar una IP aquí solo cambia la <strong>anotación</strong>: una placa sigue con la que
+                            tiene grabada hasta que la vuelvas a flashear por USB, y un PC de puesto hay que
+                            cambiarlo a mano en Windows. Sirve para que nadie reparta la misma dirección dos veces.
+                            <br>Los <strong>PCs de puesto</strong> aparecen solos en cuanto su navegador habla con el
+                            servidor — la IP se detecta sola, el nombre se lo pones tú.
+                        </p>
+                        <div style="margin-bottom:10px;">
+                            <button class="btn-secondary" onclick="cargarIpsPlacas()">🔄 Actualizar</button>
+                            <span id="ips-msg" style="margin-left:10px;font-size:0.88em;"></span>
+                        </div>
+                        <div id="ips-colisiones" style="display:none;margin-bottom:12px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.5);border-radius:8px;padding:12px;font-size:0.9em;"></div>
+                        <div id="ips-lista" class="tabla-container">
+                            <p class="instruccion">Cargando...</p>
+                        </div>
                     </div>
 
                     <div class="card">
@@ -684,25 +710,6 @@
                         </p>
                         <div id="ips-red" style="font-size:0.9em;color:#cbd5e1;line-height:1.9;">
                             Cargando…
-                        </div>
-                    </div>
-
-                    <div class="card" style="margin-top:16px;">
-                        <h2>🔢 Placas y su IP</h2>
-                        <p class="instruccion" style="margin-bottom:12px;">
-                            Cambiar una IP aquí solo cambia la <strong>anotación</strong>: una placa sigue con la que
-                            tiene grabada hasta que la vuelvas a flashear por USB, y un PC de puesto hay que
-                            cambiarlo a mano en Windows. Sirve para que nadie reparta la misma dirección dos veces.
-                            <br>Los <strong>PCs de puesto</strong> aparecen solos en cuanto su navegador habla con el
-                            servidor — la IP se detecta sola, el nombre se lo pones tú.
-                        </p>
-                        <div style="margin-bottom:10px;">
-                            <button class="btn-secondary" onclick="cargarIpsPlacas()">🔄 Actualizar</button>
-                            <span id="ips-msg" style="margin-left:10px;font-size:0.88em;"></span>
-                        </div>
-                        <div id="ips-colisiones" style="display:none;margin-bottom:12px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.5);border-radius:8px;padding:12px;font-size:0.9em;"></div>
-                        <div id="ips-lista" class="tabla-container">
-                            <p class="instruccion">Cargando...</p>
                         </div>
                     </div>
 
@@ -1006,14 +1013,6 @@
                             descarga si te falta alguno). Ejecútalo con doble clic; al terminar deja un
                             <code>run.bat</code> para arrancar la app cuando quieras.
                         </p>
-                    </div>
-
-                    <div class="card">
-                        <h2>🔒 Bloqueos de Paquetes</h2>
-                        <p class="instruccion">Sesiones activas que están bloqueando paquetes. Libéralas individualmente o todas a la vez.</p>
-                        <div id="bloqueos-status" class="mensaje hidden"></div>
-                        <button onclick="cargarSesionesActivas()" class="btn-secondary">🔍 Ver bloqueos activos</button>
-                        <div id="bloqueos-lista" style="margin-top:14px;"></div>
                     </div>
 
                     <!-- ===== COPIA AUTOMATICA (app/backup_auto.py) ===== -->
