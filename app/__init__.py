@@ -909,6 +909,17 @@ def create_app(config_class=Config):
     from app import routes
     routes.init_routes(app)
 
+    # Etiquetas de herramienta puestas a mano en un canal del PTL antes de que
+    # subieran solas a su máquina (app/routes/maquinas_rfid.py). Nunca para el
+    # arranque.
+    try:
+        from app.routes.maquinas_rfid import subir_etiquetas_pendientes
+        with app.app_context():
+            for nombre in subir_etiquetas_pendientes():
+                app.logger.info('Etiqueta RFID del pick-to-light copiada a la maquina %s', nombre)
+    except Exception:
+        app.logger.exception('No se pudieron copiar las etiquetas del pick-to-light a sus maquinas')
+
     _versionar_estaticos(app)
     _instalar_cabeceras_seguridad(app)
 

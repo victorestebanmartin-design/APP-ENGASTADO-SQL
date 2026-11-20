@@ -892,7 +892,18 @@ def api_pick_to_light_rfid_confirmar():
             WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
         """ % columna), {'uid': uid, 'puesto_id': puesto_id, 'canal': canal})
         db.session.commit()
-        return jsonify({'success': True, 'uid': uid, 'caja': caja})
+
+        # La etiqueta de una herramienta sube a su máquina si esta no tiene
+        # (maquinas_rfid.py). Ya está guardada en el canal: si esto falla, se avisa
+        # en el log y el canal se queda como está.
+        maquina = None
+        if caja == 1:
+            try:
+                from app.routes.maquinas_rfid import subir_etiqueta_del_canal
+                maquina = subir_etiqueta_del_canal(puesto_id, canal)
+            except Exception:
+                current_app.logger.exception('No se pudo pasar la etiqueta del canal a su máquina')
+        return jsonify({'success': True, 'uid': uid, 'caja': caja, 'maquina_heredada': maquina})
     except Exception as e:
         return error_interno(e, 'Error al guardar el RFID del canal')
 

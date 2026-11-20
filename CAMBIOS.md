@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.45.0 - 2026-11-20
+- Pick-to-light: la etiqueta RFID que se pasa en el canal de una herramienta se guarda también en su máquina si esta aún no tenía, así el report sabe qué máquina hizo cada carro. Las que ya estaban puestas solo en el canal se copian solas al actualizar
+
 ## 1.44.4 - 2026-11-20
 - Admin → Operarios: los botones de la tabla (tarjeta, editar, desactivar, «Liberar») ya se ven con su color; antes salían blancos y «Liberar» no se leía
 

@@ -1135,6 +1135,9 @@
             await ptlCargarMapa();
             _ptlCanalPanel.fase = 'ver';
             _ptlRenderCanalPanel();
+            if (data.maquina_heredada) {
+                _ptlMensaje('ptl-canal-msg', 'Etiqueta guardada también en la máquina ' + data.maquina_heredada, true);
+            }
         } catch (e) { _ptlMensaje('ptl-canal-msg', 'Error de red', false); }
     };
 

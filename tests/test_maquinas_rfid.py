@@ -338,6 +338,68 @@ def test_cambiar_la_etiqueta_respeta_la_puesta_a_mano(planta, admin_client):
     assert _uid_canal() == 'MANUAL01'
 
 
+# ==================== y al revés: del canal a la máquina ====================
+
+def _rfid_en_canal(admin_client, uid, canal=3, caja=1):
+    return admin_client.put('/api/pick-to-light/canal/rfid', json={
+        'puesto_id': 'p1', 'canal': canal, 'uid': uid, 'caja': caja})
+
+
+def _tag_maquina(maquina_id):
+    with db.engine.connect() as conn:
+        return conn.execute(text("SELECT tag_uid FROM maquinas WHERE id = :id"),
+                            {'id': maquina_id}).scalar()
+
+
+def test_etiqueta_puesta_en_el_canal_sube_a_la_maquina_sin_etiqueta(planta, admin_client):
+    _asignar_herramienta(admin_client, 'AMP AZUL')
+    d = _rfid_en_canal(admin_client, 'CAFE0002').get_json()
+    assert d['success'] is True and d['maquina_heredada'] == 'AMP AZUL'
+    assert _tag_maquina('m2') == 'CAFE0002'
+
+
+def test_la_etiqueta_del_canal_no_pisa_la_de_la_maquina(planta, admin_client):
+    _asignar_herramienta(admin_client, 'AMP ROJA')
+    _sql("UPDATE pick_to_light_canales SET uid_rfid = NULL WHERE canal = 3")
+    d = _rfid_en_canal(admin_client, 'CAFE0003').get_json()
+    assert d['success'] is True and d['maquina_heredada'] is None
+    assert _tag_maquina('m1') == TAG
+
+
+def test_la_etiqueta_del_canal_no_sube_si_es_de_otro(planta, admin_client):
+    _asignar_herramienta(admin_client, 'AMP AZUL')
+    assert _rfid_en_canal(admin_client, TAG_OPERARIO).get_json()['maquina_heredada'] is None
+    _sql("UPDATE pick_to_light_canales SET uid_rfid = NULL WHERE canal = 3")
+    assert _rfid_en_canal(admin_client, TAG).get_json()['maquina_heredada'] is None
+    assert _tag_maquina('m2') is None
+
+
+def test_un_terminal_no_sube_a_la_maquina_aunque_se_llame_igual(planta, admin_client):
+    _sql("INSERT INTO maquinas_terminales (maquina_id, terminal_codigo) VALUES ('m1', 'AMP AZUL')")
+    admin_client.put('/api/pick-to-light/canal', json={
+        'puesto_id': 'p1', 'canal': 4, 'terminal': 'AMP AZUL', 'etiqueta_gaveta': 'A-2'})
+    assert _rfid_en_canal(admin_client, 'CAFE0004', canal=4).get_json()['maquina_heredada'] is None
+    assert _tag_maquina('m2') is None
+
+
+def test_la_caja_2_no_sube_a_la_maquina(planta, admin_client):
+    _asignar_herramienta(admin_client, 'AMP AZUL')
+    assert _rfid_en_canal(admin_client, 'CAFE0005', caja=2).get_json()['maquina_heredada'] is None
+    assert _tag_maquina('m2') is None
+
+
+def test_al_arrancar_suben_las_etiquetas_que_ya_estaban_en_los_canales(planta):
+    from app.routes.maquinas_rfid import subir_etiquetas_pendientes
+    with planta.app_context():
+        _sql("INSERT INTO pick_to_light_canales (puesto_id, canal, terminal_codigo, etiqueta_gaveta, tipo, uid_rfid, activo) "
+             "VALUES ('p1', 10, 'AMP AZUL', 'A-1', 'herramienta', 'CAFE0006', 1)")
+        _sql("INSERT INTO pick_to_light_canales (puesto_id, canal, terminal_codigo, etiqueta_gaveta, tipo, uid_rfid, activo) "
+             "VALUES ('p1', 11, 'AMP ROJA', 'A-2', 'herramienta', 'CAFE0007', 1)")
+        assert subir_etiquetas_pendientes() == ['AMP AZUL']
+        assert _tag_maquina('m2') == 'CAFE0006' and _tag_maquina('m1') == TAG
+        assert subir_etiquetas_pendientes() == []
+
+
 # ==================== validez de la inspección ====================
 
 def test_inspeccion_se_guarda_como_mes_se_valida_y_se_quita(planta, admin_client):

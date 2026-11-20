@@ -204,7 +204,7 @@ def _maquina_del_canal(conn, puesto_id, codigo):
     """Máquina de una herramienta del PTL: la del puesto y, si allí no hay, la única
     con ese nombre (las manuales se mueven). None si no hay o es ambiguo."""
     filas = conn.execute(text("""
-        SELECT id, puesto_id, tag_uid FROM maquinas
+        SELECT id, puesto_id, nombre, tag_uid FROM maquinas
         WHERE activo = 1 AND SUBSTR(TRIM(nombre), 1, 40) = :codigo
     """), {'codigo': codigo}).mappings().all()
     candidatas = [f for f in filas if f['puesto_id'] == puesto_id] or filas
@@ -246,6 +246,57 @@ def heredar_etiqueta_en_canal(puesto_id, canal, codigo):
             WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1
         """), {'uid': uid, 'puesto_id': puesto_id, 'canal': canal})
         return uid, None
+
+
+# Y al revés: una etiqueta puesta en el canal de una herramienta cuya máquina aún
+# no tiene ninguna sube a la máquina, para que el report sepa qué máquina hizo el
+# carro. Nunca pisa la de una máquina que ya tiene, ni se queda la de un operario
+# u otra máquina (una etiqueta es de una sola cosa).
+
+def _subir_etiqueta(conn, puesto_id, codigo, uid):
+    from app.routes.operarios import _maquina_por_tag, _operario_por_tag
+    from app.routes.puestos import normalizar_tag_uid
+    uid = normalizar_tag_uid(uid)
+    if not uid:
+        return None
+    maquina = _maquina_del_canal(conn, puesto_id, (codigo or '').strip()[:40])
+    if not maquina or maquina['tag_uid']:
+        return None
+    if _operario_por_tag(conn, uid) or _maquina_por_tag(conn, uid):
+        return None
+    conn.execute(text("UPDATE maquinas SET tag_uid = :uid, updated_at = datetime('now') WHERE id = :id"),
+                 {'uid': uid, 'id': maquina['id']})
+    return maquina['nombre']
+
+
+def subir_etiqueta_del_canal(puesto_id, canal):
+    """El canal acaba de recibir etiqueta (caja 1). Devuelve el nombre de la
+    máquina que la ha recibido, o None si no había a quién dársela."""
+    with db.engine.begin() as conn:
+        fila = conn.execute(text("""
+            SELECT terminal_codigo, uid_rfid FROM pick_to_light_canales
+            WHERE puesto_id = :puesto_id AND canal = :canal AND activo = 1 AND tipo = 'herramienta'
+        """), {'puesto_id': puesto_id, 'canal': canal}).first()
+        if not fila or not fila[1]:
+            return None
+        return _subir_etiqueta(conn, puesto_id, fila[0], fila[1])
+
+
+def subir_etiquetas_pendientes():
+    """Al arrancar: los canales que ya tenían la etiqueta puesta a mano antes de
+    que existiera esto. Devuelve los nombres de las máquinas que la han recibido."""
+    subidas = []
+    with db.engine.begin() as conn:
+        canales = conn.execute(text("""
+            SELECT puesto_id, terminal_codigo, uid_rfid FROM pick_to_light_canales
+            WHERE activo = 1 AND tipo = 'herramienta' AND uid_rfid IS NOT NULL AND uid_rfid <> ''
+            ORDER BY puesto_id, canal
+        """)).all()
+        for puesto_id, codigo, uid in canales:
+            nombre = _subir_etiqueta(conn, puesto_id, codigo, uid)
+            if nombre:
+                subidas.append(nombre)
+    return subidas
 
 
 def _actualizar_canales_de_maquina(conn, maquina, uid_nuevo):

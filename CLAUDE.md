@@ -113,6 +113,10 @@ puesto y no crea login.
   herramienta a un canal vacío se copia a su `uid_rfid` (el enlace es por nombre,
   como en `verificarMaquinaPtl`), y cambiarla o quitarla en la máquina actualiza
   ese canal. Una etiqueta distinta puesta a mano en el canal no se pisa.
+  Y al revés: la etiqueta que se pone a mano en el canal de una herramienta
+  (caja 1) sube a su máquina si esta no tiene ninguna, y al arrancar se repasan
+  los canales que ya estaban así. Nunca pisa la de una máquina ni se queda la de
+  un operario u otra máquina.
 - **La inspección sí bloquea** (`app/inspeccion.py`). Se guarda el mes de la
   etiqueta (`AAAA-MM`) y vale ese mes entero. Cuando quedan 2 meses o menos,
   contando el actual, avisa cada vez que se elige la máquina; caducada, `datos_trabajo_v3` responde 409 con
