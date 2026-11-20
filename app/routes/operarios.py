@@ -660,7 +660,9 @@ def api_operario_logins_get():
 
         puesto_id = (request.args.get('puesto_id') or '').strip() or None
         # Los PCs de mangueras/manguitos no tienen puesto: filtran por modulo,
-        # que es lo que graba el lector RFID asignado a ese modulo.
+        # que es lo que graba el lector RFID asignado a ese modulo. Los logins
+        # con puesto no son suyos aunque digan manguitos: son de un puesto
+        # versatil pasado a manguitos, y ese los sondea por su puesto_id.
         modulo = (request.args.get('modulo') or '').strip() or None
         # Si el lector esta casado con un PC (ver _pc_del_lector), su login
         # solo le sale al PC de esa IP: otro PC del mismo modulo no lo ve.
@@ -675,7 +677,7 @@ def api_operario_logins_get():
                 "FROM operario_logins ol LEFT JOIN puestos p ON p.id = ol.puesto_id "
                 "WHERE ol.activo=1 "
                 "  AND (:puesto_id IS NULL OR ol.puesto_id = :puesto_id) "
-                "  AND (:modulo IS NULL OR ol.modulo = :modulo) "
+                "  AND (:modulo IS NULL OR (ol.modulo = :modulo AND ol.puesto_id IS NULL)) "
                 "  AND (:modulo IS NULL OR ol.pc_ip IS NULL OR ol.pc_ip = :ip) "
                 "ORDER BY ol.timestamp_login"
             ), {'puesto_id': puesto_id, 'modulo': modulo, 'ip': _ip_cliente()}).fetchall()
@@ -868,7 +870,16 @@ def _destino_del_lector(device_id):
         return None, dev.get('puesto_nombre') or None, modulo
     puesto_id = dev.get('puesto_id') or None
     if puesto_id:
-        return puesto_id, dev.get('puesto_nombre') or None, 'engastado'
+        # Un puesto versatil pasado a manguitos (boton de la pantalla de
+        # login) lleva a su lector con el: el login sigue siendo DE ESE
+        # puesto, pero se comprueban los permisos de manguitos/mangueras.
+        from app.routes.puestos import modo_del_puesto
+        from repositories.puesto_repository import PuestoRepository
+        try:
+            puesto = PuestoRepository(db).obtener_puesto(puesto_id)
+        except Exception:
+            puesto = None
+        return puesto_id, dev.get('puesto_nombre') or None, modo_del_puesto(puesto)
     return None, None, None
 
 
@@ -976,7 +987,8 @@ def api_rfid_entrada_estado():
                 return True                      # lector sin asignar
             if puesto_id and ev_puesto == puesto_id:
                 return True
-            if modulo and ev_modulo == modulo:
+            if modulo and ev_modulo == modulo and not ev_puesto:
+                # (con puesto: es de un puesto versatil pasado a manguitos)
                 # Lector casado con un PC: el aviso es solo para ese PC
                 ev_pc = (ev.get('pc_ip') or '').strip()
                 return not ev_pc or ev_pc == ip

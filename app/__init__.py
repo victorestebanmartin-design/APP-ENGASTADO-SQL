@@ -384,6 +384,11 @@ def _apply_migrations(db_path):
     if p_cols and 'modulo' not in p_cols:
         cur.execute("ALTER TABLE puestos ADD COLUMN modulo TEXT DEFAULT 'engastado'")
         conn.commit()
+    # Puestos versatiles: el boton de la pantalla de login los pasa a
+    # manguitos y mangueras (ver puestos.py:modo_del_puesto).
+    if p_cols and 'modo' not in p_cols:
+        cur.execute("ALTER TABLE puestos ADD COLUMN modo TEXT")
+        conn.commit()
     if p_cols:
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_puestos_boton ON puestos(boton)

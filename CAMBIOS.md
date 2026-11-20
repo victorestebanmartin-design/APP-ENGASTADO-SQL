@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.42.0 - 2026-11-20
+- Los puestos de engastado pueden convertirse en un puesto de manguitos y mangueras: en la pantalla de «Pasa tu tarjeta», el botón ⇄ de abajo a la derecha (se pulsa dos veces para confirmar). Desde ese momento, quien pase la tarjeta por el lector de ese puesto entra en manguitos y mangueras. Se queda así hasta que alguien lo vuelva a cambiar con el mismo botón
+- Arriba se ve en qué modo está el puesto (por ejemplo «MECATRACTION · Manguitos y Mangueras»). No se puede cambiar mientras alguien tenga la sesión abierta en ese puesto
+
 ## 1.41.0 - 2026-11-20
 - La pantalla grande del carro (10,1") ya se graba desde Admin → Diagnóstico ESP32, como las pequeñas: se enchufa por USB al PC de fábrica, se elige el puerto y se pulsa «Compilar y grabar». La primera vez tarda unos 12 minutos; después, menos de un minuto
 

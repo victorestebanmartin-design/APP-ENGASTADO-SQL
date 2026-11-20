@@ -191,6 +191,12 @@ CREATE TABLE puestos (
     -- Legado: todos los puestos son de engastado. Mangueras y manguitos NO
     -- tienen puestos -- se asignan al PC entero (ver tabla pc_equipos).
     modulo TEXT DEFAULT 'engastado',
+    -- Modo en que trabaja AHORA este puesto: NULL/'engastado' o
+    -- 'manguitos_mangueras'. Lo cambia cualquiera con el boton de flechas de
+    -- la pantalla de login, y se queda hasta que alguien lo vuelva a cambiar.
+    -- Su lector RFID lleva entonces a manguitos y mangueras (ver
+    -- app/routes/puestos.py:modo_del_puesto).
+    modo TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

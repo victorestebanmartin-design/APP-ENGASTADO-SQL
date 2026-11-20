@@ -332,3 +332,17 @@ pendientes, sin bono ni carro y sin nada colgando, con el mismo código de corte
 que la que se queda. Antes guarda `data/engastado_backup_antes_duplicadas_*.db`.
 Las que tienen trabajo hecho solo se avisan en el log: no amplíes el criterio
 para "terminar de limpiar", elegir cuál vale es cosa de una persona.
+
+## Puestos versátiles: un puesto de engastado que hace de manguitos
+
+El botón ⇄ de `templates/login_operario.html` (`/api/puesto/pc/modo`) cambia
+`puestos.modo` entre NULL (engastado) y `manguitos_mangueras`. Sin PIN y
+persistente: lo decidió planta. No se cambia con un login activo en el puesto.
+
+- **El modo vive en la BD, no en el navegador**: `_pc_identidad` y
+  `_destino_del_lector` lo leen los dos (`modo_del_puesto`), así PC y lector
+  coinciden.
+- **El puesto conserva su `puesto_id` en modo manguitos**, y el login del
+  lector se crea con `puesto_id` + `modulo='manguitos_mangueras'`. Por eso el
+  sondeo por `?modulo=` (PCs dedicados a manguitos) ignora los logins y avisos
+  con puesto: si no, otro PC de manguitos adoptaría el login de MECATRACTION.

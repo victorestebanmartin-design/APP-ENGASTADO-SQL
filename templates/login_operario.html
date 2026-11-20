@@ -106,6 +106,54 @@
             cursor: pointer;
         }
         .btn-login-manual:disabled { opacity: .6; cursor: default; }
+        .login-puesto.modo-alt {
+            background: rgba(245,158,11,.14);
+            border-color: rgba(245,158,11,.4);
+            color: #fcd34d;
+        }
+        /* Puesto versatil: pasa el puesto de engastado a manguitos y mangueras
+           y vuelta. Encima de la insignia de version (abajo a la derecha). */
+        .btn-cambiar-modo {
+            position: fixed;
+            right: 16px;
+            bottom: 26px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            min-width: 92px;
+            padding: 10px 12px;
+            background: #1e293b;
+            border: 1px solid rgba(148,163,184,.3);
+            border-radius: 14px;
+            color: #cbd5e1;
+            font-family: inherit;
+            cursor: pointer;
+            box-shadow: 0 6px 18px rgba(0,0,0,.35);
+        }
+        .btn-cambiar-modo:hover { border-color: rgba(148,163,184,.6); }
+        .btn-cambiar-modo .flechas { font-size: 1.9em; line-height: 1; }
+        .btn-cambiar-modo .texto { font-size: 0.72em; line-height: 1.25; max-width: 120px; }
+        .btn-cambiar-modo.confirmar {
+            background: #b45309;
+            border-color: #f59e0b;
+            color: #fff;
+        }
+        .btn-cambiar-modo:disabled { opacity: .6; cursor: default; }
+        .modo-error {
+            position: fixed;
+            right: 16px;
+            bottom: 112px;
+            max-width: 260px;
+            background: #7f1d1d;
+            color: #fecaca;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 0.8em;
+            line-height: 1.4;
+            text-align: left;
+        }
+        .modo-error.hidden { display: none; }
     </style>
 </head>
 <body>
@@ -113,7 +161,11 @@
     {% include '_aviso_orientacion.html' %}
     <div class="login-card">
         <div class="login-logo">COJO<span class="sw">sw</span></div>
+        {% if puesto_id and modulo != 'engastado' %}
+        <div class="login-puesto modo-alt">📍 {{ puesto_nombre }} · {{ modulo_label }}</div>
+        {% else %}
         <div class="login-puesto">📍 {{ puesto_nombre or modulo_label }}</div>
+        {% endif %}
         <div class="login-icon">📇</div>
         <div id="login-msg" class="login-msg">Pasa tu tarjeta por el lector...</div>
 
@@ -135,6 +187,18 @@
             </div>
         </details>
     </div>
+
+    {% if puesto_id %}
+    {# Puesto versatil: cualquiera puede cambiarlo, y se queda hasta que alguien
+       lo vuelva a cambiar (ver /api/puesto/pc/modo en puestos.py). #}
+    <div id="modo-error" class="modo-error hidden"></div>
+    <button type="button" id="btn-cambiar-modo" class="btn-cambiar-modo"
+            onclick="cambiarModoPuesto()"
+            data-texto="{{ 'Pasar a Engastado' if modulo != 'engastado' else 'Pasar a Manguitos y Mangueras' }}">
+        <span class="flechas">⇄</span>
+        <span class="texto">{{ 'Pasar a Engastado' if modulo != 'engastado' else 'Pasar a Manguitos y Mangueras' }}</span>
+    </button>
+    {% endif %}
 
     <script src="{{ url_for('static', filename='js/shared/rfid-login.js') }}"></script>
     <script>
@@ -343,6 +407,52 @@
         // puesto, el propio selector es quien pide el PIN al confirmar.
         function reasignarPuesto() {
             window.location.href = '/puesto/seleccionar';
+        }
+
+        // Boton de flechas: primera pulsacion pide confirmar (en una pantalla
+        // tactil es facil rozarlo), la segunda cambia el modo del puesto y
+        // recarga: la pantalla vuelve ya como el otro modulo.
+        let _confirmarModoTimer = null;
+        function cambiarModoPuesto() {
+            const btn = document.getElementById('btn-cambiar-modo');
+            const err = document.getElementById('modo-error');
+            if (!btn) return;
+            const texto = btn.querySelector('.texto');
+            err.classList.add('hidden');
+
+            if (!btn.classList.contains('confirmar')) {
+                btn.classList.add('confirmar');
+                texto.textContent = 'Pulsa otra vez para cambiar';
+                _confirmarModoTimer = setTimeout(() => {
+                    btn.classList.remove('confirmar');
+                    texto.textContent = btn.dataset.texto;
+                }, 4000);
+                return;
+            }
+
+            clearTimeout(_confirmarModoTimer);
+            btn.disabled = true;
+            texto.textContent = 'Cambiando...';
+            fetch('/api/puesto/pc/modo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) {
+                        window.location.reload();
+                        return;
+                    }
+                    throw new Error(d.error || 'No se pudo cambiar el puesto.');
+                })
+                .catch(e => {
+                    err.textContent = (e && e.message) || 'Error de conexión con el servidor.';
+                    err.classList.remove('hidden');
+                    btn.disabled = false;
+                    btn.classList.remove('confirmar');
+                    texto.textContent = btn.dataset.texto;
+                });
         }
     </script>
 </body>

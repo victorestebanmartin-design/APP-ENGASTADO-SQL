@@ -99,6 +99,25 @@ MODULOS_APP_LABEL = {
 }
 
 
+# ---- Puestos versatiles ----
+#
+# Un puesto de engastado puede pasarse a manguitos y mangueras con el boton de
+# flechas de la pantalla de login, y se queda asi hasta que alguien lo vuelva
+# a cambiar. El modo vive en la BD (puestos.modo) y no en el navegador porque
+# quien decide a donde va una tarjeta es el servidor al leer el lector (ver
+# operarios.py:_destino_del_lector): el PC y su lector tienen que estar de
+# acuerdo. El puesto conserva su id en los dos modos -- el login sigue siendo
+# de ese puesto, y asi otro PC de manguitos no lo adopta.
+MODOS_PUESTO = ('engastado', ROL_MANGUITOS_MANGUERAS)
+
+
+def modo_del_puesto(puesto):
+    """Modulo en el que trabaja ahora ese puesto (dict de PuestoRepository)."""
+    if puesto and (puesto.get('modo') or '') == ROL_MANGUITOS_MANGUERAS:
+        return ROL_MANGUITOS_MANGUERAS
+    return 'engastado'
+
+
 def _ip_cliente():
     """IP real del cliente.
 
@@ -194,8 +213,10 @@ def _pc_identidad():
     """(modulo, puesto_id, puesto_nombre) de ESTE equipo.
 
     modulo es None si el PC todavia no esta configurado. puesto_id/nombre solo
-    tienen valor en engastado; en mangueras y manguitos son None a proposito
-    (esos modulos no tienen puestos).
+    tienen valor en los PCs de puesto; en mangueras y manguitos son None a
+    proposito (esos modulos no tienen puestos). Un puesto pasado a manguitos
+    con el boton de la pantalla de login devuelve ROL_MANGUITOS_MANGUERAS
+    CON su puesto_id (ver modo_del_puesto).
 
     Prioridad: IP fija del puesto (override manual del admin) -> pc_equipos
     (anotado al configurar el PC) -> cookies.
@@ -207,7 +228,7 @@ def _pc_identidad():
     if ip:
         puesto = repo.obtener_puesto_por_ip(ip)
         if puesto:
-            return 'engastado', puesto['id'], puesto['nombre']
+            return modo_del_puesto(puesto), puesto['id'], puesto['nombre']
 
     # 2. Identidad anotada por IP al configurar el equipo.
     equipo = _pc_equipo_por_ip(ip)
@@ -217,7 +238,7 @@ def _pc_identidad():
             return modulo, None, None
         puesto = repo.obtener_puesto(equipo['puesto_id']) if equipo['puesto_id'] else None
         if puesto:
-            return 'engastado', puesto['id'], puesto['nombre']
+            return modo_del_puesto(puesto), puesto['id'], puesto['nombre']
 
     # 3. Cookies. El rol puede no llevar puesto (mangueras/manguitos/servidor);
     #    si es engastado hace falta ademas un puesto valido.
@@ -232,7 +253,7 @@ def _pc_identidad():
     if puesto_id:
         puesto = repo.obtener_puesto(puesto_id)
         if puesto:
-            return 'engastado', puesto_id, puesto['nombre']
+            return modo_del_puesto(puesto), puesto_id, puesto['nombre']
 
     return None, None, None
 
@@ -339,6 +360,60 @@ def api_pc_configurar():
             resp.set_cookie(COOKIE_PUESTO_PC, '', max_age=0, expires=0,
                             httponly=True, samesite='Lax')
         return resp
+    except Exception as e:
+        return error_interno(e)
+
+
+@bp.route('/api/puesto/pc/modo', methods=['POST'])
+def api_puesto_pc_modo():
+    """Cambia el puesto de ESTE PC entre engastado y manguitos y mangueras.
+
+    Sin PIN: lo decidio planta, cualquiera puede pulsar el boton. Solo cambia
+    el puesto del propio equipo que lo pide (la identidad la pone el servidor
+    por IP/cookie, no el navegador), y no con alguien dentro: cambiarle el
+    modo a un operario a mitad de trabajo le dejaria su login apuntando al
+    modulo de antes.
+
+    Body opcional {"modo": "engastado" | "manguitos_mangueras"}; sin el,
+    alterna.
+    """
+    try:
+        modulo, puesto_id, puesto_nombre = _pc_identidad()
+        if not puesto_id:
+            return jsonify({'success': False,
+                            'error': 'Este equipo no es un puesto: no tiene modo que cambiar.'}), 400
+
+        data = request.get_json(silent=True) or {}
+        nuevo = (data.get('modo') or '').strip().lower()
+        if not nuevo:
+            nuevo = 'engastado' if modulo == ROL_MANGUITOS_MANGUERAS else ROL_MANGUITOS_MANGUERAS
+        if nuevo not in MODOS_PUESTO:
+            return jsonify({'success': False,
+                            'error': f'Modo no válido (usa: {", ".join(MODOS_PUESTO)})'}), 400
+
+        from app.routes.operarios import _expirar_logins_fantasma
+        with db.engine.connect() as conn:
+            _expirar_logins_fantasma(conn, forzar=True)
+            dentro = conn.execute(text(
+                "SELECT operario_nombre FROM operario_logins "
+                "WHERE activo=1 AND puesto_id=:p"
+            ), {'p': puesto_id}).fetchone()
+            if dentro:
+                conn.commit()
+                return jsonify({
+                    'success': False,
+                    'error': f'{dentro[0]} tiene la sesión abierta en {puesto_nombre}. '
+                             f'Que cierre sesión antes de cambiar el puesto.'
+                }), 409
+            conn.execute(text(
+                "UPDATE puestos SET modo=:m, updated_at=datetime('now') WHERE id=:p"
+            ), {'m': None if nuevo == 'engastado' else nuevo, 'p': puesto_id})
+            conn.commit()
+
+        current_app.logger.info('Puesto %s cambiado a modo %s', puesto_nombre, nuevo)
+        return jsonify({'success': True, 'puesto_id': puesto_id, 'modo': nuevo,
+                        'modulo_label': MODULOS_APP_LABEL.get(nuevo, nuevo),
+                        'destino': _destino_modulo(nuevo)})
     except Exception as e:
         return error_interno(e)
 
