@@ -61,6 +61,20 @@
   text-transform: uppercase;
 }
 .admin-topbar-spacer { flex: 1; }
+.admin-quien {
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--panel-2);
+  cursor: help;
+}
+.admin-quien.recuperacion {
+  color: #fcd34d;
+  border-color: rgba(245,158,11,.45);
+  background: rgba(245,158,11,.10);
+}
 .admin-back {
   font-family: 'DM Mono', monospace;
   font-size: 11px;
@@ -118,6 +132,7 @@
   cursor: pointer;
   transition: all .14s ease;
 }
+a.admin-nav-item { text-decoration: none; }
 .admin-nav-item .ico { font-size: 16px; width: 20px; text-align: center; }
 .admin-nav-item:hover { background: var(--panel-2); color: var(--text); }
 .admin-nav-item.active {

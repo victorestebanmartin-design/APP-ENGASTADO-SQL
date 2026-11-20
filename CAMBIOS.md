@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.2 - 2026-11-20
+- Admin, arriba: se ve claro con qué has entrado. Con tu cuenta sale «👤 tu nombre»; con el PIN sale en ámbar «🔑 Entrada con PIN (sin nombre)», y al pasar el ratón explica que así no se pueden aprobar propuestas
+- Menú de Admin más corto: «Organización» y «Report» ya no son pantallas que solo mandaban a otro sitio, ahora son enlaces directos («Puestos y máquinas ↗» y «Calidad (report) ↗»)
+- Las propuestas de mangueras y de engastado llevan icono en el menú, y Sistema tiene el suyo (⚙️), distinto del de los botones de actualizar
+
 ## 1.43.1 - 2026-11-20
 - Admin abre sin errores por detrás: ya no intenta cargar una lista de puestos que se había ido a «Puestos y máquinas»
 - La tarjeta «Quitar el aviso No es seguro» (Admin → Red y placas) ya se ve como las demás, con su fondo y su borde

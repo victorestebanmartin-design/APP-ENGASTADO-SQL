@@ -24,7 +24,11 @@
         <header class="admin-topbar">
             <a href="{{ url_for('main.modules') }}" class="admin-logo">COJO<span class="sw">sw</span></a>
             <div class="admin-topbar-title">Panel de Administración</div>
-            <span>{{ administrador.nombre if administrador else 'Acceso de recuperación' }}</span>
+            {% if administrador %}
+            <span class="admin-quien" title="Has entrado con tu cuenta personal de administración">👤 {{ administrador.nombre }}</span>
+            {% else %}
+            <span class="admin-quien recuperacion" title="Has entrado con el PIN de recuperación: no queda apuntado quién eres y no se pueden aprobar propuestas. Para entrar con tu nombre, cierra la sesión y elige tu operario.">🔑 Entrada con PIN (sin nombre)</span>
+            {% endif %}
             <div class="admin-topbar-spacer"></div>
             {% if pin_activo or administrador %}
             <a href="{{ url_for('main.admin_logout') }}" class="admin-back" style="margin-right:14px;">🔒 Cerrar sesión admin</a>
@@ -37,7 +41,7 @@
             <nav class="admin-sidebar">
                 <div class="admin-nav-label">Gestión</div>
                 <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
-                <button class="admin-nav-item" data-section="organizacion" onclick="adminNav('organizacion')"><span class="ico">🏢</span> Organización</button>
+                <a class="admin-nav-item" href="{{ url_for('main.gestion_puestos') }}"><span class="ico">🏭</span> Puestos y máquinas ↗</a>
                 <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
                 <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cable</button>
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
@@ -47,12 +51,12 @@
                 <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
                 <div class="admin-nav-label">Auditoría</div>
-                <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes>Propuestas de mangueras</a>
-                <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes>Propuestas de engastado</a>
-                <button class="admin-nav-item" data-section="report" onclick="adminNav('report')"><span class="ico">📊</span> Report</button>
+                <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes><span class="ico">🧵</span> <span data-contador-texto>Propuestas de mangueras</span></a>
+                <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes><span class="ico">🔧</span> <span data-contador-texto>Propuestas de engastado</span></a>
+                <a class="admin-nav-item" href="/calidad"><span class="ico">🛡️</span> Calidad (report) ↗</a>
 
                 <div class="admin-nav-label">Sistema</div>
-                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">🔄</span> Sistema</button>
+                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">⚙️</span> Sistema</button>
             </nav>
 
             <!-- Content -->
@@ -125,33 +129,6 @@
                         <button onclick="cargarArchivos()" class="btn-secondary">🔄 Actualizar Lista</button>
                         <div id="lista-archivos" class="tabla-container">
                             <p class="text-muted">Cargando...</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ============ ORGANIZACIÓN ============ -->
-                <section id="sec-organizacion" class="admin-section">
-                    <div class="admin-section-head">
-                        <h1>Organización</h1>
-                        <p>Administra la estructura de tu planta de producción</p>
-                    </div>
-                    <div class="card">
-                        <h2>🏢 Gestión Organizacional</h2>
-                        <p class="instruccion">Administra la estructura de tu planta de producción</p>
-                        <div class="gestion-organizacional">
-                            <a href="{{ url_for('main.gestion_puestos') }}" class="gestion-link-card">
-                                <div class="gestion-icon">🏭</div>
-                                <div class="gestion-content">
-                                    <h3>Puestos y Máquinas</h3>
-                                    <p>Gestiona puestos de trabajo, máquinas de producción y asignación de terminales</p>
-                                    <div class="gestion-features">
-                                        <span>• Crear y editar puestos</span>
-                                        <span>• Gestionar máquinas</span>
-                                        <span>• Asignar terminales</span>
-                                    </div>
-                                </div>
-                                <div class="gestion-arrow">→</div>
-                            </a>
                         </div>
                     </div>
                 </section>
@@ -940,21 +917,6 @@
                     </div>
                 </section>
 
-
-                <!-- ============ REPORT (TRAZABILIDAD) ============ -->
-                <!-- El report vive en el módulo Calidad (templates/calidad.html), junto a
-                     los ensayos de tracción. Aquí solo queda el acceso. -->
-                <section id="sec-report" class="admin-section">
-                    <div class="admin-section-head">
-                        <h1>Report — Trazabilidad</h1>
-                        <p>Se ha movido al módulo Calidad, junto a los ensayos de tracción.</p>
-                    </div>
-                    <div class="card">
-                        <p class="instruccion">Por bono, por terminal y por operario, con el PDF por carro y los ensayos de cada uno.
-                            Para verlo desde la rejilla de módulos, el operario necesita el permiso «Calidad» (Admin → Operarios).</p>
-                        <a href="/calidad" class="btn-primary" style="display:inline-block;text-decoration:none;">🛡️ Abrir Calidad</a>
-                    </div>
-                </section>
 
                 <!-- ============ SISTEMA ============ -->
                 <section id="sec-sistema" class="admin-section">

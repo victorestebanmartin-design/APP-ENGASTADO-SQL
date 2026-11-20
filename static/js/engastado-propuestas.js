@@ -13,7 +13,8 @@
       var respuesta = await fetch('/api/engastado/propuestas/pendientes');
       var datos = await respuesta.json();
       if (datos.success) document.querySelectorAll('[data-engastado-pendientes]').forEach(function (elemento) {
-        elemento.textContent = 'Propuestas de engastado (' + datos.pendientes + (datos.pendientes === 1 ? ' pendiente)' : ' pendientes)');
+        // En el menú de Admin el texto va en un <span> aparte para no comerse el icono.
+        (elemento.querySelector('[data-contador-texto]') || elemento).textContent = 'Propuestas de engastado (' + datos.pendientes + (datos.pendientes === 1 ? ' pendiente)' : ' pendientes)');
       });
     } catch (error) { return; }
   }

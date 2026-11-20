@@ -12,7 +12,8 @@
       var respuesta = await fetch('/api/mangueras/propuestas/pendientes');
       var datos = await respuesta.json();
       if (datos.success) document.querySelectorAll('[data-mangueras-pendientes]').forEach(function (elemento) {
-        elemento.textContent = 'Propuestas de mangueras (' + datos.pendientes + (datos.pendientes === 1 ? ' pendiente)' : ' pendientes)');
+        // En el menú de Admin el texto va en un <span> aparte para no comerse el icono.
+        (elemento.querySelector('[data-contador-texto]') || elemento).textContent = 'Propuestas de mangueras (' + datos.pendientes + (datos.pendientes === 1 ? ' pendiente)' : ' pendientes)');
       });
       if (datos.success && (forzar || ultimoPendientes !== datos.pendientes)) {
         ultimoPendientes = datos.pendientes;
