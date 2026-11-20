@@ -1220,7 +1220,8 @@ async function cargarBackups() {
                                 <td>${b.tamano_kb} KB</td>
                                 <td>
                                     <button onclick="restaurarBackup('${b.nombre}')"
-                                        class="btn-secondary" style="padding:4px 12px;font-size:0.83em;">
+                                        class="btn-danger" style="padding:4px 12px;font-size:0.83em;"
+                                        title="Sustituye la base de datos actual por esta copia">
                                         🔄 Restaurar
                                     </button>
                                 </td>

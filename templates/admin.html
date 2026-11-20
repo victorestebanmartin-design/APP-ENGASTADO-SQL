@@ -10,12 +10,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-admin.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/mangueras-propuestas.css') }}">
-    <style>
-        .campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
-        .campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
-        .badge-op-activo { background: rgba(34,197,94,.15); color: #22c55e; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
-        .badge-op-inactivo { background: rgba(100,116,139,.15); color: #64748b; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
-    </style>
 </head>
 <body>
 {% include '_version_badge.html' %}
@@ -91,13 +85,13 @@
                 <!-- ============ ARCHIVOS ============ -->
                 <section id="sec-archivos" class="admin-section active">
                     <div class="admin-section-head">
-                        <h1>Archivos & Cortes</h1>
+                        <h1>Archivos y cortes</h1>
                         <p>Sube archivos Excel, asócialos a códigos de barras y consulta los registros</p>
                     </div>
 
                     <!-- Subir Archivo Excel -->
                     <div class="card">
-                        <h2>📤 Subir Archivo Excel</h2>
+                        <h2>📤 Subir archivo Excel</h2>
                         <p class="instruccion">Sube un nuevo archivo Excel con datos de cableado</p>
                         <form id="upload-form" enctype="multipart/form-data">
                             <div class="input-group">
@@ -112,7 +106,7 @@
 
                     <!-- Asociar Código de Barras -->
                     <div class="card">
-                        <h2>🔗 Asociar Código de Barras</h2>
+                        <h2>🔗 Asociar código de barras</h2>
                         <p class="instruccion">Vincula un código de barras con un archivo Excel subido</p>
                         <form id="asociar-form">
                             <div class="input-group">
@@ -140,7 +134,7 @@
 
                     <!-- Cortes Registrados -->
                     <div class="card">
-                        <h2>📋 Cortes Registrados</h2>
+                        <h2>📋 Cortes registrados</h2>
                         <p class="instruccion">Lista de códigos de barras y archivos asociados</p>
                         <button onclick="cargarCortes()" class="btn-secondary">🔄 Actualizar Lista</button>
                         <div id="lista-cortes" class="tabla-container">
@@ -150,7 +144,7 @@
 
                     <!-- Archivos Disponibles -->
                     <div class="card">
-                        <h2>📁 Archivos Excel Disponibles</h2>
+                        <h2>📁 Archivos Excel disponibles</h2>
                         <p class="instruccion">Archivos Excel subidos al sistema</p>
                         <button onclick="cargarArchivos()" class="btn-secondary">🔄 Actualizar Lista</button>
                         <div id="lista-archivos" class="tabla-container">
@@ -166,7 +160,7 @@
                         <p>Quién entra en la app, con qué tarjeta y a qué módulos</p>
                     </div>
                     <div class="card">
-                        <h2>👷 Añadir Operario</h2>
+                        <h2>➕ Añadir operario</h2>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                             <input type="text" id="op-nuevo-nombre" placeholder="Nombre del operario"
                                 style="flex:1;min-width:200px;padding:10px 14px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;"
@@ -179,7 +173,7 @@
                         <div id="op-msg" style="margin-top:8px;font-size:0.88em;display:none;"></div>
                     </div>
                     <div class="card" style="margin-top:16px;">
-                        <h2>📋 Lista de Operarios</h2>
+                        <h2>📋 Todos los operarios</h2>
                         <div id="op-lista-container">
                             <p class="instruccion">Cargando...</p>
                         </div>
@@ -210,7 +204,7 @@
                         <p>Color de cada código de cable y cuáles se cortan a mano</p>
                     </div>
                     <div class="card" id="card-colores-cables">
-                        <h2>🎨 Cable</h2>
+                        <h2>📋 Tabla de cables</h2>
                         <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.
                             Marca <strong>Corte manual</strong> en los cables que se cortan a mano: al preparar sus mangueras saldrá un aviso para revisar la longitud.</p>
 
@@ -493,8 +487,8 @@
                 <!-- ============ PICK-TO-LIGHT — MODO PRUEBA ============ -->
                 <section id="sec-ptl-prueba" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Pick-to-light — Modo Prueba</h1>
-                        <p>Verifica el cableado de LEDs y micro-interruptores sin necesitar un trabajo real</p>
+                        <h1>Pick-to-light</h1>
+                        <p>Prueba el cableado de LEDs y micro-interruptores sin un trabajo real y, más abajo, los ajustes que se guardan en cada puesto</p>
                     </div>
 
                     <!-- Elegir puesto -->
@@ -609,8 +603,10 @@
                         <div id="ptl-micro-grid" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
                     </div>
 
+                    <h3 class="admin-subgrupo">⚙️ Ajustes del puesto <span>se guardan y los usa el pick-to-light de verdad</span></h3>
+
                     <!-- Logica de los micro-interruptores (NC/NA + canales sin cablear) -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>⚙️ Lógica de los micro-interruptores</h2>
                         <p class="instruccion">
                             De fábrica la placa espera micros <strong>normalmente cerrados</strong>: la gaveta
@@ -667,7 +663,7 @@
 
                     <!-- Brillo de los LEDs -->
                     <div class="card" style="margin-top:16px;">
-                        <h2>🔆 Brillo de los LEDs</h2>
+                        <h2>🌗 Brillo de los LEDs</h2>
                         <p class="instruccion">
                             El brillo de cada color viene atenuado de fábrica para no deslumbrar de cerca:
                             <strong>verde</strong> = gaveta objetivo, <strong>azul</strong> = gaveta en uso,
@@ -776,7 +772,7 @@
                     </div>
 
                     <div class="card">
-                        <h2>📶 Resumen de conexión</h2>
+                        <h2>📊 Resumen de conexión</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             "En línea" solo dice que el dispositivo sigue preguntando al servidor — no que su lector
                             NFC o sus botones funcionen. Para eso, usa el chequeo en vivo de abajo.
@@ -787,7 +783,7 @@
                     </div>
 
                     <div class="card" style="margin-top:16px;">
-                        <h2>🔴 Chequeo en vivo</h2>
+                        <h2>🧪 Chequeo en vivo</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Ve físicamente a cada carro y a cada puesto:
                             <strong>pulsa cada botón</strong> (1-7 y el OK) en la pantalla del carro, y
@@ -942,7 +938,7 @@
                     </div>
 
                     <div class="card">
-                        <h2>🔄 Actualización del Sistema</h2>
+                        <h2>⬆️ Actualizar la app</h2>
                         <p class="instruccion">Comprueba si hay actualizaciones disponibles en GitHub y actualiza automáticamente</p>
                         <div id="update-status" class="mensaje hidden"></div>
                         <button onclick="comprobarActualizaciones()" class="btn-secondary">🔍 Comprobar Actualizaciones</button>
@@ -950,7 +946,7 @@
                     </div>
 
                     <div class="card">
-                        <h2>💳 Login con tarjeta (obligatorio para acceder a la app)</h2>
+                        <h2>💳 Exigir tarjeta en toda la app</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Con esto activado, <strong>toda la app exige pasar la tarjeta</strong> antes de entrar
                             a cualquier módulo (según los permisos de cada operario, configurables en

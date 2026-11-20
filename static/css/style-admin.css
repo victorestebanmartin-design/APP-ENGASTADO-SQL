@@ -541,3 +541,16 @@ a.admin-nav-item { text-decoration: none; }
 .admin-app .op-tabla .op-celda-permiso:hover { background: rgba(34,197,94,.08); }
 @keyframes opGuardado { from { background: rgba(34,197,94,.35); } to { background: transparent; } }
 .admin-app .op-guardado { animation: opGuardado 1s ease-out; }
+
+/* Campos que el formulario rellena solo (USB: IP sugerida, servidor...) */
+.campo-autorellenado { background: rgba(34,197,94,.12) !important; border-color: rgba(34,197,94,.5) !important; color: #86efac !important; font-weight: 600; }
+.campo-autorellenado-label { font-size: 0.78em; color: #22c55e; margin-left: 6px; font-weight: 500; }
+.badge-op-activo { background: rgba(34,197,94,.15); color: #22c55e; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
+.badge-op-inactivo { background: rgba(100,116,139,.15); color: #64748b; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; }
+
+/* Separador dentro de una sección larga (Pick-to-light: pruebas / ajustes) */
+.admin-subgrupo {
+  margin: 30px 0 12px; padding-top: 18px; border-top: 1px dashed var(--border);
+  font-size: 15px; color: var(--text);
+}
+.admin-subgrupo span { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 8px; }

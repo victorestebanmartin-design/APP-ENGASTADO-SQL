@@ -6,6 +6,11 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.44.1 - 2026-11-20
+- Pick-to-light separa las pruebas de los «Ajustes del puesto», que sí se guardan y los usa el pick-to-light de verdad. El título ya no dice «Modo Prueba»
+- «Restaurar» una copia sale en rojo: sustituye la base de datos entera
+- Títulos de Admin más claros y sin iconos repetidos (por ejemplo «Exigir tarjeta en toda la app» o «Actualizar la app»)
+
 ## 1.44.0 - 2026-11-20
 - Admin → Operarios es ahora una lista en tabla: Nº, nombre, tarjeta y una columna por cada permiso con su casilla. Se ve de un vistazo quién puede entrar a qué
 - Los permisos se guardan solos al marcar o desmarcar la casilla (la celda parpadea en verde), sin botón «Guardar permisos». Dar Administración pide confirmación
