@@ -172,13 +172,13 @@
                         </div>
                         <div id="op-msg" style="margin-top:8px;font-size:0.88em;display:none;"></div>
                     </div>
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>📋 Todos los operarios</h2>
                         <div id="op-lista-container">
                             <p class="instruccion">Cargando...</p>
                         </div>
                     </div>
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🟢 Dentro del módulo ahora</h2>
                         <p class="instruccion">Operarios logeados en el módulo de engastado. Si un puesto se quedó colgado, libera su login para que el operario pueda volver a entrar.</p>
                         <div id="op-logins-container">
@@ -304,7 +304,7 @@
                         </div>
                     </div>
 
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>📲 Subir firmware por USB</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Conecta la pantalla por USB a <strong>este equipo</strong> (el que ejecuta la aplicación)
@@ -312,33 +312,33 @@
                             pantalla; si lo dejas vacío, conserva la que tiene.
                             <br><em>Nota: desde PythonAnywhere no hay puertos USB — usa esta opción con la app local (run.bat).</em>
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="usb-entorno" onchange="actualizarEntornoDisplay()" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:250px;">
+                        <div class="fila-acciones">
+                            <select class="campo-fila" id="usb-entorno" onchange="actualizarEntornoDisplay()" style="min-width:250px;">
                                 <option value="produccion" selected>Nave: WiFi local + servidor (IP fija)</option>
                                 <option value="laboratorio">Laboratorio: WiFi con Internet + PythonAnywhere</option>
                             </select>
-                            <select id="usb-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <select class="campo-fila" id="usb-puerto" style="min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
                             </select>
                             <button class="btn-secondary" onclick="cargarPuertosUSB()">🔄 Buscar puertos</button>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-ssid" placeholder="WiFi SSID (vacío = no cambiar)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
-                            <input type="password" id="usb-pass" placeholder="WiFi contraseña (vacío = no cambiar)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-ssid" placeholder="WiFi SSID (vacío = no cambiar)"
+                                style="min-width:220px;">
+                            <input class="campo-fila" type="password" id="usb-pass" placeholder="WiFi contraseña (vacío = no cambiar)"
+                                style="min-width:220px;">
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-ip" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-ip" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
+                                style="width:auto;flex:0 1 260px;font-family:monospace;">
                             <span style="font-size:0.85em;color:#94a3b8;">
                                 Máscara <code>255.255.255.0</code> · Puerta de enlace <code>192.168.50.5</code>
                                 <em>(fijas)</em>
                             </span>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-host" placeholder="IP del servidor (ej: 192.168.50.1)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-host" placeholder="IP del servidor (ej: 192.168.50.1)"
+                                style="width:auto;flex:0 1 260px;font-family:monospace;">
                             <span style="font-size:0.85em;color:#94a3b8;">
                                 Puerto <code>5001</code> <em>(fijo)</em> — <span id="usb-host-pista">a dónde llamará la placa</span>
                             </span>
@@ -360,7 +360,7 @@
                             <a href="#" onclick="adminNav('placa-nueva');return false;" style="color:#60a5fa;">Preparar placa nueva</a>.
                         </p>
                     </div>
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>📺 Grabar pantalla grande (P4 10,1")</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             La pantalla grande del carro no lleva MicroPython: su firmware
@@ -371,11 +371,11 @@
                             <br><em>La primera vez tarda unos 12 minutos (compila la librería gráfica entera); después, menos de un minuto.</em>
                         </p>
                         <div id="p4-aviso" class="instruccion" style="display:none;color:#fbbf24;margin-bottom:10px;"></div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="p4-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                        <div class="fila-acciones">
+                            <select class="campo-fila" id="p4-puerto" style="min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
                             </select>
-                            <select id="p4-variante" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;">
+                            <select class="campo-fila" id="p4-variante">
                                 <option value="tactil">Con táctil</option>
                             </select>
                             <button class="btn-secondary" onclick="cargarPantallaGrande()">🔄 Actualizar</button>
@@ -421,7 +421,7 @@
                         </div>
                     </div>
 
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>📲 Configurar y subir por USB</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Para el <strong>primer flasheo</strong> de una placa nueva (o para reinstalarla desde
@@ -431,33 +431,33 @@
                             <br><em>Nota: desde PythonAnywhere no hay puertos USB — usa esta opción con la app
                             local (run.bat).</em>
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="usb-entorno-rfid" onchange="actualizarEntornoRfid()" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:250px;">
+                        <div class="fila-acciones">
+                            <select class="campo-fila" id="usb-entorno-rfid" onchange="actualizarEntornoRfid()" style="min-width:250px;">
                                 <option value="produccion" selected>Nave: WiFi local + servidor (IP fija)</option>
                                 <option value="laboratorio">Laboratorio: WiFi con Internet + PythonAnywhere</option>
                             </select>
-                            <select id="usb-puerto-rfid" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                            <select class="campo-fila" id="usb-puerto-rfid" style="min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
                             </select>
                             <button class="btn-secondary" onclick="cargarPuertosUSBRfid()">🔄 Buscar puertos</button>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-ssid-rfid" placeholder="WiFi SSID"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
-                            <input type="password" id="usb-pass-rfid" placeholder="WiFi contraseña"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-ssid-rfid" placeholder="WiFi SSID"
+                                style="min-width:220px;">
+                            <input class="campo-fila" type="password" id="usb-pass-rfid" placeholder="WiFi contraseña"
+                                style="min-width:220px;">
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-ip-rfid" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-ip-rfid" placeholder="IP estática (192.168.50.2 – 192.168.50.254)"
+                                style="width:auto;flex:0 1 260px;font-family:monospace;">
                             <span style="font-size:0.85em;color:#94a3b8;">
                                 Máscara <code>255.255.255.0</code> · Puerta de enlace <code>192.168.50.5</code>
                                 <em>(fijas)</em>
                             </span>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="usb-host-rfid" placeholder="IP del servidor (ej: 192.168.50.1)"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;font-family:monospace;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="usb-host-rfid" placeholder="IP del servidor (ej: 192.168.50.1)"
+                                style="width:auto;flex:0 1 260px;font-family:monospace;">
                             <span style="font-size:0.85em;color:#94a3b8;">
                                 Puerto <code>5001</code> <em>(fijo)</em> — <span id="usb-host-rfid-pista">a dónde llamará la placa</span>
                             </span>
@@ -500,8 +500,8 @@
                             aparece el que buscas, el lector no está encendido o no tiene expansores en el
                             bus I2C.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="ptl-select-lector" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:320px;">
+                        <div class="fila-acciones">
+                            <select class="campo-fila" id="ptl-select-lector" style="min-width:320px;">
                                 <option value="">— pulsa Cargar puestos —</option>
                             </select>
                             <button class="btn-secondary" onclick="ptlCargarLectores()">🔄 Cargar puestos</button>
@@ -511,7 +511,7 @@
                     </div>
 
                     <!-- Mapa de cobertura del puesto -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🗺️ Mapa de cobertura del puesto</h2>
                         <p class="instruccion">
                             Qué canal físico tiene un terminal de verdad detrás y cuál está libre, en el
@@ -529,14 +529,14 @@
                     </div>
 
                     <!-- Comprobación guiada LED-micro -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🧭 Comprobar correspondencia LED–micro</h2>
                         <p class="instruccion">
                             Enciende cada canal asignado uno a uno y espera a que abras la gaveta
                             iluminada, para detectar LEDs o micros cruzados en el cableado. Solo
                             diagnostica: no corrige ni guarda ningún mapeo automáticamente.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                        <div class="fila-acciones">
                             <label style="font-size:0.88em;color:#94a3b8;">Tiempo de espera por canal:</label>
                             <input type="number" id="ptl-corr-timeout" min="5" max="120" value="25"
                                 style="width:60px;padding:6px 8px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;">
@@ -547,7 +547,7 @@
                     </div>
 
                     <!-- Prueba de LEDs -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🔆 Prueba de LEDs (tira WS2813)</h2>
                         <p class="instruccion">
                             Enciende LEDs individuales o toda la tira para comprobar que el cableado y el
@@ -567,7 +567,7 @@
                         </div>
 
                         <!-- LED individual -->
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                        <div class="fila-acciones">
                             <label style="font-size:0.9em;color:#94a3b8;">Nº LED:</label>
                             <input type="number" id="ptl-led-num" min="1" max="128" value="1"
                                 style="width:70px;padding:7px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.95em;">
@@ -583,7 +583,7 @@
                     </div>
 
                     <!-- Prueba de micro-interruptores -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🔘 Prueba de micro-interruptores (MCP23017)</h2>
                         <p class="instruccion">
                             Lee el estado de todos los canales I2C. Una gaveta puesta cierra el contacto
@@ -595,7 +595,7 @@
                             en cuanto tocas un microinterruptor, resalta en azul el canal que ha cambiado —
                             así sabes al momento a qué número corresponde cada cajón sin tener que contar.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <div class="fila-acciones">
                             <button class="btn-primary" onclick="ptlLeerMicros()">🔍 Leer estado de micros</button>
                             <button class="btn-secondary" id="ptl-btn-micro-live" onclick="ptlLiveMicros()">🔴 Live (pulsa un micro)</button>
                             <span id="ptl-micro-msg" style="font-size:0.88em;color:#94a3b8;"></span>
@@ -619,16 +619,16 @@
                             Se guarda por placa y llega a ella al instante (o en su próximo sondeo, unos segundos).
                             Dejarlo vacío y sin invertir es el comportamiento de siempre.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <div class="fila-acciones">
                             <label style="display:flex;gap:6px;align-items:center;font-size:0.9em;color:#cbd5e1;">
                                 <input type="checkbox" id="ptl-micros-invertir"
                                     style="width:auto;margin:0;">
                                 Lógica invertida (micros normalmente abiertos)
                             </label>
-                            <input type="text" id="ptl-micros-ignorar" placeholder="Canales sin cablear: 3,5,9-16"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
-                            <input type="text" id="ptl-micros-invertidos" placeholder="Canales con lógica invertida: 11,12"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
+                            <input class="campo-fila" type="text" id="ptl-micros-ignorar" placeholder="Canales sin cablear: 3,5,9-16"
+                                style="width:auto;flex:0 1 260px;">
+                            <input class="campo-fila" type="text" id="ptl-micros-invertidos" placeholder="Canales con lógica invertida: 11,12"
+                                style="width:auto;flex:0 1 260px;">
                             <button class="btn-primary" onclick="ptlGuardarMicrosConfig()">💾 Guardar y aplicar</button>
                             <button class="btn-secondary" onclick="ptlResetMicrosConfig()">↩ Volver a lo de siempre</button>
                         </div>
@@ -642,17 +642,17 @@
                     </div>
 
                     <!-- LEDs físicos por gaveta -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>💡 LEDs por gaveta</h2>
                         <p class="instruccion">
                             Cuántos LEDs físicos de la tira iluminan cada gaveta en este puesto. De fábrica
                             es 1 LED por gaveta; algunos puestos recableados usan 3 para que se vean mejor.
                             Se guarda por placa y llega a ella al instante (o en su próximo sondeo).
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <div class="fila-acciones">
                             <label style="font-size:0.9em;color:#94a3b8;">LEDs por gaveta:</label>
-                            <select id="ptl-leds-por-gaveta"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;">
+                            <select class="campo-fila" id="ptl-leds-por-gaveta"
+                                style="width:auto;">
                                 <option value="1">1 LED (de fábrica)</option>
                                 <option value="3">3 LEDs</option>
                             </select>
@@ -662,7 +662,7 @@
                     </div>
 
                     <!-- Brillo de los LEDs -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🌗 Brillo de los LEDs</h2>
                         <p class="instruccion">
                             El brillo de cada color viene atenuado de fábrica para no deslumbrar de cerca:
@@ -687,7 +687,7 @@
                             <span id="ptl-brillo-en-uso-val" style="font-size:0.9em;color:#cbd5e1;width:32px;display:inline-block;">90</span>
                             <button class="btn-secondary" onclick="ptlProbarBrillo('en_uso')">🧪 Probar</button>
                         </div>
-                        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                        <div class="fila-acciones">
                             <label style="font-size:0.9em;color:#94a3b8;width:110px;">🔴 Error:</label>
                             <input type="range" id="ptl-brillo-error" min="0" max="200" value="110"
                                 style="width:220px;">
@@ -699,7 +699,7 @@
                     </div>
 
                     <!-- Registro de acciones -->
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>📋 Registro de prueba</h2>
                         <div id="ptl-log" style="font-family:monospace;font-size:0.82em;color:#94a3b8;max-height:220px;overflow-y:auto;background:#0f172a;border-radius:8px;padding:10px;"></div>
                     </div>
@@ -739,17 +739,17 @@
                             formularios de "Subir por USB" (Pantallas de carro y Lectores RFID), para no tener que
                             escribirlos en cada placa.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="text" id="hotspot-ssid" placeholder="SSID de la red"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 260px;">
-                            <input type="password" id="hotspot-pass" placeholder="Contraseña"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;width:auto;flex:0 1 220px;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="text" id="hotspot-ssid" placeholder="SSID de la red"
+                                style="width:auto;flex:0 1 260px;">
+                            <input class="campo-fila" type="password" id="hotspot-pass" placeholder="Contraseña"
+                                style="width:auto;flex:0 1 220px;">
                             <button class="btn-primary" onclick="guardarCredencialesHotspot()">💾 Guardar</button>
                         </div>
                         <div id="hotspot-cred-msg" style="font-size:0.88em;"></div>
                     </div>
 
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🌐 La red de planta</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             La red está aislada (sin internet) y <strong>no tiene DHCP</strong>: nadie reparte
@@ -782,7 +782,7 @@
                         </div>
                     </div>
 
-                    <div class="card" style="margin-top:16px;">
+                    <div class="card">
                         <h2>🧪 Chequeo en vivo</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Ve físicamente a cada carro y a cada puesto:
@@ -864,11 +864,11 @@
                             <br><strong style="color:#f87171;">⚠ Esto borra por completo la placa</strong>, incluido
                             el firmware original de fábrica de las pantallas 4D Systems. No tiene vuelta atrás.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <select id="mp-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                        <div class="fila-acciones">
+                            <select class="campo-fila" id="mp-puerto" style="min-width:220px;">
                                 <option value="">— sin puertos detectados —</option>
                             </select>
-                            <select id="mp-firmware" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:320px;">
+                            <select class="campo-fila" id="mp-firmware" style="min-width:320px;">
                                 <option value="">— sin firmwares disponibles —</option>
                             </select>
                             <button class="btn-secondary" onclick="cargarGrabadoMicroPython()">🔄 Actualizar</button>
@@ -906,13 +906,13 @@
                             Es el PIN que se pide al entrar en Admin desde este equipo. Cámbialo cuando quieras;
                             no hace falta reiniciar el servidor.
                         </p>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="password" id="admin-pin-actual" placeholder="PIN actual" autocomplete="off"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:180px;">
-                            <input type="password" id="admin-pin-nuevo" placeholder="PIN nuevo" autocomplete="new-password" minlength="4"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:180px;">
-                            <input type="password" id="admin-pin-nuevo-confirmar" placeholder="Repite el PIN nuevo" autocomplete="new-password" minlength="4"
-                                style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:180px;">
+                        <div class="fila-acciones">
+                            <input class="campo-fila" type="password" id="admin-pin-actual" placeholder="PIN actual" autocomplete="off"
+                                style="min-width:180px;">
+                            <input class="campo-fila" type="password" id="admin-pin-nuevo" placeholder="PIN nuevo" autocomplete="new-password" minlength="4"
+                                style="min-width:180px;">
+                            <input class="campo-fila" type="password" id="admin-pin-nuevo-confirmar" placeholder="Repite el PIN nuevo" autocomplete="new-password" minlength="4"
+                                style="min-width:180px;">
                         </div>
                         <button onclick="cambiarAdminPin()" class="btn-primary">Cambiar PIN</button>
                         <div id="admin-pin-msg" style="margin-top:10px;font-size:0.88em;"></div>
@@ -1068,8 +1068,8 @@
                         <div id="copia-auto-estado" style="margin-top:12px;"><p class="instruccion">Cargando…</p></div>
                         <div class="input-group" style="margin-top:14px;">
                             <label for="copia-auto-ruta">Carpeta del disco externo (por ejemplo <code>E:\CopiasCOJOsw</code>):</label>
-                            <input type="text" id="copia-auto-ruta" placeholder="Sin disco externo: solo se copia en el servidor"
-                                   style="padding:8px 10px;background:#0f172a;border:1px solid #334155;color:#f1f5f9;border-radius:8px;width:100%;max-width:420px;">
+                            <input class="campo-fila" type="text" id="copia-auto-ruta" placeholder="Sin disco externo: solo se copia en el servidor"
+                                   style="width:100%;max-width:420px;">
                         </div>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
                             <button type="button" id="copia-auto-guardar" class="btn-secondary">💾 Guardar carpeta</button>

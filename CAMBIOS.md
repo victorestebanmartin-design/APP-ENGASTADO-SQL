@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.44.2 - 2026-11-20
+- Admin: todos los campos de texto, contraseñas y desplegables tienen el mismo aspecto, y las tarjetas la misma separación entre ellas
+
 ## 1.44.1 - 2026-11-20
 - Pick-to-light separa las pruebas de los «Ajustes del puesto», que sí se guardan y los usa el pick-to-light de verdad. El título ya no dice «Modo Prueba»
 - «Restaurar» una copia sale en rojo: sustituye la base de datos entera
