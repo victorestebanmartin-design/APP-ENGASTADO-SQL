@@ -20,7 +20,7 @@ valioso que fingir que hay una sola.
 | Sistema | Clase raíz | Cómo se abre/cierra | Dónde |
 |---|---|---|---|
 | **A. Wizard V3** | `.modal-operario-overlay` (+ `.modal-bono-card`, `.modal-puesto-card`, `.modal-terminal-card`, `.modal-regulacion-card`) | `classList.add/remove('hidden')` sobre HTML ya presente en el template | `templates/index-v3.html` + `static/js/v3/v3-modales.js`; también reutilizado por `mangueras.js` (`modal-corte`) y `manguitos.js` (`modal-mg`) |
-| **B. Genérico tipo Bootstrap** | `.modal` / `.modal-content`, dispara con `.active` | `classList.add/remove('active')`, cierre con Escape + click fuera gestionado a mano en cada página | `admin.js`, `gestion-puestos.js` (namespace `.admin-app .modal` en `style-admin.css`), `gestion-proyectos.js` (`style-proyectos.css`) |
+| **B. Genérico tipo Bootstrap** | `.modal` / `.modal-content`, dispara con `.active` | `classList.add/remove('active')`, cierre con Escape + click fuera gestionado a mano en cada página | `gestion-puestos.js` (namespace `.admin-app .modal` en `style-admin.css`), `gestion-proyectos.js` (`style-proyectos.css`). Admin ya no tiene ninguno: sus diálogos son `<dialog>` nativos |
 | **C. `.p-modal` oscuro** | `.p-modal` / `.p-modal-box` / `.p-modal-header/-body/-footer`, CSS **inline** en el propio template | `classList.add/remove('active')` | Solo `templates/gestion-puestos.html` / `gestion-puestos.js` |
 | **D. `.ord-modal-overlay`** | `.ord-modal-overlay` / `-box` / `-head` / `-body` / `-footer`, animación `modalIn`, CSS inline | clase `.open`, cierre con `onclick` en el overlay comprobando `event.target===this` | `templates/ordenes.html` (define el CSS) / `registro-ordenes.html` (`modal-editar`) |
 | **E. `.modal-overlay`/`.modal-box` de etiquetas** | redefine `.modal-header` localmente, CSS inline | `style.display` a mano, sin clases | Solo `templates/etiquetas.html` / `etiquetas.js` (`modal-reagrupar`) |
@@ -76,11 +76,10 @@ sobre nodos que ya existen en `index-v3.html`.
 - **`static/js/shared/salir-modulo.js`** — un solo `confirm()` nativo +
   `POST /api/sesion/operario/salir`, para PCs dedicados sin rejilla
   `/modules` a la que volver.
-- **`static/js/admin.js`** / **`static/js/gestion-puestos.js`** — modales
-  `modal-puesto`/`modal-maquina` (sistemas B y C respectivamente, mismo
-  nombre de id, contenido distinto, páginas que nunca coexisten). Aquí vive
-  el único listener genérico de Escape + click-fuera
-  (`document.querySelectorAll('.modal')` en `DOMContentLoaded`).
+- **`static/js/gestion-puestos.js`** — modales `modal-puesto`/`modal-maquina`.
+  Admin tenía una copia muerta de ambos (con su listener de Escape +
+  click-fuera) y se quitó en la 1.43.1: en `admin.html` solo quedan
+  `<dialog>` nativos (`op-credencial-dialog`).
 - **`static/js/gestion-proyectos.js`** — sistema B:
   `modalNuevoProyecto`, `modalAsignarCarro`, `modalAsignarProyectoCarro`,
   `modalGenerarBono`, `modalBono`, `modalEditarBono`. Más un modal ad-hoc
@@ -144,8 +143,8 @@ comprueba estos valores a mano, no asumas que "10000" basta.
 5. **Accesibilidad**: no hay `role="dialog"`, `aria-modal` ni focus trap en
    ningún sistema. Si te piden añadirlo, es trabajo nuevo, no algo que estés
    "arreglando" — dilo así.
-6. **IDs repetidos entre páginas** (`modal-puesto` existe en index-v3.html,
-   admin.html y gestion-puestos.html con contenido distinto). Nunca
+6. **IDs repetidos entre páginas** (`modal-puesto` existe en index-v3.html
+   y gestion-puestos.html con contenido distinto). Nunca
    respondas a un grep de `modal-puesto` sin decir de qué fichero/sistema
    hablas.
 7. **Confirmación física + hardware opcional**: dos patrones ya resueltos
