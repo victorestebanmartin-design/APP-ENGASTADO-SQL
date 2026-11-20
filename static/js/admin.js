@@ -1414,7 +1414,7 @@ async function cargarDisplays() {
                     <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>15s)'}">${dev.online ? '🟢' : '🔴'}</td>
                     <td><input id="disp-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Pantalla..." style="${_dispInputStyle}width:130px;"></td>
                     <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
-                    <td style="font-family:monospace;" title="IP fija asignada a esta pantalla (se cambia en Admin → IPs de placas)">
+                    <td style="font-family:monospace;" title="IP fija asignada a esta pantalla (se cambia en Admin → Red e IPs)">
                         ${dev.ip_estatica ? _dispEsc(dev.ip_estatica) : '<span style="color:#fbbf24;" title="Sin IP fija asignada: la red de planta no tiene DHCP">⚠️ —</span>'}
                     </td>
                     <td style="font-family:monospace;" title="Última IP con la que la pantalla habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
@@ -1566,7 +1566,7 @@ async function cargarLectoresRfid() {
                     <td style="padding:8px 6px;" title="${dev.online ? 'En línea' : 'Sin señal (>90s)'}">${dev.online ? '🟢' : '🔴'}</td>
                     <td><input id="rfid-nombre-${dev.id}" value="${_dispEsc(dev.nombre)}" placeholder="Lector..." style="${_dispInputStyle}width:130px;"></td>
                     <td title="${dev.id}" style="font-family:monospace;">${_dispEsc(dev.id.slice(-4))}</td>
-                    <td style="font-family:monospace;" title="IP fija asignada a este lector (se cambia en Admin → IPs de placas)">
+                    <td style="font-family:monospace;" title="IP fija asignada a este lector (se cambia en Admin → Red e IPs)">
                         ${dev.ip_estatica ? _dispEsc(dev.ip_estatica) : '<span style="color:#fbbf24;" title="Sin IP fija asignada: la red de planta no tiene DHCP">⚠️ —</span>'}
                     </td>
                     <td style="font-family:monospace;" title="Última IP con la que el lector habló con el servidor">${_dispEsc(dev.ip) || '—'}</td>
@@ -2464,7 +2464,7 @@ async function _cargarResumenDiagnostico() {
         const nfcOk = pantallas.filter(d => d.nfc === 'ok').length;
         const nfcKo = pantallas.filter(d => d.nfc === 'ko').length;
         cont.innerHTML =
-            _diagPill('🖥️ Pantallas (Display Carro)', pantallas.filter(d => d.online).length, pantallas.length) +
+            _diagPill('🖥️ Pantallas de carro', pantallas.filter(d => d.online).length, pantallas.length) +
             _diagPill('🏷️ Lectores RFID (puesto)', lectores.filter(d => d.online).length, lectores.length) +
             `<div style="min-width:150px;">
                 <div style="font-size:0.8em;color:#94a3b8;margin-bottom:2px;">NFC en pantallas</div>

@@ -2247,7 +2247,7 @@ def api_esp32_flash_usb():
         if entorno == 'produccion' and not ip_estatica:
             return jsonify({'success': False,
                             'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
-                                       'Mira las libres en Admin → IPs de placas.'}), 400
+                                       'Mira las libres en Admin → Red e IPs.'}), 400
         error_ip = _ip_estatica_error(ip_estatica) if ip_estatica else None
         if error_ip:
             return jsonify({'success': False, 'message': error_ip}), 400
@@ -2300,7 +2300,7 @@ def api_esp32_flash_usb():
                 pass
             return jsonify({'success': False,
                             'message': f'{ip_estatica} ya está asignada a la placa '
-                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → IPs de placas.'}), 400
+                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → Red e IPs.'}), 400
 
         try:
             # Módulos auxiliares (driver del lector NFC, etc.) antes del main:
@@ -2405,7 +2405,7 @@ def api_esp32_flash_usb():
             _ip_estatica_reservar_sin_placa(ip_estatica, tipo='display')
             red += (' AVISO: no se pudo leer el identificador de la pantalla. La IP queda reservada '
                     'para que no se le dé a otra placa, y se asignará sola en cuanto la pantalla '
-                    'aparezca en Admin → IPs de placas.')
+                    'aparezca en Admin → Red e IPs.')
         return jsonify({'success': True,
                         'message': f'Firmware subido por {puerto} y pantalla reiniciada{cambios}.{extra}{red}'})
     except subprocess.TimeoutExpired:
@@ -3056,7 +3056,7 @@ def api_esp32_rfid_flash_usb():
             if not ip_estatica:
                 return jsonify({'success': False,
                                 'message': 'La IP estática es obligatoria: la red de planta no tiene DHCP. '
-                                           'Mira las libres en Admin → IPs de placas.'}), 400
+                                           'Mira las libres en Admin → Red e IPs.'}), 400
             error_ip = _ip_estatica_error(ip_estatica)
             if error_ip:
                 return jsonify({'success': False, 'message': error_ip}), 400
@@ -3135,7 +3135,7 @@ def api_esp32_rfid_flash_usb():
                     pass
             return jsonify({'success': False,
                             'message': f'{ip_estatica} ya está asignada a la placa '
-                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → IPs de placas.'}), 400
+                                       f'{otra[-4:]} ({otra}). Elige otra en Admin → Red e IPs.'}), 400
 
         def _resumen_error(etiqueta, err):
             """Ultima linea no vacia del error (el mensaje de la excepcion,
@@ -3208,7 +3208,7 @@ def api_esp32_rfid_flash_usb():
             _ip_estatica_reservar_sin_placa(ip_estatica, tipo='rfid')
             red += ('AVISO: no se pudo leer el identificador del lector. La IP queda reservada para '
                     'que no se le dé a otra placa, y se asignará sola en cuanto el lector aparezca '
-                    'en Admin → IPs de placas. ')
+                    'en Admin → Red e IPs. ')
         return jsonify({'success': True,
                         'message': f'Lector configurado y firmware subido por {puerto}. {red}'
                                    'A partir de ahora se actualiza solo por WiFi (sin preguntar) '

@@ -39,18 +39,20 @@
         <div class="admin-shell">
             <!-- Sidebar -->
             <nav class="admin-sidebar">
-                <div class="admin-nav-label">Gestión</div>
+                <div class="admin-nav-label">Planta</div>
                 <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
                 <a class="admin-nav-item" href="{{ url_for('main.gestion_puestos') }}"><span class="ico">🏭</span> Puestos y máquinas ↗</a>
                 <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
-                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cable</button>
-                <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
+                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cables</button>
+
+                <div class="admin-nav-label">Placas y hardware</div>
+                <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Pantallas de carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
                 <button class="admin-nav-item" data-section="ptl-prueba" onclick="adminNav('ptl-prueba')"><span class="ico">💡</span> Pick-to-light</button>
-                <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🔢</span> Red y placas</button>
+                <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🌐</span> Red e IPs</button>
                 <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico y preparación</button>
 
-                <div class="admin-nav-label">Auditoría</div>
+                <div class="admin-nav-label">Revisión</div>
                 <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes><span class="ico">🧵</span> <span data-contador-texto>Propuestas de mangueras</span></a>
                 <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes><span class="ico">🔧</span> <span data-contador-texto>Propuestas de engastado</span></a>
                 <a class="admin-nav-item" href="/calidad"><span class="ico">🛡️</span> Calidad (report) ↗</a>
@@ -137,7 +139,7 @@
                 <section id="sec-operarios" class="admin-section">
                     <div class="admin-section-head">
                         <h1>Operarios</h1>
-                        <p>Gestiona la lista de operarios que acceden al módulo de engastado</p>
+                        <p>Quién entra en la app, con qué tarjeta y a qué módulos</p>
                     </div>
                     <div class="card">
                         <h2>👷 Añadir Operario</h2>
@@ -173,7 +175,7 @@
                 <!-- ============ COLORES ============ -->
                 <section id="sec-colores" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Cable</h1>
+                        <h1>Cables: colores y corte manual</h1>
                         <p>Color de cada código de cable y cuáles se cortan a mano</p>
                     </div>
                     <div class="card" id="card-colores-cables">
@@ -256,7 +258,7 @@
                 <!-- ============ DISPLAY CARRO ============ -->
                 <section id="sec-displays" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Display Carro</h1>
+                        <h1>Pantallas de carro</h1>
                         <p>Pantallas ESP32 detectadas: ponles nombre y asigna cada una a su carro</p>
                     </div>
                     <div class="card">
@@ -323,7 +325,7 @@
                             <strong>PC servidor</strong>, a donde la pantalla llamará para recibir trabajo. Si esa segunda
                             está mal, la pantalla conecta al WiFi pero no aparece nunca aquí.
                             Qué IP tiene cada placa se ve en
-                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
+                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">Red e IPs</a>.
                         </p>
                         <p id="usb-entorno-pista" class="instruccion" style="margin:-2px 0 10px;color:#fbbf24;display:none;"></p>
                         <button class="btn-primary" id="usb-flash-btn" onclick="flashUSB()">📲 Subir firmware a la pantalla</button>
@@ -414,7 +416,7 @@
                             <strong>PC servidor</strong>, a donde el lector llamará para recibir trabajo. Si esa segunda
                             está mal, el lector conecta al WiFi pero no aparece nunca aquí.
                             Qué IP tiene cada placa se ve en
-                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">IPs de placas</a>.
+                            <a href="#" onclick="adminNav('ips-placas');return false;" style="color:#60a5fa;">Red e IPs</a>.
                         </p>
                         <p id="usb-entorno-rfid-pista" class="instruccion" style="margin:-2px 0 10px;color:#fbbf24;display:none;"></p>
                         <div id="usb-progreso-rfid" style="display:none;margin:10px 0;max-width:560px;">
@@ -652,7 +654,7 @@
                 <!-- ============ RED Y PLACAS (red de planta sin DHCP) ============ -->
                 <section id="sec-ips-placas" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Red y placas</h1>
+                        <h1>Red e IPs</h1>
                         <p>La WiFi a la que se conectan las ESP32 y qué IP tiene cada una, para que no se repitan</p>
                     </div>
 
@@ -660,7 +662,7 @@
                         <h2>📶 WiFi de las placas</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             SSID y contraseña del punto de acceso de planta. Se guardan aquí y precargan los
-                            formularios de "Subir por USB" (Display Carro y Lectores RFID), para no tener que
+                            formularios de "Subir por USB" (Pantallas de carro y Lectores RFID), para no tener que
                             escribirlos en cada placa.
                         </p>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
@@ -678,7 +680,7 @@
                         <p class="instruccion" style="margin-bottom:12px;">
                             La red está aislada (sin internet) y <strong>no tiene DHCP</strong>: nadie reparte
                             direcciones, así que cada placa lleva la suya grabada en su propio firmware. Se le
-                            graba al flashearla por USB (Display Carro / Lectores RFID) y queda anotada aquí.
+                            graba al flashearla por USB (Pantallas de carro / Lectores RFID) y queda anotada aquí.
                         </p>
                         <div id="ips-red" style="font-size:0.9em;color:#cbd5e1;line-height:1.9;">
                             Cargando…
@@ -826,7 +828,7 @@
                         <p class="instruccion" style="margin-bottom:12px;">
                             Primer paso de <strong>cualquier placa recién sacada de la caja</strong>, tanto una
                             pantalla de carro como un lector RFID. Los botones de "Subir firmware por USB"
-                            (en Display Carro y en Lectores RFID) necesitan que la placa ya tenga MicroPython;
+                            (en Pantallas de carro y en Lectores RFID) necesitan que la placa ya tenga MicroPython;
                             una placa nueva todavía no lo tiene, así que primero hay que grabárselo aquí.
                             <br><strong style="color:#f87171;">⚠ Esto borra por completo la placa</strong>, incluido
                             el firmware original de fábrica de las pantallas 4D Systems. No tiene vuelta atrás.

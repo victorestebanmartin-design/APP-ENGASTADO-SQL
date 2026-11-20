@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.3 - 2026-11-20
+- El menú de Admin se ordena en grupos: «Planta» (archivos, puestos, operarios, cables), «Placas y hardware» (pantallas, lectores, pick-to-light, red, diagnóstico), «Revisión» y «Sistema»
+- Nombres más claros: «Display Carro» pasa a «Pantallas de carro», «Red y placas» a «Red e IPs» (y así se llama también en los avisos que mandan allí) y «Cable» a «Cables»
+
 ## 1.43.2 - 2026-11-20
 - Admin, arriba: se ve claro con qué has entrado. Con tu cuenta sale «👤 tu nombre»; con el PIN sale en ámbar «🔑 Entrada con PIN (sin nombre)», y al pasar el ratón explica que así no se pueden aprobar propuestas
 - Menú de Admin más corto: «Organización» y «Report» ya no son pantallas que solo mandaban a otro sitio, ahora son enlaces directos («Puestos y máquinas ↗» y «Calidad (report) ↗»)
