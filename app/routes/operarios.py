@@ -49,9 +49,12 @@ from app.estado_json import cargar as _json_cargar, guardar as _json_guardar, ac
 def api_modulos_get():
     """Lista de módulos de la app (MODULOS_APP), para las casillas de
     permisos en Admin -> Operarios. Fuente única de verdad: app/routes/base.py."""
-    from app.routes.base import MODULOS_APP
+    from app.routes.base import MODULOS_APP, MODULOS_SOLO_EXPLICITOS
+    # 'explicito': no lo tiene un operario sin permisos guardados (NULL); la
+    # tabla de Admin lo usa para pintar bien sus casillas.
     return jsonify({'success': True, 'modulos': [
-        {'slug': slug, 'label': info['label']} for slug, info in MODULOS_APP.items()
+        {'slug': slug, 'label': info['label'], 'explicito': slug in MODULOS_SOLO_EXPLICITOS}
+        for slug, info in MODULOS_APP.items()
     ]})
 
 

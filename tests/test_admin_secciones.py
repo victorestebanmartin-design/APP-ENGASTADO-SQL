@@ -45,3 +45,12 @@ def test_adminAlAbrir_existe_antes_de_los_scripts_que_lo_usan(admin_client):
     definicion = html.index('function adminAlAbrir(')
     for marca in ("adminAlAbrir('operarios'", "adminAlAbrir('colores'", 'js/admin.js'):
         assert html.index(marca) > definicion, marca
+
+
+def test_modulos_dicen_cuales_solo_se_dan_a_proposito(client):
+    """La tabla de Operarios pinta las casillas de un operario sin permisos
+    guardados (NULL) con este dato: si no coincidiera con el servidor, saldría
+    marcado «Calidad» a alguien que en realidad no puede entrar."""
+    from app.routes.base import MODULOS_SOLO_EXPLICITOS
+    modulos = client.get('/api/modulos').get_json()['modulos']
+    assert {m['slug'] for m in modulos if m['explicito']} == set(MODULOS_SOLO_EXPLICITOS)

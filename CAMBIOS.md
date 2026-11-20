@@ -6,6 +6,12 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.44.0 - 2026-11-20
+- Admin → Operarios es ahora una lista en tabla: Nº, nombre, tarjeta y una columna por cada permiso con su casilla. Se ve de un vistazo quién puede entrar a qué
+- Los permisos se guardan solos al marcar o desmarcar la casilla (la celda parpadea en verde), sin botón «Guardar permisos». Dar Administración pide confirmación
+- Buscador encima de la tabla, por nombre, número o tarjeta. Los operarios desactivados salen atenuados
+- Arreglado: a un operario al que nunca se le habían tocado los permisos, la pantalla le marcaba «Calidad» y «Supervisor de ensayos» aunque en realidad no los tenía
+
 ## 1.43.8 - 2026-11-20
 - El menú de Admin es ahora un árbol: «Planta», «Placas y hardware», «Propuestas y calidad» y «Sistema» son cabeceras con flecha ▸ que se despliegan al pulsarlas. Solo queda abierto el grupo en el que estás, así que el menú cabe sin tener que bajar
 - Las propuestas salen como «Mangueras» y «Engastado» con el número de pendientes en una pastilla ámbar. Con el grupo plegado, un punto ámbar en la cabecera avisa de que hay alguna pendiente

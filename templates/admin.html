@@ -1264,99 +1264,123 @@
                     return;
                 }
                 const filas = data.operarios.map(op => {
-                    // null = sin restringir explícita: todo marcado salvo Admin y
-                    // Generar bonos, que hay que dar a propósito (ver base.py).
+                    // null = sin permisos guardados: todo marcado salvo los que
+                    // solo se dan a propósito (Admin, Generar bonos, Calidad,
+                    // Supervisor de ensayos; ver MODULOS_SOLO_EXPLICITOS).
                     const permitidos = op.modulos_permitidos;
-                    const casillasModulos = modulos.map(m => `
-                        <label style="display:flex;align-items:center;gap:5px;font-size:0.85em;white-space:nowrap;">
-                            <input type="checkbox" class="op-mod-check" data-op="${op.id}" data-slug="${m.slug}"
-                                ${(permitidos === null
-                                    ? (m.slug !== 'admin' && m.slug !== 'bonos')
-                                    : permitidos.includes(m.slug)) ? 'checked' : ''}>
-                            ${m.label}
-                        </label>`).join('');
+                    const celdasModulos = modulos.map(m => {
+                        const marcado = permitidos === null ? !m.explicito : permitidos.includes(m.slug);
+                        return `<td class="op-celda-permiso">
+                            <input type="checkbox" class="op-mod-check" data-op="${op.id}" data-slug="${_opEsc(m.slug)}"
+                                title="${_opEsc(m.label)}" aria-label="${_opEsc(m.label)} para ${_opEsc(op.nombre)}"
+                                onchange="cambiarPermisoOperario(this)" ${marcado ? 'checked' : ''}>
+                        </td>`;
+                    }).join('');
                     return `
-                    <tr id="op-row-${op.id}">
-                        <td>
+                    <tr id="op-row-${op.id}" class="${op.activo ? '' : 'op-inactivo'}" data-buscar="${_opEsc((op.nombre + ' ' + (op.numero_empleado || '') + ' ' + (op.tag_uid || '')).toLowerCase())}">
+                        <td class="op-celda-numero">
+                            <span id="op-numero-${op.id}" class="${op.numero_empleado ? '' : 'op-vacio'}">${_opEsc(op.numero_empleado || '—')}</span>
+                            <input type="text" id="op-edit-numero-${op.id}" value="${_opEsc(op.numero_empleado || '')}" maxlength="20"
+                                class="op-edit-input" style="display:none;width:90px;"
+                                onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
+                        </td>
+                        <td class="op-celda-nombre">
                             <span id="op-nombre-${op.id}">${_opEsc(op.nombre)}</span>
+                            ${op.activo ? '' : '<span class="badge-op badge-op-inactivo">Inactivo</span>'}
                             <input type="text" id="op-edit-${op.id}" value="${_opEsc(op.nombre)}"
-                                style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:180px;"
+                                class="op-edit-input" style="display:none;width:170px;"
                                 onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
                         </td>
-                        <td>
-                            <span id="op-numero-${op.id}" style="color:${op.numero_empleado ? '#f1f5f9' : '#64748b'};">${op.numero_empleado || 'Sin número'}</span>
-                            <input type="text" id="op-edit-numero-${op.id}" value="${op.numero_empleado || ''}" maxlength="20"
-                                style="display:none;padding:6px 10px;background:#0f172a;border:1px solid #3b82f6;color:#f1f5f9;border-radius:6px;width:110px;"
-                                onkeypress="if(event.key==='Enter')guardarOperario('${op.id}')">
+                        <td class="op-celda-tarjeta">
+                            <span id="op-tag-${op.id}" class="${op.tag_uid ? '' : 'op-vacio'}" style="font-family:'DM Mono',monospace;">${op.tag_uid ? _opEsc(op.tag_uid) : 'Sin tarjeta'}</span>
+                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Asignar tarjeta con un lector RFID">📡</button>
+                            ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta">🗑️</button>` : ''}
+                            <div id="op-rfid-captura-${op.id}"></div>
                         </td>
-                        <td>
-                            <span id="op-tag-${op.id}" style="font-family:monospace;color:${op.tag_uid ? '#f1f5f9' : '#64748b'};">${op.tag_uid ? '🏷️ ' + op.tag_uid : 'Sin tarjeta'}</span>
-                            <button onclick="capturarTagOperario('${op.id}')" class="btn-accion-edit" title="Elegir lector RFID para asignar la tarjeta" style="margin-left:6px;">📡</button>
-                            ${op.tag_uid ? `<button onclick="quitarTagOperario('${op.id}')" class="btn-accion-del" title="Quitar tarjeta" style="margin-left:4px;">🗑️</button>` : ''}
-                            <div id="op-rfid-captura-${op.id}" style="margin-top:6px;"></div>
+                        ${celdasModulos}
+                        <td class="op-celda-clave">
+                            <button class="btn-accion-edit" type="button" onclick="configurarClaveMangueras('${op.id}')"
+                                title="${op.clave_personal_configurada ? 'Tiene contraseña de administración. Pulsa para cambiarla' : 'Sin contraseña de administración. Pulsa para ponerla'}">
+                                ${op.clave_personal_configurada ? '🔑' : '➕'}</button>
                         </td>
-                        <td>
-                            <span class="badge-op ${op.activo ? 'badge-op-activo' : 'badge-op-inactivo'}">${op.activo ? 'Activo' : 'Inactivo'}</span>
-                        </td>
-                        <td>
-                            <span>${op.clave_personal_configurada ? 'Configurada' : 'Sin contrase&ntilde;a'}</span>
-                            <button class="btn-secondary" type="button" onclick="configurarClaveMangueras('${op.id}')">Contrase&ntilde;a</button>
-                        </td>
-                        <td>
-                            <div style="display:flex;flex-direction:column;gap:4px;min-width:160px;">${casillasModulos}</div>
-                            <button onclick="guardarPermisosOperario('${op.id}')" class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:0.8em;">Guardar permisos</button>
-                            <span id="op-permisos-msg-${op.id}" style="font-size:0.78em;margin-left:6px;"></span>
-                        </td>
-                        <td style="white-space:nowrap;">
+                        <td class="op-celda-acciones">
                             <span id="op-btns-${op.id}">
-                                <button onclick="editarOperario('${op.id}')" class="btn-accion-edit" title="Editar">✏️</button>
+                                <button onclick="editarOperario('${op.id}')" class="btn-accion-edit" title="Editar nombre y número">✏️</button>
                                 ${op.activo
-                                    ? `<button onclick="desactivarOperario('${op.id}')" class="btn-accion-del" title="Desactivar" style="margin-left:6px;">🚫</button>`
-                                    : `<button onclick="activarOperario('${op.id}')" class="btn-accion-edit" title="Activar" style="margin-left:6px;">✅</button>`
+                                    ? `<button onclick="desactivarOperario('${op.id}')" class="btn-accion-del" title="Desactivar">🚫</button>`
+                                    : `<button onclick="activarOperario('${op.id}')" class="btn-accion-edit" title="Activar">✅</button>`
                                 }
                             </span>
                             <span id="op-edit-btns-${op.id}" style="display:none;">
                                 <button onclick="guardarOperario('${op.id}')" class="btn-primary" style="padding:4px 12px;font-size:0.85em;">Guardar</button>
-                                <button onclick="cancelarEditarOperario('${op.id}')" class="btn-secondary" style="padding:4px 12px;font-size:0.85em;margin-left:6px;">Cancelar</button>
+                                <button onclick="cancelarEditarOperario('${op.id}')" class="btn-secondary" style="padding:4px 12px;font-size:0.85em;">Cancelar</button>
                             </span>
                         </td>
                     </tr>`;
                 }).join('');
+                const cabecerasModulos = modulos.map(m =>
+                    `<th class="op-th-permiso" title="${_opEsc(m.label)}${m.explicito ? ' (solo si se marca a propósito)' : ''}"><span>${_opEsc(m.label)}</span></th>`
+                ).join('');
                 cont.innerHTML = `
-                    <div class="tabla-container">
+                    <div class="op-tabla-barra">
+                        <input type="search" id="op-buscar" class="op-edit-input" placeholder="Buscar por nombre, número o tarjeta"
+                            oninput="filtrarOperarios(this.value)">
+                        <span class="instruccion">Los permisos se guardan al marcar la casilla.</span>
+                    </div>
+                    <div class="tabla-container op-tabla">
                         <table>
                             <thead>
                                 <tr>
+                                    <th>Nº</th>
                                     <th>Nombre</th>
-                                    <th>Nº empleado</th>
-                                    <th>Tarjeta NFC</th>
-                                    <th>Estado</th>
-                                    <th>Contrase&ntilde;a Admin</th>
-                                    <th>Módulos permitidos</th>
-                                    <th>Acciones</th>
+                                    <th>Tarjeta</th>
+                                    ${cabecerasModulos}
+                                    <th class="op-th-permiso" title="Contraseña de administración (para entrar en Admin con su nombre)"><span>Clave admin</span></th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>${filas}</tbody>
                         </table>
                     </div>`;
+                const buscar = document.getElementById('op-buscar');
+                if (buscar && _opFiltro) { buscar.value = _opFiltro; filtrarOperarios(_opFiltro); }
             });
     }
 
-    function guardarPermisosOperario(id) {
+    // El filtro sobrevive a las recargas de la tabla (asignar tarjeta, guardar...).
+    let _opFiltro = '';
+    function filtrarOperarios(texto) {
+        _opFiltro = texto || '';
+        const q = _opFiltro.trim().toLowerCase();
+        document.querySelectorAll('#op-lista-container tbody tr').forEach(fila => {
+            fila.style.display = !q || (fila.dataset.buscar || '').includes(q) ? '' : 'none';
+        });
+    }
+
+    // Cada casilla se guarda al marcarla: se manda la fila entera, como hacía
+    // el antiguo botón «Guardar permisos». Dar Administración se confirma.
+    function cambiarPermisoOperario(casilla) {
+        const id = casilla.dataset.op;
+        if (casilla.dataset.slug === 'admin' && casilla.checked &&
+            !confirm('¿Dar acceso a Administración a este operario?')) {
+            casilla.checked = false;
+            return;
+        }
         const checks = document.querySelectorAll(`.op-mod-check[data-op="${id}"]`);
         const modulos_permitidos = Array.from(checks).filter(c => c.checked).map(c => c.dataset.slug);
-        const msg = document.getElementById(`op-permisos-msg-${id}`);
+        const celda = casilla.closest('td');
+        casilla.disabled = true;
         fetch(`/api/operarios/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ modulos_permitidos })
-        }).then(r => r.json()).then(data => {
-            if (msg) {
-                msg.textContent = data.success ? '✅ Guardado' : (data.error || 'Error');
-                msg.style.color = data.success ? '#4ade80' : '#f87171';
-                setTimeout(() => { msg.textContent = ''; }, 3000);
-            }
-        });
+        }).then(r => r.json().then(data => ({ ok: r.ok, data }))).then(({ ok, data }) => {
+            if (!ok || !data.success) throw new Error(data.error || data.message || 'No se pudo guardar');
+            celda.classList.remove('op-guardado'); void celda.offsetWidth; celda.classList.add('op-guardado');
+        }).catch(error => {
+            casilla.checked = !casilla.checked;
+            _opMsg('Permiso sin guardar: ' + error.message, 'error');
+        }).finally(() => { casilla.disabled = false; });
     }
 
     // Logins activos (quién está dentro del módulo de engastado)

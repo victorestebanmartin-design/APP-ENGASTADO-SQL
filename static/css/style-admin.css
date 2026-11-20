@@ -509,3 +509,35 @@ a.admin-nav-item { text-decoration: none; }
   .admin-nav-item { white-space: nowrap; }
   .admin-content { padding: 18px 16px 50px; }
 }
+
+/* ── Operarios: tabla con una columna por permiso ─────────────────── */
+.op-tabla-barra { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.op-tabla-barra .instruccion { margin: 0; }
+.admin-app .op-edit-input {
+  padding: 7px 10px; background: #0f172a; border: 1px solid #334155;
+  color: #f1f5f9; border-radius: 7px; font-size: 0.9em;
+}
+.admin-app #op-buscar { width: 300px; max-width: 100%; }
+.admin-app .op-tabla table td { padding: 7px 10px !important; vertical-align: middle; }
+.admin-app .op-tabla table th { vertical-align: bottom; }
+.admin-app .op-tabla .op-th-permiso { padding: 8px 4px !important; text-align: center; width: 34px; }
+.admin-app .op-th-permiso span {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  display: inline-block; white-space: nowrap; font-size: 11px; max-height: 140px;
+}
+.admin-app .op-celda-permiso, .admin-app .op-celda-clave { text-align: center; padding: 7px 4px !important; }
+.admin-app .op-celda-permiso input { width: 17px; height: 17px; cursor: pointer; accent-color: #22c55e; }
+.admin-app .op-celda-numero { font-family: 'DM Mono', monospace; white-space: nowrap; }
+.admin-app .op-celda-nombre { font-weight: 600; white-space: nowrap; }
+.admin-app .op-celda-nombre .badge-op { margin-left: 8px; }
+.admin-app .op-celda-tarjeta { white-space: nowrap; }
+.admin-app .op-celda-tarjeta button { margin-left: 4px; }
+.admin-app .op-celda-tarjeta div:not(:empty) { margin-top: 6px; white-space: normal; }
+.admin-app .op-celda-acciones { white-space: nowrap; text-align: right; }
+.admin-app .op-celda-acciones button + button { margin-left: 4px; }
+.admin-app .tabla-container table td .op-vacio { color: #64748b !important; }
+.admin-app .op-tabla tr.op-inactivo td { opacity: .55; }
+.admin-app .op-tabla tbody tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
+.admin-app .op-tabla .op-celda-permiso:hover { background: rgba(34,197,94,.08); }
+@keyframes opGuardado { from { background: rgba(34,197,94,.35); } to { background: transparent; } }
+.admin-app .op-guardado { animation: opGuardado 1s ease-out; }
