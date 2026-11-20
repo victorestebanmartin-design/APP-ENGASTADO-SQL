@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.44.4 - 2026-11-20
+- Admin → Operarios: los botones de la tabla (tarjeta, editar, desactivar, «Liberar») ya se ven con su color; antes salían blancos y «Liberar» no se leía
+
 ## 1.44.3 - 2026-11-20
 - Admin por dentro: el código de operarios, cables y pick-to-light pasa a sus propios ficheros. En pantalla no cambia nada, pero el navegador los guarda y Admin carga un poco antes
 
