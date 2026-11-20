@@ -174,6 +174,10 @@ def pa_git_pull(domain, deploy_secret, username, token):
         ("templates/admin.html",           f"{project}/templates/admin.html"),
         ("static/css/style-admin.css",     f"{project}/static/css/style-admin.css"),
         ("static/js/admin.js",             f"{project}/static/js/admin.js"),
+        ("static/js/admin-nav.js",       f"{project}/static/js/admin-nav.js"),
+        ("static/js/admin-operarios.js", f"{project}/static/js/admin-operarios.js"),
+        ("static/js/admin-colores.js",   f"{project}/static/js/admin-colores.js"),
+        ("static/js/admin-ptl.js",       f"{project}/static/js/admin-ptl.js"),
     ]
     base = os.path.dirname(__file__)
     # Módulos de rutas (app/routes/*.py), añadidos dinámicamente

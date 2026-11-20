@@ -6,6 +6,9 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.44.3 - 2026-11-20
+- Admin por dentro: el código de operarios, cables y pick-to-light pasa a sus propios ficheros. En pantalla no cambia nada, pero el navegador los guarda y Admin carga un poco antes
+
 ## 1.44.2 - 2026-11-20
 - Admin: todos los campos de texto, contraseñas y desplegables tienen el mismo aspecto, y las tarjetas la misma separación entre ellas
 

@@ -86,7 +86,7 @@ def test_admin_escapa_lo_que_pinta_de_operarios():
     """La defensa del servidor no basta: quedan nombres antiguos en la BD y
     los logins manuales aceptan cualquier texto."""
     raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    with open(os.path.join(raiz, 'templates', 'admin.html'), encoding='utf-8') as f:
+    with open(os.path.join(raiz, 'static', 'js', 'admin-operarios.js'), encoding='utf-8') as f:
         plantilla = f.read()
     assert '${op.nombre}' not in plantilla
     assert '${l.operario}' not in plantilla
