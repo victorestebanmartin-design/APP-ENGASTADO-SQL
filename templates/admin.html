@@ -873,6 +873,35 @@
                     </div>
 
                     <div class="card" style="margin-top:16px;">
+                        <h2>🖥️ Grabar pantalla grande (P4 10,1")</h2>
+                        <p class="instruccion" style="margin-bottom:12px;">
+                            La pantalla grande del carro no lleva MicroPython: su firmware
+                            (<code>pantalla_p4_101.ino</code>) se compila y se graba aquí, con la versión que tenga
+                            desplegada este servidor. No va por WiFi: hay que enchufarla por USB a <strong>este PC</strong>.
+                            <br>1. Desconecta los tres cables UART del carro. 2. Enchufa la pantalla por USB y pulsa 🔄.
+                            3. Graba. 4. Vuelve a conectar la UART.
+                            <br><em>La primera vez tarda unos 12 minutos (compila la librería gráfica entera); después, menos de un minuto.</em>
+                        </p>
+                        <div id="p4-aviso" class="instruccion" style="display:none;color:#fbbf24;margin-bottom:10px;"></div>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+                            <select id="p4-puerto" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;min-width:220px;">
+                                <option value="">— sin puertos detectados —</option>
+                            </select>
+                            <select id="p4-variante" style="padding:8px 10px;background:#1e293b;border:1px solid #334155;color:#f1f5f9;border-radius:8px;font-size:0.92em;">
+                                <option value="tactil">Con táctil</option>
+                            </select>
+                            <button class="btn-secondary" onclick="cargarPantallaGrande()">🔄 Actualizar</button>
+                        </div>
+                        <button class="btn-primary" id="p4-grabar-btn" onclick="grabarPantallaGrande(false)">🖥️ Compilar y grabar</button>
+                        <button class="btn-secondary" id="p4-compilar-btn" onclick="grabarPantallaGrande(true)">Solo compilar (probar)</button>
+                        <div id="p4-msg" style="margin-top:10px;font-size:0.9em;display:none;white-space:pre-line;"></div>
+                        <details style="margin-top:10px;">
+                            <summary style="cursor:pointer;font-size:0.9em;color:#94a3b8;">Registro</summary>
+                            <pre id="p4-log" style="margin-top:8px;max-height:260px;overflow:auto;font-size:0.78em;background:#0f172a;color:#cbd5e1;padding:8px;border-radius:6px;white-space:pre-wrap;"></pre>
+                        </details>
+                    </div>
+
+                    <div class="card" style="margin-top:16px;">
                         <h2>🔌 Drivers USB (no aparece ningún puerto COM)</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Si has enchufado la placa y <strong>no sale en la lista de puertos</strong>, casi

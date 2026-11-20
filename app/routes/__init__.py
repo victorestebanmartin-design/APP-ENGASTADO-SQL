@@ -37,6 +37,7 @@ def init_routes(app):
         etiquetas,
         progreso,
         pick_to_light,
+        pantalla_p4,
         ensayos,
         embalaje,
     )

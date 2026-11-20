@@ -87,6 +87,12 @@ dibujada, sin esperar ningún repintado.
 
 ## Compilar y subir
 
+**Lo normal: desde Admin → Diagnóstico ESP32 → «Grabar pantalla grande»**, en el
+PC de fábrica (tiene arduino-cli, el core y las librerías instalados). Compila el
+`.ino` del código desplegado en `data/p4_build/<variante>` y lo sube por USB
+(`app/pantalla_p4.py`; el FQBN lo lee de `compilar.sh`, así que si cambias la
+placa o la partición, cámbialo solo ahí). `compilar.sh` sigue valiendo a mano:
+
 No usa PlatformIO. `compilar.sh` llama al `arduino-cli` que trae el Arduino IDE
 (mismo motor, misma config: core `esp32 3.3.7` y las librerías de
 `~/Documents/Arduino/libraries`).

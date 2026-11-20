@@ -148,6 +148,16 @@ def sin_placas_de_verdad(monkeypatch):
 
     monkeypatch.setattr(subprocess, 'run', run)
 
+    # La pantalla grande (P4) se compila y graba con arduino-cli por Popen:
+    # aquí falla al momento, como si no hubiera placa ni toolchain.
+    from app import pantalla_p4
+
+    def sin_arduino(comando, timeout, al_linea):
+        al_linea('arduino-cli desactivado en los tests')
+        return 1, False
+
+    monkeypatch.setattr(pantalla_p4, '_ejecutar', sin_arduino)
+
     try:
         import serial
     except ImportError:

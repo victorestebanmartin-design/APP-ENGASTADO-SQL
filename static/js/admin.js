@@ -2457,6 +2457,112 @@ async function grabarMicroPython() {
     }
 }
 
+// ── Grabar pantalla grande (ESP32-P4, sketch de Arduino) ──────────────────────
+// El servidor compila el .ino desplegado y lo sube por USB en un hilo; aquí
+// solo se lanza y se consulta el estado cada 2 s hasta que termina.
+
+let _p4Sondeo = null;
+
+function _p4Msg(texto, tipo) {
+    const el = document.getElementById('p4-msg');
+    if (!el) return;
+    el.style.display = texto ? 'block' : 'none';
+    el.style.color = tipo === 'error' ? '#f87171' : (tipo === 'ok' ? '#4ade80' : '#e2e8f0');
+    el.textContent = texto;
+}
+
+function _p4PintarTrabajo(t) {
+    const enMarcha = t && (t.fase === 'compilando' || t.fase === 'subiendo');
+    ['p4-grabar-btn', 'p4-compilar-btn'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = enMarcha;
+    });
+    const log = document.getElementById('p4-log');
+    if (log && t && t.log) { log.textContent = t.log.join('\n'); log.scrollTop = log.scrollHeight; }
+    if (!t || t.fase === 'libre') { _p4Msg(''); return; }
+    if (enMarcha) {
+        const seg = t.segundos || 0;
+        const tiempo = seg >= 60 ? Math.floor(seg / 60) + ' min ' + (seg % 60) + ' s' : seg + ' s';
+        _p4Msg('⏳ ' + (t.mensaje || '') + ' (' + tiempo + ')');
+    } else if (t.fase === 'ok') {
+        _p4Msg('✅ ' + (t.mensaje || ''), 'ok');
+    } else {
+        _p4Msg('❌ ' + (t.mensaje || 'Error') + (t.consejo ? '\n' + t.consejo : ''), 'error');
+    }
+    if (!enMarcha && _p4Sondeo) { clearInterval(_p4Sondeo); _p4Sondeo = null; }
+}
+
+async function _p4ConsultarEstado() {
+    try {
+        const d = await (await fetch('/api/pantalla_p4/estado')).json();
+        if (!d.success) return null;
+        _p4PintarTrabajo(d.trabajo);
+        return d;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _p4Sondear() {
+    if (!_p4Sondeo) _p4Sondeo = setInterval(_p4ConsultarEstado, 2000);
+}
+
+async function cargarPantallaGrande() {
+    const selP = document.getElementById('p4-puerto');
+    const selV = document.getElementById('p4-variante');
+    if (!selP) return;
+    try {
+        const [rp, d] = await Promise.all([
+            fetch('/api/esp32/puertos').then(r => r.json()),
+            _p4ConsultarEstado()
+        ]);
+        const puertos = rp.puertos || [];
+        selP.innerHTML = puertos.length
+            ? puertos.map(p => `<option value="${_dispEsc(p.puerto)}">${_dispEsc(p.puerto)}${p.descripcion ? ' — ' + _dispEsc(p.descripcion) : ''}</option>`).join('')
+            : `<option value="">— sin puertos detectados —</option>`;
+        if (!d) return;
+        if (selV && d.variantes) {
+            const actual = selV.value;
+            selV.innerHTML = d.variantes.map(v => `<option value="${_dispEsc(v.id)}">${_dispEsc(v.nombre)}</option>`).join('');
+            if (actual) selV.value = actual;
+        }
+        const aviso = document.getElementById('p4-aviso');
+        if (aviso) {
+            aviso.style.display = d.disponible ? 'none' : 'block';
+            aviso.textContent = d.disponible ? '' :
+                '⚠️ En este PC no está instalado arduino-cli: la pantalla grande solo se puede grabar desde el PC de fábrica.';
+        }
+        const t = d.trabajo || {};
+        if (t.fase === 'compilando' || t.fase === 'subiendo') _p4Sondear();
+    } catch (e) {
+        _p4Msg('❌ No se pudo consultar el estado de la pantalla grande', 'error');
+    }
+}
+
+async function grabarPantallaGrande(soloCompilar) {
+    const puerto = document.getElementById('p4-puerto')?.value || '';
+    const variante = document.getElementById('p4-variante')?.value || 'tactil';
+    if (!soloCompilar && !puerto) {
+        _p4Msg('Selecciona un puerto (pulsa 🔄 Actualizar con la pantalla enchufada)', 'error');
+        return;
+    }
+    if (!soloCompilar && !confirm(`Se va a grabar la pantalla grande conectada en ${puerto}.\n\n` +
+            `¿Has desconectado los cables UART del carro?`)) return;
+    try {
+        const r = await fetch('/api/pantalla_p4/grabar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ puerto, variante, solo_compilar: !!soloCompilar })
+        });
+        const d = await r.json();
+        if (!d.success) { _p4Msg('❌ ' + (d.message || 'No se pudo empezar'), 'error'); return; }
+        _p4PintarTrabajo(d.trabajo);
+        _p4Sondear();
+    } catch (e) {
+        _p4Msg('❌ Error de conexión con el servidor', 'error');
+    }
+}
+
 // ── Drivers USB-serie (la placa no aparece como puerto COM) ───────────────────
 
 function _drvMsg(texto, esError) {
@@ -2676,6 +2782,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Puertos y firmwares viven ahora en esta misma sección (grabado de placas
     // nuevas), asi que se cargan aqui y no con la seccion de Display Carro.
     cargarGrabadoMicroPython();
+    cargarPantallaGrande();
     setInterval(() => {
         if (!document.getElementById('sec-diagnostico')?.classList.contains('active')) return;
         const auto = document.getElementById('diag-auto');
