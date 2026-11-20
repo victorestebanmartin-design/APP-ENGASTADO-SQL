@@ -97,7 +97,7 @@
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
 .admin-sidebar {
-  width: 230px;
+  width: 240px;
   flex-shrink: 0;
   background: var(--panel);
   border-right: 1px solid var(--border);
@@ -114,6 +114,40 @@
   text-transform: uppercase;
   color: var(--text-dim);
   padding: 14px 12px 6px;
+}
+/* Menú en árbol: cada grupo se pliega bajo su cabecera */
+.admin-nav-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.admin-nav-cabecera:hover { background: var(--panel-2); color: var(--text); }
+.admin-nav-flecha { font-size: 12px; transition: transform .15s ease; }
+.admin-nav-aviso { display: none; margin-left: auto; margin-right: 8px; color: #fcd34d; font-size: 11px; }
+.admin-nav-grupo.cerrado:has(.admin-nav-pendientes:not([hidden])) .admin-nav-aviso { display: inline; }
+.admin-nav-cabecera[aria-expanded="true"] .admin-nav-flecha { transform: rotate(90deg); }
+.admin-nav-items { display: flex; flex-direction: column; gap: 2px; padding-left: 6px; }
+.admin-nav-grupo.cerrado .admin-nav-items { display: none; }
+/* Grupo plegado que contiene la sección abierta: que se note dónde estás */
+.admin-nav-grupo.cerrado:has(.admin-nav-item.active) .admin-nav-cabecera { color: var(--accent); }
+.admin-nav-pendientes {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(245,158,11,.18);
+  color: #fcd34d;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
 }
 .admin-nav-item {
   display: flex;
@@ -470,6 +504,8 @@ a.admin-nav-item { text-decoration: none; }
     padding: 10px;
   }
   .admin-nav-label { display: none; }
+  /* En móvil el menú es una fila: sin grupos plegables */
+  .admin-nav-grupo, .admin-nav-items, .admin-nav-grupo.cerrado .admin-nav-items { display: contents; }
   .admin-nav-item { white-space: nowrap; }
   .admin-content { padding: 18px 16px 50px; }
 }

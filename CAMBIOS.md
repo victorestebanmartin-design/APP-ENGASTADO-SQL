@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.8 - 2026-11-20
+- El menú de Admin es ahora un árbol: «Planta», «Placas y hardware», «Propuestas y calidad» y «Sistema» son cabeceras con flecha ▸ que se despliegan al pulsarlas. Solo queda abierto el grupo en el que estás, así que el menú cabe sin tener que bajar
+- Las propuestas salen como «Mangueras» y «Engastado» con el número de pendientes en una pastilla ámbar. Con el grupo plegado, un punto ámbar en la cabecera avisa de que hay alguna pendiente
+
 ## 1.43.7 - 2026-11-20
 - Admin abre más rápido: cada apartado carga sus datos al pulsarlo, no todos a la vez al entrar. Al entrar ya no se buscan placas en los puertos USB del servidor (antes lo hacía cuatro veces aunque no fueras a grabar nada)
 

@@ -39,29 +39,50 @@
         <div class="admin-shell">
             <!-- Sidebar -->
             <nav class="admin-sidebar">
-                <div class="admin-nav-label">Planta</div>
-                <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
-                <a class="admin-nav-item" href="{{ url_for('main.gestion_puestos') }}"><span class="ico">🏭</span> Puestos y máquinas ↗</a>
-                <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
-                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cables</button>
-
-                <div class="admin-nav-label">Placas y hardware</div>
-                <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Pantallas de carro</button>
-                <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
-                <button class="admin-nav-item" data-section="ptl-prueba" onclick="adminNav('ptl-prueba')"><span class="ico">💡</span> Pick-to-light</button>
-                <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🌐</span> Red e IPs</button>
-                <button class="admin-nav-item" data-section="placa-nueva" onclick="adminNav('placa-nueva')"><span class="ico">🔌</span> Preparar placa nueva</button>
-                <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico en vivo</button>
-
-                <div class="admin-nav-label">Revisión</div>
-                <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes><span class="ico">🧵</span> <span data-contador-texto>Propuestas de mangueras</span></a>
-                <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes><span class="ico">🔧</span> <span data-contador-texto>Propuestas de engastado</span></a>
-                <a class="admin-nav-item" href="/calidad"><span class="ico">🛡️</span> Calidad (report) ↗</a>
-
-                <div class="admin-nav-label">Sistema</div>
-                <button class="admin-nav-item" data-section="este-pc" onclick="adminNav('este-pc')"><span class="ico">💻</span> Este PC</button>
-                <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">⚙️</span> Servidor</button>
-                <button class="admin-nav-item" data-section="datos" onclick="adminNav('datos')"><span class="ico">🛟</span> Datos y copias</button>
+                <div class="admin-nav-grupo cerrado" data-grupo="planta">
+                    <button type="button" class="admin-nav-label admin-nav-cabecera" aria-expanded="false" onclick="adminGrupo('planta')">
+                        <span>Planta</span><span class="admin-nav-flecha" aria-hidden="true">▸</span>
+                    </button>
+                    <div class="admin-nav-items">
+                    <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
+                    <a class="admin-nav-item" href="{{ url_for('main.gestion_puestos') }}"><span class="ico">🏭</span> Puestos y máquinas ↗</a>
+                    <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
+                    <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cables</button>
+                    </div>
+                </div>
+                <div class="admin-nav-grupo cerrado" data-grupo="placas">
+                    <button type="button" class="admin-nav-label admin-nav-cabecera" aria-expanded="false" onclick="adminGrupo('placas')">
+                        <span>Placas y hardware</span><span class="admin-nav-flecha" aria-hidden="true">▸</span>
+                    </button>
+                    <div class="admin-nav-items">
+                    <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Pantallas de carro</button>
+                    <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
+                    <button class="admin-nav-item" data-section="ptl-prueba" onclick="adminNav('ptl-prueba')"><span class="ico">💡</span> Pick-to-light</button>
+                    <button class="admin-nav-item" data-section="ips-placas" onclick="adminNav('ips-placas')"><span class="ico">🌐</span> Red e IPs</button>
+                    <button class="admin-nav-item" data-section="placa-nueva" onclick="adminNav('placa-nueva')"><span class="ico">🔌</span> Preparar placa nueva</button>
+                    <button class="admin-nav-item" data-section="diagnostico" onclick="adminNav('diagnostico')"><span class="ico">🩺</span> Diagnóstico en vivo</button>
+                    </div>
+                </div>
+                <div class="admin-nav-grupo cerrado" data-grupo="revision">
+                    <button type="button" class="admin-nav-label admin-nav-cabecera" aria-expanded="false" onclick="adminGrupo('revision')">
+                        <span>Propuestas y calidad</span><span class="admin-nav-aviso" title="Hay propuestas pendientes de revisar">●</span><span class="admin-nav-flecha" aria-hidden="true">▸</span>
+                    </button>
+                    <div class="admin-nav-items">
+                    <a class="admin-nav-item" href="{{ url_for('main.mangueras_propuestas') }}" data-mangueras-pendientes title="Propuestas de mangueras pendientes de revisar"><span class="ico">🧵</span> Mangueras <span class="admin-nav-pendientes" data-contador-numero hidden></span></a>
+                    <a class="admin-nav-item" href="{{ url_for('main.engastado_propuestas') }}" data-engastado-pendientes title="Propuestas de engastado pendientes de revisar"><span class="ico">🔧</span> Engastado <span class="admin-nav-pendientes" data-contador-numero hidden></span></a>
+                    <a class="admin-nav-item" href="/calidad"><span class="ico">🛡️</span> Calidad (report) ↗</a>
+                    </div>
+                </div>
+                <div class="admin-nav-grupo cerrado" data-grupo="sistema">
+                    <button type="button" class="admin-nav-label admin-nav-cabecera" aria-expanded="false" onclick="adminGrupo('sistema')">
+                        <span>Sistema</span><span class="admin-nav-flecha" aria-hidden="true">▸</span>
+                    </button>
+                    <div class="admin-nav-items">
+                    <button class="admin-nav-item" data-section="este-pc" onclick="adminNav('este-pc')"><span class="ico">💻</span> Este PC</button>
+                    <button class="admin-nav-item" data-section="sistema" onclick="adminNav('sistema')"><span class="ico">⚙️</span> Servidor</button>
+                    <button class="admin-nav-item" data-section="datos" onclick="adminNav('datos')"><span class="ico">🛟</span> Datos y copias</button>
+                    </div>
+                </div>
             </nav>
 
             <!-- Content -->
@@ -1156,6 +1177,22 @@
         if (btn) btn.classList.add('active');
         try { localStorage.setItem('adminSection', section); } catch (e) {}
         if (sec) _adminCargarSeccion(section);
+        if (btn) _adminAbrirGrupo(btn.closest('.admin-nav-grupo'));
+    }
+    // Menú en árbol: un grupo abierto cada vez, para que quepa sin scroll.
+    // Pulsar la cabecera del grupo abierto lo cierra.
+    function _adminAbrirGrupo(grupo) {
+        document.querySelectorAll('.admin-nav-grupo').forEach(function (g) {
+            var abrir = g === grupo;
+            g.classList.toggle('cerrado', !abrir);
+            var cab = g.querySelector('.admin-nav-cabecera');
+            if (cab) cab.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+        });
+    }
+    function adminGrupo(clave) {
+        var grupo = document.querySelector('.admin-nav-grupo[data-grupo="' + clave + '"]');
+        if (!grupo) return;
+        _adminAbrirGrupo(grupo.classList.contains('cerrado') ? grupo : null);
     }
     // DOMContentLoaded llega cuando ya se han leído todos los scripts de la
     // página, así que todas las cargas están apuntadas.
@@ -1164,7 +1201,7 @@
         try { saved = localStorage.getItem('adminSection'); } catch (e) {}
         if (saved && document.getElementById('sec-' + saved)) { adminNav(saved); return; }
         var activa = document.querySelector('.admin-section.active');
-        if (activa) _adminCargarSeccion(activa.id.replace(/^sec-/, ''));
+        if (activa) adminNav(activa.id.replace(/^sec-/, ''));
     });
 
 
