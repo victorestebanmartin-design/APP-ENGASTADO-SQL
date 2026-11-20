@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.1 - 2026-11-20
+- Admin abre sin errores por detrás: ya no intenta cargar una lista de puestos que se había ido a «Puestos y máquinas»
+- La tarjeta «Quitar el aviso No es seguro» (Admin → Red y placas) ya se ve como las demás, con su fondo y su borde
+
 ## 1.43.0 - 2026-11-20
 - Admin → «Color de Cable» pasa a llamarse «Cable» y tiene una columna nueva, «Corte manual»: se marca con un tick en los cables que se cortan a mano. Se puede marcar aunque el cable no tenga color
 - Al preparar una manguera de un cable marcado como corte manual sale un aviso grande «⚠️ CORTE MANUAL · revisa la longitud de la manguera» y la longitud se ve resaltada. El aviso sale al abrir el corte: si ya estaba abierto, vuelve a escanear la orden

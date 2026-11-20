@@ -727,7 +727,7 @@
                         </div>
                     </div>
 
-                    <div class="admin-card">
+                    <div class="card">
                         <h2>🔓 Quitar el aviso «No es seguro» de un PC</h2>
                         <p class="instruccion" style="margin-bottom:12px;">
                             Ese aviso no lo pone la aplicación: lo pone el <strong>navegador</strong>, porque se
@@ -1126,57 +1126,6 @@
                 <div class="mp-actions"><button type="button" onclick="document.getElementById('op-credencial-dialog').close()">Cancelar</button><button type="submit">Guardar</button></div>
             </form>
         </dialog>
-        <div id="modal-puesto" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Nuevo Puesto</h3>
-                <span class="modal-close" onclick="cerrarModal('modal-puesto')">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="input-group">
-                    <label for="puesto-nombre">Nombre del Puesto:</label>
-                    <input type="text" id="puesto-nombre" placeholder="Ej: Puesto A - Línea 1">
-                </div>
-                <div class="input-group">
-                    <label for="puesto-descripcion">Descripción:</label>
-                    <textarea id="puesto-descripcion" placeholder="Descripción del puesto"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="cerrarModal('modal-puesto')">Cancelar</button>
-                <button class="btn-primary" onclick="guardarPuesto()">Guardar</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-maquina" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Nueva Máquina</h3>
-                <span class="modal-close" onclick="cerrarModal('modal-maquina')">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="input-group">
-                    <label for="maquina-puesto">Puesto:</label>
-                    <select id="maquina-puesto" required>
-                        <option value="">-- Seleccionar puesto --</option>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label for="maquina-nombre">Nombre de la Máquina:</label>
-                    <input type="text" id="maquina-nombre" placeholder="Ej: Máquina Engastado 1">
-                </div>
-                <div class="input-group">
-                    <label for="maquina-modelo">Modelo:</label>
-                    <input type="text" id="maquina-modelo" placeholder="Ej: KOMAX Alpha 355">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="cerrarModal('modal-maquina')">Cancelar</button>
-                <button class="btn-primary" onclick="guardarMaquina()">Guardar</button>
-            </div>
-        </div>
-    </div>
     </div>
 
     <script>
