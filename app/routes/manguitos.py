@@ -320,7 +320,11 @@ def api_mangueras_datos():
             pass  # Si no hay etiquetas cargadas, no es crítico
 
         resultado = _ordenar_mangueras_por_paquete(resultado)
+        from app.routes.cable_colores import cables_corte_manual
         with db.engine.connect() as conn:
+            manuales = cables_corte_manual(conn)
+            for mg in resultado:
+                mg['corte_manual'] = (mg.get('cod_cable') or '').strip().upper() in manuales
             pendientes = conn.execute(text(
                 "SELECT id, autor_nombre, creada_at, motivo, original_json, sugerido_json "
                 "FROM mangueras_propuestas WHERE archivo=:archivo AND estado='pendiente'"

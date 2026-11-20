@@ -196,6 +196,15 @@ def _apply_migrations(db_path):
         cur.execute("ALTER TABLE cable_colores ADD COLUMN color_texto TEXT")
         conn.commit()
 
+    # Cables que se cortan a mano: aparte del color, que no tiene que ver
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS cables_corte_manual (
+            cod_cable TEXT PRIMARY KEY,
+            marcado_at TEXT
+        )
+    """)
+    conn.commit()
+
     # Migración: tabla operarios (identificación controlada)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS operarios (

@@ -66,11 +66,41 @@ def api_cable_colores_get():
             rows = conn.execute(text(
                 "SELECT cod_cable, color_hex, color_texto FROM cable_colores ORDER BY cod_cable"
             )).fetchall()
+            manuales = cables_corte_manual(conn)
         return jsonify({'success': True, 'colores': [
             {'cod_cable': r[0], 'color_hex': r[1],
              'color_texto': r[2] if r[2] else None}
             for r in rows
-        ]})
+        ], 'corte_manual': sorted(manuales)})
+    except Exception as e:
+        return error_interno(e)
+
+
+# ==================== CORTE MANUAL ====================
+
+def cables_corte_manual(conn):
+    """Códigos de cable (en mayúsculas) marcados como de corte a mano."""
+    return {r[0] for r in conn.execute(text("SELECT cod_cable FROM cables_corte_manual"))}
+
+
+@bp.route('/api/cables/corte-manual', methods=['POST'])
+def api_cables_corte_manual():
+    """Marca o desmarca un cable como de corte a mano ({cod_cable, corte_manual})."""
+    try:
+        data = request.get_json() or {}
+        cod = (data.get('cod_cable') or '').strip().upper()
+        if not cod:
+            return jsonify({'success': False, 'error': 'Indica el código de cable'}), 400
+        with db.engine.connect() as conn:
+            if data.get('corte_manual'):
+                conn.execute(text(
+                    "INSERT INTO cables_corte_manual (cod_cable, marcado_at) VALUES (:c, :t) "
+                    "ON CONFLICT(cod_cable) DO NOTHING"
+                ), {'c': cod, 't': _ahora_iso()})
+            else:
+                conn.execute(text("DELETE FROM cables_corte_manual WHERE cod_cable = :c"), {'c': cod})
+            conn.commit()
+        return jsonify({'success': True})
     except Exception as e:
         return error_interno(e)
 

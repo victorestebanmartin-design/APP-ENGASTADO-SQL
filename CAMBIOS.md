@@ -6,6 +6,10 @@ cambia para quien usa la app, no como esta hecho por dentro.
 
 Formato: `## X.Y.Z - AAAA-MM-DD` y debajo una linea `- ` por cambio.
 
+## 1.43.0 - 2026-11-20
+- Admin → «Color de Cable» pasa a llamarse «Cable» y tiene una columna nueva, «Corte manual»: se marca con un tick en los cables que se cortan a mano. Se puede marcar aunque el cable no tenga color
+- Al preparar una manguera de un cable marcado como corte manual sale un aviso grande «⚠️ CORTE MANUAL · revisa la longitud de la manguera» y la longitud se ve resaltada. El aviso sale al abrir el corte: si ya estaba abierto, vuelve a escanear la orden
+
 ## 1.42.0 - 2026-11-20
 - Los puestos de engastado pueden convertirse en un puesto de manguitos y mangueras: en la pantalla de «Pasa tu tarjeta», el botón ⇄ de abajo a la derecha (se pulsa dos veces para confirmar). Desde ese momento, quien pase la tarjeta por el lector de ese puesto entra en manguitos y mangueras. Se queda así hasta que alguien lo vuelva a cambiar con el mismo botón
 - Arriba se ve en qué modo está el puesto (por ejemplo «MECATRACTION · Manguitos y Mangueras»). No se puede cambiar mientras alguien tenga la sesión abierta en ese puesto

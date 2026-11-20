@@ -401,6 +401,16 @@
         ? (Math.round(lon * 1000) / 1000).toString().replace('.', ',') + ' m'
         : '';
       lonEl.style.display = lonEl.textContent ? '' : 'none';
+      lonEl.classList.toggle('mg-longitud-manual', !!mg.corte_manual);
+    }
+    // Cable de corte a mano (Admin → Cable): que revisen la longitud al prepararla
+    var avisoManual = document.getElementById('mg-aviso-corte-manual');
+    if (avisoManual) {
+      avisoManual.textContent = mg.corte_manual
+        ? '⚠️ CORTE MANUAL · revisa la longitud de la manguera' +
+          (lonEl && lonEl.textContent ? ' (' + lonEl.textContent + ')' : '')
+        : '';
+      avisoManual.style.display = mg.corte_manual ? 'block' : 'none';
     }
 
     // Info cable (terminales) — ocultar si no hay nada

@@ -283,6 +283,13 @@ CREATE TABLE IF NOT EXISTS cable_colores (
     color_texto TEXT
 );
 
+-- Cables que se cortan a mano (Admin → Cable). Independiente del color:
+-- en la preparación de mangueras avisa de revisar la longitud.
+CREATE TABLE IF NOT EXISTS cables_corte_manual (
+    cod_cable TEXT PRIMARY KEY,
+    marcado_at TEXT
+);
+
 -- =====================================================
 -- TABLA: terminales_imagenes (foto/icono de cada terminal)
 -- =====================================================

@@ -39,7 +39,7 @@
                 <button class="admin-nav-item active" data-section="archivos" onclick="adminNav('archivos')"><span class="ico">📤</span> Archivos</button>
                 <button class="admin-nav-item" data-section="organizacion" onclick="adminNav('organizacion')"><span class="ico">🏢</span> Organización</button>
                 <button class="admin-nav-item" data-section="operarios" onclick="adminNav('operarios')"><span class="ico">👷</span> Operarios</button>
-                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Color de Cable</button>
+                <button class="admin-nav-item" data-section="colores" onclick="adminNav('colores')"><span class="ico">🎨</span> Cable</button>
                 <button class="admin-nav-item" data-section="displays" onclick="adminNav('displays')"><span class="ico">🖥️</span> Display Carro</button>
                 <button class="admin-nav-item" data-section="lectores-rfid" onclick="adminNav('lectores-rfid')"><span class="ico">🏷️</span> Lectores RFID</button>
                 <button class="admin-nav-item" data-section="ptl-prueba" onclick="adminNav('ptl-prueba')"><span class="ico">💡</span> Pick-to-light</button>
@@ -196,12 +196,13 @@
                 <!-- ============ COLORES ============ -->
                 <section id="sec-colores" class="admin-section">
                     <div class="admin-section-head">
-                        <h1>Color de Cable</h1>
-                        <p>Asigna un color a cada código de cable; los cambios se aplican en tiempo real</p>
+                        <h1>Cable</h1>
+                        <p>Color de cada código de cable y cuáles se cortan a mano</p>
                     </div>
                     <div class="card" id="card-colores-cables">
-                        <h2>🎨 Color de Cable</h2>
-                        <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.</p>
+                        <h2>🎨 Cable</h2>
+                        <p class="instruccion">Asigna un color a cada código de cable. Los cambios se aplican en tiempo real en todas las vistas.
+                            Marca <strong>Corte manual</strong> en los cables que se cortan a mano: al preparar sus mangueras saldrá un aviso para revisar la longitud.</p>
 
                         <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                             <button class="btn-secondary" onclick="ccDetectarSinColor()">🔍 Detectar cables sin color</button>
@@ -221,13 +222,21 @@
                                         <th>Cod. Cable</th>
                                         <th>Hex fondo</th>
                                         <th>Color nº</th>
+                                        <th>Corte manual</th>
                                         <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="cc-tabla-body">
-                                    <tr><td colspan="5" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
+                                    <tr><td colspan="6" style="padding:12px; text-align:center; color:#94a3b8;">Cargando...</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <div style="margin-bottom:18px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <label for="cc-input-manual" style="font-size:0.85em;">✂️ Marcar corte manual (aunque no tenga color):</label>
+                            <input type="text" id="cc-input-manual" placeholder="Cod. cable" style="width:160px; text-transform:uppercase;">
+                            <button class="btn-secondary" onclick="ccMarcarManualDesdeInput()">✔ Marcar</button>
+                            <span id="cc-manual-msg" style="font-size:0.85em;"></span>
                         </div>
 
                         <div style="background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:14px;">
@@ -1691,12 +1700,37 @@
                 .then(function (data) {
                     if (!data.success) { console.error('Error cargando colores'); return; }
                     var tbody = document.getElementById('cc-tabla-body');
-                    if (!data.colores.length) {
-                        tbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:#94a3b8;">Sin colores definidos</td></tr>';
+                    // Una fila por cable con color o con corte manual (son independientes)
+                    var manuales = {};
+                    (data.corte_manual || []).forEach(function (cod) { manuales[cod] = true; });
+                    var filas = data.colores.slice();
+                    var conColor = {};
+                    filas.forEach(function (c) { conColor[c.cod_cable] = true; });
+                    Object.keys(manuales).forEach(function (cod) {
+                        if (!conColor[cod]) filas.push({ cod_cable: cod, color_hex: null, color_texto: null });
+                    });
+                    filas.sort(function (a, b) { return a.cod_cable < b.cod_cable ? -1 : (a.cod_cable > b.cod_cable ? 1 : 0); });
+                    if (!filas.length) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding:12px;text-align:center;color:#94a3b8;">Sin cables definidos</td></tr>';
                         return;
                     }
-                    tbody.innerHTML = data.colores.map(function (c) {
-                        var cod = c.cod_cable.replace(/"/g, '&quot;');
+                    tbody.innerHTML = filas.map(function (c) {
+                        var cod = c.cod_cable.replace(/"/g, '&quot;').replace(/'/g, '');
+                        var chkManual = '<td style="padding:8px 10px; text-align:center;">' +
+                            '<input type="checkbox" title="Se corta a mano" style="width:20px;height:20px;cursor:pointer;"' +
+                            (manuales[c.cod_cable] ? ' checked' : '') +
+                            ' onchange="ccMarcarManual(\'' + cod + '\', this.checked, this)"></td>';
+                        if (!c.color_hex) {
+                            return '<tr style="background:#1a2535; color:#e2e8f0; border-bottom:1px solid #2a3a52;">' +
+                                '<td style="padding:8px 10px; color:#64748b;">—</td>' +
+                                '<td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#e2e8f0;">' + c.cod_cable + '</td>' +
+                                '<td style="padding:8px 10px; font-size:0.8em; color:#64748b;" colspan="2">sin color (automático)</td>' +
+                                chkManual +
+                                '<td style="padding:8px 10px;">' +
+                                  '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'#2563eb\',\'\')">🎨 Dar color</button>' +
+                                '</td>' +
+                              '</tr>';
+                        }
                         var bgHex = c.color_hex;
                         var txtColor = c.color_texto || _autoTextColor(bgHex);
                         var txtLabel = c.color_texto ? ('manual: ' + c.color_texto) : 'auto';
@@ -1708,6 +1742,7 @@
                             '<td style="padding:8px 10px; font-family:monospace; font-weight:600; color:#e2e8f0;">' + c.cod_cable + '</td>' +
                             '<td style="padding:8px 10px; font-family:monospace; color:#94a3b8;">' + bgHex + '</td>' +
                             '<td style="padding:8px 10px; font-size:0.8em; color:#64748b;">' + txtLabel + '</td>' +
+                            chkManual +
                             '<td style="padding:8px 10px;">' +
                               '<button class="btn-secondary" style="padding:4px 10px;font-size:0.8em;" onclick="ccEditarColor(\'' + cod + '\',\'' + bgHex + '\'' + txtHexArg + ')">✏️ Editar</button> ' +
                               '<button class="btn-danger"   style="padding:4px 10px;font-size:0.8em;" onclick="ccEliminarColor(\'' + cod + '\')">🗑️</button>' +
@@ -1779,6 +1814,39 @@
                     if (data.success) ccCargarTabla();
                     else alert('Error eliminando: ' + (data.error || ''));
                 });
+        };
+
+        // ── Corte manual (independiente del color) ──
+        window.ccMarcarManual = function (cod, marcado, chk) {
+            return fetch('/api/cables/corte-manual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cod_cable: cod, corte_manual: !!marcado })
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.success) throw new Error(data.error || 'desconocido');
+                ccCargarTabla();
+                return true;
+            })
+            .catch(function (e) {
+                if (chk) chk.checked = !marcado;
+                alert('No se pudo guardar el corte manual de ' + cod + ': ' + e.message);
+                return false;
+            });
+        };
+
+        window.ccMarcarManualDesdeInput = function () {
+            var input = document.getElementById('cc-input-manual');
+            var msg = document.getElementById('cc-manual-msg');
+            var cod = (input.value || '').trim().toUpperCase();
+            if (!cod) { msg.textContent = '⚠️ Indica el código de cable.'; msg.style.color = '#f87171'; return; }
+            ccMarcarManual(cod, true).then(function (ok) {
+                if (!ok) return;
+                input.value = '';
+                msg.textContent = '✅ ' + cod + ' marcado como corte manual';
+                msg.style.color = '#34d399';
+            });
         };
 
         // ── Limpiar formulario ──
